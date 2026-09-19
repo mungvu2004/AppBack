@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Kiểm dòng đầu thông điệp commit theo Conventional Commits (BE-00 §13.2):
+#   <type>(<scope>): <tóm tắt>   — tối đa 72 ký tự
+# Bật một lần cho repo (mọi worktree dùng chung .git/config):
+#   git config core.hooksPath .githooks
+# CI (B0-09) gọi lại đúng script này cho tiêu đề PR và từng commit.
+set -euo pipefail
+
+# Dòng đầu tiên không rỗng, không phải chú thích của git.
+header="$(grep -v -m 1 -E '^[[:space:]]*(#|$)' "$1" || true)"
+
+# Thông điệp git tự sinh.
+case "$header" in
+  "Merge "* | "Revert \""* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+types='feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert'
+pattern="^(${types})(\([a-z0-9][a-z0-9._/-]*\))?!?: [^[:space:]].*$"
+
+if [[ ! "$header" =~ $pattern ]] || ((${#header} > 72)); then
+  {
+    echo "commit-msg: dòng đầu phải là '<type>(<scope>): <tóm tắt>', tối đa 72 ký tự (BE-00 §13.2)."
+    echo "  type : ${types//|/ }"
+    echo "  ví dụ: feat(core): add error registry and masked logging"
+    echo "  nhận : ${header}"
+  } >&2
+  exit 1
+fi

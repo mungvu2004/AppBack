@@ -22,3 +22,16 @@ contract-samples/
 
 # OS
 .DS_Store
+
+# Bí mật và cấu hình máy (mẫu commit được: deploy/compose/env.example)
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Node và sản phẩm build
+node_modules/
+dist/
+build/

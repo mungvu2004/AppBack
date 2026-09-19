@@ -64,6 +64,16 @@ phối giao FIX cho đúng chủ (K27).
 Tạo `changes/<mã prompt>.md` (3–10 dòng) — các cổng có điều kiện đọc file
 này để biết bước nào "không áp dụng" (BE-00 §13.2, §12).
 
+## Git: commit và nhánh (BE-00 §13.2)
+
+- Commit: `<type>(<scope>): <tóm tắt tiếng Anh>` ≤ 72 ký tự, cuối thân có
+  trailer `Prompt: <mã>` (FIX thêm `Fix: FIX-<nnn>`). Câu `git commit -m "<mã>: …"`
+  trong khối [11] của prompt: viết lại theo mẫu này.
+- Hook `.githooks/commit-msg` chặn dòng đầu sai mẫu; người điều phối bật một lần
+  bằng `git config core.hooksPath .githooks`. Không `--no-verify` (K24).
+- Nhánh `<loại>/<mã viết thường>-<mô tả>`, ví dụ `feature/b0-02-core-errors-logging-ids`.
+  Người điều phối gộp vào `main` bằng squash.
+
 ## Báo cáo trạng thái cổng (E.10)
 
 Bảng chỉ in trạng thái lấy từ **mã thoát thật**: `đạt`, `hỏng`, `chưa chạy`

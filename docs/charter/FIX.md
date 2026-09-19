@@ -1,5 +1,6 @@
 # FIX — Khối sửa lỗi dùng chung
 
+> Bản 4 · 2026-09-19: [7] thông điệp commit theo Conventional Commits + trailer `Prompt:`, `Fix:` (BE-00 §13.2).
 > Bản 3 · 2026-09-18 (phân xử phần 7, sửa lần hai): "Không dùng khi" bỏ vế `git revert` (K7-3); luật 4 ghi rõ file SHA và thêm F-00c (K7-15d).
 > Bản 2 · 2026-09-17. Thêm luật 6–8 theo tranh luận lô 4c.
 > **Dùng khi:** lỗi trên mã **đã xanh** ở nhánh tích hợp, kể cả CI đỏ sau khi đã đẩy; kiểm toán B7-02 tìm ra lỗ; người dùng báo lỗi lúc chạy; hợp đồng đổi sau khi F-00a/F-00b/F-00c đã hợp nhất.
@@ -17,7 +18,7 @@ FIX <mã FIX> cho <mã prompt sở hữu> — <một câu mô tả lỗi>
 [4 KHOANH VÙNG]      File được sửa (trong cột "Sở hữu" của prompt gốc) · file CẤM sửa
 [5 SỬA NHỎ NHẤT]     Hướng sửa, hoặc "worker tự tìm" kèm giới hạn: không đổi hợp đồng, không đổi schema DB trừ khi ghi rõ
 [6 TEST CHẶN TÁI PHÁT] Tên test mới theo CASE.md; phải ĐỎ trên commit hiện tại trước khi sửa
-[7 NGHIỆM THU]       just verify (hoặc pnpm verify) đạt; test ở [6] đỏ → xanh; commit "<mã prompt> FIX <mã FIX>: …"; báo cáo theo REPORT.md
+[7 NGHIỆM THU]       just verify (hoặc pnpm verify) đạt; test ở [6] đỏ → xanh; commit "fix(<scope>): …" + trailer "Prompt: <mã prompt>", "Fix: <mã FIX>" (BE-00 §13.2); báo cáo theo REPORT.md
 ```
 
 ## Luật
