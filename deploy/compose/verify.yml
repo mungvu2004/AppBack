@@ -1,0 +1,38 @@
+# Cổng verify — ENV §2, B0-01 [6]B. Gọi qua tools/verify/run.sh, không gọi trực
+# tiếp (project name, biến môi trường, mount đường Windows do run.sh dựng).
+services:
+  verify:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/verify.Dockerfile
+    network_mode: bridge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    working_dir: /tmp/w
+    volumes:
+      - ${VERIFY_SRC_DIR}:/src:ro
+      - ${VERIFY_APPFRONT_DIR}:/appfront:ro
+      - ${VERIFY_CONTRACT_SAMPLES_DIR}:/src-out/contract-samples
+      - /var/run/docker.sock:/var/run/docker.sock
+      - appback-work:/work
+    environment:
+      - VERIFY_NAME
+      - VERIFY_BRANCH
+      - VERIFY_CHANGED
+      - VERIFY_VALID_NAMES
+      - VERIFY_OUT_DIR=/src-out
+      - APPFRONT_DIR=/appfront
+      - CONTRACT_SAMPLES_DIR=/tmp/contract-samples
+      - CONTRACT_NODE_DIR=/work/contract-node
+      - CASE_TRACE_FILE=/tmp/case-trace.jsonl
+      - UV_CACHE_DIR=/work/uv-cache
+      - UV_LINK_MODE=hardlink
+      - UV_PROJECT_ENVIRONMENT=/work/venv-${VERIFY_NAME}
+      - MYPY_CACHE_DIR=/work/mypy-${VERIFY_NAME}
+      - RUFF_CACHE_DIR=/tmp/ruff-cache
+      - COVERAGE_FILE=/tmp/.coverage
+      - TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
+      - PYTHONUNBUFFERED=1
+
+volumes:
+  appback-work:

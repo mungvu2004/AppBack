@@ -1,0 +1,36 @@
+[project]
+name = "appback-ml"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "onnxruntime",
+    "torch",
+    "torchvision",
+    "transformers",
+    "ultralytics",
+    "rapidocr-onnxruntime",
+    "pyclipper",
+    "shapely",
+    "pyyaml",
+    "six",
+    "onnx",
+    "onnxscript",
+    "safetensors",
+    "appback-core",
+    "appback-domain",
+    "appback-vision",
+    "appback-storage",
+    "appback-messaging",
+    "appback-ml_contracts",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+appback-core = { workspace = true }
+appback-domain = { workspace = true }
+appback-vision = { workspace = true }
+appback-storage = { workspace = true }
+appback-messaging = { workspace = true }
+appback-ml_contracts = { workspace = true }

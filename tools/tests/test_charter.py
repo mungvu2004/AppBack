@@ -1,0 +1,91 @@
+"""tools/charter.py — [8]: BE-BIND thật đọc đủ 49 + 2 + 37 dòng; dòng sai khuôn → ValueError; query bị bỏ."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from tools.charter import load_bind_rows, merged_prompts
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+BE_BIND = REPO_ROOT / "docs" / "charter" / "BE-BIND.md"
+
+_TABLE_HEADER = (
+    "| # | Đường v1 | operationId | Loại | Khoá | Nhật ký | Chủ | Ghi chú |\n|---|---|---|---|---|---|---|---|\n"
+)
+
+
+def _write_table(tmp_path: Path, *rows: str) -> Path:
+    p = tmp_path / "bind.md"
+    p.write_text(_TABLE_HEADER + "\n".join(rows) + "\n", encoding="utf-8")
+    return p
+
+
+def test_be_bind_thật_đọc_đủ_49_2_37_dòng() -> None:
+    rows = load_bind_rows(BE_BIND)
+    numeric = [r for r in rows if r.row_id.isdigit()]
+    s_rows = [r for r in rows if r.row_id.startswith("S")]
+    n_rows = [r for r in rows if r.row_id.startswith("N")]
+    assert len(numeric) == 49
+    assert len(s_rows) == 2
+    assert len(n_rows) == 37
+
+
+def test_query_bị_bỏ() -> None:
+    rows = load_bind_rows(BE_BIND)
+    n17 = next(r for r in rows if r.row_id == "N17")
+    assert "?" not in n17.path
+    assert n17.path == "/api/projects/{project_id}/versions"
+
+
+def test_v2_operation_id_là_none() -> None:
+    rows = load_bind_rows(BE_BIND)
+    row2 = next(r for r in rows if r.row_id == "2")
+    assert row2.operation_id is None
+    assert row2.owner == "v2"
+
+
+def test_outside_được_tách_khỏi_loại() -> None:
+    rows = load_bind_rows(BE_BIND)
+    row7 = next(r for r in rows if r.row_id == "7")
+    assert row7.outside is True
+    assert row7.case_type == "T-complete"
+
+
+def test_dòng_thiếu_cột_ném_valueerror(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "| # | Đường v1 | operationId | Loại | Khoá | Nhật ký | Chủ | Ghi chú |\n"
+        "|---|---|---|---|---|---|---|---|\n"
+        "| 1 | `POST /api/x` | `x_create` | G | — | — | B1-01 |\n",  # thiếu 1 cột
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="số cột lệch"):
+        load_bind_rows(bad)
+
+
+def test_method_path_sai_khuôn_ném_valueerror(tmp_path: Path) -> None:
+    bad = _write_table(tmp_path, "| 1 | POST /api/x | `x_create` | G | — | — | B1-01 | |")
+    with pytest.raises(ValueError, match="sai khuôn"):
+        load_bind_rows(bad)
+
+
+def test_bảng_khác_không_có_đường_v1_bị_bỏ_qua(tmp_path: Path) -> None:
+    p = tmp_path / "other.md"
+    p.write_text(
+        "| Tên | Giá trị |\n|---|---|\n| Vai | admin, engineer, viewer |\n",
+        encoding="utf-8",
+    )
+    assert load_bind_rows(p) == []
+
+
+def test_merged_prompts_đọc_changes(tmp_path: Path) -> None:
+    (tmp_path / "changes").mkdir()
+    (tmp_path / "changes" / "B0-01.md").write_text("x", encoding="utf-8")
+    (tmp_path / "changes" / "B1-01.md").write_text("x", encoding="utf-8")
+    assert merged_prompts(tmp_path) == {"B0-01", "B1-01"}
+
+
+def test_merged_prompts_thiếu_thư_mục_trả_rỗng(tmp_path: Path) -> None:
+    assert merged_prompts(tmp_path) == set()

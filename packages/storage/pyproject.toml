@@ -1,0 +1,14 @@
+[project]
+name = "appback-storage"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "minio",
+    "appback-core",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+appback-core = { workspace = true }

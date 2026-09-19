@@ -1,0 +1,34 @@
+[project]
+name = "appback-api"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pyjwt",
+    "argon2-cffi",
+    "python-multipart",
+    "appback-core",
+    "appback-domain",
+    "appback-vision",
+    "appback-db",
+    "appback-storage",
+    "appback-messaging",
+    "appback-mail",
+    "appback-ml_contracts",
+    "appback-observability",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+appback-core = { workspace = true }
+appback-domain = { workspace = true }
+appback-vision = { workspace = true }
+appback-db = { workspace = true }
+appback-storage = { workspace = true }
+appback-messaging = { workspace = true }
+appback-mail = { workspace = true }
+appback-ml_contracts = { workspace = true }
+appback-observability = { workspace = true }

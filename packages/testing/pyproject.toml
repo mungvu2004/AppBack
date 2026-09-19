@@ -1,0 +1,16 @@
+[project]
+name = "appback-testing"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "testcontainers[postgres,redis,minio]",
+    "pytest",
+    "httpx",
+    "appback-core",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+appback-core = { workspace = true }

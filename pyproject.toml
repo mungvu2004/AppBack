@@ -1,0 +1,126 @@
+[project]
+name = "appback"
+version = "0.1.0"
+description = "AppBack — BE (khung, không mã nghiệp vụ)"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+# rapidocr-onnxruntime kéo opencv-python (bản GUI) qua transitive deps; loại nó
+# khỏi lock thay cho --no-deps thủ công (ENV §3, K29).
+override-dependencies = ["opencv-python ; sys_platform == 'never'"]
+
+[tool.uv.workspace]
+members = ["packages/*", "apps/*"]
+# __pycache__ do chạy Python cục bộ để lại không phải thành viên
+exclude = ["packages/__pycache__", "apps/__pycache__"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+# Thành viên kế thừa sources của gốc: torch, torchvision (kể cả khi ultralytics
+# kéo gián tiếp) chỉ lấy từ chỉ mục CPU.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "import-linter",
+    "pytest",
+    "pytest-asyncio",
+    "coverage",
+    "httpx",
+    "schemathesis",
+    "celery-types",
+    "types-PyYAML",
+    "types-shapely",
+    "asyncpg-stubs",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — BE-01 [6]D
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "B", "UP", "N", "S", "PGH", "EXE", "DTZ", "BLE",
+    "ASYNC", "T20", "RUF", "PT", "SIM",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "T201"]
+# Ba công cụ cổng + điều phối verify: CLI báo cáo ra stdout (T201) là đúng việc
+# của chúng, không phải print gỡ lỗi bỏ sót; đường /tmp cố định là điểm trao
+# đổi đã ghim trong hiến chương (ENV §2), không phải input người dùng (S108).
+"tools/coverage_gate.py" = ["T201", "S108"]
+"tools/case_gate.py" = ["T201", "S108"]
+"tools/lint_migrations.py" = ["T201"]
+"tools/verify/steps.py" = ["T201", "S108", "S603", "S606", "S607"]
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["test_*__*"]
+
+# ---------------------------------------------------------------------------
+# mypy — strict
+# ---------------------------------------------------------------------------
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+mypy_path = "."
+files = ["packages", "apps", "tools"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["packages", "apps", "tools", "deploy", "tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+strict_markers = true
+markers = [
+    "case(id): case bắt buộc theo CASE.md (tools/case_gate.py đọc)",
+    "gpu: cần GPU thật, ngoài verify và ngoài độ phủ (chỉ apps/ml/**)",
+    "perf: có trần thời gian, chạy ở bước 5b (không coverage)",
+]
+addopts = "-m \"not gpu and not perf\" --junitxml=/tmp/junit.xml"
+
+# ---------------------------------------------------------------------------
+# coverage — BE-01 [6]D + [6]G
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+parallel = true
+relative_files = true
+patch = ["subprocess"]
+source = ["packages", "apps", "tools"]
+omit = ["*/tests/*", "packages/db/migrations/*"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@overload",
+    "^\\s*\\.\\.\\.$",
+]
+
+[tool.coverage.paths]
+source = [
+    ".",
+    "/tmp/w",
+    "/app",
+    # [6]D ghi `/home/runner/work/*/*`, nhưng coverage cấm mẫu kết thúc bằng `*`
+    # ("Pattern must not end with wildcards") — GitHub Actions checkout AppBack ở
+    # /home/runner/work/AppBack/AppBack, nên đại diện đặt ở giữa.
+    "/home/runner/work/*/AppBack",
+]

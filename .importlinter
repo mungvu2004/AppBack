@@ -1,0 +1,165 @@
+# Mỗi hợp đồng mang cùng ignore_imports (tuỳ chọn THEO HỢP ĐỒNG — import-linter
+# bỏ qua nếu đặt ở mục gốc): test của mọi gói nhập packages.testing, và
+# packages.testing có thể nhập gói bất kỳ, nên thiếu ở hợp đồng nào là sinh vi
+# phạm gián tiếp ở hợp đồng đó. Chưa có import khớp thì chỉ cảnh báo (warn).
+[importlinter]
+root_packages =
+    packages
+    apps
+include_external_packages = True
+
+[importlinter:contract:core-isolated]
+name = packages.core không nhập gói nội bộ khác, fastapi, sqlalchemy, celery
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    packages.core
+forbidden_modules =
+    packages.domain
+    packages.vision
+    packages.db
+    packages.storage
+    packages.messaging
+    packages.mail
+    packages.ml_contracts
+    packages.observability
+    packages.testing
+    apps.api
+    apps.worker
+    apps.ml
+    fastapi
+    sqlalchemy
+    celery
+
+[importlinter:contract:domain-vision-isolated]
+name = packages.domain, packages.vision không nhập db/storage/messaging/apps, fastapi/sqlalchemy/celery/torch
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    packages.domain
+    packages.vision
+forbidden_modules =
+    packages.db
+    packages.storage
+    packages.messaging
+    apps.api
+    apps.worker
+    apps.ml
+    fastapi
+    sqlalchemy
+    celery
+    torch
+
+[importlinter:contract:messaging-isolated]
+name = packages.messaging không nhập packages.db, sqlalchemy, asyncpg
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    packages.messaging
+forbidden_modules =
+    packages.db
+    sqlalchemy
+    asyncpg
+
+[importlinter:contract:db-isolated]
+name = packages.db không nhập apps, packages.messaging
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    packages.db
+forbidden_modules =
+    apps.api
+    apps.worker
+    apps.ml
+    packages.messaging
+
+[importlinter:contract:api-no-ml]
+name = apps.api không nhập apps.ml, torch, ultralytics, onnxruntime, transformers
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    apps.api
+forbidden_modules =
+    apps.ml
+    torch
+    ultralytics
+    onnxruntime
+    transformers
+
+[importlinter:contract:api-no-worker]
+name = apps.api không nhập apps.worker
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    apps.api
+forbidden_modules =
+    apps.worker
+
+[importlinter:contract:worker-no-web]
+name = apps.worker không nhập fastapi, starlette, uvicorn, jwt, argon2 (ảnh worker không cài chúng)
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    apps.worker
+forbidden_modules =
+    fastapi
+    starlette
+    uvicorn
+    jwt
+    argon2
+
+[importlinter:contract:api-jobs-no-web]
+name = apps.api.*.jobs không nhập fastapi, starlette, uvicorn, jwt, argon2 (worker nhập các module này để chạy lịch)
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    apps.api.*.jobs
+forbidden_modules =
+    fastapi
+    starlette
+    uvicorn
+    jwt
+    argon2
+
+[importlinter:contract:ml-isolated]
+name = apps.ml không nhập packages.db, sqlalchemy, asyncpg, fastapi, starlette, uvicorn, jwt, argon2
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    apps.ml
+forbidden_modules =
+    packages.db
+    sqlalchemy
+    asyncpg
+    fastapi
+    starlette
+    uvicorn
+    jwt
+    argon2
