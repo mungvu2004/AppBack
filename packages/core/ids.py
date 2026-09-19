@@ -1,0 +1,65 @@
+"""Id có tiền tố (W4, HOP-DONG-MOI §0.1).
+
+- Tài nguyên: `<tiền tố>_<ULID>`. ULID = 48 bit mili giây từ `clock.now()` + 80 bit
+  `secrets`, Crockford base32 HOA 26 ký tự.
+- Thực thể không gian (client sinh): `<chữ>-<base36 HOA 10-64>` (`src/domain/spatial/ids.ts:15-43`).
+- Phép đo (client sinh): `MS-<4-15 chữ số>`.
+
+Mẫu dùng `[0-9]`, không `\\d` (`\\d` của `re` khớp cả chữ số Unicode), và `fullmatch`
+(`$` của `re` nhận cả `\\n` cuối chuỗi).
+"""
+
+import re
+import secrets
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
+from typing import Final, Literal, get_args
+
+from packages.core.clock import Clock
+
+IdPrefix = Literal["prj", "usr", "upl", "drw", "ver", "ntf", "tok", "mdl", "dst", "dsv", "job", "run", "tpl"]
+SpatialKind = Literal["level", "wall", "opening", "furniture", "room", "axis", "dimension"]
+
+SPATIAL_PREFIX: Final[Mapping[SpatialKind, str]] = {
+    "level": "L",
+    "wall": "W",
+    "opening": "D",
+    "furniture": "F",
+    "room": "R",
+    "axis": "A",
+    "dimension": "M",
+}
+
+_PREFIXES: Final = frozenset(get_args(IdPrefix))
+_CROCKFORD: Final = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_ULID_BODY: Final = "[0-9A-HJKMNP-TV-Z]{26}"
+_EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
+_MEASUREMENT_RE: Final = re.compile(r"MS-[0-9]{4,15}")
+
+
+def _check_prefix(prefix: str) -> None:
+    if prefix not in _PREFIXES:
+        raise ValueError(f"tiền tố id lạ: {prefix!r}")
+
+
+def new_id(prefix: IdPrefix, clock: Clock) -> str:
+    _check_prefix(prefix)
+    ms = (clock.now() - _EPOCH) // timedelta(milliseconds=1)
+    if ms < 0:  # trần 48 bit (năm 10889) nằm ngoài datetime.max
+        raise ValueError("ULID không biểu diễn được thời điểm trước 1970")
+    value = (ms << 80) | secrets.randbits(80)
+    body = "".join(_CROCKFORD[(value >> shift) & 31] for shift in range(125, -1, -5))
+    return f"{prefix}_{body}"
+
+
+def is_id(prefix: IdPrefix, value: str) -> bool:
+    _check_prefix(prefix)
+    return re.fullmatch(f"{prefix}_{_ULID_BODY}", value) is not None
+
+
+def is_spatial_id(kind: SpatialKind, value: str) -> bool:
+    return re.fullmatch(f"{SPATIAL_PREFIX[kind]}-[0-9A-Z]{{10,64}}", value) is not None
+
+
+def is_measurement_id(value: str) -> bool:
+    return _MEASUREMENT_RE.fullmatch(value) is not None
