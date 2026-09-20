@@ -66,6 +66,14 @@ phối giao FIX cho đúng chủ (K27).
 Tạo `changes/<mã prompt>.md` (3–10 dòng) — các cổng có điều kiện đọc file
 này để biết bước nào "không áp dụng" (BE-00 §13.2, §12).
 
+## Nợ và merge (RULE-CODE.md §6)
+
+- Nợ phát hiện trong phiên → một dòng `NO-<nnn>` trong `DEBT.md` trước khi báo xong
+  (R-34). Xong task mà còn nợ mở → giao sub-agent tìm nguyên nhân gốc và sửa (R-35).
+- Vào `main` **chỉ** qua nhánh + phiên review riêng: `/merge-review` (skill ở
+  `.claude/skills/merge-review/`). Phán quyết lưu ở `docs/reviews/`. Không `APPROVE`
+  thì không merge, kể cả khi cổng xanh (R-37).
+
 ## Git: commit và nhánh (BE-00 §13.2)
 
 - Commit: `<type>(<scope>): <tóm tắt tiếng Anh>` ≤ 72 ký tự, cuối thân có

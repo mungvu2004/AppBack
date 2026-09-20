@@ -66,9 +66,19 @@
 | R-32 | Migration theo expand → migrate → contract; có đường lùi đã chạy thử (BE-00 §6.1). |
 | R-33 | Trước khi báo xong: `bash tools/verify/run.sh verify` thoát 0, bảng cổng in trạng thái từ mã thoát thật (K25), commit theo Conventional Commits + trailer `Prompt:`. |
 
+## 6. Nợ, merge và review (FLOW)
+
+| ID | Luật |
+|---|---|
+| R-34 | **Nợ phải có dòng trong `DEBT.md` trước khi phiên kết thúc** — mỗi nợ một dòng `NO-<nnn>`, đủ: nợ là gì, nguyên nhân gốc (hoặc "chưa xác định"), chủ sở hữu file, mức theo `RULE.md`, trạng thái. Báo cáo cuối phiên chỉ trích id, không kể lại. Nợ đã sửa hay đã chấp nhận thì đổi trạng thái, **không xoá dòng**. |
+| R-35 | **Xong task mà còn nợ mở → giao sub-agent** tìm nguyên nhân gốc rồi sửa, ngay trong phiên đó. Sub-agent phải **tái hiện được** lỗi trước khi sửa; không tái hiện được thì ghi vào `DEBT.md` số lượt đã chạy và giả thuyết nào đã bị loại trừ bằng bằng chứng gì — **cấm sửa mò**, cấm nới assert, cấm `skip`/`xfail`/retry để giấu (K24). |
+| R-36 | Không viết thẳng lên `main`. Mọi việc đi trên nhánh `<loại>/<mã>-<mô tả>`, vào `main` bằng **merge có review** (squash, giữ trailer `Prompt:`). |
+| R-37 | **Mọi merge phải qua skill `/merge-review` chạy ở một phiên riêng**, không phải phiên đã viết mã. Phán quyết lưu ở `docs/reviews/<ngày>-<nhánh>.md`. **Tuyệt đối không merge** khi phán quyết là `REQUEST CHANGES` hay `REJECT`, kể cả khi cổng xanh. Sửa theo finding rồi xin review lại. |
+| R-38 | Nợ do review chỉ ra được ghi `DEBT.md` **trước** khi merge; nợ mức P0/P1 chặn merge, không có ngoại lệ (`RULE.md` §5). |
+
 ---
 
-## 6. Tự kiểm trước khi commit
+## 7. Tự kiểm trước khi commit
 
 - [ ] Mỗi hàm mới có docstring 1–12 dòng đúng R-01, R-02.
 - [ ] Không đoạn nào lặp lần thứ hai mà chưa tách (R-07).
@@ -76,3 +86,5 @@
 - [ ] Danh sách case thường/biên/lỗi/đồng thời đã có test tương ứng (R-13…R-15).
 - [ ] Mọi lời gọi ra ngoài có timeout; không chặn vòng sự kiện; không N+1 (R-20…R-24).
 - [ ] `verify` xanh, không `pragma`, không `type: ignore` trần, không hạ ngưỡng (R-12, R-33).
+- [ ] Mọi nợ còn lại đã có dòng trong `DEBT.md`; nợ mở đã giao sub-agent (R-34, R-35).
+- [ ] Merge: nhánh riêng + `/merge-review` ở phiên khác đã `APPROVE` (R-36, R-37).
