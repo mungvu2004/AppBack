@@ -19,6 +19,9 @@ class DatabaseSettings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 5
     db_pool_timeout_s: int = 5
+    # Trần bắt tay kết nối, đặt tường minh vì asyncpg im lặng dùng 60 s của riêng nó (R-24).
+    # Đường phục vụ request phải hỏng nhanh, không chờ hết trần của thư viện.
+    db_connect_timeout_s: int = 10
     db_statement_timeout_ms: int = 10000
     db_lock_timeout_ms: int = 5000
     db_after_commit_workers: int = 8

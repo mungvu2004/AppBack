@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from packages.db.base import Base
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.db.models import load_all_models
 from packages.db.seeds import apply_seeds
 from packages.db.settings import reset_database_settings_cache
@@ -91,7 +92,7 @@ async def run_checks(
     reset_database_settings_cache()
     target = metadata if metadata is not None else Base.metadata
     results: list[tuple[str, str]] = []
-    engine = create_async_engine(url, poolclass=NullPool)
+    engine = create_async_engine(url, poolclass=NullPool, connect_args={"timeout": GATE_CONNECT_TIMEOUT_S})
 
     async def step(name: str, run: Callable[[], Awaitable[str]]) -> bool:
         try:

@@ -22,7 +22,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from packages.db.engine import create_engine, create_sessionmaker
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_sessionmaker
 from packages.db.hooks import DROP_ENV
 from packages.db.migrate_check import alembic_config
 from packages.db.settings import DatabaseSettings, reset_database_settings_cache
@@ -36,7 +36,13 @@ def _with_database(url: str, name: str) -> str:
 
 
 async def _admin(url: str, statements: list[str]) -> None:
-    engine = create_async_engine(_with_database(url, "postgres"), isolation_level="AUTOCOMMIT")
+    # Đường connect nhiều nhất của cả bộ test (mỗi test một `CREATE`/`DROP DATABASE`), nên
+    # cũng chịu trần cổng thay vì 60 s mặc định của asyncpg (NO-002).
+    engine = create_async_engine(
+        _with_database(url, "postgres"),
+        isolation_level="AUTOCOMMIT",
+        connect_args={"timeout": GATE_CONNECT_TIMEOUT_S},
+    )
     try:
         async with engine.connect() as connection:
             for statement in statements:

@@ -11,10 +11,20 @@ import asyncio
 import weakref
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Final
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from packages.db.settings import DatabaseSettings, get_database_settings
+
+# Trần bắt tay cho đường **cổng** (migrate_check, Alembic, fixture dựng database), rộng hơn
+# hẳn đường phục vụ request. Lý do đo được (NO-002): trên máy dev Windows, đường chuyển tiếp
+# cổng của Docker Desktop thỉnh thoảng kẹt ~68 s rồi tự thông — một luồng độc lập đo
+# `socket.create_connection` mất 67.9 s rồi THÀNH CÔNG trong khi Postgres rảnh (6/100 kết nối).
+# Với trần 60 s mặc định của asyncpg, cổng kết tội nhầm migration ("downgrade -1 hỏng —
+# TimeoutError()"). Đo lại thấy kẹt dài hơn thì nâng số này kèm số đo mới, đừng đoán; chữa
+# dứt điểm là bỏ chặng `host.docker.internal` (cho verify và testcontainers chung network).
+GATE_CONNECT_TIMEOUT_S: Final = 180.0
 
 _worker_makers: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, async_sessionmaker[AsyncSession]]] = (
     weakref.WeakKeyDictionary()
@@ -30,12 +40,13 @@ def create_engine(settings: DatabaseSettings) -> AsyncEngine:
         pool_pre_ping=True,
         hide_parameters=True,  # lỗi SQL không kéo tham số (băm mật khẩu, email) vào log (K11)
         connect_args={
+            "timeout": settings.db_connect_timeout_s,
             "server_settings": {
                 "statement_timeout": str(settings.db_statement_timeout_ms),
                 "lock_timeout": str(settings.db_lock_timeout_ms),
                 "timezone": "UTC",
                 "application_name": "appback",
-            }
+            },
         },
     )
 

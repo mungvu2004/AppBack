@@ -3,6 +3,8 @@
 - DSN lấy từ `DatabaseSettings` (`DATABASE_URL`), không đặt trong `alembic.ini`.
 - `statement_timeout=0`: tạo index trên bảng lớn lâu hơn trần của API. `lock_timeout`
   **giữ nguyên**: migration chờ khoá quá lâu thì hỏng sớm, không treo cả dịch vụ.
+- `timeout`: trần bắt tay tường minh (R-24), rộng theo `GATE_CONNECT_TIMEOUT_S` — migration
+  không được báo hỏng chỉ vì đường mạng tới Postgres kẹt một lúc (NO-002).
 - `compare_type`, `compare_server_default`: `migrate_check` so model với DB.
 - `transaction_per_migration`: revision dùng `autocommit_block()` (CREATE INDEX
   CONCURRENTLY) không kéo theo revision khác.
@@ -16,6 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from packages.db.base import Base
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.db.models import load_all_models
 from packages.db.settings import get_database_settings
 
@@ -38,12 +41,13 @@ async def _run_async() -> None:
         settings.database_url,
         poolclass=NullPool,
         connect_args={
+            "timeout": GATE_CONNECT_TIMEOUT_S,
             "server_settings": {
                 "statement_timeout": "0",
                 "lock_timeout": str(settings.db_lock_timeout_ms),
                 "timezone": "UTC",
                 "application_name": "appback-alembic",
-            }
+            },
         },
     )
     try:
