@@ -1,6 +1,8 @@
 # AppBack — hướng dẫn cho worker
 
 **Đọc trước khi viết một dòng mã, theo đúng thứ tự:**
+0. `RULE-CODE.md` — luật viết mã bắt buộc cho mọi phiên (docstring mỗi hàm, không
+   trùng lặp, phủ hết case, tối ưu ngay lúc viết). `RULE.md` là bảng chấm review sau đó.
 1. `docs/charter/BE-00.md` — hiến chương: stack, ranh giới import, quy ước dây W1–W24, lỗi, xác thực, migration, việc nền, cổng verify.
 2. `docs/charter/BE-KFM.md` — lỗi agent hay mắc (K01–K34); khối [9] của prompt trích lại phần liên quan.
 3. `docs/charter/ENV.md` — môi trường đã đo (mount, biến môi trường, trần chạy song song).
