@@ -167,3 +167,122 @@ P0/P1 mở. Điểm 3,48 chỉ là số phụ — kể cả không có P1 thì n
 **Không** cần đụng tới: kiểu trả của `registered_tasks()` (giữ `list[str]`, hiến chương thắng prompt), việc sửa
 `packages/messaging/__init__.py` (hợp lệ), cơ chế `cancel()`/`uncancel()` của `hold` (đã kiểm, không vỡ), hay
 `_declared_in_tests` (quyết định đúng: sổ task là đầu vào của cổng thì chỉ được phụ thuộc mã sản phẩm).
+
+---
+
+# Review lại — lượt 2 (sau `1de8525`)
+
+- Ngày: 2026-09-20 · Reviewer: cùng phiên `/merge-review` độc lập · Commit đầu nhánh: `1de8525` (`fix(messaging): treat server-side redis failures as retryable`)
+- Cổng: `bash tools/verify/run.sh verify` **mã thoát 0** — tôi tự chạy lại, không lấy số của người điều phối. **872** test xanh (lượt 1: 860), bước 5 hết 71,2 s.
+- Độ phủ (in từ `tools.coverage_gate`): tổng dòng **99,04 %** · nhánh **95,77 %** · `packages/messaging` **100,00 % / 100,00 %** · `apps/worker` 100 / 100 · `packages/testing` 98,64 / 100 · tập file bị chạm 99,42 / 100.
+- Bảng cổng: 1–6 **đạt**, 5b đạt (0 đơn vị perf bị chạm), 7 và 8 **không áp dụng** (vẫn đúng BE-00 §12).
+- Cây sạch, hai commit, **cả hai** trailer `Prompt: B0-05` đọc được bằng `%(trailers:key=Prompt,valueonly)` (R-36b giữ). Không đụng file cấm. `1de8525` là `fix(...)` mà không có trailer `Fix: FIX-<nnn>` — **kiểm và chấp nhận**: `FIX-<nnn>` trong repo này dành cho việc người điều phối giao sửa file của prompt **khác** (FIX-001 → `tools/**`, FIX-002 → `packages/db/**`); đây là B0-05 tự sửa mã của chính mình theo finding, `Prompt: B0-05` là đủ.
+
+## Hai P1 — kiểm lại từng cái, không tin lời
+
+**P1 #1 — ĐÃ SỬA, sửa ở gốc (R-19).** `DEPENDENCY_ERRORS` (`packages/messaging/redis.py:52-60`) là **một** danh sách
+dùng chung cho `translate_redis_error` (`redis.py:176`) **và** `BROKER_CONNECTION_ERRORS` (`celery_app.py:37`), nên
+hai đường không thể lệch nhau nữa — đúng R-07, và rộng hơn thứ tôi đề xuất (tôi chỉ bảo thêm vào hai chỗ).
+Tôi dò lại **mọi** lối ra Redis của gói: `EventBus`/`SyncEventBus` (mọi phương thức) và
+`SafeLock.acquire`/`renew`/`release` đều đã qua `redis_errors()`; lỗ duy nhất còn lại là `_deliveries` thì commit này
+đã bọc (`tasks.py:221`) — và đó là lỗ **tác giả tự tìm ra**, tôi chỉ chỉ gián tiếp. `assert_broker_policy` cố ý
+không bọc (hỏng lúc khởi động worker là đúng ý "thà không chạy còn hơn mất việc"). Test chứng minh trên Redis
+**thật**: `test_streams.py:301` (broker đầy → 503 `retry_after=5`) và `test_tasks.py:512` (task →
+`RETRY_EXHAUSTED`, **không** `INTERNAL`) — đúng hai khẳng định tôi đòi ở điều kiện 1, và cả hai đều đỏ trước bản vá.
+
+**P1 #2 — ĐÃ SỬA, fail-closed đúng hướng.** `_Renewal._renewed` (`locks.py:148-160`) bắt `Exception`, ghi
+`lock_renew_failed`, trả `False` → `lost = True` → huỷ thân → `LockLost`. `CancelledError` là `BaseException` nên
+không bị nuốt — tôi đã đối chiếu, nhận xét này của tác giả đúng. `finally` khi `lost` thì **không** `release`, tức
+không đụng khoá của chủ mới: fail-closed cả hai đầu. Test `test_locks.py:144` là test hồi quy thật: trước bản vá nó
+đỏ hai lần (sai loại ngoại lệ **và** `reached != []`).
+**Cách dựng lỗi của tác giả tốt hơn đề xuất của tôi** và tôi xác nhận lý do họ đưa: `maxmemory` không chặn `PEXPIRE`
+(lệnh không cấp phát, không mang cờ `denyoom`), nên chỉ `SHUTDOWN NOSAVE` / cắt kết nối mới dựng được cảnh "gia hạn
+không xong". Lý do đó được ghi ngay trong thân test — đúng R-03.
+
+## Hai chỗ tác giả làm khác ý tôi — phán quyết
+
+**1. `ClusterDownError` test bằng membership thay vì dựng thể hiện — CHẤP NHẬN, lý do đã kiểm chứng.**
+Tôi không tin lời mà chạy thử trong container: `redis-py` khai `def __init__(self, resp):` **không kiểu**, và
+`mypy --strict` trên một đoạn dựng thể hiện trả đúng
+`error: Call to untyped function "ClusterDownError" in typed context [no-untyped-call]`.
+Dựng được thì phải thêm `type: ignore[no-untyped-call]` cho một lớp **không thể xảy ra** với client Redis đơn lẻ
+(BE-00 §1) — đổi một `type: ignore` lấy một khẳng định không mạnh hơn là lỗ vốn.
+`test_cluster_down_stays_in_the_dependency_list` (`test_redis.py:148`) vẫn chặn được đúng thứ cần chặn: ai dọn danh
+sách mà bỏ lớp này ra thì test đỏ. Hành vi của nó giống hệt hai lớp kia vì cùng đi qua **một**
+`isinstance(exc, DEPENDENCY_ERRORS)`. Không phải né cổng.
+
+**2. `#6` không sửa bằng mã, viện R-14 "nhánh không test được" — LÝ DO KHÔNG ĐỨNG ĐƯỢC, nhưng không chặn merge.**
+Tác giả mời phản đối, nên tôi phản đối **bằng bằng chứng chứ không bằng ý kiến**: nhánh đó **dựng được**, bằng đúng
+kỹ thuật tác giả vừa tự phát minh cho P1 #2. Công thức: TTL dài và `renew_every_ms` dài hơn cả thân (ví dụ
+`SafeLock(client, "gpu:0", 5000).hold(4000)`) → keeper **không bao giờ** kịp chạy → `lost` giữ `False` → `finally`
+chắc chắn đi vào `release`; trong thân gọi `admin.shutdown(nosave=True)` rồi `raise ZeroDivisionError`.
+Tôi đã chạy đúng kịch bản này trong container verify, kết quả in ra:
+`KET QUA: nguoi goi thay AppError DEPENDENCY_UNAVAILABLE - ngoai le that cua than DA BI CHE`.
+Tức là nhánh chạy qua được, và finding #6 tái hiện được. R-14 vì vậy **không** miễn cho ca này.
+Mức vẫn là **P3** (che ngoại lệ, không mất dữ liệu) nên **không chặn merge** — nhưng dòng `NO-028` đang mang một
+nguyên nhân gốc **sai**, mà `DEBT.md` là thứ phiên sau đọc để tin. Phải sửa câu chữ (finding L2-1).
+
+## Finding lượt 2
+
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| L2-1 | P3 | R-34 | `NO-028` ghi nguyên nhân "nhánh `except` đó **chưa test được** … (R-14 cấm viết nhánh không chạy qua được)". **Sai, đã tái hiện**: TTL 5 000 ms + `renew_every_ms` 4 000 ms làm keeper không bao giờ chạy → `lost` = `False` → `finally` chắc chắn vào `release`; `admin.shutdown(nosave=True)` trong thân rồi `raise ZeroDivisionError` → người gọi nhận `AppError DEPENDENCY_UNAVAILABLE`, ngoại lệ thật của thân biến mất. Sổ nợ mang lý do sai thì phiên sau không thử lại | `DEBT.md` dòng `NO-028`; mã ở `packages/messaging/locks.py:121-126` | Sửa nguyên nhân gốc của `NO-028` thành "chưa làm, không phải không làm được", kèm công thức trên. Tốt hơn: sửa luôn (≈ 6 dòng: `try/except AppError` quanh `release`, log `lock_release_failed`) cộng một test dùng `ephemeral_broker` theo đúng công thức |
+| L2-2 | Nit | R-34 / R-05 | `NO-029` kết luận bộ đếm rào "vài chục tên khoá cố định → vài KB, không phải nguồn tăng trưởng", và xếp khoá theo id vào thì tương lai ("nếu sau này có khoá theo `job_id`"). Nhưng BE-00 §7 **đã** đặt tên `training:claim:{job}` — một tên khoá cho **mỗi** lượt huấn luyện. Nếu B6-03a dựng nó bằng `SafeLock` thì bộ đếm rào tăng theo số job, vô hạn, trên instance `noeviction` | `DEBT.md` dòng `NO-029` | Đổi "nếu sau này" thành trích dẫn `training:claim:{job}` của BE-00 §7, và nêu rõ ràng buộc bàn giao cho B6-03a: hoặc không dùng `SafeLock` cho khoá theo job, hoặc đổi bộ đếm sang `HINCRBY` một hash có TTL trước khi B6-03a hợp nhất |
+| L2-3 | Nit | TEST-03 | `test_the_retry_countdown_walks_the_charter_ladder` (`test_tasks.py:497`) chạy trên `run_ladder`, vốn khai `backoff=(10, 60, 300)` **tường minh** (`test_tasks.py:102`), nên nhánh `spec.backoff is None` → đọc `TASK_RETRY_BACKOFF_S` không được đi qua với giá trị thật; prompt [8] nói "khi dùng **cấu hình mặc định**". Trên thực tế **không phải lỗ**: `test_defaults_match_the_charter` chốt mặc định = `(10, 60, 300)`, nhánh `spec.backoff is None` có test khác đi qua, và `backoff_step` không phân biệt nguồn — hai nửa ghép lại là đủ | `packages/messaging/tests/test_tasks.py:97-102`, `:497` | Nếu muốn đúng câu chữ prompt: bỏ tham số `backoff` của `run_ladder` và cho test tự `monkeypatch.setenv("TASK_RETRY_BACKOFF_S", "10,60,300")` thay vì khai cứng |
+| L2-4 | Nit | MNT-04 | `test_every_failure_log_carries_the_task_id` (`test_tasks.py:528`) chỉ khẳng định cho `poison_message`; hai điểm log còn lại (`task_failed`, `on_failed_error`) có `task_id` trong mã nhưng không có khẳng định nào. Tên test hứa nhiều hơn nó kiểm | `packages/messaging/tests/test_tasks.py:528-536` | Tham số hoá ba ca (độc / `PermanentError` / `on_failed` ném) và so `task_id` của cả ba, hoặc đổi tên test cho đúng phạm vi |
+| L2-5 | Nit | TEST-02 | Test mới `test_hold_treats_a_broken_redis_as_a_lost_lock` dùng lại đúng biên hẹp `TTL_MS = 300` / `RENEW_MS = 80` mà `NO-027` (P2, đang mở) vừa ghi là mỏng — nhánh này vì thế đóng lại với **ba** test khoá phụ thuộc đồng hồ thật thay vì hai | `packages/messaging/tests/test_locks.py:144-168` | Khi làm `NO-027` thì nới cả ba cùng lượt; riêng test này không cần biên hẹp (nó chờ `SHUTDOWN`, không chờ hết hạn) |
+| L2-6 | Nit | LOG-02 | `_deliveries` (`tasks.py:210-223`) chạy `INCR` rồi `EXPIRE` trong **hai** lượt. Nay đã bọc `redis_errors()`, nhưng nếu `INCR` thành công mà `EXPIRE` hỏng (kết nối rụng giữa hai lệnh) thì bộ đếm đã tăng trong khi lượt chạy bị thử lại → `count` chạy nhanh hơn `retries` và có thể chạm `WORKER_LOST` sớm. Rất hẹp, và `NO-023` đã đề xuất đúng cách chữa | `packages/messaging/tasks.py:210-223`; `DEBT.md` `NO-023` | Ghi thêm một câu vào `NO-023`: gộp `INCR` + `EXPIRE` thành một script Lua vừa bớt một lượt đi-về vừa bỏ được độ lệch này |
+
+**Lượt 2 — P0: 0 · P1: 0 · P2: 0 · P3: 1 · Nit: 5**
+
+## Trạng thái năm điều kiện của lượt 1
+
+| Điều kiện | Kết quả |
+|---|---|
+| 1. Sửa #1 bằng mã + hai test trên Redis thật | **đạt**, và sửa rộng hơn yêu cầu (`DEPENDENCY_ERRORS` dùng chung, cộng lỗ `_deliveries` tác giả tự tìm) |
+| 2. Sửa #2 bằng mã + test cắt Redis giữa thân | **đạt**; cách dựng lỗi (`SHUTDOWN NOSAVE`) đúng hơn đề xuất của tôi, lý do đã kiểm chứng |
+| 3. Hai test bắt buộc của prompt [8] | **đạt** — `test_tasks.py:491` (task dưới `apps.ml`, có khôi phục sổ `_TASKS` khi teardown) và `:497` (bậc lùi qua `self.retry` thật, bắt `Retry.when`, không ngủ). Còn một chỗ lệch câu chữ, xem L2-3 |
+| 4. Ghi `DEBT.md` cho #4…#10, #12 | **đạt và vượt**: #4, #8, #9, #12 **sửa luôn bằng mã** thay vì ghi nợ; #5, #6, #7, #10 thành `NO-027`…`NO-030`, đủ nợ/nguyên nhân/chủ/mức. `NO-025` đã mở rộng đúng ý (thêm ca thân đồng bộ dài) và nâng Nit → P3; `NO-026` đã nói rõ là ràng buộc bàn giao và khớp với việc tái xuất `broker_redis_sync`. Trừ điểm duy nhất: nguyên nhân của `NO-028` sai (L2-1) |
+| 5. Chạy lại verify, mã thoát thật | **đạt** — tôi tự chạy, exit 0, số liệu ở đầu mục này |
+
+## Điểm (lượt 2)
+
+| Miền | Trọng số | Điểm | Tích | Lý do |
+|---|---|---|---|---|
+| SEC – Bảo mật | 25 % | 5 | 1,25 | Không finding. `NO-030` (Nit, `repr(exc)`) đã có dòng nợ; log hỏng vẫn không in thân thông điệp |
+| CON – Concurrency & dữ liệu | 15 % | 4 | 0,60 | P1 #2 **đã sửa** fail-closed, có test hồi quy trên Redis thật. Còn P3 `NO-025`, `NO-028` (cộng L2-1) |
+| LOG – Tính đúng đắn | 15 % | 4 | 0,60 | Chỉ P3 `NO-028` (che ngoại lệ trong `finally`) cộng Nit L2-6 |
+| PERF – Hiệu năng | 10 % | 4 | 0,40 | Chỉ P3 `NO-023`, `NO-029`, đều có đường nâng cấp cụ thể |
+| RES – Chịu lỗi | 10 % | 4 | 0,40 | P1 #1 **đã sửa ở gốc**, một danh sách dùng chung cho cả hai đường, test bằng Redis thật chạm `maxmemory`. Còn Nit L2-6 |
+| DB, API – Migration & contract | 10 % | 5 | 0,50 | Không migration, không endpoint, không đổi hợp đồng FE |
+| TEST – Kiểm thử | 7 % | 3 | 0,21 | `NO-027` (P2, mở) vẫn là test khoá phụ thuộc đồng hồ thật, nay thành ba test (L2-5); cộng Nit L2-3, L2-4. Bù lại: 12 test mới, dịch vụ thật, hai test hồi quy P1 đều đỏ-trước-xanh-sau |
+| OBS, OPS – Vận hành | 5 % | 3 | 0,15 | #4 đã sửa (`task_id` ở cả ba điểm log, qua `task_id_of`). `NO-021` (P2, chủ B0-08, biến môi trường) vẫn mở — đúng chủ, không phải việc của B0-05 |
+| MNT – Bảo trì | 3 % | 4 | 0,12 | Chỉ Nit. Một prompt, hai commit, cả hai trailer đọc được; tách `fix` khỏi `feat` là đúng khuôn |
+| **Tổng** | **100 %** | | **4,23** | |
+
+## PHÁN QUYẾT LƯỢT 2: APPROVE
+
+Cả hai P1 đều được sửa **ở gốc**, không phải vá triệu chứng (R-19): #1 gom thành **một** `DEPENDENCY_ERRORS` để
+đường gửi task và đường đọc/ghi Redis không bao giờ lệch nhau nữa — rộng hơn thứ tôi yêu cầu — và tác giả còn tự
+tìm thêm lỗ `_deliveries` cùng hạng; #2 fail-closed đúng hướng, `CancelledError` không bị nuốt, khoá của chủ mới
+không bị đụng. Hai test hồi quy dựng lỗi trên **Redis thật** (`maxmemory` và `SHUTDOWN NOSAVE`), đều đỏ trước bản
+vá. Hai test bắt buộc của prompt [8] đã có. Bốn finding P2/P3 khác được **sửa luôn bằng mã** thay vì đẩy vào sổ nợ,
+và bốn cái còn lại có dòng `NO-027`…`NO-030` đủ nợ, nguyên nhân, chủ, mức. Cổng exit 0 do chính tôi chạy;
+`packages/messaging` giữ 100 % dòng và 100 % nhánh sau khi thêm 12 test.
+
+Không còn P0, không còn P1; mọi P2 đang mở (`NO-021`, `NO-027`) đều đã có dòng sổ nợ đúng chủ — R-38 thoả. Điểm
+**4,23 ≥ 4,0** → theo ma trận `RULE.md` §5 là **APPROVE**. Nhánh được phép vào `main`.
+
+**Hai việc nên làm cùng lượt gộp — chỉ sửa chữ trong `DEBT.md`, KHÔNG chặn merge:**
+
+1. **`NO-028`** (L2-1): đổi nguyên nhân gốc từ "nhánh `except` chưa test được" thành "chưa làm, không phải không
+   làm được", kèm công thức tôi đã chạy qua (`hold(4000)` trên TTL 5 000 ms để keeper không kịp chạy, cộng
+   `admin.shutdown(nosave=True)` trong thân). Không để sổ nợ mang một lý do mà phiên sau sẽ tin là bất khả.
+2. **`NO-029`** (L2-2): thay "nếu sau này có khoá theo `job_id`" bằng trích dẫn `training:claim:{job}` của BE-00 §7,
+   và ghi thành ràng buộc bàn giao cho **B6-03a** (không dùng `SafeLock` cho khoá theo job, hoặc đổi bộ đếm rào
+   sang hash có TTL trước khi B6-03a hợp nhất).
+
+Bốn Nit còn lại (L2-3…L2-6) tác giả tự quyết, không cần làm gì trước khi gộp.
+
+**Gộp:** một prompt, hai commit (`feat` cộng `fix`), cả hai mang `Prompt: B0-05` — **squash một lần** là đúng
+(`CLAUDE.md`, BE-00 §13.2), không lặp lại vấn đề gộp nhiều prompt của nhánh B0-04.
