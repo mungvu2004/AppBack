@@ -72,9 +72,7 @@ async def _table_counts(session: AsyncSession) -> dict[str, int]:
 
 
 def _compare(connection: Connection, metadata: MetaData) -> list[Any]:
-    context = MigrationContext.configure(
-        connection, opts={"compare_type": True, "compare_server_default": True}
-    )
+    context = MigrationContext.configure(connection, opts={"compare_type": True, "compare_server_default": True})
     return list(compare_metadata(context, metadata))
 
 
@@ -96,7 +94,10 @@ async def run_checks(
     engine = create_async_engine(url, poolclass=NullPool)
 
     async def step(name: str, run: Callable[[], Awaitable[str]]) -> bool:
-        detail = await run()
+        try:
+            detail = await run()
+        except Exception as exc:  # noqa: BLE001 — migration hỏng là kết quả của cổng, không phải sự cố của nó
+            detail = repr(exc)
         results.append((name, detail))
         return not detail
 

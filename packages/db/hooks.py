@@ -38,11 +38,11 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, SessionTransaction
 
-from packages.db.settings import get_database_settings
-
 CALLBACK_TIMEOUT_S: Final = 2.0
 INLINE_ENV: Final = "DB_AFTER_COMMIT_INLINE"
 DROP_ENV: Final = "DB_DROP_AFTER_COMMIT"
+WORKERS_ENV: Final = "DB_AFTER_COMMIT_WORKERS"
+DEFAULT_WORKERS: Final = 8
 _INFO_KEY: Final = "appback_after_commit"
 
 _log = logging.getLogger(__name__)
@@ -72,13 +72,22 @@ def _ensure_state(session: Session) -> _Pending:
     return state
 
 
+def _workers() -> int:
+    """Đọc thẳng biến môi trường (`DatabaseSettings.db_after_commit_workers` khai nó).
+
+    Không gọi `DatabaseSettings` ở đây: hook chạy được cả khi `DATABASE_URL` chưa có
+    (session không bind, test của chính hook).
+    """
+    try:
+        return max(1, int(os.environ.get(WORKERS_ENV) or DEFAULT_WORKERS))
+    except ValueError:
+        return DEFAULT_WORKERS
+
+
 def _executor_of() -> ThreadPoolExecutor:
     global _executor
     if _executor is None:
-        _executor = ThreadPoolExecutor(
-            max_workers=get_database_settings().db_after_commit_workers,
-            thread_name_prefix="after-commit",
-        )
+        _executor = ThreadPoolExecutor(max_workers=_workers(), thread_name_prefix="after-commit")
     return _executor
 
 

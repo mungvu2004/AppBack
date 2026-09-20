@@ -6,7 +6,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 from sqlalchemy import BigInteger, DateTime, Index, MetaData, Numeric, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, mapped_column
@@ -22,7 +22,7 @@ NAMING_CONVENTION: Final = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
-    type_annotation_map = {datetime: DateTime(timezone=True)}
+    type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: DateTime(timezone=True)}
 
 
 class TimestampMixin:

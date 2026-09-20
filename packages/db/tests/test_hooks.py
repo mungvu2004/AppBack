@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Callable
 
@@ -11,7 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session
 
 from packages.db.engine import create_engine, create_sessionmaker, session_scope
-from packages.db.hooks import INLINE_ENV, after_commit_idle, on_after_commit
+from packages.db.hooks import (
+    DEFAULT_WORKERS,
+    DROP_ENV,
+    INLINE_ENV,
+    WORKERS_ENV,
+    _workers,
+    after_commit_idle,
+    on_after_commit,
+)
 from packages.db.settings import DatabaseSettings
 from packages.testing.fixtures.db import drop_after_commit
 
@@ -74,15 +83,18 @@ async def test_on_after_commit__J09_rollback_skips(
 async def test_on_after_commit__J09_exception_in_scope_skips(
     db_sessionmaker: async_sessionmaker[AsyncSession], calls: list[str]
 ) -> None:
-    session: AsyncSession | None = None
-    with pytest.raises(RuntimeError, match="hỏng giữa chừng"):
-        async with session_scope(db_sessionmaker) as opened:
-            session = opened
-            await _begin(opened)
-            on_after_commit(opened, _append(calls, "a"))
+    opened: list[AsyncSession] = []
+
+    async def fail_after_register() -> None:
+        async with session_scope(db_sessionmaker) as session:
+            opened.append(session)
+            await _begin(session)
+            on_after_commit(session, _append(calls, "a"))
             raise RuntimeError("hỏng giữa chừng")
-    assert session is not None
-    await after_commit_idle(session)
+
+    with pytest.raises(RuntimeError, match="hỏng giữa chừng"):
+        await fail_after_register()
+    await after_commit_idle(opened[0])
     assert calls == []
 
 
@@ -125,8 +137,9 @@ async def test_on_after_commit__J09_failing_callback_is_logged(
             await _begin(session)
             on_after_commit(session, boom)
         await after_commit_idle(session)
-    assert "after_commit_failed" in caplog.text
-    assert "broker chết" in caplog.text
+    record = next(item for item in caplog.records if item.message == "after_commit_failed")
+    assert record.__dict__["callback"] == "test_on_after_commit__J09_failing_callback_is_logged.<locals>.boom"
+    assert "broker chết" in record.__dict__["error"]
 
 
 async def test_on_after_commit__J09_slow_callback_times_out(
@@ -238,3 +251,57 @@ def test_drop_after_commit_requires_test_env(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("APP_ENV", "dev")
     with pytest.raises(RuntimeError, match="APP_ENV=test"), drop_after_commit():
         pytest.fail("không vào tới thân khối")
+
+
+def test_workers_env_is_read_at_first_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(WORKERS_ENV, "3")
+    assert _workers() == 3
+    monkeypatch.setenv(WORKERS_ENV, "không phải số")
+    assert _workers() == DEFAULT_WORKERS
+    monkeypatch.delenv(WORKERS_ENV)
+    assert _workers() == DEFAULT_WORKERS
+
+
+async def test_after_commit_idle_without_callbacks() -> None:
+    await after_commit_idle(Session())  # không có gì để chờ
+
+
+async def test_callback_registered_before_transaction_is_dropped_by_rollback(
+    db_sessionmaker: async_sessionmaker[AsyncSession], calls: list[str]
+) -> None:
+    async with db_sessionmaker() as session:
+        on_after_commit(session, _append(calls, "a"))  # chưa có giao dịch nào
+        await _begin(session)
+        await session.rollback()  # rollback ngoài cùng
+        await session.commit()
+    await after_commit_idle(session)
+    assert calls == []
+
+
+def test_callback_registered_before_transaction_survives_savepoint_rollback(
+    db_url: str, calls: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(INLINE_ENV, "1")
+
+    async def work(maker: async_sessionmaker[AsyncSession]) -> None:
+        async with maker() as session:
+            on_after_commit(session, _append(calls, "a"))  # chưa có giao dịch nào
+            await _begin(session)
+            nested = await session.begin_nested()
+            await nested.rollback()
+            await session.commit()
+
+    engine = create_engine(DatabaseSettings(database_url=db_url))
+    with asyncio.Runner() as runner:
+        runner.run(work(create_sessionmaker(engine)))
+        runner.run(engine.dispose())
+    assert calls == ["a"]
+
+
+def test_drop_after_commit_nested_restores_previous_value(calls: list[str]) -> None:
+    with drop_after_commit(), drop_after_commit():
+        session = Session()
+        on_after_commit(session, _append(calls, "a"))
+        session.commit()
+    assert calls == []
+    assert DROP_ENV not in os.environ

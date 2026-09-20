@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.hooks import DROP_ENV
 from packages.db.migrate_check import alembic_config
-from packages.db.settings import DatabaseSettings
+from packages.db.settings import DatabaseSettings, reset_database_settings_cache
 
 TEMPLATE_DB = "appback_template"
 
@@ -59,6 +59,7 @@ def _alembic_upgrade(url: str) -> None:
 
     previous = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = url
+    reset_database_settings_cache()  # env.py đọc `DatabaseSettings`, mà nó có cache
     try:
         command.upgrade(alembic_config(), "head")
     finally:
@@ -66,6 +67,7 @@ def _alembic_upgrade(url: str) -> None:
             os.environ.pop("DATABASE_URL", None)
         else:
             os.environ["DATABASE_URL"] = previous
+        reset_database_settings_cache()
 
 
 @pytest.fixture(scope="session")
@@ -97,7 +99,8 @@ def blank_db_url(postgres_url: str) -> Iterator[str]:
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_engine(DatabaseSettings(database_url=db_url))
+    # Pool nhỏ: mỗi test một database, Postgres dùng chung không phải giữ hàng trăm kết nối.
+    engine = create_engine(DatabaseSettings(database_url=db_url, db_pool_size=5, db_max_overflow=0))
     try:
         yield create_sessionmaker(engine)
     finally:

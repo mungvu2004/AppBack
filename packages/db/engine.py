@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from packages.db.settings import DatabaseSettings, get_database_settings
 
-_worker_makers: weakref.WeakKeyDictionary[
-    asyncio.AbstractEventLoop, dict[str, async_sessionmaker[AsyncSession]]
-] = weakref.WeakKeyDictionary()
+_worker_makers: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, async_sessionmaker[AsyncSession]]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def create_engine(settings: DatabaseSettings) -> AsyncEngine:

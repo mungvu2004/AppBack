@@ -9,7 +9,8 @@ import re
 from typing import Final
 
 from asyncpg.exceptions import CannotConnectNowError, ConnectionDoesNotExistError
-from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError, TimeoutError as SATimeoutError
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
