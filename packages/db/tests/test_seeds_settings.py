@@ -101,7 +101,7 @@ def test_settings_defaults() -> None:
     settings = DatabaseSettings(database_url=URL)
     assert (settings.db_pool_size, settings.db_max_overflow, settings.db_pool_timeout_s) == (10, 5, 5)
     assert (settings.db_statement_timeout_ms, settings.db_lock_timeout_ms) == (10000, 5000)
-    assert settings.db_after_commit_workers == 8
+    assert (settings.db_connect_timeout_s, settings.db_after_commit_workers) == (10, 8)
 
 
 @pytest.mark.parametrize("url", ["postgresql://u@h/db", "postgres://u@h/db", "sqlite+aiosqlite:///x.db", ""])

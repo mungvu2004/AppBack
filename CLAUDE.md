@@ -1,6 +1,8 @@
 # AppBack — hướng dẫn cho worker
 
 **Đọc trước khi viết một dòng mã, theo đúng thứ tự:**
+0. `RULE-CODE.md` — luật viết mã bắt buộc cho mọi phiên (docstring mỗi hàm, không
+   trùng lặp, phủ hết case, tối ưu ngay lúc viết). `RULE.md` là bảng chấm review sau đó.
 1. `docs/charter/BE-00.md` — hiến chương: stack, ranh giới import, quy ước dây W1–W24, lỗi, xác thực, migration, việc nền, cổng verify.
 2. `docs/charter/BE-KFM.md` — lỗi agent hay mắc (K01–K34); khối [9] của prompt trích lại phần liên quan.
 3. `docs/charter/ENV.md` — môi trường đã đo (mount, biến môi trường, trần chạy song song).
@@ -63,6 +65,14 @@ phối giao FIX cho đúng chủ (K27).
 
 Tạo `changes/<mã prompt>.md` (3–10 dòng) — các cổng có điều kiện đọc file
 này để biết bước nào "không áp dụng" (BE-00 §13.2, §12).
+
+## Nợ và merge (RULE-CODE.md §6)
+
+- Nợ phát hiện trong phiên → một dòng `NO-<nnn>` trong `DEBT.md` trước khi báo xong
+  (R-34). Xong task mà còn nợ mở → giao sub-agent tìm nguyên nhân gốc và sửa (R-35).
+- Vào `main` **chỉ** qua nhánh + phiên review riêng: `/merge-review` (skill ở
+  `.claude/skills/merge-review/`). Phán quyết lưu ở `docs/reviews/`. Không `APPROVE`
+  thì không merge, kể cả khi cổng xanh (R-37).
 
 ## Git: commit và nhánh (BE-00 §13.2)
 

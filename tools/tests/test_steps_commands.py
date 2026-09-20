@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -271,6 +272,27 @@ def test_lock_chép_uv_lock_xoá_file_cũ(repo: Path) -> None:
     old.write_text("x", encoding="utf-8")
     assert steps.main(["lock"]) == 0
     assert sorted(p.name for p in (steps.OUT_DIR / "lock").iterdir()) == ["uv.lock"]
+
+
+def test_lock_thư_mục_ra_là_mount_point_không_gỡ_được(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-001: `run.sh` mount host vào đúng `/src-out/lock`.
+
+    `rmtree` xoá nội dung nhưng để lại chính mount point (EBUSY bị nuốt) — dựng
+    lại đúng hành vi đó để chắc `_clean_dir` không ném `FileExistsError`.
+    """
+
+    def rmtree_giữ_gốc(path: Path | str, **_kw: Any) -> None:
+        for child in Path(path).iterdir():
+            child.unlink()
+
+    (repo / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    out = steps.OUT_DIR / "lock"
+    out.mkdir(parents=True)
+    (out / "cũ.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(shutil, "rmtree", rmtree_giữ_gốc)
+
+    assert steps.main(["lock"]) == 0
+    assert sorted(p.name for p in out.iterdir()) == ["uv.lock"]
 
 
 def test_openapi_thiếu_module_nêu_b0_06(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -241,9 +241,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def _clean_dir(d: Path) -> Path:
-    """Thư mục ra của một việc: xoá sạch trước khi ghi ([6]C)."""
+    """Thư mục ra của một việc: xoá sạch nội dung trước khi ghi ([6]C).
+
+    `run.sh` bind-mount thư mục host **đúng vào** `/src-out/<việc>` cho cả ba
+    việc `lock`, `openapi`, `merge-heads`. `rmtree` xoá được nội dung nhưng
+    không gỡ được chính mount point (EBUSY, bị `ignore_errors` nuốt), nên `d`
+    vẫn còn sau khi xoá → `mkdir` phải chấp nhận thư mục đã tồn tại, nếu không
+    sẽ ném `FileExistsError` (NO-001).
+    """
     shutil.rmtree(d, ignore_errors=True)
-    d.mkdir(parents=True)
+    d.mkdir(parents=True, exist_ok=True)
     return d
 
 
