@@ -323,12 +323,14 @@ source = { virtual = "packages/storage" }
 dependencies = [
     { name = "appback-core", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "minio", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "urllib3", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "appback-core", virtual = "packages/core" },
     { name = "minio" },
+    { name = "urllib3" },
 ]
 
 [[package]]

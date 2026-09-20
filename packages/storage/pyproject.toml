@@ -4,6 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "minio",
+    # timeout/retry tường minh cho client minio (R-24); minio đã kéo urllib3,
+    # khai thẳng vì `s3.py` nhập nó.
+    "urllib3",
     "appback-core",
 ]
 
