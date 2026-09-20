@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from alembic.script import ScriptDirectory
 
 from packages.db import new_revision
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config
@@ -45,13 +46,25 @@ def versions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return migrations / "versions"
 
 
+def single_head(versions: Path) -> str:
+    """Head duy nhất của bản sao cây revision.
+
+    Không ghim chuỗi: mỗi prompt được thêm **một** revision (BE-00 §6.1), nên head
+    đổi sau mỗi lần hợp nhất và một hằng ở đây sẽ đỏ với prompt kế tiếp.
+    """
+    heads = ScriptDirectory.from_config(alembic_config(versions.parent)).get_heads()
+    assert len(heads) == 1, heads
+    return str(heads[0])
+
+
 def test_creates_revision_with_charter_name(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    head_before = single_head(versions)
     assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"]) == 0
     created = list(versions.glob(f"r{TODAY}_b2_01_*.py"))
     assert [path.name for path in created] == [f"r{TODAY}_b2_01_add_projects.py"]
     body = created[0].read_text(encoding="utf-8")
     assert f'revision: str = "r{TODAY}_b2_01"' in body
-    assert 'down_revision: str | None = "r20260920_b0_03"' in body
+    assert f'down_revision: str | None = "{head_before}"' in body
     assert f"r{TODAY}_b2_01" in capsys.readouterr().out
     assert lint_migrations(versions).violations == []
 
