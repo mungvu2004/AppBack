@@ -97,10 +97,18 @@ và `pytest packages/messaging/tests/test_worker_main.py -k ready_to_run` → m�
 
 **[5 SỬA NHỎ NHẤT]** Đổi khẳng định sang đúng bất biến mà docstring của hai test đã nói:
 - sổ task **không chứa** task khai trong module test (thay cho "sổ rỗng");
-- `app.conf.beat_schedule` của worker **bằng** `beat_schedule()` đọc trong **cùng** tiến trình
-  con (thay cho "beat rỗng") — chứng minh "sổ được gắn" mà không phụ thuộc số lịch.
+- `app.conf.beat_schedule` của worker **bằng** sổ lịch dò lại **độc lập** trong cùng tiến trình
+  con — `discover_jobs()` (idempotent) rồi `beat_schedule()` — thay cho "beat rỗng". Chứng minh
+  "sổ được gắn đủ" mà không phụ thuộc số lịch.
 
 **[6 TEST CHẶN TÁI PHÁT]** Hai test trên sau khi sửa: bỏ `discover_jobs()` khỏi `celery_main`
-thì `beat` rỗng còn `beat_ledger` khác rỗng → đỏ; đưa task của module test vào sổ → đỏ.
+thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → đỏ; đưa task của module test vào sổ
+→ đỏ.
+
+> **Sửa lần hai (review 2026-09-21, finding #3).** Bản đầu tính `beat_ledger` bằng `beat_schedule()`
+> **không** dò lại, nên khi `celery_main` quên `discover_jobs()` cả hai vế cùng rỗng và test vẫn qua —
+> câu [6] ở trên khi đó là sai. Đã tái hiện: giả lập worker không dò → `beat = [] | beat_ledger = []`.
+> Bản sửa gọi `discover_jobs()` trước khi tính vế phải; cùng giả lập đó nay cho
+> `beat = [] ≠ beat_ledger = ['default.idempotency.purge_expired']`.
 
 **[7 NGHIỆM THU]** `just verify` bước 5 `đạt`; hai test đỏ → xanh.
