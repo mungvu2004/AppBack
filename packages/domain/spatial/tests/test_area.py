@@ -30,7 +30,7 @@ SLIVER = rectangle(125, 100)
 
 
 def test_half_rounds_up() -> None:
-    """125 x 100 mm = 0,0125 m², đúng nửa → 0,01 (`area.test.ts:199-201`)."""
+    """125 x 100 mm = 0,0125 m²; x 100 = 1,25 (không phải nửa) → 0,01 (`area.test.ts:199-201`)."""
     assert polygon_area_m2(SLIVER) == Decimal("0.01")
 
 
@@ -130,7 +130,7 @@ def test_real_sample_outlines_total_238_not_248_60() -> None:
     ],
 )
 def test_js_round_matches_math_round(value: float, expected: int) -> None:
-    """`Math.round`: nửa về phía +∞; hai ca cuối là chỗ `floor(x + 0.5)` sai còn `Math.round` đúng."""
+    """`Math.round`: nửa về phía +∞; `0.49999999999999994` và `±(2^52+1)` là chỗ `floor(x + 0.5)` sai."""
     assert js_round(value) == expected
 
 

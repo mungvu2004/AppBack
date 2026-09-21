@@ -1,5 +1,7 @@
 """Toàn vẹn lớp một tầng: mỗi luật và mức một ca, thứ tự ổn định, thứ tự cao độ tầng."""
 
+from collections.abc import Iterator
+
 import pytest
 
 from packages.domain.spatial import (
@@ -128,6 +130,34 @@ def test_references_follow_list_order() -> None:
         issue("missingReference", "warning", ROOM.id, gone_wall),
         issue("missingReference", "warning", ITEM.id, gone_room),
     ]
+
+
+class ScanCounter(tuple[str, ...]):
+    """`openingIds` đếm số lượt bị quét (lặp hay `in`), để chốt độ phức tạp mà không đo giờ (TEST-02)."""
+
+    scans = 0
+
+    def __iter__(self) -> Iterator[str]:
+        """Một lượt lặp là một lượt quét."""
+        self.scans += 1
+        return super().__iter__()
+
+    def __contains__(self, item: object) -> bool:
+        """`in` trên tuple là một lượt quét tuyến tính."""
+        self.scans += 1
+        return super().__contains__(item)
+
+
+def test_hosted_openings_do_not_rescan_the_wall_list() -> None:
+    """Mỗi tường quét `openingIds` số lượt cố định, không theo số ô mở trỏ về nó (R-25, review B3-01 #1).
+
+    Quét lại cho mỗi ô mở là O(N x M) trên thân #35 do client gửi: 41,8 s CPU với 7,8 MiB.
+    """
+    listed = ScanCounter(f"D-LIST{index:08d}" for index in range(50))
+    hosted = tuple(OPENING.model_copy(update={"id": f"D-HOST{index:08d}"}) for index in range(200))
+    issues = check_integrity(layer(walls=(WALL.model_copy(update={"opening_ids": listed}),), openings=hosted))
+    assert [found.severity for found in issues] == ["critical"] * 50 + ["warning"] * 200
+    assert listed.scans <= 2
 
 
 def test_has_critical() -> None:

@@ -47,8 +47,10 @@ def _missing_references(layer: SpatialLayer) -> list[IntegrityIssue]:
     issues: list[IntegrityIssue] = []
     for wall in layer.walls:
         issues += [_missing(wall.id, ref, "critical") for ref in wall.opening_ids if ref not in opening_ids]
-        # Ô mở trỏ về tường mà tường không liệt kê: vẽ được, chỉ lệch chỉ mục.
-        issues += [_missing(wall.id, ref, "warning") for ref in hosted.get(wall.id, ()) if ref not in wall.opening_ids]
+        # Ô mở trỏ về tường mà tường không liệt kê: vẽ được, chỉ lệch chỉ mục. Tra bằng `set`:
+        # quét `tuple` cho mỗi ô mở là O(N x M) trên thân #35 do client gửi (R-25).
+        listed = set(wall.opening_ids)
+        issues += [_missing(wall.id, ref, "warning") for ref in hosted.get(wall.id, ()) if ref not in listed]
     issues += [_missing(o.id, o.wall_id, "critical") for o in layer.openings if o.wall_id not in wall_ids]
     for room in layer.rooms:
         issues += [_missing(room.id, ref, "warning") for ref in room.wall_ids if ref not in wall_ids]

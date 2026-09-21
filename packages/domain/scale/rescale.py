@@ -18,15 +18,23 @@ class RescaleError(ValueError):
     """Đổi tỉ lệ làm một thực thể sai mô hình (tường dài 0, bề dày 0, `line` trùng điểm…)."""
 
     def __init__(self, entity_id: str) -> None:
+        """`entity_id` là id thực thể hỏng; B3-03, B3-04 đọc nó để dựng lỗi trả người gọi."""
         super().__init__(f"đổi tỉ lệ làm hỏng thực thể {entity_id}")
         self.entity_id = entity_id
 
 
 def _factor(old: float, new: float) -> float:
-    """Tỉ số `new / old`; hai tỉ lệ phải hữu hạn và > 0, không thì `ValueError`."""
+    """Tỉ số `new / old`; hai tỉ lệ và cả tỉ số phải hữu hạn và > 0, không thì `ValueError`.
+
+    Kiểm cả tỉ số: hai tỉ lệ hợp lệ vẫn có thể cho thương tràn vô cực hay chìm về 0,
+    và đó là lỗi của tham số, không phải của thực thể đầu tiên bị đổi.
+    """
     if not all(math.isfinite(scale) and scale > 0 for scale in (old, new)):
         raise ValueError(f"tỉ lệ phải hữu hạn và > 0: old={old}, new={new}")
-    return new / old
+    k = new / old
+    if not (math.isfinite(k) and k > 0):
+        raise ValueError(f"tỉ số tỉ lệ new/old tràn hoặc bằng 0: old={old}, new={new}")
+    return k
 
 
 def _mm(value: int, k: float) -> int:

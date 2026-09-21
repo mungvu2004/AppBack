@@ -70,19 +70,26 @@ def test_thickness_collapsing_is_refused() -> None:
     assert caught.value.entity_id == WALL.id
 
 
-def test_overflowing_factor_is_refused() -> None:
-    """`k` quá lớn làm độ dài tràn khỏi số thực → `RescaleError`, không trả vô cực."""
-    with pytest.raises(RescaleError):
-        rescale_unreviewed(LAYER, 1e-300, 1e300)
+def test_length_beyond_safe_integer_names_the_entity() -> None:
+    """`k` hữu hạn nhưng đẩy độ dài vượt 2^53 - 1 → `RescaleError` của đúng tường, không kẹp."""
+    with pytest.raises(RescaleError) as caught:
+        rescale_unreviewed(LAYER, 1.0, 1e300)
+    assert caught.value.entity_id == WALL.id
 
 
-@pytest.mark.parametrize(("old", "new"), [(0, 12), (12, 0), (-6, 12), (float("nan"), 12), (12, float("inf"))])
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [(0, 12), (12, 0), (-6, 12), (float("nan"), 12), (12, float("inf")), (1e-300, 1e300), (1e300, 1e-300)],
+)
 def test_scales_must_be_positive_and_finite(old: float, new: float) -> None:
-    """`old`, `new` phải hữu hạn và > 0, cho cả lớp lẫn kích thước."""
-    with pytest.raises(ValueError, match="tỉ lệ"):
-        rescale_unreviewed(LAYER, old, new)
-    with pytest.raises(ValueError, match="tỉ lệ"):
-        rescale_dimensions(DIMENSIONS, old, new)
+    """`old`, `new` và cả `new / old` phải hữu hạn và > 0, cho cả lớp lẫn kích thước (review B3-01 #3).
+
+    Là lỗi tham số (`ValueError` thuần), không đổ cho thực thể chưa duyệt đầu tiên (`RescaleError`).
+    """
+    for rescale in (lambda: rescale_unreviewed(LAYER, old, new), lambda: rescale_dimensions(DIMENSIONS, old, new)):
+        with pytest.raises(ValueError, match="tỉ lệ") as caught:
+            rescale()
+        assert not isinstance(caught.value, RescaleError)
 
 
 def test_dimensions_double_line_and_keep_values() -> None:
