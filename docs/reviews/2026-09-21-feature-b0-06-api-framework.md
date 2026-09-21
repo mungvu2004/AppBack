@@ -267,3 +267,89 @@ Cổng thoát 0 trên lượt chạy độc lập, độ phủ đạt ở mọi 
 3. Gộp bằng `git merge --no-ff` (R-36: nhánh mang trailer của B0-01, B0-03, B0-05, B0-06), **không** squash.
 
 P3 và Nit (#2–#4) do tác giả tự quyết, không chặn merge.
+
+---
+
+## Lượt review lại (độc lập) — lần 4
+
+- Ngày: 2026-09-21 · Reviewer: phiên `/merge-review` **độc lập** (không phải phiên tác giả, không phải ba phiên review trước; mọi khẳng định trong commit, `DEBT.md`, `docs/fixes.md` và ba lượt trên đều tự kiểm lại) · Commit đầu nhánh: `88d6c0b25285` (gốc `3b7ebf4`, 15 commit; mới so với lượt 3: `d82745d`, `45a73ad`, `88d6c0b`)
+- Cổng: `bash tools/verify/run.sh verify` **mã thoát 0** (chạy tại chỗ, log `verify2.log` trong scratchpad của phiên): `1142 passed, 10 skipped`. Cả 10 skip đều là `got empty parameter set for (operation)` ở `apps/api/core/tests/test_common.py:119, 128 (×4), 137, 151, 165, 177, 192` (tự kiểm bằng `pytest -rs`), đúng ngoại lệ duy nhất BE-00 §12 cho phép. Lượt gọi **đầu tiên** của phiên thoát 1 ngay ở `docker build` (`node:20-bookworm-slim`: `TLS handshake timeout` tới `registry-1.docker.io`), trước khi bước 1 chạy: tính là **chưa chạy**, không tính đạt; lượt chạy lại build bằng cache và chạy trọn 8 bước.
+- Độ phủ: tổng dòng **99,23 %** · nhánh **96,73 %** · `apps/api/core` 99,46 % / 98,03 % · `apps/api/files`, `apps/api/health`, `packages/messaging` 100 % / 100 % · `packages/db` 98,65 % / 97,32 % · `packages/testing` 99,51 % / 100 % · `tools` 98,24 % / 94,05 % · tập file bị chạm 99,55 % / 98,21 %. Mọi gói và tổng đều ≥ 90 % ở cả hai số.
+
+| # | Bước | Trạng thái |
+|---|---|---|
+| 1 | `ruff format --check` | đạt (184 file) |
+| 2 | `ruff check` | đạt |
+| 3 | `mypy --strict` | đạt (160 file) |
+| 4 | `lint-imports` | đạt (9 hợp đồng giữ, 0 vỡ) |
+| 5 | `coverage run -m pytest` → `coverage_gate` | đạt |
+| 5b | `pytest -m perf` → `case_gate` | đạt (0 đơn vị `perf` bị chạm; 0 thao tác có dòng BE-BIND, 3 cảnh báo cho ba route công khai của [7]) |
+| 6 | `lint_migrations` → `migrate_check` | đạt (2 revision; 9/9) |
+| 7 | H1 H3 H4 H5 | không áp dụng — hợp lệ: `changes/` chưa có `B0-07.md` |
+| 8 | openapi | đạt |
+
+**Điều kiện dừng sớm** (tự kiểm lại): cây sạch; `changes/B0-06.md` có, 9 dòng; 15 commit đúng mẫu Conventional Commits, dòng đầu dài nhất 70 ký tự (`960dced`); trailer đọc được bằng `%(trailers:key=Prompt)` cho cả 15 (`B0-06`×9, `B0-01`+`FIX-003`×2, `B0-03`+`FIX-004`×2, `B0-05`+`FIX-005`×2); diff không đụng `docs/charter/*`, `openapi.json`, `APPFRONT_SHA`, `uv.lock`, `pyproject.toml` gốc, `.importlinter`, `conftest.py`, `tools/verify/*`, `tools/charter.py`, không có file cấu hình công cụ; mọi `noqa`/`type: ignore` mới đều có mã; không `pragma`, `skip`, `xfail` mới. Không điều kiện nào kích hoạt.
+
+**Công cụ kiểm tại chỗ** (container verify, Python 3.12; file probe chỉ nằm trong bản sao `/tmp/w`, xoá sau khi chạy, không vào repo):
+
+- **R4-B — đỏ trước, xanh sau** của test mới: đổi `routing.py:176` về `request.app.state.sessionmaker` (đúng mã trước `d82745d`) → `test_claim_never_waits_on_the_request_pool` hỏng `assert 503 == 200` (`test_idempotency.py:363`) sau khi hết `pool_timeout`; trả lại dòng đó → đạt. Khớp lời ghi ở `NO-040`.
+- **R4-C — dựng lại G3 của lượt 3 trên mã hiện tại** (pool request 2, `DB_MAX_OVERFLOW=0`, `DB_POOL_TIMEOUT_S=2`, route `/api/sample/db-first` có dependency đọc DB **trước** guard): 2 POST song song không khoá → `{200: 2}` 0,08 s; **có khoá → `{200: 2}` 0,12 s** (lượt 3: `[503, 503]` sau 2,09 s); 30 POST có khoá khác nhau → `{200: 30}` 0,44 s; 10 POST **cùng** khoá → `{200: 9, 503 IDEMPOTENCY_IN_PROGRESS: 1}` (một lượt chạy, tám lượt trả lại, không có 500). Pool nhận việc đọc từ app: `size=5`, `max_overflow=0`, `timeout` thừa hưởng `DB_POOL_TIMEOUT_S`.
+- **AST** trên 49 file `.py` của diff: file của B0-06 thiếu docstring **0**; không hàm nào > 50 dòng.
+- **Vòng chờ giữa hai pool** (đọc mã): pool nhận việc không bao giờ chờ pool request — `begin`/`discard` chỉ chạy một câu lệnh rồi commit; `_abort` và `_finish` đóng session request **trước** khi `discard` (`routing.py:299-305`, `:321-324`), nên không lượt nào giữ kết nối nhận việc trong lúc chờ kết nối request. Lệnh nhận việc chỉ có thể chờ khoá dòng do `complete` của lượt khác giữ, mà khoá đó nhả ở `commit` ngay sau, không cần pool nhận việc; chờ quá `lock_timeout` là `55P03` → 503 (`packages/db/errors.py`). Không có chu trình.
+
+### Trạng thái finding cũ
+
+| # | Mức | Trạng thái | Bằng chứng tự kiểm |
+|---|---|---|---|
+| lượt 3 #1 | P2 | **đã sửa** | `d82745d`: `lifespan` dựng engine thứ hai `claims` (`app.py:143-147`; `CLAIM_POOL_SIZE = 5`, `db_max_overflow = 0`, `app.py:60-63`), đóng ở `app.py:167`; guard nhận việc và hai lời `discard` dùng `app.state.claim_sessionmaker` (`routing.py:176`, `:305`, `:324`) — sửa ở mọi đường gọi `begin`/`discard`. Test `test_claim_never_waits_on_the_request_pool` (`test_idempotency.py:348-364`) ghim pool request 1 kết nối, tất định (một request, không `sleep`). R4-B đỏ → xanh; R4-C: G3 nay `[200, 200]`. `NO-040` ✅ |
+| lượt 3 #2 | P3 | **đã sửa** | `45a73ad`: `NO-019` ✅ trỏ FIX-003 / `cdee48c`; `NO-026` ✅ trỏ `eb40a3c` (`app.py:158` gọi `asyncio.to_thread(assert_broker_policy, …)`, client đóng ở `:164`); `NO-017` ghi phần B0-06 đã tuân (`files/router.py:51-53`), phần B0-04 còn mở. Chữ của hai dòng ✅: xem Nit #1 dưới |
+| lượt 3 #3 | Nit | chấp nhận | Lệch chữ BE-00 §7 ghi thành `NO-041` (➖, lý do đứng được, có đường quay lại) và nêu ngay trong docstring `idempotency.py:92-94`, thay cho dòng trong `changes/B0-06.md` mà lượt 3 gợi ý — cùng mục đích: người điều phối thấy và sửa chữ hiến chương |
+| lượt 3 #4 | Nit | **đã sửa** | `fixtures/api.py:169` "Ba cache cấu hình (core, db, storage)" |
+| lượt 2 #3 | P2 | chấp nhận | `NO-039` ➖ (MNT-05). Vẫn tính điểm MNT |
+| lượt 2 #8 | P3 | **chờ phiên merge xác nhận** | `docs/fixes.md` vẫn chỉ có lời giao việc FIX-003..005 do tác giả chép lại; repo không có bằng chứng độc lập |
+
+Các mục đã sửa của lượt 1–2 vẫn còn nguyên trên mã hiện tại: `create_app` fail-fast (`app.py:184`), `Origin` sai dạng → `None` (`origin.py:185-188`, `:204-205`), `discard` chỉ xoá dòng `in_progress` (`idempotency.py:277`), `_single_method` và cấm `versioned` trên method đọc (`routing.py:114-124`, `:198-200`), `request.json()` (`routing.py:99-111`), `DELETE` dọn rác kiểm lại hạn (`jobs.py:51`).
+
+### Finding mới
+
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 1 | Nit | R-34 | `NO-019` và `NO-026` đã đổi ô trạng thái sang ✅ nhưng cột "Ghi chú đóng" vẫn mở đầu bằng "mở — …" (chữ của lúc còn mở); ghi chú đóng chỉ được nối sau dấu "·". Ô ✔ là nguồn sự thật theo đầu sổ nên không sai nghĩa, nhưng người đọc lướt thấy hai chữ trái nhau trên cùng một dòng | `DEBT.md:41`, `:48` | Đổi tiền tố "mở —" thành "lúc mở:" (giữ lịch sử, không xoá chữ) và đưa ghi chú đóng lên đầu ô như các dòng ✅ khác |
+| 2 | Nit | R-05 · OPS-04 | `CLAIM_POOL_SIZE = 5` là giới hạn cố định, không overflow; docstring nêu "5 kết nối phục vụ hàng nghìn lượt nhận việc mỗi giây" mà không có số đo, và chưa có đường nâng cấp (dấu hiệu nào thì nâng, nâng bằng cách nào). Hệ quả vận hành đi kèm: mỗi tiến trình API nay giữ tới 10 + 5 + 5 = 20 kết nối Postgres, chưa được ghi thành ngân sách cho người dựng compose (B0-08, cùng lớp `NO-006`) | `apps/api/core/app.py:60-63` | Thêm một câu nêu ngưỡng quan sát (vd 503 do `pool_timeout` ở guard nhận việc) và đường nâng cấp (nâng hằng, hoặc đưa ra biến môi trường khi có số đo); ghi ngân sách kết nối mỗi tiến trình vào phần bàn giao cho B0-08 |
+
+Đã kiểm và **không** thấy finding thêm trong ba commit mới: `database.model_copy(update=…)` giữ nguyên DSN, trần bắt tay, `statement_timeout`/`lock_timeout` của engine request (R4-C đọc lại pool thật); `api_env` dọn cache cấu hình khi kết thúc (`fixtures/api.py:165`) nên `DB_POOL_SIZE=1` của test mới không rò sang test sau; `claim_sessionmaker` chỉ đặt trong `lifespan`, và mọi app thử đi qua `make_api_client` (có chạy `lifespan`); `openapi.real_app()` không chạy `lifespan` nên bước 8 không mở pool nào; `/api/ready` chỉ thử engine request — chấp nhận, hai engine cùng DSN. Merge-base vẫn là `3b7ebf4`; `main` chỉ đi thêm ba commit `docs/reviews/*`, không xung đột mã.
+
+### Kiểm sổ nợ
+
+- Không nợ P0/P1 nào còn `⬜`/`🔧` (24 dòng mở, mức cao nhất P2: `NO-006`, `-007`, `-009`, `-010`, `-011`, `-021`, `-027`, `-036`, `-042`).
+- `NO-040` ✅ đã kiểm lại bằng R4-B và R4-C. `NO-041` ➖ lý do đứng được. `NO-019`, `NO-026` ✅ khớp mã (xem Nit #1 về chữ).
+- `NO-042` ⬜ (P2, B0-01): nguyên nhân gốc tự kiểm trong mã — `tools/tests/test_services.py:33` gọi `asyncpg.connect(…, timeout=5)` cho cả bản Postgres **dùng chung** qua chặng `host.docker.internal`; cùng lớp `NO-007`/`NO-036`. Lượt cổng của phiên này không gặp nó. File ngoài quyền B0-06 (K27), đúng là việc của FIX cho B0-01; không chặn merge.
+- Hai Nit của lượt này không bắt buộc ghi `DEBT.md`.
+
+### Điểm
+
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC – Bảo mật | 25 % | 5 | 1,25 |
+| CON – Concurrency & dữ liệu | 15 % | 5 (lượt 3 #1 đã sửa, R4-C) | 0,75 |
+| LOG – Tính đúng đắn | 15 % | 5 | 0,75 |
+| PERF – Hiệu năng | 10 % | 5 | 0,50 |
+| RES – Chịu lỗi | 10 % | 5 | 0,50 |
+| DB, API | 10 % | 5 | 0,50 |
+| TEST – Kiểm thử | 7 % | 5 | 0,35 |
+| OBS, OPS | 5 % | 5 (chỉ Nit #2) | 0,25 |
+| MNT – Bảo trì | 3 % | 3 (P2 MNT-05 chấp nhận ở `NO-039`; Nit #1) | 0,09 |
+
+Tổng: 1,25 + 0,75 + 0,75 + 0,50 + 0,50 + 0,50 + 0,35 + 0,25 + 0,09 = **4,94 / 5**
+
+## PHÁN QUYẾT: APPROVE
+
+Cổng thoát 0 trên lượt chạy độc lập, độ phủ đạt ở mọi gói, không có P0/P1, điểm 4,94 ≥ 4,0. P2 duy nhất của lượt 3 (một lượt ghi có khoá giữ hai kết nối của cùng một pool) đã được sửa ở gốc bằng pool nhận việc riêng, và được kiểm bằng cả test đỏ → xanh (R4-B) lẫn dựng lại đúng kịch bản G3 (R4-C). P3 và Nit của lượt 3 đã sửa, hoặc được chấp nhận có lý do.
+
+Điều kiện cho phiên merge:
+
+1. Người điều phối xác nhận lời giao việc FIX-003..005 ghi ở `docs/fixes.md` (#8 của lượt 2; repo vẫn chỉ có lời của tác giả).
+2. Gộp bằng `git merge --no-ff` (R-36: nhánh mang trailer của B0-01, B0-03, B0-05, B0-06), **không** squash.
+3. Không chặn merge, nên làm sớm: giao FIX cho B0-01 (`NO-042`) và B0-03 (`NO-036`), hai nguồn cổng đỏ giả còn lại quanh chặng `host.docker.internal` (`NO-007`); sửa chữ BE-00 §7 theo `NO-041`.
+
+Nit #1–#2 do tác giả tự quyết.
