@@ -212,3 +212,155 @@ Lượt sửa làm đúng và đủ những gì lượt đầu yêu cầu, và m
 3. N2 do tác giả tự quyết (nên đổi tên test trong cùng lượt).
 4. Xin `/merge-review` lại ở **phiên mới** (R-37). Khi được duyệt: gộp bằng **squash** (nhánh chỉ mang trailer `Prompt: B3-01`).
 5. Không chặn B3-01: người điều phối bổ sung `:42` vào `NO-042`/FIX-007 như mục "Kiểm sổ nợ".
+
+---
+
+## Lượt review lại (độc lập) — lần 3
+
+- Ngày: 2026-09-21 · Reviewer: phiên `/merge-review` **độc lập**. Không phải phiên tác giả `c0c7041`/`5498df8`, không phải hai phiên review trước, và không viết `1cfd052`. `1cfd052` do chính phiên review lượt 2 viết sau khi ra phán quyết, nên mọi khẳng định của lượt 2 và của commit đó đều được kiểm lại, không lấy làm bằng chứng. · Commit đầu nhánh: `1cfd052f7249` (gốc `3bbfe19`, 3 commit: `c0c7041` mã B3-01, `5498df8` sửa lượt 1, `1cfd052` sửa lượt 2). `main` ở `dee115e`, đã hợp nhất B0-07 (`changes/B0-07.md`). Nhánh chưa rebase. `git merge-tree --write-tree main HEAD` thoát 0, ra cây `7a09e659a6c0`, không xung đột. `main` đi thêm 32 file sau gốc (`tools/contract/**`, `packages/testing/**`, `DEBT.md`, `docs/**`, `changes/B0-07.md`), không file nào trùng với 25 file của nhánh.
+- Cổng, chạy tại chỗ, log trong thư mục `r3-review/` ở scratchpad của phiên:
+  - Lượt gọi **đầu** (`verify-r3.log`) thoát **1** sau 1,5 s: Docker Desktop chưa chạy (`failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`), dừng trước khi dựng container. Mọi bước là **chưa chạy**, không tính đạt. Bật Docker Desktop rồi chạy lại.
+  - **Cây nhánh** `1cfd052` (`verify-r3b.log`): `bash tools/verify/run.sh verify` **mã thoát 0**, 3 phút 17 giây. Kết quả `1364 passed, 10 skipped`, tức lượt 2 cộng đúng một test mới. 10 skip là `apps/api/core/tests/test_common.py` (tập tham số rỗng); `coverage_gate` đạt, nên không có skip nào khác.
+  - **Cây hợp nhất** `7a09e65`, dựng trong worktree tách tạm ở scratchpad: `main` `dee115e` cộng đúng các file của nhánh lấy bằng `git archive HEAD`. `git write-tree` của worktree này ra đúng `7a09e659a6c0`. Không tạo commit, đã xoá worktree sau khi chạy. `VERIFY_BRANCH=worker` (log `verify-merged.log`): **mã thoát 0**, 3 phút 29 giây, `1504 passed, 10 skipped`, **bước 7 chạy thật và đạt**.
+  - Không gặp đỏ giả `NO-042`/`NO-007` ở lượt nào.
+- Độ phủ (in từ `tools.coverage_gate`):
+  - cây nhánh: tổng dòng **99,31 %** · nhánh **96,93 %** · `packages/domain` **100,00 %** / **100,00 %** · tập file bị chạm **100,00 %** / **100,00 %**;
+  - cây hợp nhất: tổng dòng **99,36 %** · nhánh **97,16 %** · `packages/domain` **100,00 %** / **100,00 %** · tập file bị chạm **100,00 %** / **100,00 %**.
+
+| # | Bước | Cây nhánh `1cfd052` | Cây hợp nhất `7a09e65` |
+|---|---|---|---|
+| 1 | `ruff format --check` | đạt (210 file) | đạt (232 file) |
+| 2 | `ruff check` | đạt | đạt |
+| 3 | `mypy --strict` | đạt (184 file) | đạt (203 file) |
+| 4 | `lint-imports` | đạt (9 hợp đồng giữ, 0 vỡ) | đạt (9 giữ, 0 vỡ) |
+| 5 | `coverage run -m pytest` → `coverage_gate` | đạt | đạt |
+| 5b | `pytest -m perf` → `case_gate` | đạt (0 đơn vị `perf` bị chạm) | đạt (0 đơn vị `perf`) |
+| 6 | `lint_migrations` → `migrate_check` | đạt (2 revision; 9/9) | đạt (2 revision; 9/9) |
+| 7 | H1 H3 H4 H5 | không áp dụng: hợp lệ **cho cây này** (không có `tools/contract/check.py`, không có `changes/B0-07.md`, BE-00 §12) | **đạt**: AppFront @ `9cf0b0b`; smoke 23 module schema, bản đồ 83/83 dòng BE-BIND không v2, H1 đạt (0 mẫu response), H3/H4/H5 không áp dụng hợp lệ (B1-02, B3-05, B4-01 chưa có `changes/*.md`) |
+| 8 | openapi | đạt (3 877 byte) | đạt (3 877 byte) |
+
+**Điều kiện dừng sớm** (tự kiểm lại):
+- Cây sạch. Nhánh chỉ ở máy, chưa có upstream.
+- `changes/B3-01.md` có, 8 dòng.
+- Ba commit đúng mẫu: dòng đầu 64, 70, 51 ký tự. `%(trailers:key=Prompt,valueonly)` ra `B3-01` cho cả ba, `Co-Authored-By` cùng khối.
+- Diff `main...HEAD` chỉ gồm `changes/B3-01.md`, `packages/domain/spatial/**`, `packages/domain/scale/**`. `1cfd052` chạm 3 file trong đó (+18/−3).
+- Không `pragma`, `type: ignore`, `noqa` trần, `skip`, `xfail` mới. Ba `noqa` của diff vẫn là ba cái lượt đầu đã xét.
+
+Không điều kiện nào kích hoạt.
+
+**Công cụ kiểm tại chỗ.** Chạy bằng `run.sh shell` trong container verify (Python 3.12), bản sao `/tmp/w`, không chạm worktree. Mã cũ lấy bằng `git show <sha>:packages/domain/spatial/integrity.py`, nhúng bằng heredoc. sha1 trong container khớp blob git: `5498df8` là `f1d69236…`, `1cfd052` là `33a4f8e3…`. Log: `probe-r3.log`, `probe-equiv.log`.
+
+- **R3-A — đỏ trước, xanh sau** (`python -m pytest -q -p no:cacheprovider -o addopts= packages/domain/spatial/tests/test_integrity.py`):
+  - `integrity.py` của `5498df8` + test của `1cfd052`: thoát **1**, `1 failed, 19 passed`. Test hỏng đúng là `test_twin_walls_check_hosted_openings_once`. Trên cùng lớp của test (ba tường `W-WALL…` cùng id, `openingIds` rỗng, hai ô mở trỏ về id đó), `5498df8` ra **7** lỗi (1 `duplicateId` + 3 × 2 cảnh báo); `1cfd052` ra **3** (1 `duplicateId` + 2 cảnh báo).
+  - Trả `integrity.py` của `1cfd052`: thoát **0**, `20 passed`. Cả `packages/domain`: `222 passed`.
+- **R3-B — tường trùng id, dựng lại phép đo N1.** Thân JSON #35 dựng bằng chuỗi (226 byte/tường, 184 byte/ô mở), giải bằng `SpatialLayer.model_validate_json` như đường ghi thật; `ulimit -v` 4 GiB; mỗi phép đo một tiến trình riêng để đo RSS đỉnh.
+
+  | Bản | W tường cùng id × N ô mở | Thân | Giải JSON | `check_integrity` | Số lỗi | RSS đỉnh |
+  |---|---|---|---|---|---|---|
+  | `5498df8` | 1 000 × 1 000 | 0,39 MiB | 0,02 s | 0,89 s | 1 000 001 | 114 MiB |
+  | `5498df8` | 3 000 × 3 000 | 1,17 MiB | 0,05 s | 8,57 s | 9 000 001 | 742 MiB |
+  | `5498df8` | 8 000 × 8 000 | 3,13 MiB | 0,13 s | **`MemoryError` sau 52,3 s** | — | 4 019 MiB |
+  | `1cfd052` | 3 000 × 3 000 | 1,17 MiB | 0,04 s | 0,004 s | 3 001 | 53 MiB |
+  | `1cfd052` | 8 000 × 8 000 | 3,13 MiB | 0,15 s | 0,011 s | 8 001 | 93 MiB |
+  | `1cfd052` | **20 000 × 20 000** | **7,82 MiB** (sát trần 8 MiB) | 0,38 / 0,43 s | **0,029 / 0,030 s** (hai lượt) | 20 001 | 186 MiB |
+  | `1cfd052` | 2 × 44 000 | 7,72 MiB | 0,26 s | 0,073 s | 44 001 | 144 MiB |
+  | `1cfd052` / `5498df8` | 36 000 × 1 | 7,76 MiB | 0,64 s | 0,018 s / 0,043 s | 2 / 36 001 | 218 MiB |
+
+  Số của lượt 2 tái hiện được với bản cũ (3 000 × 3 000: 8,6 s, 9 000 001 lỗi; 3,1 MiB cạn 4 GiB). Với bản mới, số lỗi bằng 1 + N và thời gian kiểm nhỏ hơn thời gian giải JSON một bậc.
+- **R3-C — G3 của lượt 1, xem có hồi quy không.** Một tường liệt kê M id lạ, N ô mở trỏ về nó mà tường không liệt kê:
+  - M = 250 000, N = 20 000 (7,09 MiB, id ngắn hơn lượt 1 nên thân nhỏ hơn 7,80 MiB của lượt 1): `1cfd052` 0,296 s và 0,328 s (hai lượt), `5498df8` 0,292 s. Cùng 270 000 lỗi, RSS 128 MiB.
+  - M = 270 000, N = 22 000 (7,72 MiB): `1cfd052` 0,386 s, 292 000 lỗi.
+  - Trần số lỗi: một tường liệt kê 550 000 id lạ (7,87 MiB) → 0,593 s, 550 000 lỗi, 146 MiB.
+
+  Không hồi quy; số lỗi bị chặn tuyến tính bởi thân.
+- **R3-D — bản sửa có đổi kết quả của lớp *không* trùng id tường không?** Sinh ngẫu nhiên có hạt (`Random(20260921)`) các lớp nhỏ, cho id ô mở, phòng, đồ đạc trùng nhau tuỳ ý, tham chiếu lạ, khác tầng, đường bao lặp điểm. So `(rule, severity, entity_id, ref_id)` của hai bản:
+  - 20 000 lớp **không** trùng id tường, gọi với `level_id` `None` và có truyền, tổng **40 000 lượt: giống hệt, cùng thứ tự** (39 930 lượt có ≥ 1 lỗi).
+  - 15 041 lớp **có** tường trùng id: bản mới luôn là **dãy con** của bản cũ. 5 423 lớp khác nhau, bỏ 8 157 mục, **tất cả là cảnh báo** `missingReference`, **0 critical bị bỏ**. `has_critical` như nhau, luôn `True` vì `duplicateId`. Số cảnh báo "ô mở trỏ về tường không liệt kê" ≤ số ô mở.
+  - Lượt chạy đầu của probe này hỏng vì lỗi của **chính probe**: hai module định nghĩa hai lớp `IntegrityIssue`, nên `==` của dataclass luôn `False`. Chạy lại so theo bộ trường, thoát 0.
+- **AST** trên 24 file `.py` của hai gói: 0 hàm/lớp/module thiếu docstring (không tính stub `@overload`), không hàm nào > 50 dòng.
+
+### Trạng thái finding cũ
+
+| # | Mức | Trạng thái | Bằng chứng tự kiểm |
+|---|---|---|---|
+| lượt 2 N1 | P1 | **đã sửa ở gốc** | `integrity.py:54` `hosted.pop(wall.id, ())`: mỗi ô mở vào `hosted` một lần (`:43-45`) và bị lấy ra nhiều nhất một lần, nên luật "ô mở trỏ về tường mà tường không liệt kê" làm O(số ô mở) việc dù có bao nhiêu tường trùng id. Comment `:50-52` nêu lý do. Test `test_twin_walls_check_hosted_openings_once` (`test_integrity.py:163-174`): kiểm đúng danh sách, tất định, không đo giờ. R3-A đỏ trên `5498df8`, xanh trên `1cfd052`. R3-B: 7,82 MiB sát trần kiểm trong 0,03 s, trong khi bản cũ cạn 4 GiB ở 3,13 MiB. R3-D: lớp không trùng id cho kết quả y nguyên, như commit khẳng định |
+| lượt 2 N2 | Nit | **đã sửa** | `test_area.py:32` `test_quarter_rounds_down`: 1,25 lẻ **một phần tư**, làm tròn **xuống** thành 1 (0,01 m²), khớp docstring `:33`. `grep` cả repo không còn chỗ nào gọi tên cũ |
+| lượt 2 đk #2 (rebase để bước 7 chạy) | — | **đạt về mục đích; bản thân rebase không bắt buộc** | Xem mục "Rebase và bước 7" dưới |
+| lượt 2 đk #5 (`:42` vào `NO-042`) | — | không chặn, đang có FIX | `f3559f1` (FIX-007, nhánh `fix/b0-01-gate-debts`, chưa vào `main`) đã thêm `timeout=GATE_CONNECT_TIMEOUT_S` cho cả `test_services.py:42`. Dòng `NO-042` trên `main` chưa nhắc `:42`: người điều phối cập nhật khi gộp FIX-007 |
+| lượt 1 #1 | P1 | **đã sửa, còn nguyên** | `integrity.py:53` `listed = set(wall.opening_ids)`. `test_hosted_openings_do_not_rescan_the_wall_list` (`:151-160`) đạt trong cổng. R3-C: G3 0,30 s, bằng `5498df8` |
+| lượt 1 #2 | P2 | chấp nhận | `NO-045` ➖ (`DEBT.md:67`). Vẫn tính điểm MNT |
+| lượt 1 #3 | P3 | **đã sửa, còn nguyên** | `rescale.py:34-36` kiểm `k = new / old` hữu hạn và > 0. Hai ca `(1e-300, 1e300)`, `(1e300, 1e-300)` ở `test_rescale.py:82` đạt trong cổng |
+| lượt 1 #4 | P3 | **đã sửa, còn nguyên** | `rescale.py:21` có docstring; AST 0 thiếu |
+| lượt 1 #5 | Nit | **đã sửa, còn nguyên** | `test_area.py:33` "1,25 (không phải nửa)"; `:133` nêu đúng ba ca `floor(x + 0.5)` sai |
+| lượt 1 #6 | Nit | giữ nguyên | Đúng chữ prompt [6]; tác giả tự quyết như lượt 1 cho phép |
+
+`5498df8..1cfd052` chỉ chạm `integrity.py` (đổi `get` → `pop`, cộng comment) và hai file test. `area.py`, `infer.py`, `outliers.py`, `rescale.py`, `model.py`, `samples.py`, `diff.py`, `kinds.py` không đổi, nên G1 (17 230 vector, 0 lệch FE) và G2 (A14) của lượt 1 vẫn đứng.
+
+### Rebase và bước 7
+
+Lượt 2 đòi rebase để bước 7 "chạy thật". Kết luận của lượt này: **không rebase không chặn phán quyết**.
+
+- **BE-00 §12:** "không áp dụng" xét theo cây đang verify. Trên cây nhánh không có `changes/B0-07.md` lẫn `tools/contract/check.py`, nên "không áp dụng" là **hợp lệ**, không phải "hỏng".
+- **BE-00 §13.2:** việc rebase chỉ giao lại cho worker khi **xung đột** lúc hợp nhất. `git merge-tree` sạch, và hai bên không có file chung.
+- **Lo ngại chính đáng của lượt 2:** mã vào `main` chưa từng qua bước 7. Lượt này gỡ lo ngại đó bằng bằng chứng trực tiếp thay cho rebase: chạy trọn 8 bước trên **đúng** cây hợp nhất `7a09e65` (`main` `dee115e` + nhánh), thoát 0, **bước 7 đạt**.
+- **Squash:** gộp squash lên `dee115e` cho đúng cây này. `main` đi thêm thì người điều phối vẫn chạy lại verify khi hợp nhất (K25).
+
+### Finding mới
+
+Không có.
+
+Đã kiểm và **không** thấy finding thêm:
+- **Gốc R-19/R-25 của `check_integrity`:** sau `1cfd052`, `_missing_references` tuyến tính theo tổng: số tường, số ô mở, Σ`openingIds`, Σ`wallIds`, số đồ đạc; số lỗi trả về cũng bị chặn bởi tổng đó (R3-C: trần 550 000 lỗi / 0,59 s ở 7,87 MiB). Các luật còn lại đều một lượt: `Counter`, `set`, danh sách của chính thực thể. `check_level_order` là `sorted` O(n log n).
+- **`diff.py`:** `_snapshot` O(n) qua `dict`, id trùng thì bản sau đè, không nhân lên. `has_untracked_changes` so `old != new` tuyến tính.
+- **`rescale.py`, `infer.py`:** O(n) mỗi thực thể, O(n log n) cho trung vị.
+- **Id W4:** kiểm bằng `re.fullmatch("<chữ>-[0-9A-Z]{10,64}")` của lõi, không có mẫu backtracking.
+- **Ngữ nghĩa mới trên lớp trùng id** (R3-D): chỉ tường **đầu tiên** mang id được xét cảnh báo "không liệt kê", nên cảnh báo của bản trùng sau có danh sách khác bị bỏ. Không phải finding:
+  - lớp đó đã có `duplicateId` critical, nên B3-03 vẫn trả `LAYER_INTEGRITY_BROKEN` như cũ; `has_critical` không đổi, không critical nào mất;
+  - thân lỗi W7 không mang danh sách lỗi, nên không lộ ra dây;
+  - FE cũng không xét riêng từng bản trùng: `entitiesOfKind` tra `byId[id]`, mỗi id một thực thể (`integrity.ts:41-56`, `:131-155`).
+
+  Comment `integrity.py:51-52` đã ghi rõ lựa chọn này.
+
+### Kiểm sổ nợ
+
+- 27 dòng `⬜`/`🔧` trên `main`, mức cao nhất P2; **0 nợ P0/P1 mở**, không dòng mở nào của B3-01.
+- `NO-045` ➖ đúng khuôn, lý do đứng được.
+- N1, N2 đã sửa trong nhánh (lượt 2 không đòi ghi sổ cho chúng), nên không cần dòng mới.
+- `NO-042` ⬜ (B0-01): xem đk #5 ở bảng trên; đã có FIX-007 chờ gộp.
+- Lượt này không có nợ mới cần ghi.
+
+### Điểm
+
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC – Bảo mật | 25 % | 5 | 1,25 |
+| CON – Concurrency & dữ liệu | 15 % | 5 | 0,75 |
+| LOG – Tính đúng đắn | 15 % | 5 (Nit #6 lượt 1 giữ) | 0,75 |
+| PERF – Hiệu năng | 10 % | 5 (N1 đã sửa ở gốc, R3-B/C) | 0,50 |
+| RES – Chịu lỗi | 10 % | 5 | 0,50 |
+| DB, API – Migration & contract | 10 % | 5 (bước 7 đạt trên cây hợp nhất) | 0,50 |
+| TEST – Kiểm thử | 7 % | 5 | 0,35 |
+| OBS, OPS – Vận hành | 5 % | 5 | 0,25 |
+| MNT – Bảo trì | 3 % | 3 (P2 MNT-05 chấp nhận ở `NO-045`) | 0,09 |
+
+Tổng: 1,25 + 0,75 + 0,75 + 0,50 + 0,50 + 0,50 + 0,35 + 0,25 + 0,09 = **4,94 / 5**
+
+## PHÁN QUYẾT: APPROVE
+
+Cổng thoát 0 trên lượt chạy độc lập, cả trên cây nhánh lẫn trên đúng cây hợp nhất `7a09e65`, nơi bước 7 chạy thật và đạt. Độ phủ `packages/domain` 100 % / 100 %. Không có P0/P1. Điểm 4,94 ≥ 4,0.
+
+P1 N1 của lượt 2 đã sửa ở gốc chứ không chỉ vá triệu chứng. Bằng chứng tự dựng:
+- test mới đỏ trên `5498df8`, xanh trên `1cfd052`;
+- thân tường trùng id 7,82 MiB (sát trần 8 MiB) kiểm trong 0,03 s, trong khi bản cũ cạn 4 GiB ở 3,13 MiB;
+- 40 000 lượt so ngẫu nhiên cho thấy lớp không trùng id có kết quả y nguyên;
+- G3 của lượt 1 không hồi quy.
+
+Mọi điều kiện của lượt 1 còn nguyên. Nit N2 đã sửa đúng. Việc chưa rebase không chặn: BE-00 §12 và §13.2 không đòi, và bước 7 đã được chứng minh đạt trên cây sẽ vào `main`.
+
+Điều kiện cho phiên merge:
+
+1. Gộp bằng **squash** (R-36: nhánh chỉ mang trailer `Prompt: B3-01`), giữ trailer `Prompt: B3-01` trong commit gộp.
+2. Sau khi gộp, người điều phối chạy lại `bash tools/verify/run.sh verify` trên `main` (K25). Cây đã review là `7a09e65` (`dee115e` + nhánh); `main` đi thêm mã trước khi gộp thì kiểm lại `git merge-tree`.
+3. Không chặn, nên làm sớm: gộp FIX-007 (`f3559f1`, gồm cả `test_services.py:42`) và đóng `NO-042`.
+
+Nit #6 của lượt 1 do tác giả tự quyết.
