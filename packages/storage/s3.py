@@ -39,6 +39,7 @@ from packages.storage.port import (
     content_type_of,
     expiry,
     iter_chunks,
+    next_batch,
     resolve_kind,
 )
 from packages.storage.sniff import SNIFF_BYTES, ImageKind, as_kind, sniff
@@ -198,14 +199,19 @@ class S3Storage:
     async def list_prefix(self, prefix: str, *, older_than: datetime | None = None) -> AsyncIterator[ObjectInfo]:
         """Duyệt object dưới tiền tố, lọc theo `older_than` nếu có."""
         check_prefix(prefix)
-        with _s3_errors():
-            listed = await asyncio.to_thread(self._list_under, prefix)
-        for obj in listed:
-            # `ListObjectsV2` của S3 không trả `x-amz-meta-*`, nên metadata phải lấy
-            # bằng `stat` từng object. Chỉ lịch dọn rác gọi hàm này (BE-00 §7).
-            info = await self.stat(str(obj.object_name))
-            if info is not None and (older_than is None or info.last_modified < older_than):
-                yield info
+        # Bộ duyệt của `minio` lười: mỗi lô chỉ kéo trang `ListObjectsV2` cần tới (NO-013).
+        listed = self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+        while True:
+            with _s3_errors():
+                batch = await next_batch(listed)
+            if not batch:
+                return
+            for obj in batch:
+                # `ListObjectsV2` của S3 không trả `x-amz-meta-*`, nên metadata phải lấy
+                # bằng `stat` từng object. Chỉ lịch dọn rác gọi hàm này (BE-00 §7).
+                info = await self.stat(str(obj.object_name))
+                if info is not None and (older_than is None or info.last_modified < older_than):
+                    yield info
 
     async def signed_url(
         self,
@@ -249,10 +255,6 @@ class S3Storage:
             headers={"Content-MD5": str(md5sum_hash(rule))},
             query_params={"cors": ""},
         )
-
-    def _list_under(self, prefix: str) -> list[Object]:
-        """Liệt kê object dưới tiền tố (đồng bộ, chạy trong luồng riêng)."""
-        return list(self._client.list_objects(self._bucket, prefix=prefix, recursive=True))
 
     def _delete_under(self, prefix: str) -> None:
         """Xoá mọi object dưới tiền tố bằng `DeleteObjects` (đồng bộ, NO-010).

@@ -42,6 +42,7 @@ from packages.storage.port import (
     SignedUrl,
     expiry,
     iter_chunks,
+    next_batch,
     resolve_kind,
     safe_filename,
 )
@@ -160,12 +161,14 @@ class LocalDiskStorage:
             await asyncio.to_thread(shutil.rmtree, self._root / prefix, onexc=_ignore_missing)
 
     async def list_prefix(self, prefix: str, *, older_than: datetime | None = None) -> AsyncIterator[ObjectInfo]:
-        """Duyệt object dưới tiền tố theo thứ tự khoá, bỏ file metadata."""
+        """Duyệt object dưới tiền tố theo thứ tự khoá, bỏ file metadata; kéo theo lô (NO-013)."""
         check_prefix(prefix)
-        for key in await asyncio.to_thread(self._keys_under, prefix):
-            info = await asyncio.to_thread(self._stat, key)
-            if info is not None and (older_than is None or info.last_modified < older_than):
-                yield info
+        keys = self._keys_under(self._root / prefix)
+        while batch := await next_batch(keys):
+            for key in batch:
+                info = await asyncio.to_thread(self._stat, key)
+                if info is not None and (older_than is None or info.last_modified < older_than):
+                    yield info
 
     async def signed_url(
         self,
@@ -240,11 +243,22 @@ class LocalDiskStorage:
             last_modified=datetime.fromtimestamp(stat.st_mtime, UTC),
         )
 
-    def _keys_under(self, prefix: str) -> list[str]:
-        """Khoá của mọi object dưới tiền tố, đã sắp, không gồm file metadata."""
-        base = self._root / prefix
-        paths = (path for path in base.rglob("*") if path.is_file() and not path.name.endswith(META_SUFFIX))
-        return sorted(path.relative_to(self._root).as_posix() for path in paths)
+    def _keys_under(self, directory: Path) -> Iterator[str]:
+        """Khoá của mọi object dưới `directory`, lười từng thư mục, theo thứ tự khoá đầy đủ như S3.
+
+        Thư mục `a` được xếp như chuỗi `a/`, nên `a.b` < `a/…` < `a0` — đúng thứ tự byte của
+        khoá, không phải thứ tự tên. RAM chỉ giữ danh mục của các thư mục đang mở.
+        """
+        try:
+            with os.scandir(directory) as scanned:
+                entries = sorted(scanned, key=lambda entry: entry.name + "/" if entry.is_dir() else entry.name)
+        except FileNotFoundError:
+            return
+        for entry in entries:
+            if entry.is_dir():
+                yield from self._keys_under(Path(entry.path))
+            elif not entry.name.endswith(META_SUFFIX):
+                yield Path(entry.path).relative_to(self._root).as_posix()
 
 
 def _meta_path(path: Path) -> Path:

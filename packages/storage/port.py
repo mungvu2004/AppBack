@@ -4,10 +4,12 @@ Gói này **không** kiểm quyền người dùng: người gọi phải kiểm
 dựng khoá hay ký URL.
 """
 
+import asyncio
 import unicodedata
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from itertools import islice
 from typing import Final, Literal, Protocol
 from urllib.parse import quote
 
@@ -18,6 +20,8 @@ from packages.storage.keys import server_chosen_kind
 from packages.storage.sniff import IMAGE_KINDS, ImageKind, Kind
 
 CHUNK_SIZE: Final = 1024 * 1024
+LIST_BATCH: Final = 1000
+"""Số mục `list_prefix` giữ trong RAM mỗi lượt — bằng một trang `ListObjectsV2` của S3 (NO-013)."""
 RETRY_AFTER_S: Final = 5
 """`Retry-After` của `DEPENDENCY_UNAVAILABLE` khi kho hỏng (C13)."""
 
@@ -104,6 +108,15 @@ class ObjectStorage(Protocol):
     ) -> SignedUrl:
         """URL tuyệt đối, ổn định trong một giờ, sống 60-120 phút (W23)."""
         ...
+
+
+async def next_batch[T](items: Iterator[T]) -> list[T]:
+    """≤ `LIST_BATCH` mục kế tiếp của bộ duyệt đồng bộ, kéo trong luồng riêng; rỗng = hết.
+
+    `list_prefix` của hai bộ điều hợp đi qua đây để RAM chỉ giữ một lô, không cả cây (R-22).
+    """
+    size = LIST_BATCH
+    return await asyncio.to_thread(lambda: list(islice(items, size)))
 
 
 async def iter_chunks(data: bytes | AsyncIterable[bytes]) -> AsyncIterator[bytes]:

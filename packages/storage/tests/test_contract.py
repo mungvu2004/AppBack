@@ -274,3 +274,13 @@ async def test_every_entry_point_checks_the_key(object_storage: ObjectStorage, b
         await object_storage.delete_prefix(bad)
     with pytest.raises(ValueError, match=r"tiền tố|khoá|đoạn"):
         await listed(object_storage, bad)
+
+
+async def test_list_prefix_orders_by_full_key(object_storage: ObjectStorage) -> None:
+    """Thứ tự là thứ tự **khoá đầy đủ** như S3 (`a.b` < `a/b` < `a0`), không phải duyệt cây theo tên."""
+    base = f"projects/{PROJECT}"
+    names = [f"{base}/a0", f"{base}/a/b", f"{base}/a.b"]
+    for key in names:
+        await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+
+    assert [info.key for info in await listed(object_storage, f"{base}/")] == sorted(names)
