@@ -147,7 +147,16 @@ def _in_autocommit_block(node: ast.Call, ancestors: list[ast.AST]) -> bool:
     return False
 
 
-def _lint_body(source: str, tree: ast.Module, report: Report, filename: str) -> None:
+def _lint_body(source: str, tree: ast.Module, report: Report, filename: str, *, contract: bool = False) -> None:
+    """Luật thân revision (BE-00 §6.1), bỏ thân `downgrade()`.
+
+    `contract` = revision `# contract:` đã đăng ký: luật phá huỷ của expand (drop, rename,
+    NOT NULL, chuỗi SQL nguy hiểm) không áp — phá huỷ chính là việc của revision contract.
+    Vẫn áp: SQL không phải hằng (không đọc được thì không duyệt được), `batch_alter_table`,
+    index khoá bảng có sẵn (khoá bảng không phụ thuộc expand hay contract).
+    """
+    # Báo cáo bỏ đi: vi phạm phá huỷ của revision contract không vào `report`.
+    destructive = Report() if contract else report
     nodes = _nodes_excluding_downgrade(tree)
     created_tables = _collect_created_tables(nodes)
 
@@ -173,14 +182,14 @@ def _lint_body(source: str, tree: ast.Module, report: Report, filename: str) -> 
             continue
 
         if attr in _BANNED_CALL_NAMES:
-            report.add(filename, "thao tác cấm (§6.1)", attr)
+            (report if attr == "batch_alter_table" else destructive).add(filename, "thao tác cấm (§6.1)", attr)
 
         if attr == "alter_column":
             for kw in node.keywords:
                 if kw.arg in _ALTER_COLUMN_BANNED_KWARGS:
                     if kw.arg == "nullable" and not (isinstance(kw.value, ast.Constant) and kw.value.value is False):
                         continue
-                    report.add(filename, "alter_column cấm tham số", str(kw.arg))
+                    destructive.add(filename, "alter_column cấm tham số", str(kw.arg))
 
         if attr == "add_column":
             for arg in node.args:
@@ -189,14 +198,14 @@ def _lint_body(source: str, tree: ast.Module, report: Report, filename: str) -> 
                     nullable = kwargs.get("nullable")
                     is_not_null = isinstance(nullable, ast.Constant) and nullable.value is False
                     if is_not_null and "server_default" not in kwargs:
-                        report.add(filename, "add_column NOT NULL thiếu server_default", "")
+                        destructive.add(filename, "add_column NOT NULL thiếu server_default", "")
 
         if attr in _RAW_SQL_FUNCS:
             first = node.args[0] if node.args else None
             if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
                 report.add(filename, f"{attr} đối số không phải hằng chuỗi", "")
             elif _SQL_DANGER_RE.search(first.value):
-                report.add(filename, f"{attr} chuỗi SQL cấm", first.value)
+                destructive.add(filename, f"{attr} chuỗi SQL cấm", first.value)
 
         if attr == "create_index":
             table_name: str | None = None
@@ -238,10 +247,11 @@ def _lint_file(path: Path, contracts: set[str], report: Report) -> None:
             report.add(rel, "tên revision", problem)
 
     has_contract_comment = any(_CONTRACT_COMMENT_RE.match(line) for line in source.splitlines()[:10])
-    if has_contract_comment and (revision is None or revision not in contracts):
+    registered = revision is not None and revision in contracts
+    if has_contract_comment and not registered:
         report.add(rel, "# contract: chưa đăng ký ở docs/contracts.toml", revision or "?")
 
-    _lint_body(source, tree, report, rel)
+    _lint_body(source, tree, report, rel, contract=has_contract_comment and registered)
 
 
 def _load_contracts() -> set[str]:
