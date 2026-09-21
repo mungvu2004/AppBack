@@ -114,3 +114,81 @@ Cổng thoát 0 trên lượt chạy độc lập, bước 7 lần đầu chạy
 2. Nên ghi `DEBT.md` cho #7 và #8 (việc của B0-01); các P3 còn lại (#3–#6) và Nit (#9–#11) do tác giả tự quyết, không chặn merge.
 3. Gộp bằng `git merge --no-ff` (R-36: nhánh mang trailer của B0-07 và của B0-06 + `Fix: FIX-028`), **không** squash.
 4. Người điều phối ghi nhận `tools/contract/APPFRONT_SHA` là lần ghi đầu thuộc deliverable của B0-07 (không phải sửa file cấm); từ sau lượt này chỉ người điều phối được nâng.
+
+---
+
+## Lượt 2
+
+- Ngày: 2026-09-21 · Reviewer: cùng phiên `/merge-review` độc lập của lượt 1 (không phải phiên tác giả). Mọi khẳng định trong hai commit mới tự kiểm lại bằng diff, probe và cổng; không lấy lời commit làm bằng chứng · Commit đầu nhánh: `9319d3cf2f14` (gốc `267e8f7`, 4 commit; mới so với lượt 1: `a4b0e89` `fix(contract): …`, `9319d3c` `docs(repo): …`, cả hai `Prompt: B0-07`, khối trailer liền nhau, đọc được bằng `%(trailers:key=Prompt)`)
+- Cổng: `bash tools/verify/run.sh verify` **mã thoát 0** ở **lượt chạy đầu tiên và duy nhất** của lượt review này (chạy tại chỗ, log `verify2.log` trong scratchpad của phiên): `1282 passed, 10 skipped` (lượt 1: 1279; thêm 3 test mới). 10 skip vẫn là `test_common.py` với tập tham số rỗng. Flake `NO-042` **không** xảy ra (`tools/tests/test_services.py` 9/9 đạt). Bước 1–8 đều `đạt`; bảng con bước 7 giống lượt 1 (Smoke, bản đồ 83/83, đã mount 3/83, H1, H1 ngữ cảnh `đạt`; H3, H4, H5 `không áp dụng` hợp lệ; 3,9 s, dựng runner 2,9 s).
+- Độ phủ: tổng dòng **99,30 %** · nhánh **96,99 %** · `packages/testing` 99,65 % / 100 % · `tools` 98,66 % / 94,93 % · tập file bị chạm 99,85 % / 99,33 %. Mọi gói bị chạm và tổng đều ≥ 90 % ở cả hai số.
+- Điều kiện dừng sớm: cây sạch; `changes/B0-07.md` không đổi (8 dòng); diff `d3b25b0..HEAD` chỉ chạm `tools/contract/**`, `packages/testing/golden/tests/`, `DEBT.md`, `docs/fixes.md` (dòng [4] của FIX-028, người điều phối giao trong lời gọi lượt này); không `pragma`, `noqa`, `type: ignore`, `skip`, `xfail` mới; không đụng file cấm. Không điều kiện nào kích hoạt.
+
+**Probe chạy lại** (container verify, bản sao `/tmp/w`, không vào repo):
+
+- **P1** — khung S1 có `startedAt = "…T07:00:00.000000+07:00"`: runner giải `ok`, nay **H5 `hỏng`** "`event.startedAt` … không kết thúc .sssZ (W3)" (lượt 1: `đạt`).
+- **P2** — `build_layout` vào thư mục có sẵn chứa `giu.txt` → `RunnerError` "không rỗng", `giu.txt` **còn** (lượt 1: mất). Thư mục chưa có → dựng bình thường.
+- **P3** — giả lập B1-01 mount `auth_refresh` đúng đường BE-BIND: test mới `test_real_repo_check_runs_through` **đạt**; test cũ của `d3b25b0` trên đúng trạng thái đó **hỏng** `assert 1 == 0`.
+- **P4** — đặt lại `api.py` bản `main` (còn `_op_matchers`): test mới `test_case_trace_asks_the_golden_resolver` **hỏng**, 5 test FIX-028 cũ vẫn đạt; `api.py` của nhánh → 6/6 đạt. Đỏ trước, xanh sau đúng như `NO-044` nay ghi.
+- **AST** trên 6 file `.py` đổi: 0 hàm thiếu docstring, không hàm nào > 50 dòng.
+
+### Trạng thái finding của lượt 1
+
+| # | Mức | Trạng thái | Bằng chứng tự kiểm |
+|---|---|---|---|
+| 1 | P2 | **đã sửa** | `test_check.py:458` `test_real_repo_check_runs_through`: `main` thoát 0 hoặc 1, đủ 8 dòng, trạng thái ∈ {đạt, hỏng, không áp dụng}, ba kiểm cấu trúc (`Smoke`, `Bản đồ đủ`, `Thao tác đã mount`) phải `đạt`. Lệch khỏi [8] ghi ngay trong docstring, kèm lý do. P3: test mới xanh, test cũ đỏ khi route có thân được mount |
+| 2 | P2 | chấp nhận | `NO-047` ➖ (MNT-05), lý do đứng được, giống `NO-039`. Vẫn tính điểm MNT |
+| 3 | P3 | **đã sửa** | `check.py:260` H5 chạy `bad_datetimes` trên mọi khung; test `test_h5_rejects_non_w3_datetimes` (`test_check.py:409`); P1 |
+| 4 | P3 | **đã sửa** | `runner_client.py:165-175` không còn `rmtree(build_dir, ignore_errors=True)`; thư mục có nội dung → `RunnerError`; `check.py:329` mặc định `mkdtemp` mới. Test `test_layout_refuses_a_non_empty_directory` (`test_runner_client.py:113`); P2. `:144` (thư mục tạm của `npm ci`) giữ nguyên — lượt 1 đã chấp nhận. Xem Nit mới #1 |
+| 5 | P3 | **đã sửa** | `test_runner_client.py:46`, `:73` `@pytest.mark.usefixtures("appfront_dir")`; `:57` `match=r"npm thoát \d+"` khớp đúng thông điệp của `run_process` khi `npm ci` thoát khác 0, không còn qua rỗng khi thiếu `npm` |
+| 6 | P3 | **đã sửa** | `test_recorder.py:272` thay `recorder._real_resolver` → `operation_of("GET", "/bat-ky") == "golden_x"`; P4 đỏ trước, xanh sau. `NO-044` cập nhật đúng |
+| 7 | P3 | **ghi sổ** | `NO-048` ⬜ P3, chủ B0-01, đủ cột (nguyên nhân, cách chữa: gọi `ensure_node_modules` ở bước chuẩn bị trước bước 5). Vẫn tính điểm TEST |
+| 8 | P3 | **ghi sổ** | `NO-049` ⬜ P3, chủ B0-01, đủ cột (xuất hàm công khai trong `case_gate`). Vẫn tính điểm MNT |
+| 9 | Nit | **đã sửa** | Hai trường `Inputs.permissions_module`, `Inputs.rules_module` đã xoá; `check.py:302-303` truyền thẳng hằng; không còn chỗ tham chiếu |
+| 10 | Nit | chấp nhận | `h4.py` docstring nêu gương B3-05 phải giữ `min`/`max` bằng `int`/`float` và vì sao — một trong hai đường lượt 1 đề xuất |
+| 11 | Nit | **đã sửa** | `docs/fixes.md:226` [4] của FIX-028 nay ghi thêm `test_recorder.py` |
+
+### Finding mới
+
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 1 | Nit | R-11 · OPS-04 | Hệ quả của bản sửa #4: `python -m tools.contract.check` không có `--build-dir` dựng vào `mkdtemp(prefix="contract-")` và **không** dọn — probe P2c: sau một lượt còn lại `/tmp/contract-…` chứa bản chép `src` của AppFront (~16 MB, 1 355 file theo số đo trong docstring `copy_tree`). Trong cổng `/tmp` mới mỗi container nên vô hại; chạy tay nhiều lần ngoài container thì dồn lại | `tools/contract/check.py:329` | Khi không có `--build-dir`, dựng trong `with tempfile.TemporaryDirectory(prefix="contract-") as tmp:`; có `--build-dir` thì giữ lại để gỡ lỗi như hiện tại |
+| 2 | Nit | R-36 · R-34 | `git merge-tree main HEAD` báo **xung đột** ở `DEBT.md`: `main` đã có `3fab67b` thêm `NO-045` (B3-01) vào cuối bảng, nhánh thêm `NO-047..049` cùng chỗ. `docs/fixes.md` tự gộp được. Không phải lỗi mã; nhánh bỏ qua đúng hai id `NO-045`, `NO-046` đã dành cho `fix/b0-01-gate-debts` | `DEBT.md:66-69` (nhánh) ↔ `DEBT.md` của `main` | Phiên merge giữ cả hai phía, xếp theo id (`NO-044`, `NO-045`, `NO-047`, `NO-048`, `NO-049`), không xoá dòng nào; hoặc tác giả rebase nhánh lên `main` trước khi merge |
+
+Ngoài phạm vi nhánh, ghi để người điều phối biết: `NO-045` đang bị **dùng hai lần** — trên `main` (`3fab67b`, B3-01 ➖ MNT-05) và trên `fix/b0-01-gate-debts` (`TESTCONTAINERS_CONNECTION_MODE`, FIX-009). Trái luật "Id … không dùng lại" ở đầu `DEBT.md`; nên đổi id một bên trước khi gộp nhánh fix đó.
+
+Đã kiểm và **không** thấy finding thêm: `check_h5` thêm luật W3 sau kiểm "không phải luồng Loại S" nên thứ tự `problems` của `test_h5_decodes_received_frames` giữ nguyên (xanh trong cổng); `build_layout` kiểm thư mục rỗng **trước** `ensure_node_modules` nên từ chối không tốn `npm ci`; `RunnerError` từ đó rơi đúng nhánh `except` của `main` → "bước 7 hỏng: …", thoát 1 (fail-closed); fixture `contract_build` luôn dựng vào `mktemp(...) / "build"` chưa có nên không vướng luật mới; `test_smoke_reports_missing_export_and_bad_entries` chép bằng `copytree`, không qua `build_layout`.
+
+### Kiểm sổ nợ
+
+- Không nợ P0/P1 nào còn `⬜`/`🔧`. Nợ mở do nhánh thêm: `NO-048`, `NO-049` (P3, B0-01). `NO-047` ➖ có lý do đứng được. `NO-044` ✅ nay có test đỏ trước, xanh sau (P4).
+- Mọi P2/P3 của lượt 1 đã sửa hoặc có dòng `DEBT.md` (R-38 đạt). Hai Nit mới không bắt buộc ghi sổ.
+
+### Điểm
+
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC – Bảo mật | 25 % | 5 | 1,25 |
+| CON – Concurrency & dữ liệu | 15 % | 5 | 0,75 |
+| LOG – Tính đúng đắn | 15 % | 5 (#3, #4 đã sửa; chỉ Nit #10 chấp nhận) | 0,75 |
+| PERF – Hiệu năng | 10 % | 5 | 0,50 |
+| RES – Chịu lỗi | 10 % | 5 | 0,50 |
+| DB, API – Migration & contract | 10 % | 5 | 0,50 |
+| TEST – Kiểm thử | 7 % | 4 (P3 #7 còn mở ở `NO-048`) | 0,28 |
+| OBS, OPS – Vận hành | 5 % | 5 (chỉ Nit mới #1) | 0,25 |
+| MNT – Bảo trì | 3 % | 3 (P2 #2 chấp nhận ở `NO-047`; P3 #8 ở `NO-049`; Nit mới #2) | 0,09 |
+
+Tổng: 1,25 + 0,75 + 0,75 + 0,50 + 0,50 + 0,50 + 0,28 + 0,25 + 0,09 = **4,87 / 5**
+
+## PHÁN QUYẾT (lượt 2): APPROVE
+
+Cổng thoát 0 ngay lượt đầu trên `9319d3c`, độ phủ đạt ở mọi gói, không có P0/P1, điểm 4,87 ≥ 4,0. Bảy finding của lượt 1 đã sửa, và mỗi bản sửa đều được kiểm bằng probe chạy thật: P1 (W3 trên SSE), P2 (không xoá thư mục có sẵn), P3 (test khói không còn đỏ khi route có thân được mount), P4 (test FIX-028 đỏ trước, xanh sau). Bốn mục còn lại được ghi sổ (`NO-047` ➖, `NO-048`, `NO-049`) hoặc chấp nhận có lý do (#10).
+
+Điều kiện cho phiên merge:
+
+1. Giải xung đột `DEBT.md` với `main` (Nit mới #2): giữ cả `NO-045` của `main` lẫn `NO-047..049` của nhánh, xếp theo id, không xoá dòng nào.
+2. Gộp bằng `git merge --no-ff` (R-36: nhánh mang trailer của B0-07 và B0-06 + `Fix: FIX-028`), **không** squash.
+3. Người điều phối ghi nhận `tools/contract/APPFRONT_SHA` là lần ghi đầu thuộc deliverable của B0-07 (như lượt 1).
+4. Không chặn merge: đổi id `NO-045` trùng trên `fix/b0-01-gate-debts` trước khi gộp nhánh đó; giao `NO-048`, `NO-049` cho B0-01.
+
+Nit mới #1 do tác giả tự quyết.
