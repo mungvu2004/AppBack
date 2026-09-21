@@ -6,6 +6,7 @@ module gương tạm) dựng trong test để chạm từng nhánh mà không đ
 
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -15,7 +16,7 @@ import pytest
 
 from tools.charter import merged_prompts
 from tools.contract import check
-from tools.contract.runner_client import run_command
+from tools.contract.runner_client import lock_digest, node_dir_from_env, run_command
 from tools.contract.samples import EventSample, HttpSample
 from tools.contract.tests import wire
 from tools.verify.steps import STATUS_FAIL, STATUS_NA, STATUS_OK
@@ -475,6 +476,7 @@ def test_real_repo_check_runs_through(
     assert set(rows.values()) <= {STATUS_OK, STATUS_FAIL, STATUS_NA}
     assert [rows[name] for name in ("Smoke", "Bản đồ đủ", "Thao tác đã mount")] == [STATUS_OK] * 3
     assert table[-1].startswith("thời gian:")
+    assert (tmp_path / "build" / "runner.ts").is_file(), "--build-dir phải được giữ lại để gỡ lỗi"
 
 
 def test_main_fails_without_f00a(
@@ -484,6 +486,40 @@ def test_main_fails_without_f00a(
     monkeypatch.setenv("APPFRONT_DIR", str(tmp_path))
     assert check.main(["--build-dir", str(tmp_path / "build")]) == 1
     assert "AppFront @ SHA thiếu F-00a" in capsys.readouterr().out
+
+
+@pytest.fixture
+def scratch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Thư mục tạm mặc định của `tempfile` trỏ về một thư mục rỗng của riêng test."""
+    folder = tmp_path / "tmp"
+    folder.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(folder))
+    return folder
+
+
+def test_main_without_build_dir_leaves_no_scratch_on_early_failure(
+    scratch: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Không `--build-dir`, AppFront thiếu F-00a → hỏng mà không để lại `contract-*` (NO-052)."""
+    monkeypatch.setenv("APPFRONT_DIR", str(tmp_path))
+    assert check.main([]) == 1
+    assert "AppFront @ SHA thiếu F-00a" in capsys.readouterr().out
+    assert list(scratch.iterdir()) == []
+
+
+@pytest.mark.usefixtures("appfront_dir")
+def test_main_without_build_dir_removes_built_layout(
+    scratch: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Mẫu hỏng sau khi đã dựng bố cục → thư mục tạm xoá sạch; kho `node_modules` sau symlink còn nguyên."""
+    broken = tmp_path / "mau" / "health_live" / "C01-1.json"
+    broken.parent.mkdir(parents=True)
+    broken.write_text("{", encoding="utf-8")
+    monkeypatch.setenv(check.SAMPLES_ENV, str(broken.parent.parent))
+    assert check.main([]) == 1
+    assert "mẫu health_live/C01-1.json hỏng" in capsys.readouterr().out
+    assert list(scratch.iterdir()) == []
+    assert (node_dir_from_env() / lock_digest() / "node_modules").is_dir()
 
 
 def test_gather_inputs_reads_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
