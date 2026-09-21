@@ -451,3 +451,40 @@ def test_run_thật_in_lệnh(capsys: pytest.CaptureFixture[str]) -> None:
     r = steps._run([sys.executable, "-c", "print('ok')"], capture_output=True)
     assert (r.returncode, r.stdout.strip()) == (0, "ok")
     assert capsys.readouterr().out.startswith("$ ")
+
+
+# --- FIX-006 ------------------------------------------------------------------------
+
+
+def test_clean_dir_không_nuốt_lỗi_xoá_mục_con(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-008: mục con không xoá được thì `_clean_dir` ném, không để file cũ sót lại im lặng.
+
+    Sót lại là `merge-heads` chép nhầm revision cũ ra ngoài. Container chạy bằng root nên
+    quyền tệp không chặn được xoá; dựng lỗi bằng cách cho `os.unlink` từ chối đúng một file.
+    """
+    out = steps.OUT_DIR / "merge-heads"
+    out.mkdir(parents=True)
+    (out / "cũ.py").write_text("x", encoding="utf-8")
+    real_unlink = os.unlink
+
+    def unlink_bị_khoá(path: Any, *args: Any, **kwargs: Any) -> None:
+        """`os.unlink` từ chối riêng `cũ.py`, như file đang bị giữ."""
+        if Path(path).name == "cũ.py":
+            raise PermissionError(13, "bị khoá", str(path))
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", unlink_bị_khoá)
+    with pytest.raises(PermissionError, match="bị khoá"):
+        steps._clean_dir(out)
+
+
+def test_clean_dir_xoá_cả_thư_mục_con_giữ_gốc(repo: Path) -> None:
+    """Thư mục con cũng bị xoá; chính thư mục ra (có thể là mount point, NO-001) được giữ."""
+    out = steps.OUT_DIR / "lock"
+    (out / "con" / "cháu").mkdir(parents=True)
+    (out / "con" / "cháu" / "a.txt").write_text("x", encoding="utf-8")
+    (out / "b.txt").write_text("x", encoding="utf-8")
+    assert steps._clean_dir(out) == out
+    assert out.is_dir()
+    assert list(out.iterdir()) == []
+
