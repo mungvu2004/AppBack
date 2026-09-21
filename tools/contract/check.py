@@ -84,8 +84,6 @@ class Inputs:
     samples: Sequence[HttpSample] = ()
     events: Sequence[EventSample] = ()
     require_all: bool = False
-    permissions_module: str = PERMISSIONS_MODULE
-    rules_module: str = RULES_MODULE
 
 
 def contract_rows(bind_file: Path = BIND_FILE) -> dict[str, BindRow]:
@@ -250,7 +248,7 @@ def check_h4(fe: Mapping[str, Any], module_name: str, merged: frozenset[str]) ->
 
 
 def check_h5(inputs: Inputs, verdicts: Sequence[Mapping[str, Any]]) -> CheckResult:
-    """H5: khung SSE đã nhận giải bằng schema của S1/S2; luồng đã mount phải có mẫu."""
+    """H5: khung SSE đã nhận giải bằng schema của S1/S2, ngày giờ đúng W3; luồng đã mount phải có mẫu."""
     streams = {op for op, row in inputs.rows.items() if row.case_type == STREAM_TYPE}
     mounted = sorted(streams & {item.op for item in inputs.mounted})
     if not mounted and not inputs.events:
@@ -259,6 +257,7 @@ def check_h5(inputs: Inputs, verdicts: Sequence[Mapping[str, Any]]) -> CheckResu
     problems = [
         f"{e.file}: {e.operation_id} không phải luồng Loại S" for e in inputs.events if e.operation_id not in streams
     ]
+    problems += [f"{e.file}: {bad}" for e in inputs.events for bad in bad_datetimes(e.body, "event")]
     problems += [f"{item['file']}: {item['reason']}" for item in verdicts if item["decode"] == "fail"]
     problems += [f"{item['file']}: {item['contextReason']}" for item in verdicts if item["context"] == "fail"]
     problems += [f"{op}: đã mount mà không có mẫu luồng (record_stream_event)" for op in mounted if op not in recorded]
@@ -300,8 +299,8 @@ def run_checks(build_dir: Path, inputs: Inputs) -> list[CheckResult]:
         check_mounted(inputs),
         check_h1(samples, http_verdicts, shapes, inputs),
         check_context(http_verdicts),
-        check_h3(run_command(build_dir, "permissions", {}), inputs.permissions_module, inputs.merged),
-        check_h4(run_command(build_dir, "rules", {}), inputs.rules_module, inputs.merged),
+        check_h3(run_command(build_dir, "permissions", {}), PERMISSIONS_MODULE, inputs.merged),
+        check_h4(run_command(build_dir, "rules", {}), RULES_MODULE, inputs.merged),
         check_h5(inputs, event_verdicts),
     ]
 
@@ -323,12 +322,13 @@ def _emit(line: str) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     """Dựng runner, chạy tám kiểm, in bảng; 1 khi có gì hỏng."""
     parser = argparse.ArgumentParser(prog="python -m tools.contract.check")
-    parser.add_argument("--build-dir", type=Path, default=Path(tempfile.gettempdir()) / "contract")
+    parser.add_argument("--build-dir", type=Path, help="thư mục chưa có hay rỗng; mặc định một thư mục tạm mới")
     args = parser.parse_args(argv)
     _emit(f"Bước 7 — AppFront @ {SHA_FILE.read_text(encoding='utf-8').strip()}")
     started = time.monotonic()
+    build_dir = args.build_dir or Path(tempfile.mkdtemp(prefix="contract-"))
     try:
-        build_dir = build_layout(appfront_dir_from_env(), node_dir_from_env(), args.build_dir)
+        build_layout(appfront_dir_from_env(), node_dir_from_env(), build_dir)
         built = time.monotonic()
         results = run_checks(build_dir, gather_inputs())
     except (AppFrontMissingError, RunnerError, SampleError) as exc:

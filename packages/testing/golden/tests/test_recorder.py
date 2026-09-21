@@ -269,6 +269,12 @@ def test_case_trace_and_golden_resolve_the_same_operation(method: str, path: str
     assert api_fixtures.operation_of(method, path) == (None if matched is None else matched.op)
 
 
+def test_case_trace_asks_the_golden_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FIX-028: `operation_of` hỏi đúng bộ khớp của bộ ghi, không giữ bảng khớp riêng (R-07)."""
+    monkeypatch.setattr(recorder, "_real_resolver", lambda: lambda _m, p: recorder.OperationMatch("golden_x", p, {}))
+    assert api_fixtures.operation_of("GET", "/bat-ky") == "golden_x"
+
+
 def test_probe_table_does_not_leak_into_case_trace(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test bộ ghi thay bảng khớp bằng bảng app thử; vết case vẫn chỉ biết app thật (FIX-028)."""
     monkeypatch.setattr(recorder, "resolve_operation", lambda _m, p: recorder.OperationMatch("golden_x", p, {}))

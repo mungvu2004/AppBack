@@ -3,6 +3,8 @@
 FE: `ALL_RULES` (`src/domain/rules/defaults.ts:47-52`; `BUILT_IN_RULES` chỉ là nhóm con) và
 `RULE_THRESHOLD_SPECS` (`src/domain/rules/thresholdSpecs.ts`). Gương B3-05: `RULE_CODES`
 (tuple mã) và `THRESHOLD_SPECS` (`Mapping[khoá, ThresholdSpec(rule_code, min, max)]`).
+`min`/`max` so bằng `!=` với số JSON của FE, nên gương giữ chúng bằng `int`/`float`: `Decimal`
+thì `0.1 != Decimal("0.1")` và H4 hỏng giả.
 """
 
 from collections.abc import Mapping

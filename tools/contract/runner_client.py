@@ -1,6 +1,6 @@
 """Dựng chỗ chạy runner Node của bước 7 và gọi nó (B0-07 [6] "Dựng runner").
 
-Bố cục (thư mục dựng, mặc định `<tempdir>/contract`):
+Bố cục (thư mục dựng chưa có hay rỗng; `check.py` mặc định một thư mục tạm mới):
 
 - `src/` — bản chép `$APPFRONT_DIR/src` (AppFront @ SHA ghim, chỉ đọc);
 - `runner.ts`, `schema-map.ts`, `context.ts`, `strict/`, `package.json` — chép từ `tools/contract`;
@@ -163,10 +163,16 @@ def copy_tree(source: Path, target: Path) -> None:
 
 
 def build_layout(appfront: Path, node_dir: Path, build_dir: Path) -> Path:
-    """Dựng lại `build_dir` từ đầu (bố cục ở docstring module) và trả nó."""
+    """Dựng bố cục (docstring module) vào `build_dir` chưa có hay rỗng, và trả nó.
+
+    Không xoá thư mục có sẵn: gõ nhầm `--build-dir` không làm mất gì, và không file cũ nào của
+    lượt trước (schema FE đã bỏ ở SHA mới) lọt vào bố cục mới.
+    """
     check_appfront(appfront)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    if any(build_dir.iterdir()):
+        raise RunnerError(f"thư mục dựng {build_dir} không rỗng: chỉ dựng vào thư mục mới")
     modules = ensure_node_modules(node_dir)
-    shutil.rmtree(build_dir, ignore_errors=True)
     copy_tree(appfront / "src", build_dir / "src")
     for name in RUNNER_FILES:
         (build_dir / name).parent.mkdir(parents=True, exist_ok=True)

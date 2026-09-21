@@ -406,6 +406,14 @@ def test_h5_decodes_received_frames(contract_build: Path) -> None:
     assert problems[2].startswith("c: K33")
 
 
+def test_h5_rejects_non_w3_datetimes(contract_build: Path) -> None:
+    """Khung có ngày giờ `+07:00` → H5 hỏng như H1 (W3; `ProgressSchema` cũ của FE nhận nó)."""
+    at = "2026-01-01T07:00:00.000+07:00"
+    frame = EventSample("e", "streams_open_progress", wire.progress("running", startedAt=at))
+    problems = h5(contract_build, inputs("streams_open_progress", events=[frame])).problems
+    assert problems == (f"e: event.startedAt = {at!r} không kết thúc .sssZ (W3)",)
+
+
 # -- Smoke, runner đầy đủ, test khói trên repo thật ---------------------------------------------
 
 
@@ -447,17 +455,25 @@ def test_run_checks_passes_on_consistent_inputs(contract_build: Path) -> None:
     assert results[3].summary == "1 mẫu response"
 
 
-def test_real_repo_check_passes(
+def test_real_repo_check_runs_through(
     appfront_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Test khói: `check.main` trên repo hiện tại → mọi kiểm `đạt` hoặc `không áp dụng`, thoát 0."""
+    """Test khói: `check.main` chạy trọn trên repo hiện tại, in đủ tám kiểm; ba kiểm cấu trúc `đạt`.
+
+    Lệch khỏi B0-07 [8] ("mọi kiểm `đạt` hoặc `không áp dụng`"): test dùng thư mục mẫu rỗng của
+    riêng nó, mẫu thật chỉ có trong `CONTRACT_SAMPLES_DIR` của lượt verify. Đòi H1 tới H5 `đạt` ở đây
+    thì prompt đầu tiên mount route có thân đỏ bước 5 vì file này (cùng lớp FIX-003); H1 tới H5 trên
+    mẫu thật do chính bước 7 đòi.
+    """
     monkeypatch.setenv(check.SAMPLES_ENV, str(tmp_path / "mau"))
     monkeypatch.delenv(check.REQUIRE_ALL_ENV, raising=False)
-    assert check.main(["--build-dir", str(tmp_path / "build")]) == 0
+    assert check.main(["--build-dir", str(tmp_path / "build")]) in {0, 1}
     table = capsys.readouterr().out.splitlines()
-    rows = [line.split(" | ") for line in table if line.count(" | ") == 2][1:]
+    lines = [line.split(" | ") for line in table if line.count(" | ") == 2][1:]
+    rows = {name.strip(): status.strip() for name, status, _ in lines}
     assert len(rows) == 8
-    assert {status.strip() for _, status, _ in rows} <= {STATUS_OK, STATUS_NA}
+    assert set(rows.values()) <= {STATUS_OK, STATUS_FAIL, STATUS_NA}
+    assert [rows[name] for name in ("Smoke", "Bản đồ đủ", "Thao tác đã mount")] == [STATUS_OK] * 3
     assert table[-1].startswith("thời gian:")
 
 

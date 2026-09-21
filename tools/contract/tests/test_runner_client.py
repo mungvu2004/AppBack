@@ -43,6 +43,7 @@ def test_existing_target_is_reused_without_npm(tmp_path: Path) -> None:
     assert runner_client.ensure_node_modules(tmp_path) == target
 
 
+@pytest.mark.usefixtures("appfront_dir")
 def test_failed_install_leaves_no_target(tmp_path: Path) -> None:
     """`npm ci` hỏng (lock lệch `package.json`) → `RunnerError`, không để lại đích hay thư mục tạm."""
     package = tmp_path / "package"
@@ -53,7 +54,7 @@ def test_failed_install_leaves_no_target(tmp_path: Path) -> None:
         json.dumps({"name": "x", "dependencies": {"zod": "3.23.8"}}), encoding="utf-8"
     )
     node_dir = tmp_path / "node"
-    with pytest.raises(RunnerError, match="npm"):
+    with pytest.raises(RunnerError, match=r"npm thoát \d+"):
         runner_client.ensure_node_modules(node_dir, cache_dir=tmp_path / "cache", package_dir=package)
     assert list(node_dir.iterdir()) == []
 
@@ -69,6 +70,7 @@ def test_publish_keeps_the_winner(tmp_path: Path) -> None:
         runner_client.publish(tmp_path / "khong-co", tmp_path / "dich-khac")
 
 
+@pytest.mark.usefixtures("appfront_dir")
 def test_process_errors_become_runner_errors(tmp_path: Path) -> None:
     """Thoát khác 0 và quá trần đều thành `RunnerError` kèm lý do."""
     node = runner_client.executable("node")
@@ -106,6 +108,16 @@ def test_missing_f00a_is_an_error(tmp_path: Path) -> None:
     """AppFront không có `src/api/schemas/common.ts` → `AppFrontMissingError`."""
     with pytest.raises(runner_client.AppFrontMissingError, match="thiếu F-00a"):
         runner_client.build_layout(tmp_path, tmp_path / "node", tmp_path / "build")
+
+
+def test_layout_refuses_a_non_empty_directory(appfront_dir: Path, tmp_path: Path) -> None:
+    """`build_dir` đã có nội dung → `RunnerError`, không xoá gì (gõ nhầm `--build-dir` không mất nguồn)."""
+    keep = tmp_path / "build" / "giu.txt"
+    keep.parent.mkdir()
+    keep.write_text("giu", encoding="utf-8")
+    with pytest.raises(RunnerError, match="không rỗng"):
+        runner_client.build_layout(appfront_dir, runner_client.node_dir_from_env(), keep.parent)
+    assert keep.read_text(encoding="utf-8") == "giu"
 
 
 def test_layout_resolves_alias_and_single_zod(contract_build: Path, appfront_dir: Path) -> None:
