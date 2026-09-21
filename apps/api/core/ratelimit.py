@@ -55,6 +55,7 @@ def install(app: Any, *, cache: AsyncRedis, safe: AsyncRedis) -> None:
 
 
 def _script(request: Request, store: Store) -> AsyncScript:
+    """Script đã nạp cho kho `store`; quên `install` trong `lifespan` là lỗi lập trình."""
     scripts = getattr(request.app.state, STATE_ATTR, None)
     if not isinstance(scripts, dict) or store not in scripts:
         raise RuntimeError(f"kho rate limit {store!r} chưa được nạp trong lifespan")
@@ -108,6 +109,7 @@ def rate_limit(
         raise ValueError(f"limit và window_s phải ≥ 1, nhận {limit}, {window_s}")
 
     async def dependency(request: Request) -> None:
+        """Đếm một lượt; vượt hạn mức → 429, Redis hỏng → theo `on_error`."""
         bucket = await key(request)
         try:
             count, ttl = await _call(request, store, f"rl:{name}:{bucket}", window_s)

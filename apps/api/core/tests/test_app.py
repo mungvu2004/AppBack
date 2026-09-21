@@ -7,9 +7,11 @@ from typing import Any, Final
 import httpx
 import pytest
 from fastapi import APIRouter, FastAPI
+from pydantic import ValidationError
 
 from apps.api.core import app as app_module
 from apps.api.core import extensions
+from apps.api.core import openapi as openapi_module
 from apps.api.core.app import (
     OPENAPI_URL,
     SCHEMA_SETTINGS,
@@ -24,6 +26,8 @@ from apps.api.core.routing import AppRoute, check_routers, protected_router
 from apps.api.core.tests.sample import SAMPLE_ROUTERS, ItemOut, lifespan_router
 from packages.core.clock import SystemClock
 from packages.core.settings import CoreSettings, get_core_settings, reset_settings_cache
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
+from packages.db.settings import get_database_settings
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
 
@@ -200,3 +204,46 @@ async def test_lifespan_closes_resources(api_env: None, fake_clock: FakeClock) -
         assert isinstance(client, httpx.AsyncClient)
         engine = app.state.engine
     assert engine.pool.checkedout() == 0
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [{"APP_ENV": "production", "SECRET_KEY": None}, {"APP_ENV": None, "APP_ENVIRONMENT": "production"}],
+    ids=["production thiếu SECRET_KEY", "gõ nhầm tên APP_ENV"],
+)
+def test_create_app_fails_fast_on_invalid_env(broken: dict[str, str | None], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cấu hình sai là **không khởi động**, không lùi về bản chỉ-đọc-schema (`ci`) — R-17.
+
+    Lùi về `SCHEMA_SETTINGS` ở đây là cho production thiếu một biến chạy như `ci`: phơi
+    `/api/openapi.json` và lách chốt "production chưa có verifier thì không lên".
+    """
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
+    monkeypatch.setenv("SECRET_KEY", HKDF_SEED)
+    for name, value in broken.items():
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    reset_settings_cache()
+    try:
+        with pytest.raises(ValidationError):
+            create_app(routers=[])
+    finally:
+        reset_settings_cache()
+
+
+def test_schema_app_builds_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chỉ công cụ đọc schema (bước 8, `case_gate`) được dựng app khi thiếu biến môi trường."""
+    for name in ("APP_ENV", "PUBLIC_BASE_URL", "SECRET_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(openapi_module, "_cached_app", None)
+    reset_settings_cache()
+    try:
+        assert openapi_module.real_app().state.settings is SCHEMA_SETTINGS
+    finally:
+        reset_settings_cache()
+
+
+def test_api_env_uses_gate_connect_timeout(api_env: None) -> None:
+    """App thử bắt tay Postgres với trần của đường cổng (180 s), không phải 10 s của request."""
+    assert get_database_settings().db_connect_timeout_s == int(GATE_CONNECT_TIMEOUT_S)

@@ -82,6 +82,7 @@ def route_options(
     options = RouteOptions(versioned=versioned, body_limit=body_limit, idempotency=idempotency)
 
     def decorate(endpoint: Callable[..., Any]) -> Callable[..., Any]:
+        """Gắn `RouteOptions` lên chính hàm endpoint."""
         setattr(endpoint, OPTIONS_ATTR, options)
         return endpoint
 
@@ -118,6 +119,7 @@ def _path_body_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]]:
     """W21: khoá thân camelCase trùng tham số đường mà khác giá trị → 422 `PATH_BODY_MISMATCH`."""
 
     async def guard(request: Request) -> None:
+        """So từng tham số đường với khoá thân camelCase cùng nghĩa."""
         body = await _json_body(request)
         if not isinstance(body, dict):
             return
@@ -133,6 +135,7 @@ def _versioned_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]]:
     """W20: thiếu `baseVersion` → 428, **trước** Pydantic (HOP-DONG-MOI §1.2)."""
 
     async def guard(request: Request) -> None:
+        """Thân phải là object có `baseVersion`."""
         body = await _json_body(request)
         if not isinstance(body, dict) or BASE_VERSION_KEY not in body:
             raise PRECONDITION_REQUIRED.error()
@@ -144,6 +147,7 @@ def _idempotency_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]
     """Nhận việc idempotency — chạy **sau** mọi dependency quyền của route (BE-00 §7)."""
 
     async def guard(request: Request) -> None:
+        """Có header thì nhận việc; không có thì route chạy như thường."""
         raw = request.headers.get(idempotency.HEADER)
         if raw is None:
             return
@@ -169,6 +173,7 @@ class AppRoute(APIRoute):
     protected: ClassVar[bool] = True
 
     def __init__(self, path: str, endpoint: Callable[..., Any], **kwargs: Any) -> None:
+        """Dựng route như FastAPI, rồi đọc `RouteOptions` và gắn guard của khung vào **cuối** cây dependency."""
         super().__init__(path, endpoint, **kwargs)
         self.options = options_of(endpoint)
         self.wire_method = next(iter(sorted((self.methods or set()) - {"HEAD"})), "GET")
@@ -195,9 +200,11 @@ class AppRoute(APIRoute):
         return builders
 
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        """Bọc handler của FastAPI theo đúng thứ tự: xác thực → session → handler → hoàn tất + commit → đóng session."""
         original = super().get_route_handler()
 
         async def handler(request: Request) -> Response:
+            """Một request đi trọn đường của `AppRoute`; replay trả response đã lưu, ngoại lệ thì rollback."""
             if self.protected:
                 request.state.principal = await _principal_of(request)
             request.state.idempotency_claim = None
@@ -314,12 +321,6 @@ def route_of(scope: Scope) -> AppRoute | None:
         if match is Match.PARTIAL and partial is None:
             partial = route
     return partial
-
-
-def body_limit_of(scope: Scope) -> int:
-    """Trần thân của route khớp; không khớp route nào thì dùng trần chung 1 MiB."""
-    route = route_of(scope)
-    return DEFAULT_BODY_LIMIT if route is None else route.options.body_limit
 
 
 def check_routers(routers: Sequence[tuple[str, APIRouter]]) -> None:

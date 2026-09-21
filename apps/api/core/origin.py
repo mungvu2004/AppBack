@@ -28,12 +28,14 @@ def _origin_of(url: str) -> tuple[str, str]:
 
 
 def _settings(request: Request) -> CoreSettings:
+    """Cấu hình của app đang chạy — nguồn của `PUBLIC_BASE_URL`."""
     settings = request.app.state.settings
     assert isinstance(settings, CoreSettings)  # noqa: S101 — `create_app` luôn đặt
     return settings
 
 
 def _matches(request: Request) -> bool:
+    """Có `Origin` và cùng origin với `PUBLIC_BASE_URL` không."""
     origin = request.headers.get(ORIGIN_HEADER)
     return origin is not None and _origin_of(origin) == _origin_of(_settings(request).public_base_url)
 

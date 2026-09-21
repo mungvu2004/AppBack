@@ -5,6 +5,10 @@ Ba điều đáng nhớ:
 - **không kết nối lúc tạo.** `create_app()` chỉ dò route và khai middleware; engine,
   Redis và kho mở trong `lifespan`, nên công cụ nào chỉ cần schema (bước 8, cổng
   case) không phải dựng Postgres;
+- **cấu hình sai là không khởi động.** `create_app(settings=None)` đọc thẳng
+  `get_core_settings()`; bản `SCHEMA_SETTINGS` chỉ dành cho công cụ đọc schema và
+  phải được truyền **tường minh** (`openapi.real_app`). Lùi âm thầm về nó ở đây là
+  cho một production thiếu `SECRET_KEY` chạy ở chế độ `ci` (R-17);
 - **route tự dò.** Mỗi module khai `ROUTERS` trong `apps/api/<module>/router.py`;
   thêm module không phải sửa file này (BE-00 §2). `lifespan` của từng router được
   gộp vào `lifespan` của app;
@@ -66,7 +70,11 @@ không có biến môi trường thật và cũng không có kết nối nào đ
 
 
 def schema_settings() -> CoreSettings:
-    """Cấu hình thật nếu môi trường có đủ, còn lại là bản chỉ-đọc-schema."""
+    """Cấu hình thật nếu môi trường có đủ, còn lại là bản chỉ-đọc-schema.
+
+    **Chỉ** cho công cụ đọc schema (bước 8, `case_gate`): nuốt `ValidationError` là có
+    chủ đích ở đó và là lỗ hổng ở mọi nơi khác, nên `create_app` không gọi hàm này.
+    """
     try:
         return get_core_settings()
     except ValidationError:
@@ -122,6 +130,7 @@ def _lifespan(routers: Sequence[tuple[str, APIRouter]]) -> Any:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Mở engine, Redis, kho; kiểm chính sách broker; chạy `lifespan` của từng router; đóng hết khi dừng."""
         engine = create_engine(get_database_settings())
         app.state.engine = engine
         app.state.sessionmaker = create_sessionmaker(engine)
@@ -156,8 +165,11 @@ def create_app(
     clock: Clock | None = None,
     routers: Sequence[tuple[str, APIRouter]] | None = None,
 ) -> FastAPI:
-    """App của AppBack. `routers` chỉ để test dựng app thử — mặc định là dò thật."""
-    resolved = settings if settings is not None else schema_settings()
+    """App của AppBack; biến môi trường sai → ném `ValidationError` ngay (fail-closed).
+
+    `routers` chỉ để test dựng app thử — mặc định là dò thật.
+    """
+    resolved = settings if settings is not None else get_core_settings()
     mounted = list(routers) if routers is not None else discover_routers()
     check_routers(mounted)
     app = FastAPI(

@@ -26,7 +26,7 @@ from fastapi.dependencies.models import Dependant
 from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
 
-from apps.api.core.app import app_routes, create_app
+from apps.api.core.app import app_routes, create_app, schema_settings
 from apps.api.core.pagination import CursorPage
 from apps.api.core.permissions import ANY_ROLE, permission_key_of
 from apps.api.core.routing import AppRoute
@@ -143,10 +143,14 @@ def operation_of(route: AppRoute) -> Operation:
 
 
 def real_app() -> FastAPI:
-    """App thật, dựng một lần mỗi tiến trình (cổng case và CLI đều chỉ đọc schema)."""
+    """App thật, dựng một lần mỗi tiến trình, **chỉ để đọc schema** (cổng case, CLI bước 8).
+
+    Nơi duy nhất được dùng `schema_settings()`: hai công cụ này chạy trong container
+    verify, không có biến môi trường thật và không mở kết nối nào.
+    """
     global _cached_app  # bộ nhớ đệm một lần mỗi tiến trình, đúng như `extensions.discover`
     if _cached_app is None:
-        _cached_app = create_app()
+        _cached_app = create_app(schema_settings())
     return _cached_app
 
 
@@ -162,6 +166,7 @@ def document(app: FastAPI | None = None) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Tham số của CLI: `--out` bắt buộc, `--compare` tuỳ chọn."""
     parser = argparse.ArgumentParser(prog="python -m apps.api.core.openapi")
     parser.add_argument("--out", required=True, help="file JSON để ghi")
     parser.add_argument("--compare", help="file đã commit để so; khác thì thoát khác 0")

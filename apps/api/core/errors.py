@@ -157,16 +157,19 @@ def translate_unknown(exc: BaseException) -> AppError:
 
 
 async def _app_error_handler(request: Request, exc: Exception) -> Response:
+    """`AppError` → thân W7 đúng status của mã."""
     assert isinstance(exc, AppError)  # noqa: S101 — Starlette gọi đúng handler theo kiểu đã đăng ký
     return error_response(exc, request_id())
 
 
 async def _validation_handler(request: Request, exc: Exception) -> Response:
+    """Lỗi Pydantic → 422 `VALIDATION` hoặc 400 `MALFORMED_JSON`."""
     assert isinstance(exc, RequestValidationError)  # noqa: S101 — như trên
     return validation_error(exc, request_id())
 
 
 async def _http_exception_handler(request: Request, exc: Exception) -> Response:
+    """`HTTPException` của Starlette/FastAPI → mã W7 tương ứng."""
     assert isinstance(exc, StarletteHTTPException)  # noqa: S101 — như trên
     return http_exception_error(exc, request_id())
 

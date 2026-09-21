@@ -1,5 +1,6 @@
 """`GET /api/health` và `GET /api/ready` (B0-06 [2])."""
 
+import asyncio
 from datetime import timedelta
 from typing import Final
 
@@ -11,6 +12,7 @@ from starlette.requests import Request
 
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier
+from apps.api.health import router as health_router
 from apps.api.health.router import PROBE_KEY, READY_CACHE, READY_LIMIT, ReadyCache, probe
 from packages.core.settings import get_core_settings
 from packages.messaging.settings import reset_messaging_settings_cache
@@ -20,6 +22,8 @@ from packages.testing.fixtures.services import refused_url
 
 HEALTH: Final = "/api/health"
 READY: Final = "/api/ready"
+SLOW_S: Final = 60.0
+GUARD_S: Final = 30.0
 
 
 async def test_health_live_is_public_and_touches_nothing(api_client: httpx.AsyncClient) -> None:
@@ -125,3 +129,24 @@ def _broken_sessionmaker() -> object:
 def _request_of(app: FastAPI) -> Request:
     """Request tối thiểu mà `probe` cần: chỉ `scope["app"]`."""
     return Request({"type": "http", "app": app, "headers": []})
+
+
+class _SlowStorage:
+    """Kho trả lời chậm hơn hẳn trần của probe — dựng "phụ thuộc treo" mà không dừng dịch vụ."""
+
+    async def stat(self, key: str) -> None:
+        """Treo lâu hơn mọi trần hợp lý."""
+        await asyncio.sleep(SLOW_S)
+
+
+async def test_probe_gives_up_at_its_deadline(
+    api_app: FastAPI, api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Một phụ thuộc treo không giữ probe quá trần tổng: probe trả "chưa sẵn sàng".
+
+    `wait_for` với trần rộng chỉ là lưới an toàn của test: bỏ trần tổng khỏi `probe` thì
+    lưới này nổ `TimeoutError` và test đỏ, không phải chờ hết `SLOW_S`.
+    """
+    api_app.state.storage = _SlowStorage()
+    monkeypatch.setattr(health_router, "PROBE_TIMEOUT_S", 0.1)
+    assert await asyncio.wait_for(probe(_request_of(api_app)), timeout=GUARD_S) is False

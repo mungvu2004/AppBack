@@ -57,11 +57,15 @@ def page_params(max_limit: int = MAX_LIMIT) -> Callable[..., PageParams]:
         cursor: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=max_limit)] = min(DEFAULT_LIMIT, max_limit),
     ) -> PageParams:
+        """Tham số phân trang đã kiểm biên."""
         return PageParams(cursor=cursor, limit=limit)
 
     return dependency
 
 
+# `_b64`/`_unb64` giống hệt hai hàm riêng của `packages/storage/local.py` (B0-04). Không
+# nhập chéo: đó là chi tiết riêng của một bộ điều hợp kho, còn cursor là hợp đồng dây của
+# API; gộp thì phải đưa lên `packages/core` — sửa gói của B0-02 chỉ vì hai dòng (R-07, R-27).
 def _b64(raw: bytes) -> str:
     """base64url không dấu `=` (cursor đi trong query string)."""
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")

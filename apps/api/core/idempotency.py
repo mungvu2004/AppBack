@@ -26,6 +26,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import CursorResult, and_, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.dml import ReturningInsert
 from starlette.responses import Response
 
 from packages.core.error_codes import (
@@ -54,7 +55,7 @@ NO_STORE_STATUSES: Final = frozenset({401, 408, 429})
 
 DEFAULT_CONTENT_TYPE: Final = "application/octet-stream"
 
-_KEY_RE: Final = re.compile(KEY_PATTERN.strip("^$"))
+_KEY_RE: Final = re.compile(KEY_PATTERN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,7 @@ class Replay(Exception):  # noqa: N818 — không phải lỗi: đây là lối 
     """Thoát khỏi route mà không chạy handler, trả lại response của lượt trước (C10)."""
 
     def __init__(self, response: Response) -> None:
+        """Mang theo response đã dựng sẵn; `AppRoute` trả nó thay cho handler."""
         super().__init__("idempotency replay")
         self.response: Final = response
 
@@ -120,8 +122,7 @@ def _replay_response(record: _Existing) -> Response:
     )
 
 
-async def begin(
-    sessionmaker: async_sessionmaker[AsyncSession],
+def _claim_statement(
     *,
     user_id: str,
     method: str,
@@ -129,9 +130,12 @@ async def begin(
     key: str,
     digest: str,
     now: datetime,
-) -> Claim:
-    """Nhận việc, hoặc thoát bằng `Replay` / `AppError` (422, 503)."""
-    token = uuid4()
+) -> ReturningInsert[tuple[int, UUID]]:
+    """`INSERT … ON CONFLICT DO UPDATE … WHERE <dòng cũ>` trả `(id, claim_token)` khi nhận được việc.
+
+    Một lệnh duy nhất vừa tạo dòng mới, vừa chiếm lại dòng quá TTL hay hết hạn thuê;
+    không trả dòng nào nghĩa là dòng đang chặn còn hiệu lực (BE-00 §7).
+    """
     stale = or_(
         IdempotencyRecord.expires_at <= now,
         and_(IdempotencyRecord.state == STATE_IN_PROGRESS, IdempotencyRecord.lease_until <= now),
@@ -143,7 +147,7 @@ async def begin(
         "key": key,
         "request_hash": digest,
         "state": STATE_IN_PROGRESS,
-        "claim_token": token,
+        "claim_token": uuid4(),
         "lease_until": now + LEASE,
         "expires_at": now + TTL,
         "created_at": now,
@@ -151,7 +155,7 @@ async def begin(
     }
     taken_over = {name: value for name, value in fresh.items() if name != "created_at"}
     taken_over.update(status_code=None, content_type=None, response_body=None)
-    claiming = (
+    return (
         pg_insert(IdempotencyRecord)
         .values(**fresh)
         .on_conflict_do_update(
@@ -161,29 +165,51 @@ async def begin(
         )
         .returning(IdempotencyRecord.id, IdempotencyRecord.claim_token)
     )
+
+
+async def _read_blocker(
+    session: AsyncSession, *, user_id: str, method: str, route_template: str, key: str
+) -> _Existing | None:
+    """Dòng đang chặn lượt này, đọc ra giá trị thường trước khi session rollback."""
+    row = (
+        await session.execute(
+            select(
+                IdempotencyRecord.request_hash,
+                IdempotencyRecord.state,
+                IdempotencyRecord.status_code,
+                IdempotencyRecord.content_type,
+                IdempotencyRecord.response_body,
+            ).where(
+                IdempotencyRecord.user_id == user_id,
+                IdempotencyRecord.method == method,
+                IdempotencyRecord.route_template == route_template,
+                IdempotencyRecord.key == key,
+            )
+        )
+    ).first()
+    return None if row is None else _Existing(*row)
+
+
+async def begin(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    *,
+    user_id: str,
+    method: str,
+    route_template: str,
+    key: str,
+    digest: str,
+    now: datetime,
+) -> Claim:
+    """Nhận việc trong giao dịch riêng (commit ngay), hoặc thoát bằng `Replay` / `AppError` (422, 503)."""
+    scope = {"user_id": user_id, "method": method, "route_template": route_template, "key": key}
     async with sessionmaker() as session:
-        claimed = (await session.execute(claiming)).first()
+        claimed = (await session.execute(_claim_statement(**scope, digest=digest, now=now))).first()
         if claimed is not None:
             await session.commit()
             return Claim(record_id=int(claimed.id), token=claimed.claim_token)
-        blocker = (
-            await session.execute(
-                select(
-                    IdempotencyRecord.request_hash,
-                    IdempotencyRecord.state,
-                    IdempotencyRecord.status_code,
-                    IdempotencyRecord.content_type,
-                    IdempotencyRecord.response_body,
-                ).where(
-                    IdempotencyRecord.user_id == user_id,
-                    IdempotencyRecord.method == method,
-                    IdempotencyRecord.route_template == route_template,
-                    IdempotencyRecord.key == key,
-                )
-            )
-        ).first()
+        blocker = await _read_blocker(session, **scope)
         await session.rollback()
-    return _blocked(None if blocker is None else _Existing(*blocker), digest)
+    return _blocked(blocker, digest)
 
 
 def _blocked(record: _Existing | None, digest: str) -> Claim:

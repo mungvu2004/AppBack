@@ -33,6 +33,7 @@ from apps.api.core.auth import FakeTokenVerifier, Principal, fake_token
 from apps.api.core.openapi import operations
 from packages.core.ids import new_id
 from packages.core.settings import get_core_settings, reset_settings_cache
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.db.settings import reset_database_settings_cache
 from packages.messaging.redis import AsyncRedis
 from packages.storage.settings import reset_storage_settings_cache
@@ -122,6 +123,7 @@ class ObservedClient(httpx.AsyncClient):
     """`httpx.AsyncClient` gọi observer sau mỗi response đã đọc xong thân."""
 
     async def request(self, *args: Any, **kwargs: Any) -> httpx.Response:
+        """Gửi như `httpx`, rồi đưa response (đã đọc thân) cho các observer."""
         response = await super().request(*args, **kwargs)
         _notify(response)
         return response
@@ -151,6 +153,10 @@ def api_env(
     monkeypatch.setenv("SECRET_KEY", STORAGE_SECRET)
     monkeypatch.delenv("SECRET_KEY_PREVIOUS", raising=False)
     monkeypatch.setenv("DATABASE_URL", db_url)
+    # Trần bắt tay của **đường cổng**, không phải 10 s của đường phục vụ request: app thử
+    # nối Postgres qua chặng `host.docker.internal` hay kẹt tới ~68 s (NO-002, NO-007).
+    # Mỗi test một engine mới, nên để 10 s là cổng đỏ giả theo số lượng test.
+    monkeypatch.setenv("DB_CONNECT_TIMEOUT_S", str(int(GATE_CONNECT_TIMEOUT_S)))
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     # Cùng gốc với fixture `local_storage`: test ghi object bằng nó, app đọc lại được.
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))

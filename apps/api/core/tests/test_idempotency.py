@@ -1,7 +1,9 @@
 """Idempotency của `AppRoute` trên Postgres thật (BE-00 §7, C10, C22, K23)."""
 
 import asyncio
+from datetime import timedelta
 from typing import Final
+from uuid import UUID
 
 import httpx
 import pytest
@@ -26,16 +28,16 @@ from apps.api.core.tests.sample import (
     sample_app,
     sample_client,
     sample_row_ids,
+    wait_until,
 )
 from packages.core.errors import AppError
-from packages.db.models.idempotency import STATE_COMPLETED, IdempotencyRecord
+from packages.db.models.idempotency import STATE_COMPLETED, STATE_IN_PROGRESS, IdempotencyRecord
 from packages.testing.fixtures.api import auth_headers
 from packages.testing.fixtures.clock import FakeClock
 
 __all__ = ["clear_after_commit_marks", "sample_app", "sample_client"]
 
 KEY: Final = "khoa-idempotency-01"
-SETTLE_S: Final = 0.05
 
 
 def _headers(principal: Principal, key: str = KEY) -> dict[str, str]:
@@ -56,6 +58,24 @@ async def _records(maker: async_sessionmaker[AsyncSession]) -> list[tuple[str, i
             )
         )
         return [(str(state), status, str(digest)) for state, status, digest in rows.all()]
+
+
+async def _claim_token(maker: async_sessionmaker[AsyncSession]) -> UUID | None:
+    """`claim_token` của dòng `in_progress` duy nhất, hay `None` khi chưa ai nhận việc."""
+    async with maker() as session:
+        query = select(IdempotencyRecord.claim_token).where(IdempotencyRecord.state == STATE_IN_PROGRESS)
+        return (await session.execute(query)).scalar_one_or_none()
+
+
+async def _has_claim(maker: async_sessionmaker[AsyncSession]) -> bool:
+    """Đã có lượt nhận việc (dòng `in_progress`) chưa."""
+    return await _claim_token(maker) is not None
+
+
+async def _token_changed(maker: async_sessionmaker[AsyncSession], previous: UUID | None) -> bool:
+    """Dòng đã bị lượt khác chiếm lại (token đổi) chưa."""
+    current = await _claim_token(maker)
+    return current is not None and current != previous
 
 
 async def _count(maker: async_sessionmaker[AsyncSession]) -> int:
@@ -160,7 +180,8 @@ async def test_parallel_same_key_gives_one_in_progress(
     headers = _headers(fake_principal)
 
     running = asyncio.create_task(sample_client.post("/api/sample/gated", json={"name": "a"}, headers=headers))
-    await asyncio.sleep(SETTLE_S)
+    # Chờ lượt đầu **thật sự** nhận việc (có dòng `in_progress`), không đoán bằng thời gian.
+    assert await wait_until(lambda: _has_claim(sample_app.state.sessionmaker))
     second = await sample_client.post("/api/sample/gated", json={"name": "a"}, headers=headers)
     sample_app.state.gate.set()
     first = await running
@@ -175,17 +196,18 @@ async def test_expired_lease_is_taken_over(
     sample_client: httpx.AsyncClient, sample_app: FastAPI, fake_principal: Principal, fake_clock: FakeClock
 ) -> None:
     """Hết hạn thuê: lượt mới chiếm dòng, lượt cũ hoàn tất 0 dòng → rollback + 503."""
-    from datetime import timedelta
-
+    maker = sample_app.state.sessionmaker
     sample_app.state.gate = asyncio.Event()
     sample_app.dependency_overrides[deny_sample] = grant_stub
     headers = _headers(fake_principal)
 
     old = asyncio.create_task(sample_client.post("/api/sample/gated", json={"name": "a"}, headers=headers))
-    await asyncio.sleep(SETTLE_S)
+    assert await wait_until(lambda: _has_claim(maker))
+    first_token = await _claim_token(maker)
     fake_clock.advance(timedelta(minutes=1))
     new = asyncio.create_task(sample_client.post("/api/sample/gated", json={"name": "a"}, headers=headers))
-    await asyncio.sleep(SETTLE_S)
+    # Lượt mới đã chiếm dòng khi `claim_token` đổi — lúc đó mới mở cổng cho cả hai.
+    assert await wait_until(lambda: _token_changed(maker, first_token))
     sample_app.state.gate.set()
     old_response, new_response = await old, await new
 

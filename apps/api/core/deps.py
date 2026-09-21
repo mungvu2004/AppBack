@@ -29,20 +29,24 @@ def db_session(request: Request) -> AsyncSession:
 
 
 def event_bus(request: Request) -> EventBus:
+    """Bus sự kiện (Redis Streams) mà `lifespan` đã mở."""
     bus = request.app.state.event_bus
     assert isinstance(bus, EventBus)  # noqa: S101 — lifespan luôn đặt
     return bus
 
 
 def storage(request: Request) -> ObjectStorage:
+    """Kho object theo `STORAGE_BACKEND`, dựng một lần trong `lifespan`."""
     return cast("ObjectStorage", request.app.state.storage)
 
 
 def clock(request: Request) -> Clock:
+    """Đồng hồ của app — giả ở `APP_ENV=test`, thật ở mọi nơi khác."""
     return cast("Clock", request.app.state.clock)
 
 
 def core_settings(request: Request) -> CoreSettings:
+    """Cấu hình nền mà app được dựng cùng."""
     settings = request.app.state.settings
     assert isinstance(settings, CoreSettings)  # noqa: S101 — lifespan luôn đặt
     return settings

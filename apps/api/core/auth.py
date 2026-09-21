@@ -32,6 +32,7 @@ class Principal:
     role: Role
 
     def __post_init__(self) -> None:
+        """Từ chối `Principal` sai mẫu ngay lúc dựng: người thực hiện chỉ lấy từ đây (K05)."""
         if not is_id("usr", self.user_id):
             raise ValueError(f"user_id sai mẫu usr_<ULID>: {self.user_id!r}")
         if not self.session_id:
@@ -47,13 +48,16 @@ class TokenVerifier(Protocol):
     chương đòi so với `Clock` tiêm được (BE-00 §5).
     """
 
-    async def verify(self, token: str, request: Request) -> Principal: ...
+    async def verify(self, token: str, request: Request) -> Principal:
+        """Trả `Principal` của token, hoặc ném 401 `UNAUTHENTICATED`/`SESSION_REVOKED`."""
+        ...
 
 
 class DenyAllTokenVerifier:
     """Mặc định ở `dev`/`ci`/`test` khi chưa có B1-01: mọi token đều 401."""
 
     async def verify(self, token: str, request: Request) -> Principal:
+        """Luôn 401: chưa có B1-01 thì không token nào được tin."""
         raise UNAUTHENTICATED.error()
 
 
@@ -61,6 +65,7 @@ class FakeTokenVerifier:
     """Token `fake:<usr_…>:<sid>:<role>` — chỉ vào app khi `APP_ENV=test` (BE-00 §2.2)."""
 
     async def verify(self, token: str, request: Request) -> Principal:
+        """Giải `fake:<usr_…>:<sid>:<role>`; sai số phần, sai id hay vai lạ đều 401."""
         parts = token.split(":")
         if len(parts) != _FAKE_PARTS or parts[0] != FAKE_PREFIX.rstrip(":"):
             raise UNAUTHENTICATED.error()

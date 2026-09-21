@@ -30,7 +30,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apps.api.core.errors import REQUEST_ID_HEADER, error_response, request_id, simple_error, translate_unknown
-from apps.api.core.routing import body_limit_of, route_of
+from apps.api.core.routing import DEFAULT_BODY_LIMIT, AppRoute, route_of
 from packages.core.error_codes import PAYLOAD_TOO_LARGE
 from packages.core.logging import request_id_var
 
@@ -52,6 +52,8 @@ SECURITY_HEADERS: Final = (
 NO_STORE: Final = "no-store"
 
 UNKNOWN_ROUTE: Final = "-"
+ROUTE_SCOPE_KEY: Final = "appback.route"
+"""`BodyLimitMiddleware` khớp route **một lần** rồi để kết quả ở đây cho lớp log đọc lại."""
 
 
 def new_request_id() -> str:
@@ -69,9 +71,11 @@ class RequestIdMiddleware:
     """W6: nhận, chuẩn hoá và luôn trả lại `X-Request-Id`; gắn nó vào mọi dòng log."""
 
     def __init__(self, app: ASGIApp) -> None:
+        """Bọc lớp ASGI bên trong."""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Gắn `X-Request-Id` vào ngữ cảnh log và vào response; scope không phải HTTP đi thẳng."""
         if scope["type"] != HTTP:
             await self.app(scope, receive, send)
             return
@@ -79,6 +83,7 @@ class RequestIdMiddleware:
         token = request_id_var.set(rid)
 
         async def send_with_id(message: Message) -> None:
+            """Thêm `X-Request-Id` vào lúc bắt đầu response."""
             if message["type"] == RESPONSE_START:
                 MutableHeaders(scope=message)[REQUEST_ID_HEADER] = rid
             await send(message)
@@ -93,9 +98,11 @@ class AccessLogMiddleware:
     """Một dòng log mỗi request, không bao giờ kèm đường thật hay thân (K11, BE-00 §8)."""
 
     def __init__(self, app: ASGIApp) -> None:
+        """Bọc lớp ASGI bên trong."""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Đo thời lượng, ghi status, rồi log một dòng kể cả khi lớp trong ném."""
         if scope["type"] != HTTP:
             await self.app(scope, receive, send)
             return
@@ -103,6 +110,7 @@ class AccessLogMiddleware:
         status = 0
 
         async def send_recording(message: Message) -> None:
+            """Nhớ status của response để ghi log."""
             nonlocal status
             if message["type"] == RESPONSE_START:
                 status = int(message["status"])
@@ -111,12 +119,12 @@ class AccessLogMiddleware:
         try:
             await self.app(scope, receive, send_recording)
         finally:
-            route = route_of(scope)
+            route = scope.get(ROUTE_SCOPE_KEY)
             _log.info(
                 "http_access",
                 extra={
                     "method": scope.get("method", ""),
-                    "routeTemplate": UNKNOWN_ROUTE if route is None else route.path_format,
+                    "routeTemplate": route.path_format if isinstance(route, AppRoute) else UNKNOWN_ROUTE,
                     "status": status,
                     "durationMs": round((time.perf_counter() - started) * 1000, 1),
                 },
@@ -127,14 +135,17 @@ class SecurityHeadersMiddleware:
     """Header nền của BE-00 §11; `Cache-Control` không đè giá trị route đã đặt."""
 
     def __init__(self, app: ASGIApp) -> None:
+        """Bọc lớp ASGI bên trong."""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Đặt bốn header bảo mật lên mọi response HTTP."""
         if scope["type"] != HTTP:
             await self.app(scope, receive, send)
             return
 
         async def send_hardened(message: Message) -> None:
+            """Gắn header lúc bắt đầu response; `Cache-Control` route đã đặt thì giữ."""
             if message["type"] == RESPONSE_START:
                 headers = MutableHeaders(scope=message)
                 for name, value in SECURITY_HEADERS:
@@ -155,6 +166,7 @@ class _BodyTooLarge(StarletteHTTPException):
     """
 
     def __init__(self) -> None:
+        """413 không thân; `install_error_handlers` dựng thân W7."""
         super().__init__(status_code=413)
 
 
@@ -162,13 +174,19 @@ class BodyLimitMiddleware:
     """Trần thân theo route (BE-00 §11, C12): `Content-Length` vượt → 413 **trước** handler."""
 
     def __init__(self, app: ASGIApp) -> None:
+        """Bọc lớp ASGI bên trong."""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Chặn theo `Content-Length` trước handler, rồi đếm byte thật khi luồng không khai độ dài."""
         if scope["type"] != HTTP:
             await self.app(scope, receive, send)
             return
-        limit = body_limit_of(scope)
+        # Lớp duy nhất khớp route trước routing của Starlette; `AccessLogMiddleware` (bọc
+        # ngoài) đọc lại kết quả thay vì quét toàn bộ route lần thứ hai.
+        route = route_of(scope)
+        scope[ROUTE_SCOPE_KEY] = route
+        limit = DEFAULT_BODY_LIMIT if route is None else route.options.body_limit
         declared = _content_length(scope)
         if declared is not None and declared > limit:
             await simple_error(PAYLOAD_TOO_LARGE, request_id())(scope, receive, send)
@@ -176,6 +194,7 @@ class BodyLimitMiddleware:
         received = 0
 
         async def receive_counting() -> Message:
+            """Đếm byte thân đã nhận; vượt trần thì ném 413 ngay giữa luồng."""
             nonlocal received
             message = await receive()
             if message["type"] == REQUEST:
@@ -191,15 +210,18 @@ class FinalErrorMiddleware:
     """Chặng cuối: ngoại lệ lọt qua `ExceptionMiddleware` → 503 đã dịch, hoặc 500 có stack."""
 
     def __init__(self, app: ASGIApp) -> None:
+        """Bọc lớp ASGI bên trong."""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Ngoại lệ lọt lưới → response W7; response đã bắt đầu thì chỉ còn cách ném tiếp."""
         if scope["type"] != HTTP:
             await self.app(scope, receive, send)
             return
         started = False
 
         async def send_marking(message: Message) -> None:
+            """Đánh dấu response đã bắt đầu gửi."""
             nonlocal started
             if message["type"] == RESPONSE_START:
                 started = True

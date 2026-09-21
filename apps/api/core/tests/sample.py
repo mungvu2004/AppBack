@@ -12,7 +12,7 @@ BE-BIND nên không sinh vết case giả.
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import asynccontextmanager, suppress
 from typing import Annotated, Final
 
@@ -27,7 +27,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from apps.api.core.app import create_app
-from apps.api.core.auth import FakeTokenVerifier, Principal
+from apps.api.core.auth import FakeTokenVerifier
 from apps.api.core.deps import Bus, ClockDep, CurrentPrincipal, DbSession, Settings, Storage
 from apps.api.core.origin import reject_foreign_origin, require_origin
 from apps.api.core.pagination import CursorPage, PageParams, encode_cursor, page_params
@@ -36,7 +36,6 @@ from apps.api.core.ratelimit import key_ip, key_user, rate_limit
 from apps.api.core.routing import protected_router, public_router, route_options
 from apps.api.core.wire import KeepNull, NfcStr, WireDatetime, WireModel, WireRequest
 from packages.core.error_codes import NOT_FOUND
-from packages.core.ids import new_id
 from packages.core.settings import CoreSettings, get_core_settings
 from packages.db.hooks import on_after_commit
 from packages.messaging.redis import broker_redis_sync
@@ -49,7 +48,10 @@ HUGE_BODY_LIMIT: Final = 128 * 1024 * 1024
 PAGE_MAX_LIMIT: Final = 3
 LIMITED_QUOTA: Final = 2
 LIMITED_WINDOW_S: Final = 60
-GATE_TIMEOUT_S: Final = 5.0
+GATE_TIMEOUT_S: Final = 90.0
+"""Lưới an toàn của route treo: rộng hơn `WAIT_TIMEOUT_S` để cổng chỉ mở do test, không do hết giờ."""
+WAIT_TIMEOUT_S: Final = 60.0
+POLL_S: Final = 0.01
 
 # Câu lệnh viết thẳng, không f-string: tên bảng là hằng của chính file này, và
 # ghép chuỗi ở đây chỉ làm ruff phải phân biệt "an toàn" với "chưa chắc" (S608).
@@ -388,19 +390,19 @@ async def sample_row_ids(maker: async_sessionmaker[AsyncSession]) -> list[str]:
         return [str(row[0]) for row in rows.all()]
 
 
-def sample_principal(clock: FakeClock) -> Principal:
-    """Người gọi mẫu (vai `admin`)."""
-    return Principal(user_id=new_id("usr", clock), session_id="sid-sample", role="admin")
+async def wait_until(condition: Callable[[], Awaitable[bool]], *, timeout_s: float = WAIT_TIMEOUT_S) -> bool:
+    """Chờ một **trạng thái** (đọc từ DB) thành đúng; trả `False` khi hết giờ.
 
-
-async def wait_until(condition: Callable[[], bool], *, timeout_s: float = 2.0) -> bool:
-    """Chờ một điều kiện thành đúng; trả `False` khi hết giờ."""
+    Test đồng thời xếp thứ tự request bằng trạng thái chứ không bằng `sleep`: một lượt
+    bắt tay Postgres chậm (NO-007) là đủ làm đảo thứ tự mà `sleep` đã giả định.
+    Trần rộng vì hàm trả **ngay** khi điều kiện đúng; trần chỉ để test không treo mãi.
+    """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        if condition():
+        if await condition():
             return True
-        await asyncio.sleep(0.01)
-    return condition()
+        await asyncio.sleep(POLL_S)
+    return await condition()
 
 
 @pytest.fixture

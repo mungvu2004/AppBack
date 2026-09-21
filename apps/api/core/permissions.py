@@ -27,6 +27,7 @@ def permission_dependency[DependencyT: Callable[..., Any]](key: str) -> Callable
         raise ValueError("khoá quyền không được rỗng")
 
     def decorate(dependency: DependencyT) -> DependencyT:
+        """Gắn khoá lên dependency và ghi nó vào sổ."""
         setattr(dependency, PERMISSION_ATTR, key)
         _registered.append(dependency)
         return dependency

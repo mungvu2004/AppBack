@@ -30,6 +30,9 @@ from packages.messaging.redis import assert_broker_policy
 _log: Final = logging.getLogger(__name__)
 
 READY_CACHE: Final = timedelta(seconds=2)
+PROBE_TIMEOUT_S: Final = 2.0
+"""Trần **tổng** của một lượt kiểm: trần từng lời gọi (DB 10 s, Redis 2+5 s) cộng dồn
+thì một probe có thể treo hơn 10 s, lâu hơn hẳn `timeoutSeconds` của probe orchestrator."""
 READY_RETRY_AFTER_S: Final = 5
 READY_LIMIT: Final = 60
 READY_WINDOW_S: Final = 60
@@ -101,14 +104,15 @@ async def probe(request: Request) -> bool:
     """Một lượt kiểm thật. Mọi hỏng hóc đều quy về "chưa sẵn sàng", có log để truy."""
     state = request.app.state
     try:
-        async with state.sessionmaker() as session:
-            await session.execute(text("SELECT 1"))
-        await state.cache_redis.ping()
-        await state.safe_redis.ping()
-        # Client đồng bộ: `assert_broker_policy` chạy được cả trong tín hiệu Celery,
-        # nên ở đây phải đẩy sang luồng khác để không chặn vòng sự kiện (R-23).
-        await asyncio.to_thread(assert_broker_policy, state.broker_sync)
-        await state.storage.stat(PROBE_KEY)
+        async with asyncio.timeout(PROBE_TIMEOUT_S):
+            async with state.sessionmaker() as session:
+                await session.execute(text("SELECT 1"))
+            await state.cache_redis.ping()
+            await state.safe_redis.ping()
+            # Client đồng bộ: `assert_broker_policy` chạy được cả trong tín hiệu Celery,
+            # nên ở đây phải đẩy sang luồng khác để không chặn vòng sự kiện (R-23).
+            await asyncio.to_thread(assert_broker_policy, state.broker_sync)
+            await state.storage.stat(PROBE_KEY)
     except Exception as exc:  # noqa: BLE001 — probe: mọi lỗi đều là "chưa sẵn sàng", không có ngoại lệ nào đáng nổi lên
         _log.warning("ready_probe_failed", extra={"error": repr(exc)})
         return False
