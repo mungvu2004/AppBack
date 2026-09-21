@@ -20,10 +20,12 @@ from celery.exceptions import Retry, SoftTimeLimitExceeded
 from pydantic import BaseModel
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, VALIDATION
+from packages.messaging import tasks as tasks_module
 from packages.messaging.celery_app import AFTER_COMMIT_INLINE_ENV, QUEUES, producer_app, send_task
 from packages.messaging.redis import AsyncRedis, broker_redis_sync, safe_redis, safe_redis_sync, sync_result
 from packages.messaging.settings import get_messaging_settings
 from packages.messaging.tasks import (
+    DELIVERY_TTL_S,
     INTERNAL,
     MAX_DELIVERIES,
     RETRY_EXHAUSTED,
@@ -327,6 +329,34 @@ def test_too_many_redeliveries_end_as_worker_lost(messaging_env: None) -> None:
 
     assert FAILURES == [("lost-1", WORKER_LOST)]
     assert runs("lost-1") == 0
+
+
+def test_the_delivery_count_and_its_ttl_are_one_atomic_command(
+    messaging_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`INCR` rồi `EXPIRE` rời nhau: đứt kết nối giữa hai lệnh là bộ đếm sống mãi và một `task_id`
+    dùng lại bị gán nhầm `WORKER_LOST` sớm (NO-023). Một lệnh duy nhất thì không có khe đó.
+
+    Chỉ **quan sát** lệnh gửi qua client thật (Redis vẫn chạy lệnh), không mock Redis (K23).
+    """
+    client = tasks_module._delivery_client.get()
+    sent: list[str] = []
+    real: Callable[..., Any] = client.execute_command
+
+    def spy(*args: Any, **options: Any) -> Any:
+        """Ghi tên lệnh rồi gửi thật."""
+        sent.append(str(args[0]).upper())
+        return real(*args, **options)
+
+    monkeypatch.setattr(client, "execute_command", spy)
+    try:
+        apply_task(run_ok, "atomic-1", task_id="tid-atomic")
+        assert sent == ["EVAL"]
+        assert 0 < sync_result(client.ttl("delivery:tid-atomic"), int) <= DELIVERY_TTL_S
+        assert sync_result(client.get("delivery:tid-atomic"), int) == 1
+    finally:
+        client.delete("delivery:tid-atomic")
+    assert runs("atomic-1") == 1
 
 
 def test_a_retried_task_is_not_mistaken_for_a_lost_worker(messaging_env: None) -> None:

@@ -40,6 +40,13 @@ INTERNAL: Final = "INTERNAL"
 MAX_DELIVERIES: Final = 3
 DELIVERY_TTL_S: Final = 86_400
 _CODE_RE: Final = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
+# `INCR` và `EXPIRE` trong **một** lệnh: hai lệnh rời thì đứt kết nối ở giữa là bộ đếm sống
+# mãi, và một `task_id` dùng lại bị gán nhầm `WORKER_LOST` sớm (NO-023). Cùng cách `publish_once`.
+_COUNT_DELIVERY: Final = """
+local count = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+return count
+"""
 
 _delivery_client: Final = ProcessLocal[SyncRedis](safe_redis_sync)
 _runner: Final = ProcessLocal[asyncio.Runner](asyncio.Runner)
@@ -219,9 +226,8 @@ def _deliveries(task: Any) -> int:
     """
     key = f"delivery:{task_id_of(task)}"
     with redis_errors():
-        client = _delivery_client.get()
-        count = sync_result(client.incr(key), int)
-        client.expire(key, DELIVERY_TTL_S)
+        # `eval` chứ không `register_script`: luôn đúng một lượt đi-về, kể cả lần đầu (không NOSCRIPT).
+        count = sync_result(_delivery_client.get().eval(_COUNT_DELIVERY, 1, key, str(DELIVERY_TTL_S)), int)
     return count - int(task.request.retries or 0)
 
 
