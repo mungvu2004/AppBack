@@ -58,6 +58,7 @@ from packages.db.models.auth import User
 from packages.messaging.redis import AsyncRedis
 
 FAIL_BUCKET_HEX: Final = 16
+UNKNOWN_SID: Final = "unknown"
 """`sid` + 16 ký tự đầu SHA-256 của token: đủ tách kẻ thử token rác khỏi chủ phiên (BE-00 §11)."""
 
 router = public_router(prefix="/auth", tags=["auth"])
@@ -105,18 +106,33 @@ class _Account:
     password_hash: str | None = field(repr=False)
 
 
-async def _login_ip_limit(request: Request) -> None:
-    """Bước 1: hạn mức theo IP ở DB an toàn; Redis hỏng → 503 (fail-closed)."""
-    settings = get_auth_settings()
-    limiter = rate_limit(
-        "auth_login_ip",
-        limit=settings.login_ip_limit,
-        window_s=settings.login_ip_window_s,
-        key=key_ip,
-        store="safe",
-        on_error="closed",
-    )
-    await limiter(request)
+async def _cookie_sid(request: Request) -> str:
+    """Khoá tầng tổng của refresh: `sid` trong cookie (handler đã kiểm mẫu trước khi đếm)."""
+    parsed = parse_refresh_cookie(refresh_cookie_of(request))
+    return str(parsed[0]) if parsed is not None else UNKNOWN_SID
+
+
+# Hạn mức đọc từ `AuthSettings` ở mỗi lượt (hàm, không phải số): cấu hình đọc lười, nên
+# B0-06 nhập được module khi chưa có biến môi trường và test nâng được hạn mức (NO-054).
+_login_ip_limit: Final = rate_limit(
+    "auth_login_ip",
+    limit=lambda: get_auth_settings().login_ip_limit,
+    window_s=lambda: get_auth_settings().login_ip_window_s,
+    key=key_ip,
+    store="safe",
+    on_error="closed",
+)
+"""Bước 1 của đăng nhập: hạn mức theo IP ở DB an toàn; Redis hỏng → 503 (fail-closed)."""
+
+_refresh_total_limit: Final = rate_limit(
+    "auth_refresh_total",
+    limit=lambda: get_auth_settings().refresh_total_limit,
+    window_s=lambda: get_auth_settings().refresh_total_window_s,
+    key=_cookie_sid,
+    store="cache",
+    on_error="open",
+)
+"""Tầng 2 của refresh: tổng lượt theo `sid` (đủ cho nhiều thẻ khôi phục cùng lúc), `on_error="open"`."""
 
 
 async def _find_account(db: AsyncSession, email: str) -> _Account | None:
@@ -195,24 +211,6 @@ async def _check_failures(cache: AsyncRedis, settings: AuthSettings, bucket: str
         raise RATE_LIMITED.error(retry_after=retry_after(seen[1]))
 
 
-async def _check_total(request: Request, settings: AuthSettings, sid: UUID) -> None:
-    """Tầng 2: tổng lượt theo `sid` (đủ cho nhiều thẻ khôi phục cùng lúc), `on_error="open"`."""
-
-    async def by_sid(_: Request) -> str:
-        """Khoá hạn mức là `sid` đã kiểm mẫu, không phải IP."""
-        return str(sid)
-
-    limiter = rate_limit(
-        "auth_refresh_total",
-        limit=settings.refresh_total_limit,
-        window_s=settings.refresh_total_window_s,
-        key=by_sid,
-        store="cache",
-        on_error="open",
-    )
-    await limiter(request)
-
-
 @router.post("/refresh", status_code=200, response_model=RefreshBody, dependencies=[Depends(require_origin)])
 async def auth_refresh(request: Request, response: Response, db: DbSession, clock: ClockDep) -> RefreshBody | Response:
     """Xoay (hay trả lại) cookie refresh, cấp access token và cookie luồng mới (W16)."""
@@ -223,7 +221,7 @@ async def auth_refresh(request: Request, response: Response, db: DbSession, cloc
     settings, cache = get_auth_settings(), AuthServices(request.app).cache
     bucket = _fail_bucket(sid, token)
     await _check_failures(cache, settings, bucket)
-    await _check_total(request, settings, sid)
+    await _refresh_total_limit(request)
     outcome = await refresh_session(db, sid=sid, token=token, clock=clock, settings=settings)
     if isinstance(outcome, RefreshDenied):
         # Chỉ lượt 401 mới vào bộ đếm thất bại: chủ phiên refresh đúng không bao giờ tự khoá mình.

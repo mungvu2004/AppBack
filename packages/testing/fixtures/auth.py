@@ -3,7 +3,7 @@
 - `auth_env` — `api_env` + `ARGON2_PROFILE=test` (1 MiB, 1 vòng; chỉ hợp lệ khi `APP_ENV=test`);
 - `auth_app` — `create_app(clock=fake_clock)` **không** tiêm verifier: B0-06 tự nhận
   `apps.api.auth.verifier.build_verifier`. DB an toàn (khoá đăng nhập, hạn mức theo IP)
-  được `FLUSHDB` trước và sau mỗi test — mọi lượt ASGI đều từ `127.0.0.1`;
+  được `api_env` `FLUSHDB` sau mỗi test — mọi lượt ASGI đều từ `127.0.0.1`;
 - `auth_client` — `make_api_client(auth_app)` (https, có observer vết case);
 - `signed_in(user, *, client=None)` — đăng nhập **thật** qua API rồi refresh lấy access
   token. Lượt refresh đó đã xoay cookie: test về chính thuật toán refresh tự đăng nhập;
@@ -30,7 +30,6 @@ from apps.api.core.routing import protected_router
 from packages.core.clock import Clock
 from packages.core.settings import get_core_settings
 from packages.db.models.auth import User
-from packages.messaging.redis import AsyncRedis
 from packages.testing.factories.auth import TEST_PASSWORD
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
@@ -80,10 +79,9 @@ def auth_env(api_env: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_auth_settings_cache()
 
 
-@pytest_asyncio.fixture(loop_scope="function")
-async def auth_app(auth_env: None, fake_clock: FakeClock, safe_client: AsyncRedis) -> FastAPI:
-    """App thật của repo, đồng hồ giả, verifier thật; DB an toàn sạch từ đầu test."""
-    await safe_client.flushdb()
+@pytest.fixture
+def auth_app(auth_env: None, fake_clock: FakeClock) -> FastAPI:
+    """App thật của repo, đồng hồ giả, verifier thật."""
     return create_app(get_core_settings(), clock=fake_clock)
 
 
@@ -126,10 +124,9 @@ def build_probe_app(clock: Clock) -> FastAPI:
     return create_app(get_core_settings(), clock=clock, routers=[*discover_routers(), ("auth_probe", probe_router)])
 
 
-@pytest_asyncio.fixture(loop_scope="function")
-async def probe_app(auth_env: None, fake_clock: FakeClock, safe_client: AsyncRedis) -> FastAPI:
+@pytest.fixture
+def probe_app(auth_env: None, fake_clock: FakeClock) -> FastAPI:
     """`auth_app` cộng route được bảo vệ mẫu."""
-    await safe_client.flushdb()
     return build_probe_app(fake_clock)
 
 
