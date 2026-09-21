@@ -8,9 +8,10 @@
   đã đăng ký. Observer sẵn có ghi **vết case** cho `tools/case_gate.py`: không có
   vết thì một test đặt đúng tên vẫn không được tính (CASE §2.3).
 
-Bucket rate limit sống trong `redis-cache`, mà mọi lượt ASGI đều đến từ IP
-`127.0.0.1`; vì vậy `api_app` phụ thuộc `cache_client` để DB cache được `FLUSHDB`
-sau mỗi test, không thì test thứ hai bị chính test thứ nhất làm 429.
+Bucket rate limit sống ở `redis-cache` **và** ở DB an toàn (`store="safe"`, khoá đăng
+nhập), mà mọi lượt ASGI đều đến từ IP `127.0.0.1`; vì vậy `api_env` phụ thuộc cả
+`cache_client` lẫn `safe_client` để cả hai DB được `FLUSHDB` sau mỗi test, không thì
+test sau bị chính test trước làm 429 (NO-055).
 """
 
 import json
@@ -135,6 +136,7 @@ def api_env(
     tmp_path: Path,
     messaging_env: None,
     cache_client: AsyncRedis,
+    safe_client: AsyncRedis,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:
     """Biến môi trường của một app thật trỏ vào dịch vụ thật của test."""

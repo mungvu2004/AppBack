@@ -84,3 +84,9 @@ def test_pytest_configure_registers_the_trace_observer_once() -> None:
     api_fixtures.pytest_configure(config)
     api_fixtures.pytest_configure(config)
     assert config.stash[api_fixtures.API_RESPONSE_OBSERVERS] == [api_fixtures.trace_case]
+
+
+def test_api_env_flushes_both_redis_roles(request: pytest.FixtureRequest, api_env: None) -> None:
+    """Mọi lượt ASGI đến từ `127.0.0.1`: bộ đếm `store="safe"` và khoá đăng nhập ở DB an toàn cũng phải được
+    `FLUSHDB` sau mỗi test như DB cache, không thì test sau bị test trước làm 429 (NO-055)."""
+    assert {"cache_client", "safe_client"} <= set(request.fixturenames)
