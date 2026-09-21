@@ -134,11 +134,15 @@ async def test_list_prefix_does_not_leak_sibling_prefix(object_storage: ObjectSt
 
 
 async def test_list_prefix_older_than(object_storage: ObjectStorage) -> None:
+    """Lọc theo mốc của **chính kho** (`stat` vừa đọc), không trộn giờ thật với `fake_clock` (NO-016)."""
     await object_storage.put(page_key(), PNG, content_type="image/png", max_bytes=MAX_BYTES)
-    now = datetime.now(UTC)
+    stored = await object_storage.stat(page_key())
+    assert stored is not None
+    modified = stored.last_modified
 
-    assert await listed(object_storage, f"projects/{PROJECT}/", older_than=now + timedelta(hours=1)) != []
-    assert await listed(object_storage, f"projects/{PROJECT}/", older_than=now - timedelta(hours=1)) == []
+    newer = await listed(object_storage, f"projects/{PROJECT}/", older_than=modified + timedelta(seconds=1))
+    assert [info.key for info in newer] == [page_key()]
+    assert await listed(object_storage, f"projects/{PROJECT}/", older_than=modified) == []
 
 
 async def test_delete_prefix(object_storage: ObjectStorage) -> None:

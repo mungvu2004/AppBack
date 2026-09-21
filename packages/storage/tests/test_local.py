@@ -1,6 +1,7 @@
 """Riêng `LocalDiskStorage`: token tệp và lỗi đĩa (C13)."""
 
 import errno
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -170,12 +171,15 @@ async def test_list_prefix_skips_metadata_files(local_storage: LocalDiskStorage)
 
 
 async def test_stat_uses_filesystem_time(local_storage: LocalDiskStorage) -> None:
+    """`last_modified` của `stat` là `st_mtime` của tệp, không phải giờ `Clock` (NO-016: mốc ghim bằng `os.utime`)."""
     await local_storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    moment = datetime(2024, 5, 6, 7, 8, 9, tzinfo=UTC)
+    os.utime(local_storage._path(KEY), (moment.timestamp(), moment.timestamp()))
 
     stored = await local_storage.stat(KEY)
 
     assert stored is not None
-    assert abs((stored.last_modified - datetime.now(UTC)).total_seconds()) < 60
+    assert stored.last_modified == moment
 
 
 async def test_delete_prefix_raises_instead_of_reporting_success(local_storage: LocalDiskStorage) -> None:
