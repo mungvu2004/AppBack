@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 from redis.exceptions import ResponseError
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
@@ -27,6 +29,7 @@ from apps.api.auth.tokens import (
 )
 from packages.core.errors import AppError
 from packages.core.settings import reset_settings_cache
+from packages.db.models.auth import RefreshSession
 from packages.messaging.redis import AsyncRedis
 from packages.testing.factories.auth import TEST_PASSWORD, make_user
 from packages.testing.fixtures.clock import FakeClock
@@ -176,3 +179,17 @@ async def test_soft_redis_raises_command_errors(cache_client: AsyncRedis) -> Non
     await cast("Awaitable[int]", cache_client.rpush("khoa-danh-sach", "x"))
     with pytest.raises(ResponseError, match="WRONGTYPE"):
         await soft_redis(cache_client.get("khoa-danh-sach"), "khong-duoc-log")
+
+
+async def test_revocation_always_carries_a_reason(
+    auth_env: None, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """`CHECK` ghép cặp: đặt `revoked_at` mà thiếu `revoked_reason` (module khác ghi sai) → DB từ chối."""
+    user = await make_user(db_session)
+    sid = await start_session(db_session, Response(), user=user, remember=True, ip=None, clock=fake_clock)
+    await db_session.commit()
+    with pytest.raises(IntegrityError, match="revoked_pair"):
+        await db_session.execute(
+            update(RefreshSession).where(RefreshSession.id == UUID(sid)).values(revoked_at=fake_clock.now())
+        )
+    await db_session.rollback()

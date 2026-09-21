@@ -58,8 +58,8 @@ from packages.db.models.auth import User
 from packages.messaging.redis import AsyncRedis
 
 FAIL_BUCKET_HEX: Final = 16
-UNKNOWN_SID: Final = "unknown"
 """`sid` + 16 ký tự đầu SHA-256 của token: đủ tách kẻ thử token rác khỏi chủ phiên (BE-00 §11)."""
+UNKNOWN_SID: Final = "unknown"
 
 router = public_router(prefix="/auth", tags=["auth"])
 ROUTERS: Final = (router,)
@@ -107,7 +107,11 @@ class _Account:
 
 
 async def _cookie_sid(request: Request) -> str:
-    """Khoá tầng tổng của refresh: `sid` trong cookie (handler đã kiểm mẫu trước khi đếm)."""
+    """Khoá tầng tổng của refresh: `sid` trong cookie.
+
+    Handler kiểm mẫu cookie **trước** khi gọi limiter, nên `UNKNOWN_SID` chỉ là chỗ đỡ để hàm
+    khoá không bao giờ ném (hợp đồng `KeyFn` của B0-06), không phải một bucket dùng thật.
+    """
     parsed = parse_refresh_cookie(refresh_cookie_of(request))
     return str(parsed[0]) if parsed is not None else UNKNOWN_SID
 
@@ -205,10 +209,28 @@ def _fail_bucket(sid: UUID, token: str) -> str:
 
 
 async def _check_failures(cache: AsyncRedis, settings: AuthSettings, bucket: str) -> None:
-    """Tầng 1: đã đủ `REFRESH_FAIL_LIMIT` lượt 401 trong cửa sổ → 429; Redis hỏng → cho qua."""
+    """Tầng 1, cửa trước: đã đủ `REFRESH_FAIL_LIMIT` lượt 401 trong cửa sổ → 429, khỏi chạm DB.
+
+    Chỉ **đọc**: bộ đếm tăng sau khi biết lượt này thất bại (`_denied`), vì chủ phiên refresh
+    đúng — kể cả hàng chục thẻ cùng lúc — không bao giờ được tự khoá mình. Redis hỏng → cho qua.
+    """
     seen = await soft_redis(peek(cache, bucket), "rate_limit_open")
     if seen is not None and seen[0] >= settings.refresh_fail_limit and seen[1] >= 0:
         raise RATE_LIMITED.error(retry_after=retry_after(seen[1]))
+
+
+async def _denied(cache: AsyncRedis, settings: AuthSettings, bucket: str, outcome: RefreshDenied) -> Response:
+    """Tầng 1, cửa sau: tăng bộ đếm nguyên khối **rồi** mới chọn mã trả về.
+
+    Nhiều lượt song song cùng lọt cửa trước (cùng đọc số cũ); nhờ `INCR` nguyên khối, đúng
+    `REFRESH_FAIL_LIMIT` lượt đầu nhận 401, phần vượt nhận 429 — trần giữ đúng dưới tải song
+    song. Trả response chứ không ném: lệnh thu hồi vì dùng lại của lượt này vẫn phải commit.
+    """
+    counted = await soft_redis(bump(cache, bucket, settings.refresh_fail_window_s), "rate_limit_open")
+    error = outcome.code.error()
+    if counted is not None and counted[0] > settings.refresh_fail_limit:
+        error = RATE_LIMITED.error(retry_after=retry_after(counted[1]))
+    return error_response(error, request_id())
 
 
 @router.post("/refresh", status_code=200, response_model=RefreshBody, dependencies=[Depends(require_origin)])
@@ -224,9 +246,7 @@ async def auth_refresh(request: Request, response: Response, db: DbSession, cloc
     await _refresh_total_limit(request)
     outcome = await refresh_session(db, sid=sid, token=token, clock=clock, settings=settings)
     if isinstance(outcome, RefreshDenied):
-        # Chỉ lượt 401 mới vào bộ đếm thất bại: chủ phiên refresh đúng không bao giờ tự khoá mình.
-        await soft_redis(bump(cache, bucket, settings.refresh_fail_window_s), "rate_limit_open")
-        return error_response(outcome.code.error(), request_id())
+        return await _denied(cache, settings, bucket, outcome)
     return await _refreshed(db, response, outcome, clock, settings)
 
 

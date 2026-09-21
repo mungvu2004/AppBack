@@ -14,7 +14,7 @@ từ module khác hỏng ngay chứ không lọt thành dữ liệu rác.
 
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
-from typing import Final
+from typing import Final, Literal, get_args
 from uuid import UUID
 
 from sqlalchemy import CHAR, Boolean, CheckConstraint, ForeignKey, Index, Integer, Text, text
@@ -29,16 +29,11 @@ SESSIONS: Final = "refresh_sessions"
 ROLES: Final = ("admin", "engineer", "viewer")
 STATUSES: Final = ("active", "pending", "disabled")
 LANGUAGES: Final = ("vi", "en")
-REVOKE_REASONS: Final = (
-    "logout",
-    "reuse",
-    "replaced",
-    "password_change",
-    "password_reset",
-    "disabled",
-    "deleted",
-    "expired",
-)
+RevokeReason = Literal[
+    "logout", "reuse", "replaced", "password_change", "password_reset", "disabled", "deleted", "expired"
+]
+"""Lý do thu hồi phiên — nguồn duy nhất cho cả kiểu của hàm thu hồi lẫn `CHECK` của cột."""
+REVOKE_REASONS: Final[tuple[str, ...]] = get_args(RevokeReason)
 NAME_MAX: Final = 120
 TOKEN_HASH_LEN: Final = 64
 
@@ -97,6 +92,8 @@ class RefreshSession(Base, TimestampMixin):
 
     __table_args__ = (
         CheckConstraint(one_of("revoked_reason", REVOKE_REASONS), name="revoked_reason"),
+        # Thu hồi luôn kèm lý do và ngược lại: module khác (B1-03, B1-05) ghi thiếu một nửa là hỏng ngay.
+        CheckConstraint("(revoked_at IS NULL) = (revoked_reason IS NULL)", name="revoked_pair"),
         # Phiên còn sống của một người: thu hồi hàng loạt (đổi mật khẩu, vô hiệu) và xoá cache.
         Index(f"ix_{SESSIONS}_user_id_live", "user_id", postgresql_where=text("revoked_at IS NULL")),
         # Hai điều kiện của lịch dọn (R-21): hết hạn tuyệt đối, và đã thu hồi.

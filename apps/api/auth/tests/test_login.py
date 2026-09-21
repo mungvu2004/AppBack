@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.auth import passwords
 from apps.api.auth.cookies import REFRESH_COOKIE, STREAM_COOKIE
 from apps.api.auth.emails import email_key
 from apps.api.auth.passwords import hash_slot, needs_rehash
@@ -313,6 +314,9 @@ async def test_no_connection_is_held_while_hashing(
         monkeypatch.setenv(name, value)
     reset_database_settings_cache()
     _raise_limits(monkeypatch, LOGIN_IP_LIMIT=1000)
+    # Test giữ mọi chỗ băm trong lúc chờ pool rảnh và gọi route mẫu: trần chờ 2 s của sản phẩm
+    # thì máy chậm sẽ đỏ giả (503) — thứ đang kiểm là kết nối DB, không phải trần chờ băm.
+    monkeypatch.setattr(passwords, "HASH_WAIT_S", 30.0)
     user = await make_user(db_session)
     app = build_probe_app(fake_clock)
     async with make_api_client(app) as client:
@@ -427,3 +431,19 @@ async def test_login_over_another_users_cookie_revokes_that_session(
     old = await session_row(db_session, old_sid)
     assert old.revoked_at is not None
     assert old.revoked_reason == "replaced"
+
+
+async def test_lock_is_logged_once_without_the_email(
+    auth_client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Khoá vừa đặt → một dòng `login_throttled` mang `email_key`; lượt đập vào khoá đang có không log thêm."""
+    user = await make_user(db_session)
+    limit = get_auth_settings().login_failure_limit
+    with caplog.at_level(logging.WARNING, logger="apps.api.auth.login_guard"):
+        statuses = [(await login(auth_client, user.email, WRONG_PASSWORD)).status_code for _ in range(limit + 2)]
+    assert statuses == [401] * limit + [429, 429]
+    records = [record for record in caplog.records if record.getMessage() == "login_throttled"]
+    assert len(records) == 1
+    assert getattr(records[0], "emailKey", None) == email_key(user.email)
+    assert getattr(records[0], "reason", None) == "email_ip_locked"
+    assert user.email not in caplog.text

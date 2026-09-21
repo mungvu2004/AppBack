@@ -14,6 +14,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.responses import Response
 
+from apps.api.auth import sessions
 from apps.api.auth.cookies import REFRESH_COOKIE, STREAM_COOKIE
 from apps.api.auth.sessions import RefreshDenied, Refreshed, refresh_session, start_session
 from apps.api.auth.settings import get_auth_settings, reset_auth_settings_cache
@@ -459,3 +460,77 @@ async def test_denied_refresh_is_a_value_not_an_exception(
     )
     assert isinstance(outcome, RefreshDenied)
     assert outcome.code.code == "UNAUTHENTICATED"
+
+
+async def test_auth_refresh__C11_parallel(auth_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Tầng thất bại dưới tải song song: 40 lượt cùng token rác → đúng `REFRESH_FAIL_LIMIT` lượt 401, còn lại 429."""
+    user = await make_user(db_session)
+    junk = f"{_sid(await _logged_in(auth_client, user))}.{new_refresh_token()}"
+    limit = get_auth_settings().refresh_fail_limit
+    responses = await asyncio.gather(*(refresh_with(auth_client, junk) for _ in range(2 * limit)))
+    statuses = sorted(response.status_code for response in responses)
+    assert statuses == [401] * limit + [429] * limit
+
+
+async def test_old_token_across_a_key_rotation_revokes_the_session(
+    auth_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chuỗi đổi khoá một lần (T0 bằng khoá cũ, T1 bằng khoá mới) vẫn chạm `current` → gửi lại T0 là `reuse`."""
+    user = await make_user(db_session)
+    t0 = await _logged_in(auth_client, user)
+    t1 = refresh_cookie(await refresh_with(auth_client, t0))
+    monkeypatch.setenv("SECRET_KEY", ROTATED_SECRET)
+    monkeypatch.setenv("SECRET_KEY_PREVIOUS", STORAGE_SECRET)
+    reset_settings_cache()
+    fake_clock.advance(GRACE)
+    assert (await refresh_with(auth_client, t1)).status_code == 200
+    fake_clock.advance(GRACE)
+    replay = await refresh_with(auth_client, t0)
+    assert replay.status_code == 401
+    assert replay.json()["code"] == "SESSION_REVOKED"
+    assert (await session_row(db_session, _sid(t0))).revoked_reason == "reuse"
+
+
+async def test_second_read_refuses_to_rotate(auth_env: None, db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Lượt đọc lại sau xoay hỏng mà token vẫn là `current` → bất biến vỡ → `RuntimeError`, không trả thành công."""
+    user = await make_user(db_session)
+    response = Response()
+    sid = await start_session(db_session, response, user=user, remember=True, ip=None, clock=fake_clock)
+    await db_session.commit()
+    token = cookie_value(response.headers.getlist("set-cookie")[0]).split(".", 1)[1]
+    with pytest.raises(RuntimeError, match="bất biến"):
+        await sessions._decide(db_session, UUID(sid), token, fake_clock, get_auth_settings(), may_rotate=False)
+
+
+async def test_reuse_is_logged_without_the_token(
+    auth_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Thu hồi vì dùng lại để lại một dòng `refresh_reuse_revoked` mang `sid`, không mang token."""
+    user = await make_user(db_session)
+    t0 = await _logged_in(auth_client, user)
+    await refresh_with(auth_client, t0)
+    fake_clock.advance(GRACE)
+    with caplog.at_level(logging.WARNING, logger="apps.api.auth.sessions"):
+        assert (await refresh_with(auth_client, t0)).status_code == 401
+    records = [record for record in caplog.records if record.getMessage() == "refresh_reuse_revoked"]
+    assert len(records) == 1
+    assert getattr(records[0], "sid", None) == _sid(t0)
+    assert t0.split(".", 1)[1] not in caplog.text
+
+
+async def test_junk_token_with_a_previous_key_never_revokes(
+    auth_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Có khoá cũ (`SECRET_KEY_PREVIOUS`): token rác đi hết mọi chuỗi một khoá và đổi khoá → 401, phiên vẫn sống."""
+    user = await make_user(db_session)
+    t0 = await _logged_in(auth_client, user)
+    monkeypatch.setenv("SECRET_KEY_PREVIOUS", ROTATED_SECRET)
+    reset_settings_cache()
+    response = await refresh_with(auth_client, f"{_sid(t0)}.{new_refresh_token()}")
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHENTICATED"
+    assert (await session_row(db_session, _sid(t0))).revoked_at is None
+    assert (await refresh_with(auth_client, t0)).status_code == 200

@@ -16,6 +16,7 @@ Chống dò: email lạ và email có thật đi cùng một kịch bản Lua v�
 `admit` không hề biết email có tồn tại không. Lỗi Redis → 503 (`on_error="closed"`).
 """
 
+import logging
 from datetime import timedelta
 from typing import Final
 
@@ -24,11 +25,17 @@ from apps.api.core.ratelimit import retry_after
 from packages.core.error_codes import RATE_LIMITED
 from packages.messaging.redis import AsyncRedis, redis_errors
 
+_log: Final = logging.getLogger(__name__)
+
 KNOWN_TTL: Final = timedelta(days=30)
 PASSED: Final = 0
+LOCKED: Final = 1
+EMAIL_LIMITED: Final = 2
+JUST_LOCKED: Final = 3
+LOCK_REASONS: Final = {EMAIL_LIMITED: "email_soft_limit", JUST_LOCKED: "email_ip_locked"}
 
 # KEYS: lock, fail, emailfail, known · ARGV: cửa sổ fail, trần fail, giây khoá, trần emailfail.
-# Trả {mã, ttl}: 0 = cho thử, 1 = đang khoá hoặc vừa khoá, 2 = email chạm hạn mức mềm.
+# Trả {mã, ttl}: 0 = cho thử, 1 = đang khoá, 2 = email chạm hạn mức mềm, 3 = vừa đặt khoá.
 # Nguyên khối trong Lua: kiểm `lock` và `INCR` rời nhau thì một loạt request song song đúng
 # lúc khoá hết hạn cùng lọt qua trước khi lượt đầu kịp đặt lại khoá.
 _ADMIT: Final = """
@@ -37,7 +44,7 @@ local fails = redis.call('INCR', KEYS[2])
 if fails == 1 then redis.call('EXPIRE', KEYS[2], ARGV[1]) end
 if fails > tonumber(ARGV[2]) then
   redis.call('SET', KEYS[1], '1', 'EX', ARGV[3])
-  return {1, tonumber(ARGV[3])}
+  return {3, tonumber(ARGV[3])}
 end
 local email_fails = tonumber(redis.call('GET', KEYS[3]) or '0')
 local known = redis.call('EXISTS', KEYS[4])
@@ -66,17 +73,19 @@ def _known_key(k: str, ip: str) -> str:
     return f"auth:login:known:{k}:{ip}"
 
 
-async def bump(client: AsyncRedis, key: str, ttl_s: int) -> int:
-    """`INCR` + TTL ở lượt đầu, nguyên khối (`MULTI`); trả giá trị mới của bộ đếm.
+async def bump(client: AsyncRedis, key: str, ttl_s: int) -> tuple[int, int]:
+    """`INCR` + TTL ở lượt đầu, nguyên khối (`MULTI`); trả (giá trị mới, TTL còn lại).
 
     `EXPIRE … NX` chỉ đặt TTL khi khoá chưa có: cửa sổ cố định tính từ lượt đầu, và bộ đếm
-    không bao giờ sống mãi dù tiến trình chết giữa hai lệnh.
+    không bao giờ sống mãi dù tiến trình chết giữa hai lệnh. TTL đọc cùng lượt để dựng
+    `Retry-After` không tốn thêm vòng mạng.
     """
     async with client.pipeline(transaction=True) as pipe:
         pipe.incr(key)
         pipe.expire(key, ttl_s, nx=True)
-        count, _ = await pipe.execute()
-    return int(count)
+        pipe.ttl(key)
+        count, _, ttl = await pipe.execute()
+    return int(count), int(ttl)
 
 
 async def peek(client: AsyncRedis, key: str) -> tuple[int, int]:
@@ -100,8 +109,14 @@ async def admit(client: AsyncRedis, settings: AuthSettings, k: str, ip: str) -> 
     ]
     with redis_errors():
         verdict, ttl = await script(keys=keys, args=args)
-    if int(verdict) != PASSED:
-        raise RATE_LIMITED.error(retry_after=retry_after(int(ttl)))
+    if int(verdict) == PASSED:
+        return
+    if int(verdict) != LOCKED:
+        # Dấu hiệu dò mật khẩu cho vận hành: một dòng khi khoá vừa được đặt và mỗi lượt vượt hạn mức
+        # mềm theo email (đã bị hạn mức theo IP chặn trần); lượt đập vào khoá đang có thì không log.
+        # Chỉ `email_key` (HMAC), không bao giờ email thô (K11).
+        _log.warning("login_throttled", extra={"emailKey": k, "reason": LOCK_REASONS[int(verdict)]})
+    raise RATE_LIMITED.error(retry_after=retry_after(int(ttl)))
 
 
 async def record_failure(client: AsyncRedis, settings: AuthSettings, k: str) -> None:

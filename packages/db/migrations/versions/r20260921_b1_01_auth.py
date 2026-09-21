@@ -85,6 +85,7 @@ def _create_sessions() -> None:
             "'disabled', 'deleted', 'expired')",
             name=f"ck_{SESSIONS}_revoked_reason",
         ),
+        sa.CheckConstraint("(revoked_at IS NULL) = (revoked_reason IS NULL)", name=f"ck_{SESSIONS}_revoked_pair"),
         sa.ForeignKeyConstraint(["user_id"], [f"{USERS}.id"], name=f"fk_{SESSIONS}_user_id_{USERS}"),
         sa.PrimaryKeyConstraint("id", name=f"pk_{SESSIONS}"),
     )

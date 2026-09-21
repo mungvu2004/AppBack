@@ -21,6 +21,7 @@ Thu hồi và hết hạn kiểm **trước** mọi nhánh. Từ chối trả `R
 import hmac
 import ipaddress
 import json
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -52,8 +53,10 @@ from packages.core.instants import parse_wire, to_wire
 from packages.core.keys import current_key, verification_keys
 from packages.db.errors import translate_db_error
 from packages.db.hooks import on_after_commit
-from packages.db.models.auth import RefreshSession, User
+from packages.db.models.auth import RefreshSession, RevokeReason, User
 from packages.messaging.redis import AsyncRedis, cache_redis_sync
+
+_log: Final = logging.getLogger(__name__)
 
 REMEMBER_IDLE: Final = timedelta(days=7)
 REMEMBER_ABSOLUTE: Final = timedelta(days=30)
@@ -66,10 +69,6 @@ sống; phần vượt trần tự hết sau TTL cache (≤ 5 s). Nâng khi có 
 
 DELETED: Final = "deleted"
 """Trạng thái trong ảnh chụp của người đã xoá mềm (cột `status` giữ nguyên khi xoá)."""
-
-type RevokeReason = Literal[
-    "logout", "reuse", "replaced", "password_change", "password_reset", "disabled", "deleted", "expired"
-]
 
 
 class SessionOwner(Protocol):
@@ -351,7 +350,8 @@ async def touch_last_active(db: AsyncSession, user_id: str, now: datetime) -> No
     stale = (
         select(User.id)
         .where(User.id == user_id, or_(User.last_active_at.is_(None), User.last_active_at < now - LAST_ACTIVE_EVERY))
-        .with_for_update(skip_locked=True)
+        # `NO KEY UPDATE`: chỉ ghi `last_active_at`, không chặn `FOR KEY SHARE` mà `INSERT refresh_sessions` (FK) cần.
+        .with_for_update(skip_locked=True, key_share=True)
     )
     await db.execute(
         update(User).where(User.id.in_(stale)).values(last_active_at=now).execution_options(synchronize_session=False)
@@ -378,13 +378,35 @@ def _successor(token: str, current_hash: str) -> str | None:
     return None
 
 
+def _walk(token: str, key: bytes, current_hash: str, steps: int) -> bool:
+    """Tiến chuỗi HMAC của `token` tối đa `steps` bước bằng một khoá; chạm `current` → `True`."""
+    step = token
+    for _ in range(steps):
+        step = next_refresh_token(step, key)
+        if hmac.compare_digest(token_hash(step), current_hash):
+            return True
+    return False
+
+
 def _chain_reaches(token: str, current_hash: str, lookback: int) -> bool:
-    """Tiến chuỗi HMAC tối đa `lookback` bước với từng khoá kiểm; chạm `current` là token cũ của phiên."""
-    for key in verification_keys("refresh"):
+    """`token` là tổ tiên ≤ `lookback` bước của `current` → token cũ của phiên (dùng lại).
+
+    Xoay luôn ký bằng khoá hiện hành, nên chuỗi của một phiên chỉ đổi khoá ở mốc xoay
+    `SECRET_KEY`: vài bước đầu bằng một khoá cũ, phần còn lại bằng khoá mới. Dò cả chuỗi một
+    khoá lẫn chuỗi đổi khoá **một** lần (≈ `lookback²/2` HMAC mỗi khoá cũ, dưới 1 ms, chỉ trên
+    đường token lạ). Hai lần xoay khoá trong `lookback` bước không dò (R-05: xoay khoá là việc
+    tay, cách nhau hàng tháng; nâng cấp = dò mọi thứ tự khoá cũ nếu có lịch xoay tự động).
+    """
+    newest, *older = verification_keys("refresh")
+    if _walk(token, newest, current_hash, lookback):
+        return True
+    for key in older:
         step = token
-        for _ in range(lookback):
+        for used in range(1, lookback + 1):
             step = next_refresh_token(step, key)
-            if hmac.compare_digest(token_hash(step), current_hash):
+            if hmac.compare_digest(token_hash(step), current_hash) or _walk(
+                step, newest, current_hash, lookback - used
+            ):
                 return True
     return False
 
@@ -414,9 +436,14 @@ def _judge(state: SessionState, token: str, now: datetime, settings: AuthSetting
 
 
 async def _decide(
-    db: AsyncSession, sid: UUID, token: str, clock: Clock, settings: AuthSettings
+    db: AsyncSession, sid: UUID, token: str, clock: Clock, settings: AuthSettings, *, may_rotate: bool
 ) -> Refreshed | RefreshDenied | _Rotate:
-    """Bước 3-8 của BE-00 §5 trên trạng thái vừa đọc; chỉ ghi DB khi phải thu hồi."""
+    """Bước 3-8 của BE-00 §5 trên trạng thái vừa đọc; chỉ ghi DB khi phải thu hồi.
+
+    `may_rotate=False` là lượt đọc lại sau một lần xoay hỏng: lúc đó token trình lên không thể
+    còn là `current` (xem `refresh_session`); gặp lại là bất biến đã vỡ → `RuntimeError`, không
+    lặng lẽ trả thành công.
+    """
     state = await read_state(db, sid)
     if state is None:
         return RefreshDenied(UNAUTHENTICATED)
@@ -427,14 +454,18 @@ async def _decide(
     if verdict.kind == "unknown":
         return RefreshDenied(UNAUTHENTICATED)
     if verdict.kind == "reuse":
+        # Token cũ quay lại: dấu hiệu cookie bị đánh cắp. Chỉ `sid` và người, không bao giờ token (K11).
+        _log.warning("refresh_reuse_revoked", extra={"sid": str(sid), "userId": state.user_id})
         await _revoke_one(db, sid, "reuse", now)
         return RefreshDenied(SESSION_REVOKED)
     if not state.owner_usable():
         await _revoke_one(db, sid, DELETED if state.deleted else "disabled", now)
         return RefreshDenied(SESSION_REVOKED)
-    if verdict.token is None:
-        return _Rotate(state)
-    return Refreshed(state, verdict.token, state.idle_expires_at)
+    if verdict.token is not None:
+        return Refreshed(state, verdict.token, state.idle_expires_at)
+    if not may_rotate:
+        raise RuntimeError("refresh: token vẫn là `current` sau một lần xoay hỏng (bất biến so-và-đặt vỡ)")
+    return _Rotate(state)
 
 
 async def _rotate(db: AsyncSession, state: SessionState, token: str, clock: Clock) -> Refreshed | None:
@@ -475,14 +506,14 @@ async def refresh_session(
     (lệnh `UPDATE` chờ khoá dòng của nó). Đọc lại thì token này là `previous` trong ân hạn,
     hoặc phiên đã bị thu hồi: lượt hai không bao giờ đòi xoay nữa, nên không có vòng lặp.
     """
-    decision = await _decide(db, sid, token, clock, settings)
+    decision = await _decide(db, sid, token, clock, settings, may_rotate=True)
     if not isinstance(decision, _Rotate):
         return decision
     rotated = await _rotate(db, decision.state, token, clock)
     if rotated is not None:
         return rotated
-    again = await _decide(db, sid, token, clock, settings)
-    return again if not isinstance(again, _Rotate) else Refreshed(again.state, token, again.state.idle_expires_at)
+    # `may_rotate=False` ném thay vì trả `_Rotate`, nên kết quả chỉ còn hai kiểu này.
+    return cast("Refreshed | RefreshDenied", await _decide(db, sid, token, clock, settings, may_rotate=False))
 
 
 @dataclass(frozen=True, slots=True)
