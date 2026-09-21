@@ -14,7 +14,7 @@ from urllib.parse import quote
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND
 from packages.core.instants import floor_to_hour
-from packages.storage.keys import avatar_kind
+from packages.storage.keys import server_chosen_kind
 from packages.storage.sniff import IMAGE_KINDS, ImageKind, Kind
 
 CHUNK_SIZE: Final = 1024 * 1024
@@ -129,13 +129,14 @@ async def resolve_kind(
 ) -> Kind | None:
     """Luật K15 cho `signed_url`; trả `kind` dùng cho `response-content-type`.
 
-    `kind` truyền sẵn tránh một lượt `stat`, nhưng chỉ hợp lệ cho khoá có đuôi **do
-    server chọn sau khi đã kiểm magic bytes** (hiện chỉ ảnh đại diện). Khoá khác —
-    kể cả `original.<đuôi>` của lượt tải lên — phải để gói tự đọc metadata.
+    `kind` truyền sẵn tránh một lượt `stat` (ký danh sách thumbnail không tốn N `HEAD`), nhưng
+    chỉ hợp lệ cho khoá có đuôi **do server chọn sau khi đã kiểm magic bytes** — ảnh đại diện
+    và ảnh trang (`keys.server_chosen_kind`). Khoá khác — kể cả `original.<đuôi>` của lượt tải
+    lên — phải để gói tự đọc metadata.
     """
     if kind is not None:
-        if avatar_kind(key) != kind:
-            raise ValueError(f"kind={kind!r} chỉ hợp lệ cho khoá ảnh đại diện đúng đuôi: {key!r}")
+        if server_chosen_kind(key) != kind:
+            raise ValueError(f"kind={kind!r} chỉ hợp lệ cho khoá do server đặt tên, đúng đuôi: {key!r}")
         return kind
     if disposition == "inline":
         info = await storage.stat(key)

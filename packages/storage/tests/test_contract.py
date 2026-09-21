@@ -214,11 +214,16 @@ async def test_signed_url_inline_on_missing_object(object_storage: ObjectStorage
         await object_storage.signed_url(page_key(), disposition="inline")
 
 
+def original_key() -> str:
+    return keys.upload_original(PROJECT, FLOOR, UPLOAD, "png")
+
+
+@pytest.mark.parametrize("key_factory", [avatar_key, page_key])
 async def test_signed_url_with_kind_does_not_stat(
-    object_storage: ObjectStorage, monkeypatch: pytest.MonkeyPatch
+    object_storage: ObjectStorage, monkeypatch: pytest.MonkeyPatch, key_factory: Callable[[], str]
 ) -> None:
-    """`kind` truyền sẵn cho khoá ảnh đại diện → không lượt `stat` nào (W23)."""
-    key = avatar_key()
+    """`kind` truyền sẵn cho khoá server đặt tên (ảnh đại diện, ảnh trang) → không lượt `stat` nào (W23, NO-011)."""
+    key = key_factory()
     await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
     calls = 0
     original = object_storage.stat
@@ -237,18 +242,19 @@ async def test_signed_url_with_kind_does_not_stat(
 
 _KIND_CASES: list[tuple[Callable[[], str], ImageKind]] = [
     (lambda: avatar_key("jpg"), "png"),
-    (page_key, "png"),
+    (original_key, "png"),
 ]
 
 
 @pytest.mark.parametrize(("key_factory", "kind"), _KIND_CASES)
-async def test_signed_url_rejects_kind_outside_avatar_rule(
+async def test_signed_url_rejects_kind_outside_server_named_keys(
     object_storage: ObjectStorage, key_factory: Callable[[], str], kind: ImageKind
 ) -> None:
+    """Đuôi lệch `kind`, hay tệp gốc người dùng tải lên (`original.*`, K15) → phải để kho tự đọc metadata."""
     key = key_factory()
     await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
 
-    with pytest.raises(ValueError, match="chỉ hợp lệ cho khoá ảnh đại diện"):
+    with pytest.raises(ValueError, match="chỉ hợp lệ cho khoá do server đặt tên"):
         await object_storage.signed_url(key, disposition="inline", kind=kind)
 
 
