@@ -86,3 +86,95 @@ Phải làm để được duyệt:
 4. **Chạy lại `/merge-review` ở một phiên mới** (sau `/clear` hoặc từ terminal khác) — lần này là phiên độc lập theo đúng R-37.
 
 P3 và Nit (#7–#12) do tác giả tự quyết, không chặn merge.
+
+---
+
+## Lượt review lại (độc lập)
+
+- Ngày: 2026-09-21 · Reviewer: phiên `/merge-review` **độc lập** (không phải phiên tác giả, chưa từng thấy mã trước lượt này) · Commit đầu nhánh: `6d42121fa2aa` (gốc `3b7ebf4`, 8 commit)
+- Cổng: `bash tools/verify/run.sh verify` **mã thoát 0** (chạy tại chỗ, log ở scratchpad của phiên): `1134 passed, 10 skipped`. 10 skip đều là `test_common.py` với tập tham số rỗng (chưa có route được bảo vệ), đúng ngoại lệ duy nhất BE-00 §12 cho phép; `case_gate` đạt.
+- Độ phủ: tổng dòng 99,23 % · nhánh 96,71 % · `apps/api/core` 99,45 % / 97,97 % · `apps/api/files`, `apps/api/health`, `packages/messaging` 100 % / 100 % · `packages/db` 98,65 % / 97,32 % · `packages/testing` 99,51 % / 100 % · `tools` 98,24 % / 94,05 % · tập file bị chạm 99,55 % / 98,16 %.
+
+| # | Bước | Trạng thái |
+|---|---|---|
+| 1 | `ruff format --check` | đạt |
+| 2 | `ruff check` | đạt |
+| 3 | `mypy --strict` | đạt |
+| 4 | `lint-imports` | đạt (9 hợp đồng giữ, 0 vỡ) |
+| 5 | `coverage run -m pytest` → `coverage_gate` | đạt |
+| 5b | `pytest -m perf` → `case_gate` | đạt (0 đơn vị `perf` bị chạm) |
+| 6 | `lint_migrations` → `migrate_check` | đạt (9/9) |
+| 7 | H1 H3 H4 H5 | không áp dụng — hợp lệ: chưa có `changes/B0-07.md` |
+| 8 | openapi | đạt |
+
+**Điều kiện dừng sớm** (tự kiểm lại, không dùng bảng của lượt trước): cây sạch; có `changes/B0-06.md`; 8 commit đúng mẫu, dòng đầu dài nhất 71 ký tự, trailer đọc được bằng `%(trailers:key=Prompt)` (`B0-06`×5, `B0-01`+`FIX-003`, `B0-03`+`FIX-004`, `B0-05`+`FIX-005`×2); không đụng file cấm; mọi `noqa`/`type: ignore` mới đều có mã và lý do; không `pragma`, `skip`, `xfail` mới. Không điều kiện nào kích hoạt.
+
+**Công cụ kiểm tại chỗ** (trong container verify, Python 3.12): AST đếm docstring và độ dài hàm trên mọi file `.py` của diff; bốn probe chạy thật (B: `create_app` với env sai; C: route nhiều method; D: `Origin` sai dạng; E: giả lập `celery_main` quên `discover_jobs()`; F: va chạm `request_digest`).
+
+### Trạng thái finding của lượt trước
+
+| # cũ | Mức | Trạng thái | Bằng chứng tự kiểm |
+|---|---|---|---|
+| 1 | P1 | **đã sửa** | `app.py:172` đọc thẳng `get_core_settings()`; `schema_settings()` chỉ còn ở `openapi.py:297`. Probe B: `APP_ENV=production` thiếu `SECRET_KEY` → `ValidationError`; gõ nhầm `APPENVIRONMENT` → `ValidationError` (`app_env` bắt buộc, không mặc định); đủ biến mà chưa có auth → `RuntimeError`. Test `test_app.py:209-231` |
+| 2 | P2 | **đã sửa phía B0-06** | `fixtures/api.py:159` đặt `DB_CONNECT_TIMEOUT_S` = `GATE_CONNECT_TIMEOUT_S`, test `test_app.py:247`. Phía B0-03 là NO-036 (P2, mở, đủ cột) |
+| 3 | P2 | **đã sửa** | `test_worker_main.py:31-34` gọi `discover_jobs()` trước khi tính vế phải. Probe E: `beat = []` · `beat_ledger = ['default.idempotency.purge_expired']` → assert đỏ như `docs/fixes.md` nay ghi |
+| 4 | P2 | **đã sửa** | `test_idempotency.py:184,205,210` chờ trạng thái DB bằng `wait_until` (`sample.py:393`), không còn `sleep` xếp thứ tự |
+| 5 | P2 | **đã sửa** | `begin` còn 20 dòng (`idempotency.py:193-212`); AST: không hàm nào của diff > 50 dòng |
+| 6 | P2 | còn (bản chất) | xem #3 dưới |
+| 7 | P3 | **đã sửa cho mã sản phẩm** | AST: 0 hàm/lớp sản phẩm thiếu docstring (trừ `upgrade`/`downgrade` của revision, theo khuôn `script.py.mako` của B0-03). Phần test: xem #6 dưới |
+| 8 | P3 | **đã sửa** | `sample_principal` đã xoá; `wait_until` có 11 chỗ dùng |
+| 9 | P3 | **đã sửa** | comment lý do ở `pagination.py:66-68` |
+| 10 | P3 | **đã sửa** | `BodyLimit` khớp một lần, để ở `scope["appback.route"]` (`middleware.py:185-188`), `AccessLog` đọc lại (`:122`) |
+| 11 | Nit | **đã sửa** | `idempotency.py:58` `re.compile(KEY_PATTERN)` + `fullmatch` |
+| 12 | Nit | chấp nhận | không đổi, lý do đứng được |
+
+### Finding
+
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 1 | **P2** | SEC-05 · LOG-04 · R-17 | `Origin` sai dạng làm nổ `ValueError` thay vì 403. `_origin_of` đưa header thô vào `urlsplit`, mà `urlsplit` ném `ValueError: Invalid IPv6 URL` với `http://[` hay `http://[::1`. **Probe D:** cả `require_origin` lẫn `reject_foreign_origin` ném đúng lỗi đó (không phải `AppError`) → `FinalErrorMiddleware` → `translate_unknown` ghi `unhandled_exception` **kèm stack** → 500 `INTERNAL`. Tác động: hợp đồng là 403 `ORIGIN_MISMATCH` (BE-00 §5, C24); bất kỳ ai chưa đăng nhập cũng tạo được một 500 cộng một stack trace mỗi request trên mọi route dùng hai hàm này (login/refresh/logout của B1-01, luồng của B4-01), làm bẩn cảnh báo 5xx. **Không nâng P1** vì chưa route nào trong nhánh dùng hai hàm này và kết cục vẫn là từ chối (fail-closed). Nếu còn nguyên khi B1-01 mount login thì luật nâng mức "luồng auth" biến nó thành P1 | `apps/api/core/origin.py:24-27`, đi qua `:40`, `:51` | Trong `_matches` bắt `ValueError` của `_origin_of(origin)` và coi là lệch (403). Thêm test `Origin: http://[` cho cả hai hàm |
+| 2 | **P2** | CON-02 | Dòng idempotency `completed` của một lượt **đã commit** có thể bị xoá. `_finish` đặt `after_commit_idle` trong cùng `try` mà `except BaseException` gọi `_abort` → `discard`. `complete` không đổi `claim_token`, còn `discard` xoá theo `id` + `claim_token`, nên `WHERE` vẫn khớp dòng vừa chuyển `completed`. Sau commit, `after_commit_idle` chỉ còn lọt ra `BaseException`: lỗi callback bị nuốt ở `packages/db/hooks.py:147-150`, nên thực tế là `CancelledError`. Kịch bản: rolling deploy, uvicorn `--timeout-graceful-shutdown` huỷ task request → FE thấy lỗi mạng → thử lại cùng `Idempotency-Key` (W9) → handler chạy **lần hai**, ghi trùng. Xác suất thấp vì cửa sổ chỉ bằng thời gian callback, nhưng nó phá đúng bất biến mà idempotency tồn tại để giữ. Phân tích mã, chưa dựng test | `apps/api/core/routing.py:296-304`; `apps/api/core/idempotency.py:240-248`, `:255-264` | Sửa gốc ở một chỗ mọi đường đi qua: `discard` thêm `IdempotencyRecord.state == STATE_IN_PROGRESS` vào `WHERE`. Nên thêm: đưa `after_commit_idle` ra khỏi `try` rollback. Test: huỷ task sau commit → dòng vẫn `completed` |
+| 3 | P2 | MNT-05 | Nhánh thêm ≈ 2 730 dòng mã sản phẩm (kể cả docstring) và ≈ 3 300 dòng test trong 52 file, vượt xa 400. **Không đáng tách:** một prompt, các phần móc vào nhau (`AppRoute` ↔ idempotency ↔ middleware ↔ thân lỗi) | toàn nhánh | Chỉ ghi nhận; ghi `DEBT.md` dạng `➖` chấp nhận |
+| 4 | P3 | LOG-02 · API-02 | Route khai nhiều method mất idempotency mà không ai biết. `wire_method` lấy method đầu tiên theo thứ tự chữ. **Probe C:** `api_route("/multi", methods=["GET","POST"])` → `wire_method GET`, `uses_idempotency False`, `Operation(method="GET", idempotency="off")`. Hệ quả: POST không nhận việc idempotency; `case_gate` không đòi C10/C22; `test_method_and_path_are_unique` chỉ thấy GET. Hôm nay chưa route nào như vậy | `apps/api/core/routing.py:179-185`, `:326-333` | `check_routers` từ chối route có hơn một method (trừ `HEAD`), kèm test |
+| 5 | P3 | PERF-04 · R-23 | Mỗi guard giải JSON lại từ đầu: `_json_body` gọi `json.loads(await request.body())`, trong khi FastAPI đã gọi `request.json()` và Starlette đã cache kết quả. Route `versioned` có tham số đường (vd #35, trần 8 MiB) vì thế giải thân ba lần trên vòng sự kiện | `apps/api/core/routing.py:98-106` (gọi ở `:123`, `:139`) | Dùng `await request.json()`, bọc `try/except ValueError` như hiện tại |
+| 6 | P3 | R-01 · MNT-04 | 98 hàm/lớp trong các file test mới của B0-06 thiếu docstring (AST), vd `test_common.py:63,67,83,108`, `test_errors.py:55,60`, `test_wire.py:41-67`, `test_internals.py:80-117`. Mã sản phẩm đã đủ | `apps/api/core/tests/*`, `apps/api/*/tests/*` | Thêm một câu cho helper và lớp giả; test có tên tự nói thì một dòng là đủ |
+| 7 | P3 | MNT-04 | `changes/B0-06.md` dài 13 dòng; BE-00 §13.2 quy định 3–10 dòng | `changes/B0-06.md` | Rút gọn còn ≤ 10 dòng |
+| 8 | P3 | R-27 · FIX.md luật 5 | FIX tự cấp cho file của prompt khác. `docs/fixes.md` **không có trên `main`**: nhánh tự tạo nó (`0fc49ee`, trailer `Prompt: B0-06`) và tự viết spec FIX-003..005, trong khi FIX.md luật 5 nói người điều phối giữ sổ này. Các commit FIX sửa `tools/tests/test_case_gate.py`, `packages/db/tests/test_new_revision.py`, `packages/messaging/tests/*`: ngoài `so_huu` của B0-06 và nằm trong danh sách "không được sửa" ở khối [12] của prompt. Cấp phép của người điều phối **chỉ có trong lời tác giả** (mục review trên), repo không có bằng chứng. Nội dung sửa thì đúng: trailer đúng chủ, probe E xác nhận FIX-005, cổng xanh | `docs/fixes.md`; commit `cdee48c`, `960dced`, `c952c40`, `d032787` | Phiên merge xác nhận cấp phép. Gộp bằng `--no-ff` (R-36) để giữ trailer của cả B0-01, B0-03, B0-05, B0-06 |
+| 9 | Nit | LOG-02 | `request_digest` nối các phần bằng `\|` mà không thoát ký tự. **Probe F:** đường `/api/items/a\|b` không query và đường `/api/items/a` với query `b\|` cho **cùng** hash. Chỉ tác động khi cùng người dùng, cùng khoá, cùng khuôn route, nên không ảnh hưởng người khác | `apps/api/core/idempotency.py:85-96` | Băm từng phần kèm tiền tố độ dài |
+| 10 | Nit | CON-01 | `DELETE … WHERE id IN (SELECT … WHERE expires_at <= now LIMIT n)`: vế ngoài không kiểm lại `expires_at`. Dòng vừa bị `begin` chiếm lại đúng lúc dọn có thể bị xoá, làm `complete` của lượt đó 0 dòng → 503 giả. Lượt đó thử lại được, không ghi trùng. Phân tích, chưa tái hiện | `apps/api/core/jobs.py:43-47` | Thêm `IdempotencyRecord.expires_at <= now` vào `DELETE` |
+| 11 | Nit | R-34 | NO-035 còn trỏ dòng 165–169 và số 97,56 % của `begin` **trước** khi tách; nay `begin` ở `idempotency.py:193-212`, cổng báo 97,97 % | `DEBT.md` (NO-035) | Cập nhật dòng và số |
+
+Đã kiểm và **không** thấy finding thêm: SEC-01 (mọi SQL qua SQLAlchemy/bind param, `jobs.py` và `idempotency.py`); SEC-02 (khoá idempotency có `user_id` từ `Principal`, không từ thân); SEC-03/W10 (401 trước khi đọc thân, test 64 MiB); SEC-07/K15 (`/api/files`: một 404, `inline` chỉ khi token ghi `inline` **và** magic bytes PNG/JPEG); SEC-12 (500 không lộ stack); SEC-13/K11 (log truy cập chỉ `routeTemplate`); SEC-14/W9 (Lua nguyên tử, `Retry-After` kẹp 10 s); SEC-15 (cursor so bằng `hmac.compare_digest` với mọi khoá kiểm). CON-01 của `begin`: một `INSERT … ON CONFLICT DO UPDATE … WHERE` nhận việc hoặc chiếm lại, có test Postgres thật cho song song và hết hạn thuê. RES-01 (`/api/ready` trần tổng 2 s, lệnh chặn qua `to_thread`). DB-01/DB-04 (chỉ expand, `downgrade()` thật, `migrate_check` 9/9). API-02 (405 → 404, thân W7 thống nhất). Ba route công khai nằm trong tập [7]; route-scan và mã lỗi duy nhất có test. `{link_id}` có trong BE-BIND nhưng thiếu trong `PATH_VALUES` là **đúng**, vì #49 thuộc v2.
+
+### Kiểm sổ nợ
+
+- Không có nợ P0/P1 nào còn `mở`. NO-031..NO-033 ✅, NO-034/NO-035 ➖ có lý do, NO-036 (P2, B0-03) ⬜ đủ cột.
+- Finding #1, #2, #3 (P2) của lượt này **chưa** có dòng `DEBT.md` → phải ghi trước khi merge (R-38, ma trận §5).
+
+### Điểm
+
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC – Bảo mật | 25 % | 3 (P2 #1) | 0,75 |
+| CON – Concurrency & dữ liệu | 15 % | 3 (P2 #2) | 0,45 |
+| LOG – Tính đúng đắn | 15 % | 4 (P3 #4) | 0,60 |
+| PERF – Hiệu năng | 10 % | 4 (P3 #5) | 0,40 |
+| RES – Chịu lỗi | 10 % | 5 | 0,50 |
+| DB, API | 10 % | 5 | 0,50 |
+| TEST – Kiểm thử | 7 % | 5 | 0,35 |
+| OBS, OPS | 5 % | 5 | 0,25 |
+| MNT – Bảo trì | 3 % | 3 (P2 #3) | 0,09 |
+
+Tổng: **3,89 / 5**
+
+## PHÁN QUYẾT: APPROVE WITH COMMENTS
+
+Cổng thoát 0 trên lượt chạy độc lập, không có P0/P1, điểm 3,89. Mọi P1 và P2 của lượt trước đều đã sửa, và mỗi cái đã được kiểm lại bằng mã, test hoặc probe chạy thật. Lõi của khung (thứ tự `AppRoute`, nhận việc idempotency bằng một lệnh, thân W7, bốn lớp middleware) đúng hiến chương và có test trên dịch vụ thật.
+
+Điều kiện để merge:
+
+1. Ghi `DEBT.md` **trước khi merge** (R-38) cho ba P2: #1 (`origin.py`, B0-06, P2 — nêu rõ thành P1 nếu còn khi B1-01 mount login), #2 (`routing.py`/`idempotency.py`, B0-06, P2), #3 (`➖` chấp nhận). Khuyến nghị sửa luôn #1 và #2 trong một FIX: mỗi cái vài dòng, kèm test.
+2. Người điều phối xác nhận đã cấp phép FIX-003..005 và sổ `docs/fixes.md` (#8).
+3. Gộp bằng `git merge --no-ff` (R-36: nhánh mang trailer của bốn prompt), **không** squash.
+
+P3 và Nit (#4–#11) do tác giả tự quyết, không chặn merge.
