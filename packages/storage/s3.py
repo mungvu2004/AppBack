@@ -21,6 +21,7 @@ from typing import BinaryIO, Final, cast
 import urllib3
 from minio import Minio
 from minio.datatypes import Object
+from minio.deleteobjects import DeleteObject
 from minio.error import S3Error, ServerError
 from minio.helpers import md5sum_hash
 
@@ -52,6 +53,8 @@ READ_TIMEOUT_S: Final = 15.0
 """Mặc định của `minio` là 300 s — quá dài so với trần 15 s của endpoint (W11, RES-01)."""
 
 SERVER_ERROR_STATUS: Final = 500
+DELETE_ERRORS_SHOWN: Final = 5
+"""Số object hỏng in trong thông điệp lỗi của `delete_prefix`; tổng số vẫn in đủ."""
 _MISSING_CODES: Final = frozenset(("NoSuchKey", "NoSuchObject", "NotFound"))
 _log: Final = logging.getLogger(__name__)
 
@@ -187,7 +190,7 @@ class S3Storage:
             await asyncio.to_thread(self._client.remove_object, self._bucket, key)
 
     async def delete_prefix(self, prefix: str) -> None:
-        """Xoá từng object dưới tiền tố (chỉ lịch dọn rác gọi)."""
+        """Xoá mọi object dưới tiền tố theo lô (chỉ lịch dọn rác gọi)."""
         check_prefix(prefix)
         with _s3_errors():
             await asyncio.to_thread(self._delete_under, prefix)
@@ -252,9 +255,18 @@ class S3Storage:
         return list(self._client.list_objects(self._bucket, prefix=prefix, recursive=True))
 
     def _delete_under(self, prefix: str) -> None:
-        """Xoá tuần tự mọi object dưới tiền tố (đồng bộ)."""
-        for obj in self._list_under(prefix):
-            self._client.remove_object(self._bucket, str(obj.object_name))
+        """Xoá mọi object dưới tiền tố bằng `DeleteObjects` (đồng bộ, NO-010).
+
+        `remove_objects` gom tối đa 1000 khoá mỗi lượt và kéo danh sách lười, nên 10k object là
+        10 lượt đi-về, không 10k. Lỗi từng object nằm trong thân 200 của `DeleteResult`: gom lại
+        và ném, để lịch dọn rác biết mình còn sót (không nuốt, R-16).
+        """
+        listed = self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+        names = (DeleteObject(str(obj.object_name)) for obj in listed)
+        errors = list(self._client.remove_objects(self._bucket, names))
+        if errors:
+            shown = ", ".join(f"{error.name}: {error.code}" for error in errors[:DELETE_ERRORS_SHOWN])
+            raise RuntimeError(f"không xoá được {len(errors)} object dưới {prefix}: {shown}")
 
 
 def _close(response: urllib3.BaseHTTPResponse) -> None:

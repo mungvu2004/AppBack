@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import re
 import secrets
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -15,7 +16,7 @@ from minio.error import S3Error
 from packages.core.errors import AppError
 from packages.storage import keys
 from packages.storage.s3 import S3Storage, http_client
-from packages.storage.tests.fault_proxy import Fault, FaultProxy, fault_proxy, s3_error_xml
+from packages.storage.tests.fault_proxy import Fault, FaultProxy, delete_error_xml, fault_proxy, s3_error_xml
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.services import ephemeral_minio, refused_url
 
@@ -178,3 +179,29 @@ async def test_server_error_with_xml_body_returns_503(
 
     assert raised.value.retry_after == 5
     assert b"".join([chunk async for chunk in storage.open_read(KEY)]) == PNG
+
+
+async def test_delete_prefix_deletes_in_batches(proxied: tuple[S3Storage, FaultProxy]) -> None:
+    """NO-010: xoá tiền tố gom khoá vào `DeleteObjects` (≤ 1000 khoá/lượt), không một `DELETE` mỗi object."""
+    storage, proxy = proxied
+    for index in range(3):
+        page = keys.upload_page(PROJECT, FLOOR, UPLOAD, index)
+        await storage.put(page, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    proxy.requests.clear()
+
+    await storage.delete_prefix(keys.project_prefix(PROJECT))
+
+    assert [method for method, _ in proxy.requests].count("DELETE") == 0
+    assert [path for method, path in proxy.requests if method == "POST" and "delete" in path] != []
+    assert len([method for method, path in proxy.requests if method == "POST"]) == 1
+    assert [info async for info in storage.list_prefix(keys.project_prefix(PROJECT))] == []
+
+
+async def test_delete_prefix_reports_objects_it_could_not_delete(proxied: tuple[S3Storage, FaultProxy]) -> None:
+    """Lỗi từng object trong `DeleteResult` (200) không bị nuốt: dọn rác phải biết mình dọn sót."""
+    storage, proxy = proxied
+    await storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    proxy.faults.append(Fault("POST", 200, delete_error_xml(KEY, "AccessDenied"), query="delete"))
+
+    with pytest.raises(RuntimeError, match=rf"1 object .*{re.escape(KEY)}: AccessDenied"):
+        await storage.delete_prefix(keys.project_prefix(PROJECT))
