@@ -21,9 +21,16 @@ from packages.core.settings import CoreSettings
 ORIGIN_HEADER: Final = "origin"
 
 
-def _origin_of(url: str) -> tuple[str, str]:
-    """(scheme, host:port) — đơn vị để so origin, bỏ đường dẫn."""
-    parts = urlsplit(url)
+def _origin_of(url: str) -> tuple[str, str] | None:
+    """(scheme, host:port) — đơn vị để so origin, bỏ đường dẫn; chuỗi không phân tích được → `None`.
+
+    `Origin` là header **client** gửi: `urlsplit("http://[")` ném `ValueError`, và để lỗi đó
+    lọt ra là biến một request sai dạng thành 500 `INTERNAL` thay vì 403 (SEC-05, R-17).
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
     return parts.scheme, parts.netloc
 
 
@@ -37,7 +44,10 @@ def _settings(request: Request) -> CoreSettings:
 def _matches(request: Request) -> bool:
     """Có `Origin` và cùng origin với `PUBLIC_BASE_URL` không."""
     origin = request.headers.get(ORIGIN_HEADER)
-    return origin is not None and _origin_of(origin) == _origin_of(_settings(request).public_base_url)
+    if origin is None:
+        return False
+    given = _origin_of(origin)
+    return given is not None and given == _origin_of(_settings(request).public_base_url)
 
 
 def require_origin(request: Request) -> None:

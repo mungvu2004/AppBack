@@ -17,6 +17,7 @@ from apps.api.core.idempotency import (
     NO_STORE_STATUSES,
     Claim,
     check_key,
+    discard,
     request_digest,
     storable,
 )
@@ -79,6 +80,7 @@ async def _token_changed(maker: async_sessionmaker[AsyncSession], previous: UUID
 
 
 async def _count(maker: async_sessionmaker[AsyncSession]) -> int:
+    """Số dòng idempotency còn lại."""
     async with maker() as session:
         return int((await session.execute(select(func.count()).select_from(IdempotencyRecord))).scalar_one())
 
@@ -97,6 +99,7 @@ def test_check_key_rejects_short_key() -> None:
 
 
 def test_check_key_accepts_pattern() -> None:
+    """Khoá đúng mẫu `^[A-Za-z0-9_-]{8,128}$` được nhận nguyên vẹn."""
     assert check_key("A-b_0123456789") == "A-b_0123456789"
 
 
@@ -121,6 +124,7 @@ def test_storable_is_false_for_unstorable_status(status: int) -> None:
 
 @pytest.mark.parametrize("status", [200, 204, 409, 422])
 def test_storable_is_true_for_stored_status(status: int) -> None:
+    """2xx, 409, 422 là kết quả thật của handler: lưu để lượt lặp trả lại."""
     assert storable(Response(status_code=status)) is True
 
 
@@ -316,3 +320,24 @@ def test_claim_is_frozen() -> None:
     claim = Claim(record_id=1, token=uuid4())
     with pytest.raises(AttributeError):
         claim.record_id = 2  # type: ignore[misc]  # kiểm đúng tính bất biến của dataclass frozen
+
+
+def test_request_digest_fields_cannot_bleed_into_each_other() -> None:
+    """`|` trong đường thật không được làm hai request khác nhau trùng hash (tiền tố độ dài)."""
+    assert request_digest("POST", "/api/x|", "", b"") != request_digest("POST", "/api/x", "|", b"")
+    assert request_digest("POST", "/api/x", "", b"a") != request_digest("POST", "/api/xa", "", b"")
+
+
+async def test_discard_never_deletes_a_completed_record(
+    sample_client: httpx.AsyncClient, sample_app: FastAPI, fake_principal: Principal
+) -> None:
+    """Lượt bị huỷ **sau** commit vẫn gọi `discard`: dòng `completed` phải còn, không thì lượt lặp chạy lại."""
+    maker = sample_app.state.sessionmaker
+    response = await sample_client.post("/api/sample/items", json={"name": "a"}, headers=_headers(fake_principal))
+    assert response.status_code == 200
+    async with maker() as session:
+        record_id, token = (await session.execute(select(IdempotencyRecord.id, IdempotencyRecord.claim_token))).one()
+
+    await discard(maker, Claim(record_id=int(record_id), token=token))
+
+    assert [row[0] for row in await _records(maker)] == [STATE_COMPLETED]

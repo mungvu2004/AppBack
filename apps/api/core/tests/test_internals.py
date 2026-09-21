@@ -78,12 +78,15 @@ async def test_middleware_passes_through_non_http_scope(middleware: Any) -> None
     seen: list[Scope] = []
 
     async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        """Lớp trong giả: ghi lại scope nhận được."""
         seen.append(scope)
 
     async def receive() -> Message:
+        """Thông điệp lifespan đầu tiên."""
         return {"type": "lifespan.startup"}
 
-    async def send(message: Message) -> None: ...
+    async def send(message: Message) -> None:
+        """Bỏ qua mọi thông điệp gửi đi."""
 
     await middleware(inner)({"type": "lifespan"}, receive, send)
     assert [scope["type"] for scope in seen] == ["lifespan"]
@@ -93,15 +96,18 @@ async def test_final_error_reraises_after_response_started() -> None:
     """Đã gửi `http.response.start` thì không dựng được response khác — phải ném tiếp."""
 
     async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        """Gửi đầu response rồi mới ném — lúc này không dựng được response khác nữa."""
         await send({"type": "http.response.start", "status": 200, "headers": []})
         raise RuntimeError("hỏng giữa chừng")
 
     sent: list[Message] = []
 
     async def send(message: Message) -> None:
+        """Ghi lại thông điệp đã gửi."""
         sent.append(message)
 
     async def receive() -> Message:
+        """Thân rỗng."""
         return {"type": "http.request", "body": b""}
 
     with pytest.raises(RuntimeError, match="giữa chừng"):
@@ -115,6 +121,7 @@ async def test_final_error_reraises_after_response_started() -> None:
 
 
 async def test_json_body_of_empty_body() -> None:
+    """Không có thân thì guard không có gì để so."""
     assert await _json_body(_request(b"")) is None
 
 
@@ -147,6 +154,7 @@ def test_validation_error_drops_field_outside_the_wire_pattern() -> None:
 
 
 def test_validation_error_without_any_error_keeps_count() -> None:
+    """Danh sách lỗi rỗng vẫn ra thân W7 hợp lệ với `count = 0`."""
     body = json.loads(bytes(validation_error(RequestValidationError([]), "rid-12345678").body))
     assert body == {"code": "VALIDATION", "requestId": "rid-12345678", "count": 0}
 
@@ -207,6 +215,7 @@ async def test_failed_commit_rolls_back(
 
 
 def _count_stmt() -> Any:
+    """Câu đếm dòng idempotency."""
     from sqlalchemy import func, select
 
     return select(func.count()).select_from(IdempotencyRecord)
@@ -256,6 +265,8 @@ def test_optional_fields_stop_at_self_reference() -> None:
     """Model tự tham chiếu không làm hàm dò đệ quy vô hạn."""
 
     class Node(BaseModel):
+        """Model tự tham chiếu."""
+
         name: str
         child: "Node | None" = None
 
@@ -264,16 +275,23 @@ def test_optional_fields_stop_at_self_reference() -> None:
 
 
 def test_optional_fields_found_only_in_a_nested_model() -> None:
+    """Trường tuỳ chọn ở model lồng vẫn làm C17 áp dụng."""
+
     class Inner(BaseModel):
+        """Model lồng có trường tuỳ chọn."""
+
         note: str | None = None
 
     class Outer(BaseModel):
+        """Model ngoài chỉ có trường bắt buộc."""
+
         inner: Inner
 
     assert openapi_module._has_optional_fields(Outer, frozenset()) is True
 
 
 def test_response_flags_without_response_model() -> None:
+    """Route không khai `response_model` vẫn có metadata hợp lệ."""
     assert isinstance(openapi_module.operations()[0].returns_list, bool)
 
 
@@ -298,6 +316,7 @@ async def test_purge_stops_at_the_batch_ceiling(
 
 
 def _expired(now: datetime, key: str) -> IdempotencyRecord:
+    """Một dòng đã quá hạn xoá."""
     return IdempotencyRecord(
         user_id=f"usr_{ULID}",
         method="POST",
@@ -312,6 +331,7 @@ def _expired(now: datetime, key: str) -> IdempotencyRecord:
 
 
 async def _remaining(maker: async_sessionmaker[AsyncSession]) -> int:
+    """Số dòng idempotency còn trong bảng."""
     async with maker() as session:
         return int((await session.execute(_count_stmt())).scalar_one())
 

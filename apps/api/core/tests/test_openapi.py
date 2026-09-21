@@ -19,6 +19,7 @@ REAL_OPS: Final = ("files_read_object", "health_live", "health_ready")
 
 
 def _by_op(app: FastAPI) -> dict[str, Operation]:
+    """`Operation` của app theo `operationId`."""
     return {operation.op: operation for operation in operations(app)}
 
 
@@ -51,6 +52,7 @@ def test_operation_rows_have_every_field() -> None:
 
 
 def test_protected_post_uses_idempotency(sample_app: FastAPI) -> None:
+    """POST được bảo vệ, không versioned → idempotency `auto`, trần 1 MiB."""
     ops = _by_op(sample_app)
     assert ops["sample_create_item"].protected is True
     assert ops["sample_create_item"].idempotency == "auto"
@@ -66,6 +68,7 @@ def test_versioned_route_has_no_idempotency(sample_app: FastAPI) -> None:
 
 
 def test_big_body_route_has_its_own_limit(sample_app: FastAPI) -> None:
+    """Trần thân khai qua `route_options` ra đúng trong metadata."""
     operation = _by_op(sample_app)["sample_write_big"]
     assert operation.body_limit == BIG_BODY_LIMIT
     assert operation.idempotency == "off"
@@ -100,6 +103,7 @@ def test_permission_key_comes_from_dependency(sample_app: FastAPI) -> None:
 
 
 def test_public_route_is_not_protected(sample_app: FastAPI) -> None:
+    """Route của `public_router` báo `protected=False`."""
     assert _by_op(sample_app)["sample_public_read"].protected is False
 
 
@@ -111,6 +115,7 @@ def test_document_is_sorted_and_ends_with_newline() -> None:
 
 
 def test_document_of_sample_app_has_paths(fake_clock: FakeClock, storage_env: None) -> None:
+    """`document()` xuất được schema của một app bất kỳ, không riêng app thật."""
     app = build_sample_app(fake_clock, routers=SAMPLE_ROUTERS)
     assert isinstance(app.state.token_verifier, FakeTokenVerifier)
     assert "/api/sample/items" in json.loads(document(app))["paths"]
@@ -125,6 +130,7 @@ def test_cli_writes_and_compares(tmp_path: Path) -> None:
 
 
 def test_cli_fails_on_drift(tmp_path: Path) -> None:
+    """Bản đã commit lệch bản vừa xuất → thoát 1."""
     out = tmp_path / "openapi.json"
     expected = tmp_path / "da-commit.json"
     expected.write_text('{"khac": true}\n', encoding="utf-8")
@@ -132,10 +138,12 @@ def test_cli_fails_on_drift(tmp_path: Path) -> None:
 
 
 def test_cli_fails_when_compare_file_missing(tmp_path: Path) -> None:
+    """Thiếu file để so cũng là hỏng, không phải đạt."""
     out = tmp_path / "openapi.json"
     assert main(["--out", str(out), "--compare", str(tmp_path / "khong-co.json")]) == 1
 
 
 def test_cli_requires_out() -> None:
+    """Thiếu `--out` là lỗi dùng CLI."""
     with pytest.raises(SystemExit):
         main([])

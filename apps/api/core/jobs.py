@@ -44,7 +44,13 @@ async def run_purge_expired_idempotency(
             # `Result` chung không khai `rowcount`; lệnh DML luôn trả `CursorResult`.
             result = cast(
                 "CursorResult[Any]",
-                await session.execute(delete(IdempotencyRecord).where(IdempotencyRecord.id.in_(doomed))),
+                # Kiểm lại hạn trong chính `DELETE`: giữa lượt chọn và lượt xoá, `begin` có thể đã
+                # chiếm lại dòng (gia hạn `expires_at`) — xoá nó là làm lượt đang chạy nhận 503.
+                await session.execute(
+                    delete(IdempotencyRecord).where(
+                        IdempotencyRecord.id.in_(doomed), IdempotencyRecord.expires_at <= now
+                    )
+                ),
             )
             await session.commit()
             removed += result.rowcount

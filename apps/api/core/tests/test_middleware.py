@@ -28,10 +28,12 @@ CHUNK: Final = b"y" * 65536
 
 
 def _headers(principal: Principal) -> dict[str, str]:
+    """Header `Authorization` của người gọi mẫu."""
     return auth_headers(principal)
 
 
 def _scope(headers: list[tuple[bytes, bytes]]) -> dict[str, object]:
+    """Scope ASGI tối thiểu chỉ có header."""
     return {"type": "http", "headers": headers}
 
 
@@ -41,6 +43,7 @@ def test_new_request_id_matches_pattern() -> None:
 
 
 def test_incoming_request_id_keeps_valid_header() -> None:
+    """Id đúng mẫu W6 được giữ nguyên để nối log hai phía FE và BE."""
     assert incoming_request_id(_scope([(b"x-request-id", GIVEN_ID.encode())])) == GIVEN_ID
 
 
@@ -51,6 +54,7 @@ def test_incoming_request_id_replaces_bad_header() -> None:
 
 
 def test_incoming_request_id_when_missing() -> None:
+    """Không có header thì vẫn luôn có id."""
     assert len(incoming_request_id(_scope([]))) >= 8
 
 
@@ -114,6 +118,7 @@ async def test_streamed_body_over_limit_is_413(sample_client: httpx.AsyncClient,
     """Luồng không khai độ dài → đếm byte, vượt trần thì cũng 413."""
 
     async def body() -> AsyncIterator[bytes]:
+        """Thân luồng không khai độ dài, lớn hơn trần."""
         for _ in range(DEFAULT_BODY_LIMIT // len(CHUNK) + 2):
             yield CHUNK
 

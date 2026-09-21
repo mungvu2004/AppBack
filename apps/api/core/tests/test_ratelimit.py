@@ -23,6 +23,7 @@ IPV6_OTHER: Final = "2001:db8:1:3::1"
 
 
 def test_ipv4_bucket_is_the_address() -> None:
+    """IPv4 đếm theo đúng địa chỉ."""
     assert ip_bucket("10.1.2.3") == "10.1.2.3"
 
 
@@ -33,6 +34,7 @@ def test_ipv6_is_grouped_by_64() -> None:
 
 
 def test_non_ip_string_is_kept() -> None:
+    """`request.client.host` không phải IP (socket unix) vẫn cho một khoá dùng được."""
     assert ip_bucket("khong-phai-ip") == "khong-phai-ip"
 
 
@@ -43,6 +45,7 @@ def test_retry_after_is_clamped(ttl: int, expected: int) -> None:
 
 
 def test_rate_limit_rejects_bad_quota() -> None:
+    """Hạn mức 0 là khai route sai, hỏng lúc nạp module."""
     with pytest.raises(ValueError, match="phải"):
         rate_limit("x", limit=0, window_s=60, key=key_ip, store="cache", on_error="closed")
 

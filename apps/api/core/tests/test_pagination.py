@@ -42,6 +42,7 @@ def test_filters_order_does_not_matter(storage_env: None) -> None:
     ids=["thiếu dấu chấm", "base64 rác", "rỗng"],
 )
 def test_broken_cursor_is_422(storage_env: None, broken: str) -> None:
+    """Cursor không giải được → 422, không lộ lý do."""
     with pytest.raises(AppError) as caught:
         decode_cursor(broken, OP, FILTERS)
     assert caught.value.code.code == "CURSOR_INVALID"
@@ -64,12 +65,14 @@ def test_cursor_of_other_op_is_422(storage_env: None) -> None:
 
 
 def test_cursor_of_other_filters_is_422(storage_env: None) -> None:
+    """Đổi bộ lọc giữa hai trang là phải đọc lại từ đầu."""
     cursor = encode_cursor(OP, FILTERS, POSITION)
     with pytest.raises(AppError, match="CURSOR_INVALID"):
         decode_cursor(cursor, OP, {"projectId": "prj_2"})
 
 
 def test_page_params_rejects_bad_max_limit() -> None:
+    """Trần < 1 là khai route sai, hỏng lúc nạp module."""
     with pytest.raises(ValueError, match="max_limit"):
         page_params(0)
 

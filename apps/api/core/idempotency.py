@@ -56,6 +56,7 @@ NO_STORE_STATUSES: Final = frozenset({401, 408, 429})
 DEFAULT_CONTENT_TYPE: Final = "application/octet-stream"
 
 _KEY_RE: Final = re.compile(KEY_PATTERN)
+_LENGTH_BYTES: Final = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,12 +88,15 @@ def request_digest(method: str, path: str, query: str, body: bytes) -> str:
 
     Dùng **đường thật** chứ không phải khuôn đường: cùng một khoá gửi sang dự án
     khác là một request khác, và phải nhận 422 `IDEMPOTENCY_KEY_REUSED`.
+
+    Mỗi phần mang **tiền tố độ dài** chứ không nối bằng `|`: đường thật đã giải mã có thể
+    chứa `|`, nên phép nối trần cho hai request khác nhau cùng một hash.
     """
     parts = sorted(query.split("&")) if query else []
     digest = hashlib.sha256()
-    digest.update("|".join([method.upper(), path, "&".join(parts)]).encode("utf-8"))
-    digest.update(b"|")
-    digest.update(body)
+    for field in (method.upper().encode("utf-8"), path.encode("utf-8"), "&".join(parts).encode("utf-8"), body):
+        digest.update(len(field).to_bytes(_LENGTH_BYTES, "big"))
+        digest.update(field)
     return digest.hexdigest()
 
 
@@ -253,12 +257,18 @@ async def complete(session: AsyncSession, claim: Claim, response: Response, now:
 
 
 async def discard(sessionmaker: async_sessionmaker[AsyncSession], claim: Claim) -> None:
-    """Xoá dòng của lượt hỏng bằng giao dịch riêng (giao dịch nghiệp vụ đã rollback)."""
+    """Xoá dòng của lượt hỏng bằng giao dịch riêng (giao dịch nghiệp vụ đã rollback).
+
+    Chỉ xoá dòng còn `in_progress`: lượt bị huỷ **sau** khi đã commit (tắt tiến trình lúc
+    deploy, client ngắt giữa `after_commit_idle`) cũng đi qua đây, và xoá mất dòng
+    `completed` là để lượt lặp chạy lại handler — nhân đôi tác dụng ngoài (CON-02).
+    """
     async with sessionmaker() as session:
         await session.execute(
             delete(IdempotencyRecord).where(
                 IdempotencyRecord.id == claim.record_id,
                 IdempotencyRecord.claim_token == claim.token,
+                IdempotencyRecord.state == STATE_IN_PROGRESS,
             )
         )
         await session.commit()

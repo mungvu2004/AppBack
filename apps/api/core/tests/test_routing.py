@@ -14,7 +14,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.core.auth import Principal
-from apps.api.core.routing import DEFAULT_BODY_LIMIT, AppRoute, PublicRoute, options_of, route_options
+from apps.api.core.routing import (
+    DEFAULT_BODY_LIMIT,
+    AppRoute,
+    PublicRoute,
+    options_of,
+    protected_router,
+    route_options,
+)
 from apps.api.core.tests.sample import (
     after_commit_marks,
     build_sample_app,
@@ -71,6 +78,7 @@ async def test_auth_runs_before_body_is_read(sample_app: FastAPI) -> None:
     sent = 0
 
     async def body() -> AsyncIterator[bytes]:
+        """Thân 64 MiB đếm số byte thực sự bị app kéo đi."""
         nonlocal sent
         for _ in range(HUGE_CHUNKS):
             sent += len(CHUNK)
@@ -200,6 +208,7 @@ def test_route_options_rejects_big_body_with_idempotency() -> None:
 
 
 def test_route_options_rejects_zero_body_limit() -> None:
+    """Trần 0 byte là khai route sai."""
     with pytest.raises(ValueError, match="≥ 1 byte"):
         route_options(body_limit=0)
 
@@ -207,7 +216,8 @@ def test_route_options_rejects_zero_body_limit() -> None:
 def test_options_of_defaults() -> None:
     """Endpoint không khai gì thì nhận mặc định của hiến chương."""
 
-    async def endpoint() -> None: ...
+    async def endpoint() -> None:
+        """Endpoint không khai `route_options`."""
 
     assert options_of(endpoint).body_limit == DEFAULT_BODY_LIMIT
     assert options_of(endpoint).idempotency == "auto"
@@ -261,3 +271,26 @@ async def test_response_is_not_blocked_by_a_dead_broker(
     _log.info("dead_broker_elapsed %.3fs", elapsed)  # BE-00 §12: số đo in bằng logging
     assert (blocked.status_code, other.status_code) == (200, 200)
     assert elapsed < DEAD_BROKER_CEILING_S, f"mất {elapsed:.3f}s, trần {DEAD_BROKER_CEILING_S}s"
+
+
+def test_multi_method_route_is_rejected_at_declaration() -> None:
+    """Một route nhiều phương thức là một `operationId` cho nhiều thao tác: hỏng lúc khai (LOG-02)."""
+    router = protected_router()
+
+    async def endpoint() -> None:
+        """Không bao giờ chạy."""
+
+    with pytest.raises(ValueError, match="đúng một phương thức"):
+        router.add_api_route("/hai-method", endpoint, methods=["GET", "POST"], name="hai_method")
+
+
+def test_versioned_read_route_is_rejected_at_declaration() -> None:
+    """`versioned=True` trên GET là 428 cho mọi lượt đọc: hỏng lúc khai, không đợi tới lúc chạy."""
+    router = protected_router()
+
+    @route_options(versioned=True)
+    async def endpoint() -> None:
+        """Không bao giờ chạy."""
+
+    with pytest.raises(ValueError, match="versioned=True"):
+        router.add_api_route("/doc-co-version", endpoint, methods=["GET"], name="doc_co_version")

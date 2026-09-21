@@ -23,6 +23,7 @@ TABLE = "idempotency_records"
 
 
 def upgrade() -> None:
+    """Expand: bảng mới, không đụng bảng nào đang có (BE-00 §6.1)."""
     op.create_table(
         TABLE,
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -55,5 +56,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Bỏ bảng; bản ghi idempotency sống 24 h nên mất chúng chỉ mất khả năng trả lại."""
     op.drop_index(f"ix_{TABLE}_expires_at", table_name=TABLE)
     op.drop_table(TABLE)

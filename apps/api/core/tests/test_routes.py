@@ -35,15 +35,18 @@ SCAN_PACKAGES: Final = ("packages", "apps.api", "apps.worker")
 
 @pytest.fixture(scope="module")
 def bind_rows() -> list[BindRow]:
+    """Các dòng hợp đồng của BE-BIND."""
     return load_bind_rows(BIND_PATH)
 
 
 @pytest.fixture(scope="module")
 def real_operations() -> list[Operation]:
+    """Metadata thao tác của app thật."""
     return operations()
 
 
 def test_method_and_path_are_unique(real_operations: list[Operation]) -> None:
+    """Hai route cùng method và đường thì một trong hai không bao giờ được gọi."""
     pairs = [(operation.method, operation.path) for operation in real_operations]
     assert len(pairs) == len(set(pairs))
 

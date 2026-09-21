@@ -31,6 +31,7 @@ CHANGED_AT: Final = datetime(2026, 1, 2, 3, 4, 5, 678000, tzinfo=UTC)
 
 
 def _change(value: object) -> RemoteFieldChange:
+    """Một `RemoteFieldChange` hợp lệ mang giá trị tuỳ ý."""
     return RemoteFieldChange(
         entity_id="W-ABCDEFGHIJ",
         entity_type="wall",
@@ -53,11 +54,13 @@ def test_field_of_converts_snake_case() -> None:
 
 
 def test_field_of_drops_root_only() -> None:
+    """Loc chỉ có đoạn gốc thì không có `field` nào để trả."""
     assert field_of(("body",)) is None
     assert field_of(()) is None
 
 
 def test_field_of_stops_at_validator_name() -> None:
+    """Tên validator của Pydantic không phải tên trường."""
     assert field_of(("body", "items", "function-after[check()]")) == "items"
 
 
@@ -77,6 +80,7 @@ def test_error_payload_of_version_conflict_drops_missing_value() -> None:
 
 
 def test_error_payload_keeps_real_value() -> None:
+    """Giá trị thật (khác `MISSING`) ra dây trong khoá `value`."""
     payload = error_payload(VersionConflictError(current_version=1, remote_changes=[_change(120)]), RID)
     assert payload["remoteChanges"][0]["value"] == 120  # type: ignore[index]  # như trên
 
@@ -90,11 +94,13 @@ def test_error_response_falls_back_when_body_is_unserializable() -> None:
 
 
 def test_error_response_sets_retry_after() -> None:
+    """503 mang `Retry-After` theo đúng lỗi (W9)."""
     response = error_response(DEPENDENCY_UNAVAILABLE.error(retry_after=5), RID)
     assert response.headers["Retry-After"] == "5"
 
 
 def test_simple_error_has_no_retry_after() -> None:
+    """413 không đòi client thử lại, nên không có `Retry-After`."""
     response = simple_error(PAYLOAD_TOO_LARGE, RID)
     assert response.status_code == 413
     assert "Retry-After" not in response.headers
@@ -128,20 +134,24 @@ def test_translate_unknown_maps_db_failure() -> None:
 
 
 def test_translate_unknown_maps_redis_failure() -> None:
+    """Redis mất kết nối → 503, không phải 500 (C13)."""
     from redis.exceptions import ConnectionError as RedisConnectionError
 
     assert translate_unknown(RedisConnectionError("đứt")).code.code == "DEPENDENCY_UNAVAILABLE"
 
 
 def test_translate_unknown_is_internal_for_strange_error() -> None:
+    """Lỗi lạ → 500 `INTERNAL`; stack chỉ vào log."""
     assert translate_unknown(ValueError("lạ")).code.code == "INTERNAL"
 
 
 def test_request_id_outside_request_is_empty() -> None:
+    """Ngoài vòng đời request không có id nào để gắn."""
     assert request_id() == ""
 
 
 def test_app_error_keeps_params() -> None:
+    """Tham số của lỗi giữ nguyên khoá dây."""
     assert NOT_FOUND.error(resource="project").wire_params() == {"resource": "project"}
 
 
@@ -153,6 +163,7 @@ async def test_method_not_allowed_becomes_404(sample_client: httpx.AsyncClient) 
 
 
 async def test_unknown_path_is_404(sample_client: httpx.AsyncClient) -> None:
+    """Đường không có route → 404 `NOT_FOUND` theo thân W7."""
     response = await sample_client.get("/api/khong-co-dau")
     assert response.status_code == 404
     assert response.json()["code"] == "NOT_FOUND"

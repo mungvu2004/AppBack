@@ -363,6 +363,7 @@ def lifespan_router(name: str, log: list[str]) -> APIRouter:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        """Ghi dấu mở/đóng để test thấy `lifespan` của từng router được gộp vào app."""
         log.append(f"{name}:mở")
         yield
         log.append(f"{name}:đóng")
@@ -371,6 +372,7 @@ def lifespan_router(name: str, log: list[str]) -> APIRouter:
 
     @made.get("/ping", response_model=ItemOut, name=f"{name}_ping")
     async def ping() -> ItemOut:
+        """Route duy nhất của router mẫu — `check_routers` đòi mỗi router góp ít nhất một route."""
         return ItemOut(name=name)
 
     return made

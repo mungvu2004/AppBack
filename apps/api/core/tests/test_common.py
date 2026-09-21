@@ -61,10 +61,12 @@ _PARAM_RE: Final = re.compile(r"\{([^}]+)\}")
 
 
 def _protected() -> list[Operation]:
+    """Thao tác được bảo vệ của app thật — tập tham số của case chung."""
     return [operation for operation in operations() if operation.protected]
 
 
 def _idempotent() -> list[Operation]:
+    """Thao tác được bảo vệ có idempotency — tập tham số của C10, C22."""
     return [operation for operation in _protected() if operation.idempotency != "off"]
 
 
@@ -72,6 +74,7 @@ def _url(operation: Operation) -> str:
     """Đường thật của một thao tác; tham số lạ làm test hỏng và **nêu tên** nó."""
 
     def value(match: re.Match[str]) -> str:
+        """Giá trị mẫu của một tham số đường; tham số lạ làm test hỏng."""
         name = match.group(1)
         if name not in PATH_VALUES:
             raise AssertionError(f"{operation.op}: chưa có giá trị mẫu cho tham số đường {name!r}")
@@ -81,6 +84,7 @@ def _url(operation: Operation) -> str:
 
 
 async def _send(client: httpx.AsyncClient, operation: Operation, **kwargs: object) -> httpx.Response:
+    """Gửi đúng method của thao tác tới đường thật của nó."""
     return await client.request(operation.method, _url(operation), **kwargs)  # type: ignore[arg-type]  # kwargs của httpx
 
 
@@ -94,6 +98,7 @@ class _BrokenVerifier:
     """C13: verifier ném đúng lỗi đã dịch từ Postgres mất kết nối."""
 
     async def verify(self, token: str, request: object) -> Principal:
+        """Ném 503 đã dịch, như khi Postgres mất kết nối."""
         translated = translate_db_error(OperationalError("SELECT 1", {}, Exception("mất kết nối")))
         raise translated if translated is not None else DEPENDENCY_UNAVAILABLE.error(retry_after=5)
 
@@ -102,10 +107,12 @@ class _RevokedVerifier:
     """C25: phiên đã thu hồi → 401 `SESSION_REVOKED` (W10, K30)."""
 
     async def verify(self, token: str, request: object) -> Principal:
+        """Ném 401 `SESSION_REVOKED`, như khi phiên đã bị thu hồi."""
         raise SESSION_REVOKED.error()
 
 
 def _app_with(verifier: TokenVerifier, clock: FakeClock) -> FastAPI:
+    """App thật với verifier tiêm vào — để dựng C13, C25."""
     return create_app(get_core_settings(), token_verifier=verifier, clock=clock)
 
 

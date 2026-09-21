@@ -39,13 +39,18 @@ def test_bare_datetime_is_rejected_at_class_declaration() -> None:
     with pytest.raises(TypeError, match="WireDatetime"):
 
         class Bad(WireModel):
+            """Model sai: `datetime` trần trong list."""
+
             moments: list[datetime | None]
 
 
 def test_bare_datetime_in_dict_is_rejected() -> None:
+    """`datetime` trần nằm trong giá trị dict cũng bị bắt."""
     with pytest.raises(TypeError, match="WireDatetime"):
 
         class BadDict(WireModel):
+            """Model sai: `datetime` trần trong dict."""
+
             by_name: dict[str, datetime]
 
 
@@ -53,6 +58,8 @@ def test_wire_datetime_is_accepted_at_any_depth() -> None:
     """Có serializer thì mọi độ sâu đều hợp lệ."""
 
     class Good(WireModel):
+        """Model hợp lệ: mọi `datetime` đều là `WireDatetime`."""
+
         moments: list[WireDatetime | None]
 
     assert Good(moments=[MOMENT, None]).model_dump(by_alias=True, mode="json")["moments"][0].endswith("Z")
@@ -62,9 +69,13 @@ def test_nested_wire_model_checks_itself() -> None:
     """Model lồng tự kiểm khi chính nó được khai, nên model ngoài không phải đi sâu."""
 
     class Inner(WireModel):
+        """Model lồng tự kiểm `datetime` của nó."""
+
         at: WireDatetime
 
     class Outer(WireModel):
+        """Model ngoài chứa model lồng."""
+
         inner: Inner
 
     assert Outer(inner=Inner(at=MOMENT)).model_dump(by_alias=True, mode="json")["inner"]["at"].endswith(".123Z")
@@ -97,6 +108,7 @@ def test_versioned_builds_base_version_body() -> None:
 
 
 def test_versioned_rejects_negative_base_version() -> None:
+    """`baseVersion` âm hỏng ở Pydantic (422)."""
     with pytest.raises(ValueError, match="greater than or equal to 0"):
         versioned(ItemBody).model_validate({"baseVersion": -1, "body": {"name": "a"}})
 
@@ -105,13 +117,19 @@ def test_keep_null_annotation_is_usable_on_plain_model() -> None:
     """`KeepNull` chỉ là `Annotated`; nó không ràng buộc model phải là `WireModel`."""
 
     class Plain(BaseModel):
+        """Model thường dùng `KeepNull`."""
+
         value: KeepNull[int | None] = None
 
     assert Plain().model_dump() == {"value": None}
 
 
 def test_nfc_str_is_plain_str_annotation() -> None:
+    """`NfcStr` dùng được như `str` trong model request."""
+
     class Request(WireRequest):
+        """Model request có `NfcStr`."""
+
         name: NfcStr
 
     assert Request(name="a").name == "a"
@@ -129,6 +147,7 @@ async def test_optional_field_is_absent_on_the_wire(
 async def test_datetime_on_the_wire_ends_with_three_millis(
     sample_client: httpx.AsyncClient, fake_principal: Principal, fake_clock: FakeClock
 ) -> None:
+    """Ngày giờ qua HTTP thật cũng đúng `.sssZ`."""
     fake_clock.set(MOMENT)
     response = await sample_client.get("/api/sample/now", headers=auth_headers(fake_principal))
     assert response.json()["seenAt"] == "2026-03-04T05:06:07.123Z"

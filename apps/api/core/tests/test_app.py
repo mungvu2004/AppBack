@@ -65,6 +65,7 @@ def test_production_without_auth_module_refuses_to_start() -> None:
 
 
 def test_fake_verifier_only_in_test_env() -> None:
+    """Verifier giả lọt ra ngoài `test` là ai cũng tự cấp được token."""
     with pytest.raises(RuntimeError, match="APP_ENV=test"):
         create_app(_settings("dev"), token_verifier=FakeTokenVerifier(), routers=[])
 
@@ -78,6 +79,7 @@ def test_given_verifier_wins(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_auth_module_is_used_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Có `apps.api.auth.verifier` thì dùng nó, kể cả ở production."""
     built = DenyAllTokenVerifier()
     _verifier_module(monkeypatch, lambda _app: built)
     app = create_app(_settings("production"), routers=[])
@@ -88,6 +90,7 @@ def test_auth_module_import_error_propagates(monkeypatch: pytest.MonkeyPatch) ->
     """Module có thật mà nhập hỏng thì **ném ra**, không lùi về `DenyAll`."""
 
     def explode(name: str, *args: object, **kwargs: object) -> ModuleType:
+        """Giả lập nhập module auth hỏng."""
         raise ImportError(f"hong: {name}")
 
     monkeypatch.setattr(app_module, "_verifier_module_exists", lambda: True)
@@ -102,21 +105,25 @@ def test_verifier_module_exists_is_false_today() -> None:
 
 
 def test_injected_clock_only_in_test_env(fake_clock: FakeClock) -> None:
+    """Đồng hồ giả ngoài `test` là tua được hạn token và hạn ký URL."""
     with pytest.raises(RuntimeError, match="APP_ENV=test"):
         create_app(_settings("dev"), clock=fake_clock, routers=[])
 
 
 def test_system_clock_is_allowed_everywhere() -> None:
+    """`SystemClock` truyền tường minh hợp lệ ở mọi môi trường."""
     clock = SystemClock()
     assert create_app(_settings("dev"), clock=clock, routers=[]).state.clock is clock
 
 
 def test_default_clock_is_system_clock() -> None:
+    """Không truyền đồng hồ thì app dùng giờ thật."""
     assert isinstance(create_app(_settings("dev"), routers=[]).state.clock, SystemClock)
 
 
 @pytest.mark.parametrize(("env", "expected"), [("dev", OPENAPI_URL), ("test", OPENAPI_URL), ("ci", OPENAPI_URL)])
 def test_openapi_url_in_safe_envs(env: str, expected: str) -> None:
+    """`dev`, `test`, `ci` phơi `/api/openapi.json` để công cụ đọc được hợp đồng."""
     assert create_app(_settings(env), routers=[]).openapi_url == expected
 
 
@@ -133,6 +140,7 @@ def test_discover_routers_finds_real_modules() -> None:
 
 
 def test_discover_routers_rejects_wrong_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`ROUTERS` khai sai kiểu → hỏng lúc khởi động, không âm thầm bỏ module."""
     monkeypatch.setattr(extensions, "discover", lambda *_args: [("apps.api.x.router", "khong-phai-router")])
     with pytest.raises(RuntimeError, match="tuple"):
         discover_routers()
@@ -150,6 +158,7 @@ def test_check_routers_rejects_plain_api_route() -> None:
 
     @plain.get("/tran", name="tran")
     async def tran() -> ItemOut:
+        """Route dựng bằng `APIRoute` thường, không đi qua `AppRoute`."""
         return ItemOut(name="tran")
 
     with pytest.raises(RuntimeError, match="AppRoute"):
@@ -173,6 +182,7 @@ def test_schema_settings_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_schema_settings_prefers_real_env(storage_env: None) -> None:
+    """Môi trường đủ biến thì công cụ schema cũng đọc cấu hình thật."""
     assert schema_settings() is get_core_settings()
 
 

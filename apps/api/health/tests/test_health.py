@@ -121,6 +121,7 @@ def _broken_sessionmaker() -> object:
     """Sessionmaker luôn ném khi mở session — đủ để `probe` thấy phụ thuộc hỏng."""
 
     def broken() -> object:
+        """Sessionmaker luôn ném, như khi Postgres không nhận kết nối."""
         raise OSError("mất kết nối")
 
     return broken

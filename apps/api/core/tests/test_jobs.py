@@ -36,6 +36,7 @@ def _record(now: datetime, key: str, *, expires_at: datetime) -> IdempotencyReco
 
 
 async def _seed(maker: async_sessionmaker[AsyncSession], now: datetime, live: int, expired: int) -> None:
+    """Chèn `live` dòng còn hạn và `expired` dòng đã quá hạn."""
     async with maker() as session:
         for index in range(live):
             session.add(_record(now, f"con-han-{index:03d}", expires_at=now + timedelta(hours=1)))
@@ -45,6 +46,7 @@ async def _seed(maker: async_sessionmaker[AsyncSession], now: datetime, live: in
 
 
 async def _count(maker: async_sessionmaker[AsyncSession]) -> int:
+    """Số dòng idempotency còn lại."""
     async with maker() as session:
         return int((await session.execute(select(func.count()).select_from(IdempotencyRecord))).scalar_one())
 

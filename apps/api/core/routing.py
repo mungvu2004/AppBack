@@ -17,7 +17,6 @@ Chỉ **ngoại lệ** mới rollback. Response 4xx mà handler *trả về* (kh
 một lượt chạy thành công: nó đã ghi gì thì giữ nguyên (BE-00 §7).
 """
 
-import json
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Final, Literal
@@ -49,6 +48,8 @@ BASE_VERSION_KEY: Final = "baseVersion"
 AUTHORIZATION_HEADER: Final = "authorization"
 BEARER: Final = "bearer"
 OPTIONS_ATTR: Final = "__app_route_options__"
+
+WRITE_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 type Idempotency = Literal["auto", "off"]
 
@@ -96,14 +97,31 @@ def options_of(endpoint: Callable[..., Any]) -> RouteOptions:
 
 
 async def _json_body(request: Request) -> object:
-    """Thân đã giải JSON (FastAPI đã đọc và nhớ), hay `None` khi không có/không phải JSON."""
-    raw = await request.body()
-    if not raw:
+    """Thân đã giải JSON, hay `None` khi không có/không phải JSON.
+
+    Đi qua `request.json()` chứ không `json.loads` lại: Starlette nhớ kết quả giải trên
+    chính đối tượng request, và FastAPI đã giải thân JSON trước mọi dependency. Nhờ vậy
+    hai guard (W21, 428) trên cùng một thân 8 MiB không giải lại lần nào (PERF-04).
+    """
+    if not await request.body():
         return None
     try:
-        return json.loads(raw)
+        return await request.json()
     except ValueError:
         return None  # JSON hỏng đã thành 400 `MALFORMED_JSON` ở chỗ khác
+
+
+def _single_method(name: str, methods: set[str] | None) -> str:
+    """Phương thức duy nhất của route (không tính `HEAD` Starlette tự thêm cho GET).
+
+    Một route nhiều phương thức là **một** `operationId` cho nhiều thao tác: không khớp
+    được một dòng BE-BIND nào, và `Operation.method` chỉ báo được một trong số đó — nên
+    lượt POST của `GET|POST` mất idempotency và cổng case không đòi test cho nó (LOG-02).
+    """
+    real = sorted((methods or set()) - {"HEAD"})
+    if len(real) != 1:
+        raise ValueError(f"{name}: mỗi route đúng một phương thức (một operationId một thao tác), nhận {real}")
+    return real[0]
 
 
 async def _principal_of(request: Request) -> Principal:
@@ -176,7 +194,10 @@ class AppRoute(APIRoute):
         """Dựng route như FastAPI, rồi đọc `RouteOptions` và gắn guard của khung vào **cuối** cây dependency."""
         super().__init__(path, endpoint, **kwargs)
         self.options = options_of(endpoint)
-        self.wire_method = next(iter(sorted((self.methods or set()) - {"HEAD"})), "GET")
+        self.wire_method = _single_method(self.name, self.methods)
+        if self.options.versioned and self.wire_method not in WRITE_METHODS:
+            # Guard 428 đòi `baseVersion` trong thân: gắn lên GET là 428 cho **mọi** lượt đọc.
+            raise ValueError(f"{self.name}: versioned=True chỉ dùng cho phương thức ghi, không cho {self.wire_method}")
         self.uses_idempotency = (
             self.protected
             and self.options.idempotency != "off"

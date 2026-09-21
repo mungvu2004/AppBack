@@ -23,6 +23,7 @@ def _token_of(url: str) -> str:
 
 
 async def _put(app: FastAPI, key: str, data: bytes, content_type: str) -> None:
+    """Ghi một object qua kho của app thử."""
     await app.state.storage.put(key, data, content_type=content_type, max_bytes=len(data) + 1)
 
 
