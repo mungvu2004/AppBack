@@ -6,10 +6,12 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from redis.asyncio import Redis
+from starlette.requests import Request
 
 from apps.api.core.auth import Principal
 from apps.api.core.ratelimit import MAX_RETRY_AFTER_S, install, ip_bucket, key_ip, rate_limit, retry_after
 from apps.api.core.tests.sample import LIMITED_QUOTA, sample_app, sample_client
+from packages.core.errors import AppError
 from packages.core.ids import new_id
 from packages.testing.fixtures.api import auth_headers
 from packages.testing.fixtures.clock import FakeClock
@@ -48,6 +50,39 @@ def test_rate_limit_rejects_bad_quota() -> None:
     """Hạn mức 0 là khai route sai, hỏng lúc nạp module."""
     with pytest.raises(ValueError, match="phải"):
         rate_limit("x", limit=0, window_s=60, key=key_ip, store="cache", on_error="closed")
+
+
+def _request_from(app: FastAPI, ip: str) -> Request:
+    """Request tối thiểu mà một dependency hạn mức đọc: `app` (script đã nạp) và IP người gọi."""
+    return Request({"type": "http", "app": app, "client": (ip, 1), "headers": [], "method": "GET", "path": "/"})
+
+
+async def test_quota_can_be_read_at_request_time(sample_app: FastAPI, sample_client: httpx.AsyncClient) -> None:
+    """Hạn mức là hàm → đọc lại mỗi lượt (cấu hình đọc lười của module, NO-054): nâng giữa chừng có hiệu lực ngay."""
+    quota = {"limit": 1}
+    limiter = rate_limit(
+        "lazy_quota",
+        limit=lambda: quota["limit"],
+        window_s=lambda: 60,
+        key=key_ip,
+        store="cache",
+        on_error="closed",
+    )
+    request = _request_from(sample_app, "10.9.8.7")
+    await limiter(request)
+    with pytest.raises(AppError, match="RATE_LIMITED"):
+        await limiter(request)
+    quota["limit"] = 5
+    await limiter(request)
+
+
+async def test_lazy_quota_below_one_fails_at_request_time(
+    sample_app: FastAPI, sample_client: httpx.AsyncClient
+) -> None:
+    """Hàm hạn mức trả 0 là cấu hình sai: hỏng ngay lượt gọi, không âm thầm cho qua hay chặn hết."""
+    limiter = rate_limit("lazy_zero", limit=lambda: 0, window_s=60, key=key_ip, store="cache", on_error="open")
+    with pytest.raises(ValueError, match="phải"):
+        await limiter(_request_from(sample_app, "10.9.8.6"))
 
 
 async def test_quota_then_429(sample_client: httpx.AsyncClient, fake_principal: Principal) -> None:
