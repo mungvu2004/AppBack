@@ -21,7 +21,7 @@ import tomllib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from tools.charter import BindRow, load_bind_rows
 
@@ -296,6 +296,30 @@ _TEST_COMMON_RE = re.compile(r"^test_common__(?P<case>[A-Z]\d{2}[a-z]?)\[(?P<op>
 _TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>J\d{2})$")
 
 
+class CaseTestName(NamedTuple):
+    """Tên test case đã tách: `tail` là phần sau mã case (`_missing`, `[tham-số]`), rỗng ở dạng chung."""
+
+    op: str
+    case: str
+    tail: str
+    common: bool
+
+
+def split_case_test_name(name: str) -> CaseTestName | None:
+    """Tách `test_<op>__<case>[_…|[…]]` hay `test_common__<case>[<op>]` (CASE §2.3); `None` khi không khớp.
+
+    Nguồn duy nhất cho cổng này và bộ ghi golden (`packages/testing/golden/recorder.py`, R-07).
+    Mẫu chung xét trước: `test_common__C04[op]` cũng khớp mẫu riêng với op="common".
+    """
+    m = _TEST_COMMON_RE.match(name)
+    if m:
+        return CaseTestName(m.group("op"), m.group("case"), "", common=True)
+    m = _TEST_OP_CASE_RE.match(name)
+    if m is None:
+        return None
+    return CaseTestName(m.group("op"), m.group("case"), name[m.end("case") :], common=False)
+
+
 def _case_matches_trace(case_id: str, op_id: str, test_name: str, trace: list[CaseTraceEntry]) -> bool:
     hits = [t for t in trace if t.op == op_id and t.test == test_name]
     if not hits:
@@ -319,18 +343,11 @@ def _found_cases_by_op(
     for t in tests:
         if t.outcome != "passed" or t.is_xfail:
             continue
-        # mẫu chung xét trước: `test_common__C04[op]` cũng khớp mẫu riêng với op="common"
-        m = _TEST_COMMON_RE.match(t.name)
-        if m:
-            case_id, op_id = m.group("case"), m.group("op")
-            if case_id in _CASE_CHUNG | {"C10", "C22"} and _case_matches_trace(case_id, op_id, t.name, trace):
-                common.setdefault(op_id, set()).add(case_id)
+        parts = split_case_test_name(t.name)
+        if parts is None or (parts.common and parts.case not in _CASE_CHUNG | {"C10", "C22"}):
             continue
-        m = _TEST_OP_CASE_RE.match(t.name)
-        if m:
-            op_id, case_id = m.group("op"), m.group("case")
-            if _case_matches_trace(case_id, op_id, t.name, trace):
-                found.setdefault(op_id, set()).add(case_id)
+        if _case_matches_trace(parts.case, parts.op, t.name, trace):
+            (common if parts.common else found).setdefault(parts.op, set()).add(parts.case)
     return found, common
 
 
