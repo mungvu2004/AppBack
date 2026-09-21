@@ -238,3 +238,12 @@ async def test_put_on_a_full_spool_disk_returns_503(s3_storage: S3Storage, monke
     assert raised.value.retry_after == 5
     monkeypatch.undo()
     assert await s3_storage.stat(KEY) is None
+
+
+async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storage, FaultProxy]) -> None:
+    """NO-015: chỉ `NotImplemented` (CORS do MinIO tự đặt) được bỏ qua; S3 từ chối CORS phải nổi lên."""
+    storage, proxy = proxied
+    proxy.faults.append(Fault("PUT", 403, s3_error_xml("AccessDenied"), query="cors"))
+
+    with pytest.raises(S3Error, match="AccessDenied"):
+        await storage.ensure_bucket("https://appback.test")

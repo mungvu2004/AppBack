@@ -55,6 +55,8 @@ READ_TIMEOUT_S: Final = 15.0
 """Mặc định của `minio` là 300 s — quá dài so với trần 15 s của endpoint (W11, RES-01)."""
 
 SERVER_ERROR_STATUS: Final = 500
+CORS_UNSUPPORTED: Final = "NotImplemented"
+"""Mã MinIO trả cho `PutBucketCors`: CORS của MinIO đặt bằng biến môi trường, không bằng API."""
 DELETE_ERRORS_SHOWN: Final = 5
 """Số object hỏng in trong thông điệp lỗi của `delete_prefix`; tổng số vẫn in đủ."""
 _MISSING_CODES: Final = frozenset(("NoSuchKey", "NoSuchObject", "NotFound"))
@@ -104,7 +106,10 @@ class S3Storage:
                 await asyncio.to_thread(self._put_cors, cors_origin)
             except S3Error as exc:
                 # MinIO trả `NotImplemented`: CORS đặt bằng `MINIO_API_CORS_ALLOW_ORIGIN`
-                # trong compose của B0-08, không phải bằng API bucket.
+                # trong compose của B0-08, không phải bằng API bucket. Mã khác (`AccessDenied`,
+                # `NoSuchBucket`) là bucket production chạy với CORS sai: phải nổi lên (NO-015).
+                if exc.code != CORS_UNSUPPORTED:
+                    raise
                 _log.info("cors_managed_by_server", extra={"bucket": self._bucket, "code": exc.code})
 
     async def put(
