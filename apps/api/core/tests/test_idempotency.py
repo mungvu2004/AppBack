@@ -23,6 +23,7 @@ from apps.api.core.idempotency import (
 )
 from apps.api.core.tests.sample import (
     after_commit_marks,
+    build_sample_app,
     clear_after_commit_marks,
     deny_sample,
     grant_stub,
@@ -33,7 +34,8 @@ from apps.api.core.tests.sample import (
 )
 from packages.core.errors import AppError
 from packages.db.models.idempotency import STATE_COMPLETED, STATE_IN_PROGRESS, IdempotencyRecord
-from packages.testing.fixtures.api import auth_headers
+from packages.db.settings import reset_database_settings_cache
+from packages.testing.fixtures.api import auth_headers, make_api_client
 from packages.testing.fixtures.clock import FakeClock
 
 __all__ = ["clear_after_commit_marks", "sample_app", "sample_client"]
@@ -341,3 +343,22 @@ async def test_discard_never_deletes_a_completed_record(
     await discard(maker, Claim(record_id=int(record_id), token=token))
 
     assert [row[0] for row in await _records(maker)] == [STATE_COMPLETED]
+
+
+async def test_claim_never_waits_on_the_request_pool(
+    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pool request chỉ một kết nối và dependency đã giữ nó: nhận việc vẫn xong, không chờ chính mình tới 503.
+
+    `begin` lấy kết nối từ **cùng** pool thì N lượt ghi đồng thời giữ N kết nối rồi cùng chờ
+    kết nối thứ N+1; pool 1 dựng đúng trường hợp đó bằng một request, không cần đoán thời điểm.
+    """
+    monkeypatch.setenv("DB_POOL_SIZE", "1")
+    monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
+    reset_database_settings_cache()
+    app = build_sample_app(fake_clock)
+    async with make_api_client(app) as client:
+        response = await client.post("/api/sample/db-first", json={"name": "a"}, headers=_headers(fake_principal))
+        records = await _records(app.state.sessionmaker)
+    assert response.status_code == 200
+    assert [row[0] for row in records] == [STATE_COMPLETED]

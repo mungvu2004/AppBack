@@ -89,8 +89,9 @@ def request_digest(method: str, path: str, query: str, body: bytes) -> str:
     Dùng **đường thật** chứ không phải khuôn đường: cùng một khoá gửi sang dự án
     khác là một request khác, và phải nhận 422 `IDEMPOTENCY_KEY_REUSED`.
 
-    Mỗi phần mang **tiền tố độ dài** chứ không nối bằng `|`: đường thật đã giải mã có thể
-    chứa `|`, nên phép nối trần cho hai request khác nhau cùng một hash.
+    Cùng bốn phần, cùng thứ tự như BE-00 §7, nhưng mỗi phần mang **tiền tố độ dài 8 byte**
+    thay cho dấu `|` trần: đường thật đã giải mã có thể chứa `|`, nên phép nối trần cho hai
+    request khác nhau cùng một hash. Lệch chữ hiến chương này ghi ở `DEBT.md` (NO-041).
     """
     parts = sorted(query.split("&")) if query else []
     digest = hashlib.sha256()
@@ -204,7 +205,12 @@ async def begin(
     digest: str,
     now: datetime,
 ) -> Claim:
-    """Nhận việc trong giao dịch riêng (commit ngay), hoặc thoát bằng `Replay` / `AppError` (422, 503)."""
+    """Nhận việc trong giao dịch riêng (commit ngay), hoặc thoát bằng `Replay` / `AppError` (422, 503).
+
+    `sessionmaker` phải là pool **khác** pool của session request (`app.state.claim_sessionmaker`):
+    lúc này session request có thể đang giữ một kết nối, và chờ kết nối thứ hai từ chính pool đó
+    là tự chặn mình khi pool cạn.
+    """
     scope = {"user_id": user_id, "method": method, "route_template": route_template, "key": key}
     async with sessionmaker() as session:
         claimed = (await session.execute(_claim_statement(**scope, digest=digest, now=now))).first()

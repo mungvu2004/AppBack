@@ -162,7 +162,7 @@ def _versioned_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]]:
 
 
 def _idempotency_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]]:
-    """Nhận việc idempotency — chạy **sau** mọi dependency quyền của route (BE-00 §7)."""
+    """Nhận việc idempotency — chạy **sau** mọi dependency quyền của route (BE-00 §7), qua pool riêng."""
 
     async def guard(request: Request) -> None:
         """Có header thì nhận việc; không có thì route chạy như thường."""
@@ -173,7 +173,7 @@ def _idempotency_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]
         clock: Clock = request.app.state.clock
         body = await request.body()
         request.state.idempotency_claim = await idempotency.begin(
-            request.app.state.sessionmaker,
+            request.app.state.claim_sessionmaker,
             user_id=principal.user_id,
             method=request.method,
             route_template=route.path_format,
@@ -237,12 +237,12 @@ class AppRoute(APIRoute):
                 try:
                     response = await original(request)
                 except idempotency.Replay as replay:
-                    await _abort(request, session, maker)
+                    await _abort(request, session)
                     return replay.response
                 except BaseException:
-                    await _abort(request, session, maker)
+                    await _abort(request, session)
                     raise
-                return await _finish(request, session, maker, response)
+                return await _finish(request, session, response)
             finally:
                 # Token của contextvar mang sẵn biến của nó; `packages.core.logging`
                 # không phơi hàm gỡ, mà không gỡ thì ngữ cảnh route rò sang request sau
@@ -296,21 +296,16 @@ def mount_routers(app: FastAPI, routers: Sequence[tuple[str, APIRouter]]) -> Non
             app.router.routes.append(route)
 
 
-async def _abort(request: Request, session: AsyncSession, maker: async_sessionmaker[AsyncSession]) -> None:
+async def _abort(request: Request, session: AsyncSession) -> None:
     """Lượt chạy hỏng: rollback, đóng session, xoá dòng idempotency của chính mình."""
     await session.rollback()
     await session.close()
     claim = request.state.idempotency_claim
     if claim is not None:
-        await idempotency.discard(maker, claim)
+        await idempotency.discard(request.app.state.claim_sessionmaker, claim)
 
 
-async def _finish(
-    request: Request,
-    session: AsyncSession,
-    maker: async_sessionmaker[AsyncSession],
-    response: Response,
-) -> Response:
+async def _finish(request: Request, session: AsyncSession, response: Response) -> Response:
     """Hoàn tất idempotency → commit → chờ callback sau commit → đóng session."""
     claim: idempotency.Claim | None = request.state.idempotency_claim
     keep = claim is not None and idempotency.storable(response)
@@ -321,12 +316,12 @@ async def _finish(
         await session.commit()
         await after_commit_idle(session)
     except BaseException:
-        await _abort(request, session, maker)
+        await _abort(request, session)
         raise
     await session.close()
     if claim is not None and not keep:
         # 401/408/429 hay 5xx do handler trả về: không lưu, để lượt sau chạy lại thật.
-        await idempotency.discard(maker, claim)
+        await idempotency.discard(request.app.state.claim_sessionmaker, claim)
     return response
 
 

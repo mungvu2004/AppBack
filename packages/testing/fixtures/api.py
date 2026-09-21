@@ -166,7 +166,7 @@ def api_env(
 
 
 def _reset_settings() -> None:
-    """Bốn cache cấu hình đều đọc biến môi trường một lần mỗi tiến trình."""
+    """Ba cache cấu hình (core, db, storage) đều đọc biến môi trường một lần mỗi tiến trình."""
     reset_settings_cache()
     reset_database_settings_cache()
     reset_storage_settings_cache()

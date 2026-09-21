@@ -57,6 +57,11 @@ ROUTERS_ATTR: Final = "ROUTERS"
 VERIFIER_MODULE: Final = "apps.api.auth.verifier"
 VERIFIER_FACTORY: Final = "build_verifier"
 
+CLAIM_POOL_SIZE: Final = 5
+"""Pool riêng của giao dịch idempotency (`begin`, `discard`). Mỗi kết nối chỉ giữ một câu
+lệnh rồi commit, nên 5 kết nối phục vụ hàng nghìn lượt nhận việc mỗi giây; đổi lại mỗi
+tiến trình API mở thêm tối đa 5 kết nối Postgres."""
+
 OPENAPI_ENVS: Final = frozenset({"dev", "test", "ci"})
 OPENAPI_URL: Final = f"{API_PREFIX}/openapi.json"
 
@@ -130,10 +135,16 @@ def _lifespan(routers: Sequence[tuple[str, APIRouter]]) -> Any:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        """Mở engine, Redis, kho; kiểm chính sách broker; chạy `lifespan` của từng router; đóng hết khi dừng."""
-        engine = create_engine(get_database_settings())
+        """Mở hai engine, Redis, kho; kiểm chính sách broker; chạy `lifespan` của từng router; đóng hết khi dừng."""
+        database = get_database_settings()
+        engine = create_engine(database)
         app.state.engine = engine
         app.state.sessionmaker = create_sessionmaker(engine)
+        # `begin` chạy khi session của request có thể đã giữ một kết nối (dependency quyền
+        # đọc DB). Lấy kết nối thứ hai từ **cùng** pool là N lượt ghi đồng thời giữ N kết
+        # nối rồi cùng chờ nhau tới `pool_timeout` → cả loạt 503. Pool riêng cắt vòng chờ đó.
+        claims = create_engine(database.model_copy(update={"db_pool_size": CLAIM_POOL_SIZE, "db_max_overflow": 0}))
+        app.state.claim_sessionmaker = create_sessionmaker(claims)
         cache, safe, streams = cache_redis(), safe_redis(), streams_redis()
         app.state.cache_redis, app.state.safe_redis, app.state.streams_redis = cache, safe, streams
         app.state.broker_sync = broker_redis_sync()
@@ -153,6 +164,7 @@ def _lifespan(routers: Sequence[tuple[str, APIRouter]]) -> Any:
             app.state.broker_sync.close()
             for client in (cache, safe, streams):
                 await client.aclose()
+            await claims.dispose()
             await engine.dispose()
 
     return lifespan

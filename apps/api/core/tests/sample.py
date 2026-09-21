@@ -146,6 +146,17 @@ async def sample_create_item(body: ItemBody) -> ItemOut:
     return ItemOut(name=body.name)
 
 
+async def read_db_first(db: DbSession) -> None:
+    """Cổng quyền giả đọc DB, như cổng thật: session của request giữ một kết nối **trước** guard idempotency."""
+    await db.execute(text("SELECT 1"))
+
+
+@router.post("/db-first", response_model=ItemOut, dependencies=[Depends(read_db_first)])
+async def sample_create_after_db_read(body: ItemBody) -> ItemOut:
+    """Ghi có idempotency sau một dependency đã giữ kết nối của pool request."""
+    return ItemOut(name=body.name)
+
+
 @router.post("/projects/{project_id}/items", response_model=ItemOut)
 async def sample_create_project_item(project_id: str, body: ProjectItemBody, db: DbSession) -> ItemOut:
     """Id trên đường và trong thân cùng nghĩa → guard W21 chạy trước handler."""
