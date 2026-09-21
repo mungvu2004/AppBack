@@ -52,11 +52,12 @@ def export_yolo(
     SHA-256 của `.pt` khác `source_sha256` → `PermanentError(MODEL_CHECKSUM_MISMATCH)`,
     trước khi nhập `ultralytics`. Không `simplify`, không trục động: đầu ra tất định.
     """
-    if file_sha256(pt_path) != source_sha256:
-        raise PermanentError(MODEL_CHECKSUM_MISMATCH)
     with tempfile.TemporaryDirectory() as workdir, _offline_env(Path(workdir) / "config"):
         work_pt = Path(workdir) / pt_path.name
         shutil.copyfile(pt_path, work_pt)
+        # Băm **bản chép** — đúng byte sẽ được giải pickle, không phải tệp nguồn có thể bị thay.
+        if file_sha256(work_pt) != source_sha256:
+            raise PermanentError(MODEL_CHECKSUM_MISMATCH)
         # Nhập sau khi đã so SHA và đặt cờ ngoại tuyến: ultralytics đọc cấu hình lúc nhập.
         from ultralytics import YOLO  # type: ignore[attr-defined]  # ultralytics không khai __all__ cho YOLO
 

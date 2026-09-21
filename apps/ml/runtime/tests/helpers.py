@@ -51,9 +51,9 @@ def add_model(value: float = 1.0) -> onnx.ModelProto:
     return model([helper.make_node("Add", ["x", "c"], ["y"])], initializer=[constant])
 
 
-def loop_model() -> onnx.ModelProto:
-    """`Loop` 3 vòng cộng 1: hợp lệ với ORT, nhưng cấm ở dạng storage (BE-00 §9)."""
-    body = helper.make_graph(
+def _counting_body() -> onnx.GraphProto:
+    """Thân `Loop`: giữ điều kiện, cộng 1 mỗi vòng."""
+    return helper.make_graph(
         [helper.make_node("Identity", ["cond_in"], ["cond_out"]), helper.make_node("Add", ["v_in", "one"], ["v_out"])],
         "body",
         [
@@ -67,9 +67,68 @@ def loop_model() -> onnx.ModelProto:
         ],
         initializer=[numpy_helper.from_array(np.array([1.0], dtype=np.float32), "one")],
     )
+
+
+def loop_model() -> onnx.ModelProto:
+    """`Loop` 3 vòng cộng 1: hợp lệ với ORT, nhưng cấm ở dạng storage (BE-00 §9)."""
     trip = numpy_helper.from_array(np.array(3, dtype=np.int64), "trip")
     keep = numpy_helper.from_array(np.array(True), "keep")
-    return model([helper.make_node("Loop", ["trip", "keep", "x"], ["y"], body=body)], initializer=[trip, keep])
+    loop = helper.make_node("Loop", ["trip", "keep", "x"], ["y"], body=_counting_body())
+    return model([loop], initializer=[trip, keep])
+
+
+def branch_graph(nodes: Sequence[onnx.NodeProto], initializer: Sequence[TensorProto] = ()) -> onnx.GraphProto:
+    """Đồ thị không vào, một ra `out` float [1] — dùng làm nhánh `If`."""
+    output = helper.make_tensor_value_info("out", TensorProto.FLOAT, [1])
+    return helper.make_graph(list(nodes), "hidden", [], [output], initializer=list(initializer))
+
+
+def loop_graph(trips: int) -> onnx.GraphProto:
+    """Nhánh `out = 0 + 1 x trips` tính bằng `Loop`."""
+    return branch_graph(
+        [helper.make_node("Loop", ["trip", "keep", "zero"], ["out"], body=_counting_body())],
+        [
+            numpy_helper.from_array(np.array(trips, dtype=np.int64), "trip"),
+            numpy_helper.from_array(np.array(True), "keep"),
+            numpy_helper.from_array(np.array([0.0], dtype=np.float32), "zero"),
+        ],
+    )
+
+
+LOCAL = helper.make_opsetid("local", 1)
+
+
+def local_function_model(
+    nodes: Sequence[onnx.NodeProto], opsets: Sequence[onnx.OperatorSetIdProto] = OPSETS
+) -> onnx.ModelProto:
+    """Đồ thị chính chỉ gọi hàm cục bộ `local::F(a) -> b` có thân `nodes`."""
+    function = helper.make_function("local", "F", ["a"], ["b"], list(nodes), list(opsets))
+    return model([helper.make_node("F", ["x"], ["y"], domain="local")], functions=[function], opsets=[*opsets, LOCAL])
+
+
+def hidden_in_function_default(
+    hidden: onnx.GraphProto, opsets: Sequence[onnx.OperatorSetIdProto] = OPSETS
+) -> onnx.ModelProto:
+    """Hàm `F` dùng `hidden` qua **giá trị mặc định** của thuộc tính `body` (`ref_attr_name`).
+
+    Đồ thị chính gọi `F` không truyền `body`: ORT thay mặc định vào lúc nạp, bộ inline của
+    `onnx` thì không. Đây là đường review 2026-09-21 (finding #1) dựng để vượt luật cấu trúc.
+    """
+    branch = helper.make_node("If", ["c"], ["k"])
+    for name in ("then_branch", "else_branch"):
+        attribute = branch.attribute.add()
+        attribute.name, attribute.ref_attr_name, attribute.type = name, "body", onnx.AttributeProto.GRAPH
+    zero = numpy_helper.from_array(np.array([0.0], dtype=np.float32))
+    nodes = [
+        helper.make_node("Constant", [], ["zero_c"], value=zero),
+        helper.make_node("Greater", ["a", "zero_c"], ["c1"]),
+        helper.make_node("Squeeze", ["c1"], ["c"]),
+        branch,
+        helper.make_node("Add", ["a", "k"], ["b"]),
+    ]
+    hidden_model = local_function_model(nodes, opsets)
+    hidden_model.functions[0].attribute_proto.append(helper.make_attribute("body", hidden))
+    return hidden_model
 
 
 def external_tensor(name: str, location: str = "../x") -> TensorProto:

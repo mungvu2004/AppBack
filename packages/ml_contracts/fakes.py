@@ -23,12 +23,19 @@ def _plan(seed: int, width_px: int, height_px: int) -> SyntheticPlan:
 
 
 def answer_for(image: NDArray[np.uint8]) -> SyntheticPlan | None:
-    """Đáp án của ảnh khi nó là trang tổng hợp nguyên vẹn; không thì `None`."""
+    """Đáp án của ảnh khi nó là trang tổng hợp nguyên vẹn; không thì `None`.
+
+    Tổng kiểm của dấu không bí mật: ai cũng dựng được dấu "đúng" trên một khổ mà
+    `render_plan` không vẽ nổi. Khi đó không có đáp án nào — trả `None` như mọi ảnh lạ.
+    """
     seed = read_marker(image)
     if seed is None:
         return None
     height, width = image.shape[:2]
-    return _plan(seed, width, height)
+    try:
+        return _plan(seed, width, height)
+    except ValueError:
+        return None
 
 
 class FakeWallSegmenter:

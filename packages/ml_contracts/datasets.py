@@ -12,9 +12,9 @@ import re
 from collections.abc import Iterable
 from typing import Annotated, Final, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, model_validator
 
-from packages.ml_contracts._png import MASK_MAX_PIXELS
+from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, FrozenModel
 
 Split = Literal["train", "validation", "test"]
 SampleSource = Literal["approvedFloors", "cubicasa5k", "synthetic"]
@@ -26,12 +26,6 @@ MANIFEST_MAX_LINES: Final = 200_000
 DATASET_MAX_BYTES: Final = 8_589_934_592
 _SAMPLE_ID_RE: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
 _SPLIT_BUCKETS: Final = 100
-
-
-class _Frozen(BaseModel):
-    """Gốc bất biến, khoá lạ bị từ chối."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 def sample_path(split: Split, sample_id: str, filename: str) -> str:
@@ -56,7 +50,7 @@ def _is_sample_path(path: str) -> bool:
         return False
 
 
-class SampleMeta(_Frozen):
+class SampleMeta(FrozenModel):
     """`meta.json` của một mẫu. `mm_per_px = None` khi tầng nguồn chưa có tỉ lệ người đặt."""
 
     sample_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")]
@@ -74,7 +68,7 @@ class SampleMeta(_Frozen):
         return self
 
 
-class ManifestEntry(_Frozen):
+class ManifestEntry(FrozenModel):
     """Một dòng manifest: đường mẫu, SHA-256, số byte."""
 
     path: str

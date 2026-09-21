@@ -11,6 +11,7 @@ chạy B5-02…B5-04 bắt đúng bộ này, không `except Exception` (R-16).
 from typing import Final
 
 from onnxruntime.capi.onnxruntime_pybind11_state import (  # type: ignore[import-untyped]  # module C++ không có stub
+    DeviceReset,
     EngineError,
     EPFail,
     Fail,
@@ -18,6 +19,8 @@ from onnxruntime.capi.onnxruntime_pybind11_state import (  # type: ignore[import
     InvalidGraph,
     InvalidProtobuf,
     ModelLoadCanceled,
+    ModelLoaded,
+    ModelRequiresCompilation,
     NoModel,
     NoSuchFile,
     NotFound,
@@ -38,6 +41,7 @@ PIPELINE_ARTIFACT_MISSING: Final = "PIPELINE_ARTIFACT_MISSING"
 """Trang vào của bước không còn trong kho (lượt bị dọn giữa chừng) — B5-06c đánh hỏng lượt."""
 
 ORT_ERRORS: Final[tuple[type[Exception], ...]] = (
+    DeviceReset,
     EngineError,
     EPFail,
     Fail,
@@ -45,6 +49,8 @@ ORT_ERRORS: Final[tuple[type[Exception], ...]] = (
     InvalidGraph,
     InvalidProtobuf,
     ModelLoadCanceled,
+    ModelLoaded,
+    ModelRequiresCompilation,
     NoModel,
     NoSuchFile,
     NotFound,

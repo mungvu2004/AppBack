@@ -54,6 +54,7 @@ class _Keeper(threading.Thread):
     """Luồng giữ khoá: lấy (thử lại mỗi 1 s ± 20 %), gia hạn, trả khoá khi được báo dừng."""
 
     def __init__(self, *, wait_s: float, ttl_ms: int, renew_every_ms: int) -> None:
+        """Luồng daemon: tiến trình tắt giữa chừng không bị luồng giữ khoá chặn lại (TTL dọn khoá)."""
         super().__init__(name="gpu-slot", daemon=True)
         self.ready = threading.Event()
         self.stopping = threading.Event()

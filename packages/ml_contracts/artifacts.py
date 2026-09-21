@@ -31,6 +31,7 @@ __all__ = [
     "STEP_ARTIFACTS",
     "BoxPx",
     "DetectionPx",
+    "FrozenModel",
     "ObjectsResult",
     "PngHeader",
     "PointPx",
@@ -69,20 +70,20 @@ Coordinate = Annotated[float, Field(ge=0, le=COORD_MAX_PX, allow_inf_nan=False)]
 Confidence = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 
 
-class _Artifact(BaseModel):
-    """Gốc: bất biến, khoá lạ bị từ chối ở mọi cấp lồng."""
+class FrozenModel(BaseModel):
+    """Gốc mọi model của gói (artifact, payload, dataset): bất biến, khoá lạ bị từ chối ở mọi cấp lồng."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PointPx(_Artifact):
+class PointPx(FrozenModel):
     """Một điểm trên trang, đơn vị pixel (mép điểm ảnh, không phải tâm)."""
 
     x: Coordinate
     y: Coordinate
 
 
-class BoxPx(_Artifact):
+class BoxPx(FrozenModel):
     """Hộp thẳng trục, `min < max` ở cả hai chiều (hộp rỗng không phải phát hiện)."""
 
     x_min: Coordinate
@@ -98,7 +99,7 @@ class BoxPx(_Artifact):
         return self
 
 
-class WallPx(_Artifact):
+class WallPx(FrozenModel):
     """Đường tim một tường; hai đầu khác nhau, bề dày dương."""
 
     start: PointPx
@@ -114,7 +115,7 @@ class WallPx(_Artifact):
         return self
 
 
-class DetectionPx(_Artifact):
+class DetectionPx(FrozenModel):
     """Một ô mở hay đồ đạc phát hiện được."""
 
     label: DetectionLabel
@@ -122,7 +123,7 @@ class DetectionPx(_Artifact):
     confidence: Confidence
 
 
-class TextPx(_Artifact):
+class TextPx(FrozenModel):
     """Một chuỗi đọc được (kích thước, nhãn phòng) và hộp của nó."""
 
     text: Annotated[str, Field(min_length=1, max_length=64)]
@@ -130,21 +131,21 @@ class TextPx(_Artifact):
     confidence: Confidence
 
 
-class WallsResult(_Artifact):
+class WallsResult(FrozenModel):
     """`walls.json` của bước `wallSegmentation`."""
 
     schema_version: Literal[1] = 1
     walls: Annotated[tuple[WallPx, ...], Field(max_length=MAX_WALLS)]
 
 
-class ObjectsResult(_Artifact):
+class ObjectsResult(FrozenModel):
     """`objects.json` của bước `openingAndFurnitureDetection`."""
 
     schema_version: Literal[1] = 1
     detections: Annotated[tuple[DetectionPx, ...], Field(max_length=MAX_DETECTIONS)]
 
 
-class TextResult(_Artifact):
+class TextResult(FrozenModel):
     """`text.json` của bước `dimensionReading`."""
 
     schema_version: Literal[1] = 1

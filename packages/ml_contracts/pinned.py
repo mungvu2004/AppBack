@@ -147,6 +147,7 @@ class FetchError(Exception):
     """Tải bản ghim hỏng; `exit_code` là mã thoát CLI (2 lệch hay chưa ghim, 3 mạng/IO)."""
 
     def __init__(self, exit_code: int, reason: str) -> None:
+        """`exit_code` là mã `main` trả; `reason` là câu ghi log, không chứa nội dung tệp."""
         super().__init__(reason)
         self.exit_code: Final = exit_code
 

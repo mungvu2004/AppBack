@@ -13,13 +13,26 @@ import numpy as np
 import onnx
 import pytest
 import torch
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 from apps.ml.runtime import loader
-from apps.ml.runtime.errors import MODEL_CHECKSUM_MISMATCH, MODEL_FORMAT_UNSUPPORTED, MODEL_NOT_FOUND
+from apps.ml.runtime.errors import MODEL_CHECKSUM_MISMATCH, MODEL_FORMAT_UNSUPPORTED, MODEL_NOT_FOUND, ORT_ERRORS
 from apps.ml.runtime.export import export_onnx
 from apps.ml.runtime.loader import clear_session_cache, has_external_data, load_onnx
-from apps.ml.runtime.tests.helpers import FailingReads, add_model, external_tensor, loop_model, model, sha, some_id
+from apps.ml.runtime.tests.helpers import (
+    OPSETS,
+    FailingReads,
+    add_model,
+    branch_graph,
+    external_tensor,
+    hidden_in_function_default,
+    local_function_model,
+    loop_graph,
+    loop_model,
+    model,
+    sha,
+    some_id,
+)
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND
 from packages.core.errors import AppError
 from packages.messaging.tasks import PermanentError
@@ -243,6 +256,11 @@ def test_has_external_data_walks_every_tensor() -> None:
     sparse_initializer = model([])
     sparse_initializer.graph.sparse_initializer.append(external_sparse)
     cases.append(sparse_initializer)
+    # Review 2026-09-21 #1: tensor ngoài giấu trong giá trị mặc định thuộc tính của hàm cục bộ.
+    for default in (external_tensor("d"), external_sparse, _graph_with(external_tensor("g"))):
+        hidden = local_function_model([helper.make_node("Identity", ["a"], ["b"])])
+        hidden.functions[0].attribute_proto.append(helper.make_attribute("val", default))
+        cases.append(hidden)
     assert all(has_external_data(case) for case in cases)
 
 
@@ -280,9 +298,49 @@ def _cyclic_functions() -> onnx.ModelProto:
     return model([helper.make_node("F", ["x"], ["y"], domain="local")], functions=[function], opsets=LOCAL_OPSETS)
 
 
+def _hidden_microsoft_op() -> onnx.ModelProto:
+    """Op miền `com.microsoft` giấu trong mặc định thuộc tính hàm."""
+    zero = numpy_helper.from_array(np.array([0.0], dtype=np.float32), "zero")
+    hidden = branch_graph([helper.make_node("Gelu", ["zero"], ["out"], domain="com.microsoft")], [zero])
+    return hidden_in_function_default(hidden, [*OPSETS, helper.make_opsetid("com.microsoft", 1)])
+
+
+def _harmless_default() -> onnx.ModelProto:
+    """Mặc định thuộc tính hàm chỉ có op chuẩn: phải được nhận (ORT chạy ra `y = x`)."""
+    zero = numpy_helper.from_array(np.array([0.0], dtype=np.float32), "zero")
+    return hidden_in_function_default(branch_graph([helper.make_node("Identity", ["zero"], ["out"])], [zero]))
+
+
+def test_structure_rules_see_function_attribute_defaults() -> None:
+    """Review 2026-09-21 #1: bộ inline của `onnx` không thay mặc định thuộc tính hàm, luật phải tự thấy."""
+    assert not loader._structure_allowed(hidden_in_function_default(loop_graph(5)))
+    assert not loader._structure_allowed(_hidden_microsoft_op())
+    assert loader._structure_allowed(_harmless_default())
+
+
+async def test_load_onnx_runs_local_functions(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Lời gọi hàm cục bộ có thật và mặc định thuộc tính vô hại vẫn nạp và chạy được ở dạng storage."""
+    one = numpy_helper.from_array(np.array([1.0], dtype=np.float32))
+    plus_one = local_function_model(
+        [helper.make_node("Constant", [], ["k"], value=one), helper.make_node("Add", ["a", "k"], ["b"])]
+    )
+    for sample, expected in ((plus_one, 3.0), (_harmless_default(), 2.0)):
+        data = sample.SerializeToString()
+        ref = storage_ref(data)
+        await put(local_storage, ref, data)
+        assert run(await load_onnx(local_storage, ref, models_dir=tmp_path), 2.0) == expected
+
+
 async def test_load_onnx_m03_control_flow(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
-    """Dạng storage: `Loop`/`Scan` ở mọi độ sâu, miền lạ, hàm vòng → từ chối; op lạ miền chuẩn → ORT từ chối."""
+    """Dạng storage: `Loop`/`Scan` ở mọi độ sâu (đồ thị chính, `If`, thân hàm, **mặc định thuộc tính hàm**),
+    miền lạ, hàm vòng → từ chối; op lạ miền chuẩn → ORT từ chối.
+
+    Ca mặc định thuộc tính là model 578 byte với `Loop` 2^63 - 1 vòng mà review 2026-09-21 (#1)
+    dựng được: ORT nạp nó bình thường, nên trước bản sửa `load_onnx` trả phiên thay vì từ chối.
+    """
     samples = (
+        hidden_in_function_default(loop_graph(2**63 - 1)),
+        _hidden_microsoft_op(),
         loop_model(),
         _scan_model(),
         _loop_in_if(),
@@ -296,6 +354,14 @@ async def test_load_onnx_m03_control_flow(local_storage: LocalDiskStorage, tmp_p
         ref = storage_ref(data)
         await put(local_storage, ref, data)
         await expect(MODEL_FORMAT_UNSUPPORTED, local_storage, ref, tmp_path)
+
+
+def test_ort_errors_are_every_real_onnxruntime_error() -> None:
+    """`ORT_ERRORS` là **đúng** mọi lớp lỗi của onnxruntime đã khoá; nâng bản mà có lớp mới thì test đỏ."""
+    from onnxruntime.capi import onnxruntime_pybind11_state as state  # type: ignore[import-untyped]  # module C++
+
+    real = {value for value in vars(state).values() if isinstance(value, type) and issubclass(value, Exception)}
+    assert set(ORT_ERRORS) == real
 
 
 async def test_load_onnx_m03_pinned_loads(local_storage: LocalDiskStorage, tmp_path: Path) -> None:

@@ -45,6 +45,7 @@ class _Sessions:
     """LRU phiên theo checksum, có khoá luồng: task đồng thời của một tiến trình dùng chung."""
 
     def __init__(self, size: int) -> None:
+        """Bộ nhớ tối đa `size` phiên (mỗi phiên giữ cả trọng số trong RAM)."""
         self._size = size
         self._items: OrderedDict[str, ort.InferenceSession] = OrderedDict()
         self._lock = threading.Lock()
@@ -84,41 +85,58 @@ def _unsupported() -> PermanentError:
     return PermanentError(MODEL_FORMAT_UNSUPPORTED)
 
 
-def iter_nodes(model: onnx.ModelProto) -> Iterator[onnx.NodeProto]:
-    """Mọi node: thân hàm cục bộ, đồ thị chính và mọi đồ thị con lồng trong chúng (`If`, `Loop`…)."""
-    pending = [*(node for function in model.functions for node in function.node), *model.graph.node]
+type _Part = onnx.GraphProto | onnx.NodeProto | onnx.AttributeProto
+
+
+def _parts(model: onnx.ModelProto) -> Iterator[_Part]:
+    """Mọi đồ thị, node, thuộc tính của model ở mọi độ sâu — nguồn duy nhất cho các hàm duyệt.
+
+    Gồm cả **giá trị mặc định thuộc tính của hàm cục bộ** (`FunctionProto.attribute_proto`):
+    thân hàm dùng chúng qua `ref_attr_name`, ORT thay vào lúc nạp, còn bộ inline của `onnx`
+    thì không. Bỏ sót chỗ này là để lọt `Loop`, op miền lạ hay tensor ngoài giấu trong đó.
+    """
+    pending: list[_Part] = [model.graph]
+    for function in model.functions:
+        pending.extend(function.node)
+        pending.extend(function.attribute_proto)
     while pending:
-        node = pending.pop()
-        yield node
-        for attribute in node.attribute:
-            for graph in (*attribute.graphs, *([attribute.g] if attribute.HasField("g") else [])):
-                pending.extend(graph.node)
+        part = pending.pop()
+        yield part
+        if isinstance(part, onnx.GraphProto):
+            pending.extend(part.node)
+        elif isinstance(part, onnx.NodeProto):
+            pending.extend(part.attribute)
+        else:
+            pending.extend(part.graphs)
+            if part.HasField("g"):
+                pending.append(part.g)
+
+
+def iter_nodes(model: onnx.ModelProto) -> Iterator[onnx.NodeProto]:
+    """Mọi node: đồ thị chính, thân hàm cục bộ, mọi đồ thị con (kể cả trong mặc định thuộc tính hàm)."""
+    return (part for part in _parts(model) if isinstance(part, onnx.NodeProto))
 
 
 def iter_graphs(model: onnx.ModelProto) -> Iterator[onnx.GraphProto]:
-    """Đồ thị chính và mọi đồ thị con (kể cả trong thân hàm cục bộ)."""
-    yield model.graph
-    for node in iter_nodes(model):
-        for attribute in node.attribute:
-            if attribute.HasField("g"):
-                yield attribute.g
-            yield from attribute.graphs
+    """Đồ thị chính và mọi đồ thị con, ở cùng các chỗ `iter_nodes` duyệt."""
+    return (part for part in _parts(model) if isinstance(part, onnx.GraphProto))
 
 
 def iter_tensors(model: onnx.ModelProto) -> Iterator[onnx.TensorProto]:
-    """Mọi `TensorProto`: initializer, sparse initializer, thuộc tính tensor của mọi node."""
-    for graph in iter_graphs(model):
-        yield from graph.initializer
-        for sparse in graph.sparse_initializer:
-            yield from (sparse.values, sparse.indices)
-    for node in iter_nodes(model):
-        for attribute in node.attribute:
-            if attribute.HasField("t"):
-                yield attribute.t
-            yield from attribute.tensors
-            singles = [attribute.sparse_tensor] if attribute.HasField("sparse_tensor") else []
-            for sparse in (*attribute.sparse_tensors, *singles):
-                yield from (sparse.values, sparse.indices)
+    """Mọi `TensorProto`: initializer, sparse initializer, thuộc tính tensor của node và của hàm."""
+    for part in _parts(model):
+        if isinstance(part, onnx.GraphProto):
+            yield from part.initializer
+            sparse = list(part.sparse_initializer)
+        elif isinstance(part, onnx.AttributeProto):
+            if part.HasField("t"):
+                yield part.t
+            yield from part.tensors
+            sparse = [*part.sparse_tensors, *([part.sparse_tensor] if part.HasField("sparse_tensor") else [])]
+        else:
+            continue
+        for item in sparse:
+            yield from (item.values, item.indices)
 
 
 def has_external_data(model: onnx.ModelProto) -> bool:
@@ -129,13 +147,25 @@ def has_external_data(model: onnx.ModelProto) -> bool:
     )
 
 
+def _node_allowed(node: onnx.NodeProto, local_functions: frozenset[tuple[str, str]]) -> bool:
+    """Không `Loop`/`Scan`; miền chuẩn, hay là lời gọi một hàm cục bộ có thật (thân nó cũng bị duyệt)."""
+    if node.op_type in FORBIDDEN_OPS:
+        return False
+    return node.domain in TRUSTED_DOMAINS or (node.domain, node.op_type) in local_functions
+
+
 def _structure_allowed(model: onnx.ModelProto) -> bool:
-    """Luật cấu trúc trên bản đã inline hàm cục bộ (chỉ để kiểm): miền chuẩn, không `Loop`/`Scan`."""
+    """Luật cấu trúc (BE-00 §9) trên **cả** bản đã inline hàm cục bộ lẫn bản gốc.
+
+    Bản inline là cách hiến chương ghi; bản gốc bắt thứ bộ inline bỏ sót (mặc định thuộc
+    tính hàm). Hàm gọi vòng làm bộ inline ném `ValidationError` → từ chối.
+    """
     try:
         inlined = onnx.inliner.inline_local_functions(model)
     except onnx.checker.ValidationError:
         return False
-    return all(node.domain in TRUSTED_DOMAINS and node.op_type not in FORBIDDEN_OPS for node in iter_nodes(inlined))
+    local = frozenset((function.domain, function.name) for function in model.functions)
+    return all(_node_allowed(node, local) for node in (*iter_nodes(model), *iter_nodes(inlined)))
 
 
 def _verify(data: bytes, ref: ModelRef, pinned: Mapping[str, PinnedWeights]) -> None:

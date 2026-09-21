@@ -15,10 +15,10 @@ import re
 from collections.abc import Mapping
 from typing import Annotated, Final, Literal, Self, get_args
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, Field, model_validator
 
 from packages.core.ids import IdPrefix, is_id, is_spatial_id
-from packages.ml_contracts._png import MASK_MAX_PIXELS
+from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, FrozenModel
 from packages.ml_contracts.families import BASE_MODELS, MetricName, ModelFamily, TrainableFamily
 from packages.ml_contracts.pinned import PINNED
 
@@ -58,6 +58,7 @@ def _id_of(prefix: IdPrefix) -> AfterValidator:
     """Validator `<tiền tố>_<ULID>` qua `packages.core.ids.is_id`."""
 
     def check(value: str) -> str:
+        """Trả lại chính id khi đúng mẫu; sai → `ValueError` (Pydantic đổi thành lỗi trường)."""
         if not is_id(prefix, value):
             raise ValueError(f"id phải có dạng {prefix}_<ULID>")
         return value
@@ -76,13 +77,7 @@ Millis = Annotated[int, Field(ge=0)]
 UnitMetric = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 
 
-class _Frozen(BaseModel):
-    """Gốc bất biến, khoá lạ bị từ chối."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class MlPayload(_Frozen):
+class MlPayload(FrozenModel):
     """Gốc mọi payload ML; `schema_version` là số `define_task` so (J08)."""
 
     schema_version: Literal[1] = 1
@@ -97,7 +92,7 @@ def check_metrics(metrics: Mapping[str, float]) -> None:
         raise ValueError(f"số đo {name} ngoài dải: {value}")
 
 
-class ModelRef(_Frozen):
+class ModelRef(FrozenModel):
     """Model của một bước, ghim ở đầu lượt pipeline (BE-00 §9). Đúng một trong ba dạng.
 
     - **cổ điển**: `version_id`, `weights_key`, `pinned_name` đều `None`, `checksum_sha256 = ""`
@@ -259,7 +254,7 @@ class TrainingHeartbeatPayload(MlPayload):
     sent_at_ms: Millis
 
 
-class MetricPoint(_Frozen):
+class MetricPoint(FrozenModel):
     """Một điểm số đo; ít nhất một số đo, `loss ≥ 0`, `iou`/`map50` trong `[0, 1]`."""
 
     step: Annotated[int, Field(ge=0)]
