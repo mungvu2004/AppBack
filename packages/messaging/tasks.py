@@ -39,6 +39,7 @@ INTERNAL: Final = "INTERNAL"
 
 MAX_DELIVERIES: Final = 3
 DELIVERY_TTL_S: Final = 86_400
+ERROR_TEXT_LIMIT: Final = 200
 _CODE_RE: Final = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
 # `INCR` và `EXPIRE` trong **một** lệnh: hai lệnh rời thì đứt kết nối ở giữa là bộ đếm sống
 # mãi, và một `task_id` dùng lại bị gán nhầm `WORKER_LOST` sớm (NO-023). Cùng cách `publish_once`.
@@ -249,13 +250,19 @@ def _deliveries(task: Any) -> int:
 
 
 def _fail(spec: _TaskSpec, task_id: str, payload: BaseModel, code: str) -> None:
-    """Báo hỏng cho module chủ; `on_failed` tự ném thì log và nuốt, worker phải sống tiếp."""
+    """Báo hỏng cho module chủ; `on_failed` tự ném thì log và nuốt, worker phải sống tiếp.
+
+    Log chỉ mang tên lớp + `ERROR_TEXT_LIMIT` ký tự đầu, **không** stack: thông điệp của lỗi
+    module khác có thể chứa dữ liệu người dùng, mà stack in lại nguyên thông điệp (NO-030).
+    Module chủ muốn chi tiết thì tự log trong `on_failed` của mình.
+    """
     try:
         spec.on_failed(payload, code)
     except Exception as exc:  # noqa: BLE001 — on_failed là mã của module khác; hỏng thì log, không ném lại
-        _log.exception(
+        brief = f"{type(exc).__name__}: {str(exc)[:ERROR_TEXT_LIMIT]}"
+        _log.error(
             "on_failed_error",
-            extra={"task": spec.name, "task_id": task_id, "failure": code, "error": repr(exc)},
+            extra={"task": spec.name, "task_id": task_id, "failure": code, "error": brief},
         )
 
 

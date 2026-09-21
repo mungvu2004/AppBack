@@ -151,6 +151,19 @@ def run_on_failed_explodes(payload: Job) -> None:
     raise PermanentError("BAD_INPUT")
 
 
+PRIVATE_TAIL = "du-lieu-nguoi-dung-o-cuoi"
+
+
+def explode_verbosely(payload: Job, code: str) -> None:
+    """`on_failed` của module khác ném kèm thông điệp dài, phần đuôi mang dữ liệu người dùng."""
+    raise RuntimeError("x" * 300 + PRIVATE_TAIL)
+
+
+@define_task(name="tests.tasks.on_failed_explodes_verbosely", payload=Job, on_failed=explode_verbosely)
+def run_on_failed_explodes_verbosely(payload: Job) -> None:
+    raise PermanentError("BAD_INPUT")
+
+
 @define_task(name="tests.tasks.sender", payload=Job, on_failed=record_failure)
 def run_sender(payload: Job) -> None:
     send_task(SINK_TASK, payload)
@@ -293,6 +306,18 @@ def test_a_failing_on_failed_is_logged_and_swallowed(messaging_env: None, caplog
 
     assert result.state == "SUCCESS"
     assert "on_failed_error" in caplog.text
+
+
+def test_an_on_failed_error_is_logged_briefly(messaging_env: None, caplog: pytest.LogCaptureFixture) -> None:
+    """Lỗi của `on_failed` (mã module khác) chỉ vào log bằng tên lớp + 200 ký tự đầu, không stack:
+    thông điệp của nó có thể mang dữ liệu người dùng (NO-030)."""
+    with caplog.at_level(logging.ERROR):
+        apply_task(run_on_failed_explodes_verbosely, "explode-2")
+
+    record = next(record for record in caplog.records if record.msg == "on_failed_error")
+    assert getattr(record, "error", None) == "RuntimeError: " + "x" * 200
+    assert record.exc_info is None
+    assert PRIVATE_TAIL not in caplog.text
 
 
 @pytest.mark.parametrize(
