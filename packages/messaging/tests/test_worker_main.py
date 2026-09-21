@@ -19,14 +19,20 @@ import os
 import sys
 
 import apps.worker.celery_main as main
+from packages.messaging.schedules import beat_schedule, discover_jobs
 
-print(json.dumps({
+loaded = {
     "ml": [name for name in sys.modules if name == "apps.ml" or name.startswith("apps.ml.")],
     "web": [name for name in ("fastapi", "starlette", "uvicorn", "jwt", "argon2") if name in sys.modules],
     "beat": list(main.app.conf.beat_schedule),
     "inline": os.environ.get("DB_AFTER_COMMIT_INLINE"),
     "pipeline_queue": main.app.conf.task_routes[0]("pipeline.x", [], {}, {})["queue"],
-}))
+}
+# Sổ đối chiếu dò lại ĐỘC LẬP với celery_main (gọi lại là idempotent): worker quên
+# discover_jobs() thì "beat" rỗng còn vế này vẫn đủ, nên test đỏ.
+discover_jobs()
+loaded["beat_ledger"] = list(beat_schedule())
+print(json.dumps(loaded))
 """
 
 
@@ -50,10 +56,15 @@ def test_the_worker_process_never_pulls_in_the_ml_app(messaging_env: None) -> No
 
 
 def test_the_worker_process_is_ready_to_run_schedules(messaging_env: None) -> None:
-    """Chưa module nào khai lịch, nhưng sổ phải được gắn và định tuyến phải chạy."""
+    """Worker phải gắn **đủ** sổ lịch của mọi module, và định tuyến phải chạy.
+
+    Vế phải là sổ dò lại độc lập trong cùng tiến trình con, không ghim danh sách: số
+    lịch tăng theo từng chủ của bảng "Dọn rác" (BE-00 §7), còn `celery_main` quên
+    `discover_jobs()` thì `beat` rỗng và test đỏ.
+    """
     loaded = import_worker(get_messaging_settings().redis_broker_url)
 
-    assert loaded["beat"] == []
+    assert loaded["beat"] == loaded["beat_ledger"]
     assert loaded["pipeline_queue"] == "pipeline.cpu"
     assert loaded["inline"] == "1"
 

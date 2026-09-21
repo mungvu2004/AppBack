@@ -468,20 +468,36 @@ def test_real_operations_chép_đúng_trường_bỏ_trường_lạ(monkeypatch:
     assert ops == [Operation(op="x_create", method="POST", path="/api/x", protected=True)]
 
 
-def test_real_operations_chưa_có_b0_06_trả_rỗng() -> None:
+def test_real_operations_khi_chủ_chưa_hợp_nhất_trả_rỗng(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Module có mà chưa có `operations` (prompt chủ chưa hợp nhất) → cổng chạy với 0 thao tác.
+
+    Vắng mặt được dựng bằng `sys.modules`, không bằng trạng thái thật của repo: mọi
+    prompt mount route đều làm sổ thao tác **khác rỗng** (CASE §2.3).
+    """
+    monkeypatch.setitem(sys.modules, "apps.api.core.openapi", types.SimpleNamespace())
     assert case_gate._real_operations() == []
 
 
+def test_real_operations_đọc_được_sổ_thật() -> None:
+    """Có `apps.api.core.openapi` thì cổng đọc được sổ thật và chép đúng kiểu gương."""
+    assert all(isinstance(operation, Operation) for operation in case_gate._real_operations())
+
+
 def test_real_task_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sổ task đọc qua thuộc tính của gói; dựng tạm tại chỗ, không phụ thuộc repo đang có gì."""
     import packages.messaging
 
+    monkeypatch.setattr(packages.messaging, "registered_tasks", list, raising=False)
     assert case_gate._real_task_names() == []
     monkeypatch.setattr(packages.messaging, "registered_tasks", lambda: ["a", "b"], raising=False)
     assert case_gate._real_task_names() == ["a", "b"]
 
 
 def test_main_đạt_khi_chưa_có_thao_tác(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Sổ thao tác và sổ task dựng tạm tại chỗ: cổng không được phụ thuộc repo đang có gì."""
     monkeypatch.setattr(case_gate, "JUNIT_PATHS", (tmp_path / "không-có.xml",))
+    monkeypatch.setattr(case_gate, "_real_operations", list)
+    monkeypatch.setattr(case_gate, "_real_task_names", list)
     assert case_gate.main() == 0
 
 
