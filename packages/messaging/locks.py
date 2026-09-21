@@ -22,6 +22,12 @@ _log: Final = logging.getLogger(__name__)
 
 # Bộ đếm rào là khoá Redis duy nhất **không** TTL (BE-00 §5 của prompt B0-05): nó
 # chỉ tăng, mất nó là mất tính đơn điệu của token.
+# Ngưỡng (R-05, NO-029): ~70 byte cho mỗi **tên** khoá, không bao giờ thu hồi trên
+# instance `noeviction`. Tên cố định (`gpu:0`, `training:slot`) → vài KB, không cần dọn.
+# Tên theo id không giới hạn (vd claim theo job `training:claim:{job}`, BE-00 §7) thì
+# mỗi id để lại một bộ đếm vĩnh viễn: B6-03a **không** dùng `SafeLock` cho claim theo
+# job, hoặc nâng cấp bộ đếm sang `HINCRBY` một hash có TTL dài hơn đời job (đơn điệu
+# trong đời job là đủ cho token rào của nó).
 FENCE_SUFFIX: Final = ":fence"
 _SECRET_BYTES: Final = 16
 
