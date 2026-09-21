@@ -175,3 +175,21 @@ async def test_stat_uses_filesystem_time(local_storage: LocalDiskStorage) -> Non
 
     assert stored is not None
     assert abs((stored.last_modified - datetime.now(UTC)).total_seconds()) < 60
+
+
+async def test_delete_prefix_raises_instead_of_reporting_success(local_storage: LocalDiskStorage) -> None:
+    """NO-012: xoá hỏng (tiền tố là một **tệp**, `rmtree` gặp `ENOTDIR`) nổi lên, không báo thành công giả."""
+    prefix = keys.project_prefix(PROJECT)
+    blocker = local_storage._path(prefix.rstrip("/"))
+    blocker.parent.mkdir(parents=True)
+    blocker.write_bytes(b"khong-phai-thu-muc")
+
+    with pytest.raises(NotADirectoryError):
+        await local_storage.delete_prefix(prefix)
+
+    assert blocker.exists()
+
+
+async def test_delete_prefix_of_a_missing_prefix_is_silent(local_storage: LocalDiskStorage) -> None:
+    """Tiền tố chưa từng có object: dọn rác không có gì để xoá, không lỗi."""
+    await local_storage.delete_prefix(keys.project_prefix(PROJECT))

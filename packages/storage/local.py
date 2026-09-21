@@ -154,10 +154,10 @@ class LocalDiskStorage:
             await asyncio.to_thread(_remove, _meta_path(path))
 
     async def delete_prefix(self, prefix: str) -> None:
-        """Xoá cả cây thư mục của tiền tố."""
+        """Xoá cả cây thư mục của tiền tố; mục đã không còn thì bỏ qua, lỗi khác nổi lên (NO-012)."""
         check_prefix(prefix)
         with _disk_errors():
-            await asyncio.to_thread(shutil.rmtree, self._root / prefix, ignore_errors=True)
+            await asyncio.to_thread(shutil.rmtree, self._root / prefix, onexc=_ignore_missing)
 
     async def list_prefix(self, prefix: str, *, older_than: datetime | None = None) -> AsyncIterator[ObjectInfo]:
         """Duyệt object dưới tiền tố theo thứ tự khoá, bỏ file metadata."""
@@ -255,6 +255,12 @@ def _meta_path(path: Path) -> Path:
 def _remove(path: Path) -> None:
     """Xoá file nếu còn; không có thì thôi."""
     path.unlink(missing_ok=True)
+
+
+def _ignore_missing(function: Callable[..., object], path: str, error: BaseException) -> None:
+    """`onexc` của `rmtree`: tiền tố hay mục con đã không còn (xoá đồng thời) là xong; lỗi khác ném lại."""
+    if not isinstance(error, FileNotFoundError):
+        raise error
 
 
 def _message(body: dict[str, object]) -> bytes:
