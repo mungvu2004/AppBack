@@ -120,8 +120,18 @@ def test_process_local_reset_forgets_the_value() -> None:
     local = counting_local()
 
     assert local.get() == 1
-    local.reset()
+    assert local.reset() == 1
     assert local.get() == 2
+
+
+def test_process_local_reset_never_hands_back_a_resource_of_the_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tài nguyên dựng trước `fork` là của tiến trình cha: `reset` quên nó nhưng không trả để đóng (NO-024)."""
+    local = counting_local()
+    assert local.get() == 1
+
+    monkeypatch.setattr(os, "getpid", lambda: 999_999)
+    assert local.reset() is None
+    assert local.reset() is None
 
 
 @pytest.mark.parametrize(

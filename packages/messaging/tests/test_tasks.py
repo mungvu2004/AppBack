@@ -5,6 +5,7 @@ lại được kiểm bằng `task.apply()` — BE-00 §12 cho phép, và nó tr
 cho mỗi nhánh lỗi.
 """
 
+import asyncio
 import importlib
 import logging
 import os
@@ -17,6 +18,7 @@ from typing import Any
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.signals import worker_process_shutdown
 from pydantic import BaseModel
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, VALIDATION
@@ -37,6 +39,7 @@ from packages.messaging.tasks import (
     backoff_step,
     define_task,
     registered_tasks,
+    runner,
     task_entries,
 )
 from packages.testing.fixtures.messaging import WorkerFactory, ephemeral_broker, queued_payloads
@@ -372,6 +375,20 @@ def test_a_retried_task_is_not_mistaken_for_a_lost_worker(messaging_env: None) -
 
     assert FAILURES == []
     assert runs("retried-1") == 1
+
+
+def test_the_worker_process_closes_its_event_loop_on_shutdown() -> None:
+    """Tiến trình con của worker tắt thì đóng vòng sự kiện đã mở lúc khởi động (NO-024);
+    lần `runner()` sau (tiến trình khác, hay test sau) dựng vòng mới chạy được."""
+    loop = runner().get_loop()
+
+    worker_process_shutdown.send(sender=None, pid=os.getpid(), exitcode=0)
+
+    assert loop.is_closed()
+    assert runner().get_loop() is not loop
+    assert runner().run(asyncio.sleep(0, result="chạy")) == "chạy"
+    tasks_module.reset_runner()
+    tasks_module.reset_runner()  # chưa có vòng nào: không có gì để đóng, không lỗi
 
 
 def test_async_tasks_share_one_event_loop(messaging_env: None) -> None:

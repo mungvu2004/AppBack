@@ -21,7 +21,7 @@ from typing import Any, Final
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from celery.signals import worker_process_init
+from celery.signals import worker_process_init, worker_process_shutdown
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -116,6 +116,23 @@ def runner() -> asyncio.Runner:
 def _open_runner(**_: object) -> None:
     """Dựng sẵn vòng sự kiện ngay khi tiến trình con của worker khởi động."""
     runner()
+
+
+def reset_runner() -> None:
+    """Đóng vòng sự kiện của tiến trình hiện tại (nếu có) rồi quên nó; `runner()` sau dựng vòng mới.
+
+    `Runner.close()` huỷ task còn treo và tắt executor mặc định, để engine async đóng đàng
+    hoàng thay vì bị bỏ lại lúc tiến trình thoát (NO-024). Test gọi để về trạng thái sạch.
+    """
+    current = _runner.reset()
+    if current is not None:
+        current.close()
+
+
+@worker_process_shutdown.connect
+def _close_runner(**_: object) -> None:
+    """Tiến trình con của worker tắt: đóng vòng sự kiện đã mở ở `worker_process_init`."""
+    reset_runner()
 
 
 def register_task(task_name: str, fn: Callable[..., Any]) -> None:

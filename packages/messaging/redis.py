@@ -83,10 +83,16 @@ class ProcessLocal[ResourceT]:
                 self._value, self._pid = self._factory(), pid
             return self._value
 
-    def reset(self) -> None:
-        """Chỉ cho test và CLI: quên tài nguyên đang giữ, lần sau dựng lại."""
+    def reset(self) -> ResourceT | None:
+        """Quên tài nguyên đang giữ, lần sau dựng lại; trả nó để người gọi đóng nếu cần.
+
+        Tài nguyên dựng trước `fork` (PID khác) bị quên nhưng **không** trả: đóng nó ở
+        tiến trình con là đụng vào socket/vòng sự kiện của tiến trình cha.
+        """
         with self._lock:
+            value = self._value if self._pid == os.getpid() else None
             self._value, self._pid = None, None
+            return value
 
 
 def with_db(url: str, db: int) -> str:
