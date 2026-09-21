@@ -65,14 +65,18 @@ async def sign(storage: LocalDiskStorage, filename: str | None = None) -> str:
 
 
 async def test_signed_url_goes_through_the_files_route(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
-    """K15: URL không bao giờ trỏ thẳng đường dẫn tệp."""
+    """K15: URL đi qua route tệp, không chứa đường dẫn hệ thống tệp hay khoá **dạng thô**.
+
+    Không khẳng định token là mờ: thân token là base64url **không mã hoá** của `{k,e,d,n}`
+    (token là bearer, BE-00 §8 chỉ cấm nó vào log), nên ai có URL vẫn giải ra được khoá.
+    """
     await local_storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
 
     signed = await local_storage.signed_url(KEY, disposition="attachment", filename="bản vẽ.png")
 
     assert signed.url.startswith(f"{PUBLIC_BASE_URL}{FILES_ROUTE}")
     assert str(tmp_path) not in signed.url
-    assert KEY not in signed.url
+    assert KEY not in signed.url  # dạng thô; bản base64url thì có, xem docstring
 
 
 async def test_verify_token_returns_the_grant(local_storage: LocalDiskStorage) -> None:

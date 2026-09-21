@@ -165,6 +165,7 @@ class LocalDiskStorage:
     ) -> SignedUrl:
         """Dựng token `{k,e,d,n}` + MAC cho `GET /api/files/{token}` (BE-00 §8)."""
         check_key(key)
+        # Chỉ để chặn `inline` sai luật lúc ký; `kind` không vào token (xem `FileGrant`).
         await resolve_kind(self, key, disposition, kind)
         _, expires_at = expiry(self._clock)
         name = safe_filename(filename) if filename is not None else ""
@@ -263,9 +264,11 @@ def _ignore_missing(function: Callable[..., object], path: str, error: BaseExcep
 
 
 def _message(body: dict[str, object]) -> bytes:
-    """Bản tin ký: `object_key | exp | disposition | filename` (BE-00 §8).
+    """Bản tin ký: `object_key | exp | disposition | filename` — bốn trường `k|e|d|n`.
 
-    Không giá trị nào chứa `|`: khoá qua `check_key`, tên tệp qua `safe_filename`.
+    BE-00 §8 ghi ba trường đầu; trường `n` thêm vào để MAC buộc luôn tên tệp của
+    `Content-Disposition` (chặt hơn hiến chương, không lỏng hơn). Không giá trị nào chứa
+    `|`: khoá qua `check_key`, tên tệp qua `safe_filename`.
     """
     return "|".join(str(body[field]) for field in ("k", "e", "d", "n")).encode("utf-8")
 

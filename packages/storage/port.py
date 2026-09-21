@@ -61,7 +61,11 @@ class SignedUrl:
 
 @dataclass(frozen=True, slots=True)
 class FileGrant:
-    """Kết quả mở token của `LocalDiskStorage`; `GET /api/files/{token}` (B0-06) dùng."""
+    """Kết quả mở token của `LocalDiskStorage`; `GET /api/files/{token}` (B0-06) dùng.
+
+    Token **không** mang `kind`: luật `inline` chỉ kiểm lúc ký, nên nơi phục vụ phải tự đọc
+    `kind` trong metadata và chỉ trả `inline` cho PNG/JPEG (K15; `apps/api/files` đã làm).
+    """
 
     key: str
     disposition: Disposition
