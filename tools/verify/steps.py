@@ -231,6 +231,8 @@ def run_steps(steps: Sequence[tuple[str, Callable[[], StepOutcome]]], wanted: se
 def cmd_verify(args: argparse.Namespace) -> int:
     wanted = set(args.steps.split(",")) if args.steps else None
     outcomes = run_steps(_ALL_STEPS, wanted)
+    # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất.
+    export_contract_samples()
     _print_table(outcomes)
     return 1 if any(o.status == STATUS_FAIL for o in outcomes) else 0
 
@@ -244,7 +246,7 @@ def _clean_dir(d: Path) -> Path:
     """Thư mục ra của một việc: xoá sạch nội dung trước khi ghi ([6]C).
 
     `run.sh` bind-mount thư mục host **đúng vào** `/src-out/<việc>` (`lock`, `openapi`,
-    `merge-heads`), mà mount point thì không gỡ được (EBUSY, NO-001).
+    `merge-heads`, `contract-samples`), mà mount point thì không gỡ được (EBUSY, NO-001).
     Vì vậy chỉ xoá **từng mục con**, giữ chính `d`, và để lỗi xoá nổi lên: sót một file
     cũ là `merge-heads` chép nhầm revision cũ ra ngoài (NO-008).
     """
@@ -255,6 +257,20 @@ def _clean_dir(d: Path) -> Path:
         else:
             child.unlink()
     return d
+
+
+def export_contract_samples() -> None:
+    """Chép mẫu golden của lượt ra `/src-out/contract-samples` (ENV §2, NO-043).
+
+    Không đặt `CONTRACT_SAMPLES_DIR` (chạy ngoài cổng) → không làm gì. Đặt mà chưa test nào
+    ghi mẫu → thư mục ra rỗng, để không còn mẫu của lượt trước làm người đọc nhầm.
+    """
+    source = os.environ.get("CONTRACT_SAMPLES_DIR")
+    if not source:
+        return
+    dest = _clean_dir(OUT_DIR / "contract-samples")
+    if Path(source).is_dir():
+        shutil.copytree(source, dest, dirs_exist_ok=True)
 
 
 def cmd_lock(_args: argparse.Namespace) -> int:

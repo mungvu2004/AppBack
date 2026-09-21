@@ -453,7 +453,7 @@ def test_run_thật_in_lệnh(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out.startswith("$ ")
 
 
-# --- FIX-006 ------------------------------------------------------------------------
+# --- FIX-006, FIX-008 ----------------------------------------------------------------
 
 
 def test_clean_dir_không_nuốt_lỗi_xoá_mục_con(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -488,3 +488,40 @@ def test_clean_dir_xoá_cả_thư_mục_con_giữ_gốc(repo: Path) -> None:
     assert out.is_dir()
     assert list(out.iterdir()) == []
 
+
+def _fail_one_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Một bước hỏng: việc chép mẫu vẫn phải chạy (người điều phối cần mẫu nhất khi đỏ)."""
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("7", lambda: steps.StepOutcome("7", "h", steps.STATUS_FAIL))])
+
+
+def test_verify_chép_mẫu_golden_ra_thư_mục_ra(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-043, ENV §2: cuối lượt, `CONTRACT_SAMPLES_DIR` chép ra `/src-out/contract-samples`, mẫu cũ bị thay."""
+    samples = tmp_path / "contract-samples"
+    (samples / "op").mkdir(parents=True)
+    (samples / "op" / "C01-1.json").write_text("{}", encoding="utf-8")
+    out = steps.OUT_DIR / "contract-samples"
+    out.mkdir(parents=True)
+    (out / "cũ.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CONTRACT_SAMPLES_DIR", str(samples))
+    _fail_one_step(monkeypatch)
+    assert steps.main(["verify"]) == 1
+    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()) == ["op/C01-1.json"]
+
+
+def test_verify_không_có_mẫu_thì_thư_mục_ra_rỗng(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lượt không test nào ghi mẫu (thư mục chưa tạo) → thư mục ra rỗng, không còn mẫu của lượt trước."""
+    out = steps.OUT_DIR / "contract-samples"
+    out.mkdir(parents=True)
+    (out / "cũ.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CONTRACT_SAMPLES_DIR", str(tmp_path / "chua-co"))
+    _fail_one_step(monkeypatch)
+    assert steps.main(["verify"]) == 1
+    assert list(out.iterdir()) == []
+
+
+def test_verify_ngoài_container_không_chép(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không đặt `CONTRACT_SAMPLES_DIR` (chạy ngoài cổng) → không tạo gì dưới thư mục ra."""
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    _fail_one_step(monkeypatch)
+    assert steps.main(["verify"]) == 1
+    assert not (steps.OUT_DIR / "contract-samples").exists()
