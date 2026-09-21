@@ -1,6 +1,8 @@
 """`create_app`: chọn verifier, dò router, gộp `lifespan`, cổng đồng hồ tiêm."""
 
 import importlib
+import importlib.util
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Final
 
@@ -32,6 +34,7 @@ from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
 
 HKDF_SEED: Final = "khoa-du-dai-cho-hkdf-trong-test-01"
+API_DIR: Final = Path(app_module.__file__).resolve().parents[1]
 
 
 def _settings(env: str) -> CoreSettings:
@@ -52,14 +55,21 @@ def _verifier_module(monkeypatch: pytest.MonkeyPatch, build: Any) -> None:
     )
 
 
-def test_deny_all_when_no_auth_module() -> None:
-    """Chưa có B1-01: `dev`/`ci`/`test` chạy với verifier từ chối mọi token."""
+def _no_verifier_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Giả lập repo chưa có `apps.api.auth.verifier` — dựng tại chỗ, không đọc trạng thái repo (FIX-029)."""
+    monkeypatch.setattr(app_module, "_verifier_module_exists", lambda: False)
+
+
+def test_deny_all_when_no_auth_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chưa có module auth: `dev`/`ci`/`test` chạy với verifier từ chối mọi token."""
+    _no_verifier_module(monkeypatch)
     app = create_app(_settings("dev"), routers=[])
     assert isinstance(app.state.token_verifier, DenyAllTokenVerifier)
 
 
-def test_production_without_auth_module_refuses_to_start() -> None:
+def test_production_without_auth_module_refuses_to_start(monkeypatch: pytest.MonkeyPatch) -> None:
     """API thật mà không ai kiểm token thì thà không lên."""
+    _no_verifier_module(monkeypatch)
     with pytest.raises(RuntimeError, match=VERIFIER_MODULE):
         create_app(_settings("production"), routers=[])
 
@@ -99,8 +109,16 @@ def test_auth_module_import_error_propagates(monkeypatch: pytest.MonkeyPatch) ->
         create_app(_settings("dev"), routers=[])
 
 
-def test_verifier_module_exists_is_false_today() -> None:
-    """`apps.api.auth` chưa hợp nhất: `find_spec` không được ném ra ngoài."""
+@pytest.mark.parametrize("missing", ["parent", "module"])
+def test_verifier_module_exists_survives_a_missing_package(monkeypatch: pytest.MonkeyPatch, missing: str) -> None:
+    """Gói cha `apps.api.auth` chưa có (`find_spec` ném) hay chỉ thiếu `verifier` (trả `None`) → `False`, không ném."""
+
+    def find_spec(name: str, package: str | None = None) -> None:
+        """`find_spec` của một repo chưa có module auth."""
+        if missing == "parent":
+            raise ModuleNotFoundError(f"No module named {name.rsplit('.', 1)[0]!r}")
+
+    monkeypatch.setattr(importlib.util, "find_spec", find_spec)
     assert app_module._verifier_module_exists() is False
 
 
@@ -134,9 +152,11 @@ def test_openapi_url_hidden_in_production(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_discover_routers_finds_real_modules() -> None:
-    """Hôm nay repo có đúng hai module có `router.py`."""
+    """Dò đúng mọi `apps/api/<module>/router.py` có trên đĩa, theo thứ tự tên (không ghim số module)."""
+    on_disk = sorted(f"apps.api.{path.parent.name}.router" for path in API_DIR.glob("*/router.py"))
     names = [name for name, _router in discover_routers()]
-    assert names == ["apps.api.files.router", "apps.api.health.router"]
+    assert names == sorted(set(names)) == on_disk
+    assert {"apps.api.files.router", "apps.api.health.router"} <= set(names)
 
 
 def test_discover_routers_rejects_wrong_type(monkeypatch: pytest.MonkeyPatch) -> None:
