@@ -160,6 +160,20 @@ def test_hosted_openings_do_not_rescan_the_wall_list() -> None:
     assert listed.scans <= 2
 
 
+def test_twin_walls_check_hosted_openings_once() -> None:
+    """Ba tường trùng id, hai ô mở trỏ về id đó: hai cảnh báo, không phải 3 x 2 (review B3-01 lượt 2, N1).
+
+    Xét lại cho mỗi bản trùng là W x N lỗi trên thân #35 do client gửi: 3,16 MiB cạn 4 GiB.
+    """
+    bare = WALL.model_copy(update={"opening_ids": ()})
+    twin = OPENING.model_copy(update={"id": "D-HOST00000000"})
+    assert check_integrity(layer(walls=(bare, bare, bare), openings=(OPENING, twin))) == [
+        issue("duplicateId", "critical", WALL.id),
+        issue("missingReference", "warning", WALL.id, OPENING.id),
+        issue("missingReference", "warning", WALL.id, twin.id),
+    ]
+
+
 def test_has_critical() -> None:
     """Chỉ `critical` chặn; cảnh báo không."""
     assert has_critical([issue("roomOutline", "warning", ROOM.id), issue("duplicateId", "critical", WALL.id)])

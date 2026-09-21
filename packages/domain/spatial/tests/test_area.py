@@ -29,7 +29,7 @@ def outline(*corners: tuple[int, int]) -> tuple[Point, ...]:
 SLIVER = rectangle(125, 100)
 
 
-def test_half_rounds_up() -> None:
+def test_quarter_rounds_down() -> None:
     """125 x 100 mm = 0,0125 m²; x 100 = 1,25 (không phải nửa) → 0,01 (`area.test.ts:199-201`)."""
     assert polygon_area_m2(SLIVER) == Decimal("0.01")
 
