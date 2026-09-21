@@ -131,6 +131,34 @@ def hidden_in_function_default(
     return hidden_model
 
 
+def colliding_function_model(domain: str, name: str, *, overload: str = "") -> onnx.ModelProto:
+    """Model khai hàm cục bộ `domain::name` (thân `Identity`) rồi gọi đúng id đó (lời gọi không `overload`).
+
+    Id trùng op ORT đã đăng ký thì ORT chạy kernel của op, không chạy thân hàm (review
+    2026-09-22 #9); hàm mang `overload` khác lời gọi thì bộ inline bỏ qua nó.
+    """
+    function = helper.make_function(domain, name, ["a"], ["b"], [helper.make_node("Identity", ["a"], ["b"])], OPSETS)
+    function.overload = overload
+    call = helper.make_node(name, ["x"], ["y"], domain=domain)
+    return model([call], functions=[function], opsets=[*OPSETS, helper.make_opsetid(domain, 1)])
+
+
+def nested_function_model(depth: int) -> onnx.ModelProto:
+    """`F<k>(a) = F<k-1>(F<k-1>(a))`, `F0 = Identity`: vài trăm byte nở ra `2^depth` node (review #10)."""
+    opsets = [*OPSETS, LOCAL]
+    functions = [
+        helper.make_function("local", "F0", ["a"], ["b"], [helper.make_node("Identity", ["a"], ["b"])], opsets)
+    ]
+    for level in range(1, depth + 1):
+        inner = f"F{level - 1}"
+        calls = [
+            helper.make_node(inner, ["a"], ["m"], domain="local"),
+            helper.make_node(inner, ["m"], ["b"], domain="local"),
+        ]
+        functions.append(helper.make_function("local", f"F{level}", ["a"], ["b"], calls, opsets))
+    return model([helper.make_node(f"F{depth}", ["x"], ["y"], domain="local")], functions=functions, opsets=opsets)
+
+
 def external_tensor(name: str, location: str = "../x") -> TensorProto:
     """Tensor trỏ dữ liệu ra tệp ngoài — thứ bộ nạp phải từ chối."""
     tensor = helper.make_tensor(name, TensorProto.FLOAT, [1], [0.0])

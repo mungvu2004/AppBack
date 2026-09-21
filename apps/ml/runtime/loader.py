@@ -5,9 +5,9 @@ SHA-256 tự tính khớp checksum đã ghim; không byte nào được đưa ch
 khi qua luật "ONNX không tin". Pickle, zip (`.pt`), safetensors bị chặn ở byte đầu,
 không bao giờ tới bộ giải — kể cả khi checksum khớp.
 
-Bản **ghim** (nhà cung cấp, `ML_MODELS_DIR/<name>.onnx`) miễn luật cấu trúc (miền op,
-`Loop`/`Scan`) nhưng vẫn qua luật dữ liệu ngoài: phiên nạp từ bytes không có thư mục
-gốc, đường `external_data` sẽ được hiểu theo thư mục làm việc của tiến trình.
+Bản **ghim** (nhà cung cấp, `ML_MODELS_DIR/<name>.onnx`) miễn luật cấu trúc (hàm cục bộ,
+miền op, `Loop`/`Scan`) nhưng vẫn qua luật dữ liệu ngoài: phiên nạp từ bytes không có thư
+mục gốc, đường `external_data` sẽ được hiểu theo thư mục làm việc của tiến trình.
 """
 
 import asyncio
@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Final
 
 import onnx
-import onnx.inliner
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 from google.protobuf.message import DecodeError  # type: ignore[import-untyped]  # protobuf không kèm stub
 
@@ -147,25 +146,18 @@ def has_external_data(model: onnx.ModelProto) -> bool:
     )
 
 
-def _node_allowed(node: onnx.NodeProto, local_functions: frozenset[tuple[str, str]]) -> bool:
-    """Không `Loop`/`Scan`; miền chuẩn, hay là lời gọi một hàm cục bộ có thật (thân nó cũng bị duyệt)."""
-    if node.op_type in FORBIDDEN_OPS:
-        return False
-    return node.domain in TRUSTED_DOMAINS or (node.domain, node.op_type) in local_functions
-
-
 def _structure_allowed(model: onnx.ModelProto) -> bool:
-    """Luật cấu trúc (BE-00 §9) trên **cả** bản đã inline hàm cục bộ lẫn bản gốc.
+    """Luật cấu trúc dạng storage (BE-00 §9): **không hàm cục bộ**, mọi node miền chuẩn, không `Loop`/`Scan`.
 
-    Bản inline là cách hiến chương ghi; bản gốc bắt thứ bộ inline bỏ sót (mặc định thuộc
-    tính hàm). Hàm gọi vòng làm bộ inline ném `ValidationError` → từ chối.
+    Chặt hơn hiến chương (kiểm trên bản `inline_local_functions`): luật không thấy được thứ
+    ORT chạy khi có hàm cục bộ — hàm trùng id op đã đăng ký thì ORT chạy kernel chứ không
+    chạy thân hàm, và lời gọi lồng nở số node theo cấp số nhân (review 2026-09-22 #9, #10).
+    Không có hàm thì bản inline chính là bản gốc. Model của hệ thống (`export_onnx`,
+    `export_yolo`, ba bản ghim) không có hàm cục bộ nào.
     """
-    try:
-        inlined = onnx.inliner.inline_local_functions(model)
-    except onnx.checker.ValidationError:
+    if len(model.functions) > 0:
         return False
-    local = frozenset((function.domain, function.name) for function in model.functions)
-    return all(_node_allowed(node, local) for node in (*iter_nodes(model), *iter_nodes(inlined)))
+    return all(node.domain in TRUSTED_DOMAINS and node.op_type not in FORBIDDEN_OPS for node in iter_nodes(model))
 
 
 def _verify(data: bytes, ref: ModelRef, pinned: Mapping[str, PinnedWeights]) -> None:

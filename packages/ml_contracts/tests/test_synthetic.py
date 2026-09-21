@@ -24,6 +24,7 @@ from packages.ml_contracts.synthetic import (
     MAX_SEED,
     MM_PER_PX_CHOICES,
     SyntheticPlan,
+    can_render,
     eval_set_digest,
     format_mm,
     read_marker,
@@ -280,6 +281,16 @@ def test_read_marker() -> None:
 def test_render_plan_rejects(seed: int, width: int, height: int, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         render_plan(seed, width_px=width, height_px=height)
+
+
+def test_can_render_matches_render_plan() -> None:
+    """`can_render` nói đúng khổ nào `render_plan` vẽ được (bộ giả dựa vào nó để trả rỗng)."""
+    assert can_render(1600, 1200)
+    assert can_render(800, 600)
+    for width, height in ((640, 480), (255, 2000), (8001, 5000)):
+        assert not can_render(width, height)
+        with pytest.raises(ValueError, match=r"quá nhỏ|cạnh"):
+            render_plan(1, width_px=width, height_px=height)
 
 
 def test_render_plan_large_page() -> None:

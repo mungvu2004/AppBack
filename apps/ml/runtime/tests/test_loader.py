@@ -24,12 +24,14 @@ from apps.ml.runtime.tests.helpers import (
     FailingReads,
     add_model,
     branch_graph,
+    colliding_function_model,
     external_tensor,
     hidden_in_function_default,
     local_function_model,
     loop_graph,
     loop_model,
     model,
+    nested_function_model,
     sha,
     some_id,
 )
@@ -306,29 +308,53 @@ def _hidden_microsoft_op() -> onnx.ModelProto:
 
 
 def _harmless_default() -> onnx.ModelProto:
-    """Mặc định thuộc tính hàm chỉ có op chuẩn: phải được nhận (ORT chạy ra `y = x`)."""
+    """Mặc định thuộc tính hàm chỉ có op chuẩn (ORT chạy ra `y = x`): vô hại, vẫn bị từ chối vì có hàm cục bộ."""
     zero = numpy_helper.from_array(np.array([0.0], dtype=np.float32), "zero")
     return hidden_in_function_default(branch_graph([helper.make_node("Identity", ["zero"], ["out"])], [zero]))
 
 
-def test_structure_rules_see_function_attribute_defaults() -> None:
-    """Review 2026-09-21 #1: bộ inline của `onnx` không thay mặc định thuộc tính hàm, luật phải tự thấy."""
-    assert not loader._structure_allowed(hidden_in_function_default(loop_graph(5)))
-    assert not loader._structure_allowed(_hidden_microsoft_op())
-    assert loader._structure_allowed(_harmless_default())
+def _local_function_models() -> tuple[onnx.ModelProto, ...]:
+    """Model có hàm cục bộ mà ORT nạp và chạy được — trước lượt sửa review 2026-09-22, cả sáu lọt dạng storage.
 
-
-async def test_load_onnx_runs_local_functions(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
-    """Lời gọi hàm cục bộ có thật và mặc định thuộc tính vô hại vẫn nạp và chạy được ở dạng storage."""
+    Hàm vô hại, mặc định thuộc tính vô hại, hàm trùng id op contrib / `ai.onnx.ml` (ORT chạy
+    kernel, không chạy thân), hàm lệch `overload` (bộ inline bỏ qua), lời gọi lồng 12 bậc (4 096 node).
+    """
     one = numpy_helper.from_array(np.array([1.0], dtype=np.float32))
     plus_one = local_function_model(
         [helper.make_node("Constant", [], ["k"], value=one), helper.make_node("Add", ["a", "k"], ["b"])]
     )
-    for sample, expected in ((plus_one, 3.0), (_harmless_default(), 2.0)):
+    return (
+        plus_one,
+        _harmless_default(),
+        colliding_function_model("com.microsoft", "Gelu"),
+        colliding_function_model("ai.onnx.ml", "Binarizer"),
+        colliding_function_model("com.microsoft", "Gelu", overload="khac"),
+        nested_function_model(12),
+    )
+
+
+def test_structure_rules_reject_every_local_function() -> None:
+    """Dạng storage: có hàm cục bộ là từ chối, kể cả hàm vô hại; model phẳng miền chuẩn thì nhận."""
+    assert loader._structure_allowed(add_model())
+    assert not loader._structure_allowed(hidden_in_function_default(loop_graph(5)))
+    assert not loader._structure_allowed(_hidden_microsoft_op())
+    assert not any(loader._structure_allowed(sample) for sample in _local_function_models())
+
+
+async def test_load_onnx_m03_local_functions_rejected(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Review 2026-09-22 #9, #10: luật không thấy thứ ORT chạy khi có hàm cục bộ → dạng storage từ chối hết.
+
+    Bản ghim miễn luật cấu trúc nên cùng model đó vẫn nạp được ở dạng ghim.
+    """
+    for sample in _local_function_models():
         data = sample.SerializeToString()
         ref = storage_ref(data)
         await put(local_storage, ref, data)
-        assert run(await load_onnx(local_storage, ref, models_dir=tmp_path), 2.0) == expected
+        await expect(MODEL_FORMAT_UNSUPPORTED, local_storage, ref, tmp_path)
+    data = _local_function_models()[0].SerializeToString()
+    (tmp_path / "yolov8n.onnx").write_bytes(data)
+    session = await load_onnx(local_storage, pinned_ref(data), models_dir=tmp_path, pinned=pin_table(data))
+    assert run(session, 2.0) == 3.0
 
 
 async def test_load_onnx_m03_control_flow(local_storage: LocalDiskStorage, tmp_path: Path) -> None:

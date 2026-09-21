@@ -197,12 +197,18 @@ def _axis(rng: random.Random, count: int, mm_per_px: float, limit: int, room_max
     return centres, thickness
 
 
+def can_render(width_px: int, height_px: int) -> bool:
+    """Khổ này vẽ được bản vẽ tối thiểu: cạnh ≥ `MIN_EDGE_PX`, trong trần điểm, đủ chỗ cho một lưới."""
+    if min(width_px, height_px) < MIN_EDGE_PX or width_px * height_px > MASK_MAX_PIXELS:
+        return False
+    return any(_grid_choices(width_px, height_px, scale) for scale in MM_PER_PX_CHOICES)
+
+
 def _layout(rng: random.Random, width: int, height: int) -> _Grid:
     """Chọn tỉ lệ, lưới, khổ phòng và vị trí nhà; trang quá nhỏ cho mọi lưới → `ValueError`."""
-    scales = [scale for scale in MM_PER_PX_CHOICES if _grid_choices(width, height, scale)]
-    if not scales:
+    if not can_render(width, height):
         raise ValueError(f"trang {width}x{height} quá nhỏ cho bản vẽ tối thiểu (2 phòng, chữ kích thước, khung tên)")
-    mm_per_px = rng.choice(scales)
+    mm_per_px = rng.choice([scale for scale in MM_PER_PX_CHOICES if _grid_choices(width, height, scale)])
     cols, rows = rng.choice(_grid_choices(width, height, mm_per_px))
     max_w, max_h = _limits(width, height, mm_per_px)
     room_max = math.floor(ROOM_MM[1] / mm_per_px)

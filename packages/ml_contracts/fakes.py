@@ -11,7 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from packages.ml_contracts.artifacts import DetectionPx, TextPx
-from packages.ml_contracts.synthetic import SyntheticPlan, read_marker, render_plan
+from packages.ml_contracts.synthetic import SyntheticPlan, can_render, read_marker, render_plan
 
 PLAN_CACHE_SIZE = 8
 
@@ -26,16 +26,14 @@ def answer_for(image: NDArray[np.uint8]) -> SyntheticPlan | None:
     """Đáp án của ảnh khi nó là trang tổng hợp nguyên vẹn; không thì `None`.
 
     Tổng kiểm của dấu không bí mật: ai cũng dựng được dấu "đúng" trên một khổ mà
-    `render_plan` không vẽ nổi. Khi đó không có đáp án nào — trả `None` như mọi ảnh lạ.
+    `render_plan` không vẽ nổi. Khổ đó không có đáp án — trả `None` như mọi ảnh lạ; còn
+    lỗi thật của `render_plan` thì vẫn nổi lên.
     """
     seed = read_marker(image)
-    if seed is None:
-        return None
     height, width = image.shape[:2]
-    try:
-        return _plan(seed, width, height)
-    except ValueError:
+    if seed is None or not can_render(width, height):
         return None
+    return _plan(seed, width, height)
 
 
 class FakeWallSegmenter:
