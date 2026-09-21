@@ -51,6 +51,7 @@ CONNECT_TIMEOUT_S: Final = 3.0
 READ_TIMEOUT_S: Final = 15.0
 """Mặc định của `minio` là 300 s — quá dài so với trần 15 s của endpoint (W11, RES-01)."""
 
+SERVER_ERROR_STATUS: Final = 500
 _MISSING_CODES: Final = frozenset(("NoSuchKey", "NoSuchObject", "NotFound"))
 _log: Final = logging.getLogger(__name__)
 
@@ -66,11 +67,20 @@ def http_client() -> urllib3.PoolManager:
 
 @contextmanager
 def _s3_errors() -> Iterator[None]:
-    """Lỗi kết nối, timeout hay 5xx → 503 (C13); lỗi khác của thư viện không bị nuốt."""
+    """Lỗi kết nối, timeout hay 5xx → 503 (C13); lỗi khác của thư viện không bị nuốt.
+
+    `minio` chỉ dựng `ServerError` cho 5xx **không** thân; S3/MinIO quá tải trả 5xx kèm thân
+    XML (`SlowDown`, `InternalError`) thành `S3Error` — cũng là phụ thuộc hỏng (NO-009).
+    `S3Error` 4xx (`AccessDenied`, `NoSuchBucket`) là sự cố cấu hình, nổi lên nguyên vẹn.
+    """
     try:
         yield
     except (urllib3.exceptions.HTTPError, ServerError) as exc:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+    except S3Error as exc:
+        if exc.response.status >= SERVER_ERROR_STATUS:
+            raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+        raise
 
 
 class S3Storage:

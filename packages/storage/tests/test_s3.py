@@ -2,6 +2,8 @@
 
 import hashlib
 import logging
+import secrets
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -13,6 +15,7 @@ from minio.error import S3Error
 from packages.core.errors import AppError
 from packages.storage import keys
 from packages.storage.s3 import S3Storage, http_client
+from packages.storage.tests.fault_proxy import Fault, FaultProxy, fault_proxy, s3_error_xml
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.services import ephemeral_minio, refused_url
 
@@ -149,3 +152,29 @@ async def test_ensure_bucket_is_idempotent_and_survives_minio_cors(
     assert [record.message for record in caplog.records] == ["cors_managed_by_server"] * 2
     await storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
     assert await storage.stat(KEY) is not None
+
+
+@pytest.fixture
+def proxied(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> Iterator[tuple[S3Storage, FaultProxy]]:
+    """Kho trỏ qua proxy tiêm lỗi (`fault_proxy.py`), bucket riêng trên MinIO thật."""
+    endpoint, access_key, secret_key = minio_endpoint
+    bucket = f"test-{secrets.token_hex(6)}"
+    client_for(endpoint, access_key, secret_key).make_bucket(bucket)
+    with fault_proxy(endpoint) as proxy:
+        yield storage_on(client_for(proxy.endpoint, access_key, secret_key), bucket, fake_clock), proxy
+
+
+@pytest.mark.parametrize(("status", "code"), [(500, "InternalError"), (503, "SlowDown")])
+async def test_server_error_with_xml_body_returns_503(
+    proxied: tuple[S3Storage, FaultProxy], status: int, code: str
+) -> None:
+    """NO-009: 5xx **có thân XML** (S3 quá tải) → 503 + `Retry-After`, không lọt `S3Error` thô (C13)."""
+    storage, proxy = proxied
+    await storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    proxy.faults.append(Fault("GET", status, s3_error_xml(code)))
+
+    with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE") as raised:
+        [chunk async for chunk in storage.open_read(KEY)]
+
+    assert raised.value.retry_after == 5
+    assert b"".join([chunk async for chunk in storage.open_read(KEY)]) == PNG
