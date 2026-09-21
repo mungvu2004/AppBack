@@ -484,6 +484,7 @@ def test_real_operations_đọc_được_sổ_thật() -> None:
 
 
 def test_real_task_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sổ task đọc qua thuộc tính của gói; dựng tạm tại chỗ, không phụ thuộc repo đang có gì."""
     import packages.messaging
 
     monkeypatch.setattr(packages.messaging, "registered_tasks", list, raising=False)
