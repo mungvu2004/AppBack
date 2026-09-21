@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import io
 import smtplib
 import socket
@@ -13,6 +14,7 @@ import pytest
 import redis
 from minio import Minio
 
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.testing.fixtures.services import (
     ephemeral_minio,
     ephemeral_postgres,
@@ -23,14 +25,17 @@ from packages.testing.fixtures.services import (
 # Container đã dừng: IPv4 của host.docker.internal từ chối (111), IPv6 không tới được (101);
 # asyncpg / socket gộp các lỗi này thành OSError.
 _STOPPED = r"Errno (101|111)"
+_STOPPED_TIMEOUT_S = 5
+"""Trần bắt tay tới bản **đã dừng**: lỗi `Errno 101/111` tới ngay, trần chỉ để test không treo."""
 
 
 def _pg_dsn(url: str) -> str:
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-async def _select_one(url: str) -> int:
-    conn = await asyncpg.connect(_pg_dsn(url), timeout=5)
+async def _select_one(url: str, *, connect_timeout_s: float = GATE_CONNECT_TIMEOUT_S) -> int:
+    """`SELECT 1` qua kết nối mới; trần mặc định là của đường cổng (NO-042: chặng Docker có lúc kẹt ~68 s)."""
+    conn = await asyncpg.connect(_pg_dsn(url), timeout=connect_timeout_s)
     try:
         value: int = await conn.fetchval("select 1")
         return value
@@ -39,7 +44,7 @@ async def _select_one(url: str) -> int:
 
 
 async def test_postgres_16_lên_thật(postgres_url: str) -> None:
-    conn = await asyncpg.connect(_pg_dsn(postgres_url))
+    conn = await asyncpg.connect(_pg_dsn(postgres_url), timeout=GATE_CONNECT_TIMEOUT_S)
     try:
         version: str = await conn.fetchval("show server_version")
     finally:
@@ -94,7 +99,7 @@ async def test_ephemeral_postgres_dừng_xong_bản_dùng_chung_vẫn_chạy(pos
     assert await _select_one(url) == 1
     eph.stop()
     with pytest.raises(OSError, match=_STOPPED):
-        await _select_one(url)
+        await _select_one(url, connect_timeout_s=_STOPPED_TIMEOUT_S)
     assert await _select_one(postgres_url) == 1
 
 
@@ -116,3 +121,12 @@ def test_refused_url_bị_từ_chối() -> None:
     assert url.port is not None
     with pytest.raises(ConnectionRefusedError):
         socket.create_connection((url.hostname, url.port), timeout=2)
+
+
+def test_trần_bắt_tay_theo_trạng_thái_bản_postgres() -> None:
+    """NO-042: bản còn chạy chịu trần cổng — chặng `host.docker.internal` có lúc kẹt ~68 s (NO-007).
+
+    Bản đã dừng giữ trần ngắn: lỗi `Errno 101/111` tới ngay, trần chỉ để test không treo.
+    """
+    assert inspect.signature(_select_one).parameters["connect_timeout_s"].default == GATE_CONNECT_TIMEOUT_S
+    assert _STOPPED_TIMEOUT_S < GATE_CONNECT_TIMEOUT_S
