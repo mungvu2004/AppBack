@@ -88,18 +88,23 @@ class SafeLock:
         with redis_errors():
             return bool(await self._renew_script(keys=[self._key], args=[f":{token}", self._ttl_ms]))
 
-    async def release(self, token: int) -> None:
-        """Trả khoá nếu còn là của `token`; khoá của chủ mới không bị đụng tới."""
+    async def release(self, token: int) -> bool:
+        """Trả khoá nếu còn là của `token`; `False` khi khoá đã mất (khoá của chủ mới không bị đụng)."""
         with redis_errors():
-            await self._release_script(keys=[self._key], args=[f":{token}"])
+            return bool(await self._release_script(keys=[self._key], args=[f":{token}"]))
 
     @asynccontextmanager
     async def hold(self, renew_every_ms: int) -> AsyncIterator[int]:
         """Giữ khoá suốt thân `async with`, tự gia hạn; mất khoá → `LockLost`.
 
-        Task gia hạn huỷ task đang chạy thân (đúng cách `asyncio.timeout` làm) ngay
-        lần kiểm thấy mất khoá, nên việc dài không chạy tiếp dưới khoá của người
-        khác. Không lấy được khoá ngay từ đầu → `LockBusy`.
+        Task gia hạn huỷ task đang chạy thân (đúng cách `asyncio.timeout` làm) ngay lần
+        kiểm thấy mất khoá. Không lấy được khoá ngay từ đầu → `LockBusy`.
+
+        **Giới hạn của asyncio** (không ném được vào giữa thân): thân nuốt `CancelledError`,
+        hay chạy một khối đồng bộ dài không có `await`, thì vẫn chạy tiếp sau khi mất khoá.
+        `hold` không để việc đó thoát êm — lúc thoát nó báo `LockLost` nếu vòng gia hạn đã
+        thấy mất khoá hoặc khoá không còn là của mình khi trả (NO-025). Việc rất dài phải
+        tự gọi `renew()` giữa các bước và dừng khi nó trả `False`; phía ghi dùng token rào.
         """
         if not 0 < renew_every_ms < self._ttl_ms:
             raise ValueError(f"renew_every_ms phải trong (0, {self._ttl_ms}), nhận {renew_every_ms}")
@@ -112,18 +117,25 @@ class SafeLock:
         state = _Renewal(self, token, renew_every_ms, holder)
         keeper = asyncio.create_task(state.run())
         try:
-            yield token
-        except asyncio.CancelledError:
-            if not state.lost:
-                raise
-            holder.uncancel()
-            raise LockLost(self.name) from None
-        finally:
-            keeper.cancel()
-            with suppress(asyncio.CancelledError):
-                await keeper
+            try:
+                yield token
+            finally:
+                keeper.cancel()
+                with suppress(asyncio.CancelledError):
+                    await keeper
+        except BaseException as exc:
             if not state.lost:
                 await self.release(token)
+                raise
+            holder.uncancel()  # trả lượt huỷ mà vòng gia hạn gửi, dù thân đã đổi nó thành lỗi khác
+            if isinstance(exc, asyncio.CancelledError):
+                raise LockLost(self.name) from None
+            raise
+        if state.lost:
+            holder.uncancel()  # thân đã nuốt lượt huỷ mà vòng gia hạn gửi
+            raise LockLost(self.name)
+        if not await self.release(token):
+            raise LockLost(self.name)
 
 
 class _Renewal:

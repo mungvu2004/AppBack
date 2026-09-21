@@ -1,17 +1,20 @@
 """Khoá an toàn trên Redis thật: tranh chấp, hết hạn, token rào, tự gia hạn."""
 
 import asyncio
+from contextlib import suppress
 
 import pytest
 
 from packages.messaging.locks import FENCE_SUFFIX, LockBusy, LockLost, SafeLock
-from packages.messaging.redis import AsyncRedis, safe_redis
+from packages.messaging.redis import AsyncRedis, safe_redis, safe_redis_sync
 from packages.testing.fixtures.messaging import ephemeral_broker
 
 NAME = "gpu:0"
 KEY = f"lock:{NAME}"
 TTL_MS = 300
 RENEW_MS = 80
+WAIT_S = 30.0
+"""Trần của mọi lượt chờ một trạng thái: chỉ để test không treo, không phải biên thời gian."""
 
 
 def lock(client: AsyncRedis, *, ttl_ms: int = TTL_MS) -> SafeLock:
@@ -139,6 +142,56 @@ async def test_hold_requires_a_running_task(safe_client: AsyncRedis, monkeypatch
     with pytest.raises(RuntimeError, match="task asyncio"):
         async with lock(safe_client).hold(RENEW_MS):
             pytest.fail("không được vào thân khi không có task để huỷ")
+
+
+async def test_hold_reports_a_lost_lock_even_when_the_body_swallows_the_cancellation(
+    safe_client: AsyncRedis,
+) -> None:
+    """Thân nuốt `CancelledError` mà vòng gia hạn gửi thì vẫn chạy tiếp; lúc thoát `hold` phải báo
+    `LockLost` thay vì thoát êm như thể việc đã xong dưới khoá (NO-025)."""
+
+    async def stubborn() -> None:
+        async with lock(safe_client).hold(RENEW_MS):
+            await safe_client.delete(KEY)
+            with suppress(asyncio.CancelledError):
+                await asyncio.wait_for(asyncio.Event().wait(), WAIT_S)
+
+    with pytest.raises(LockLost, match=NAME):
+        await stubborn()
+    # Lượt huỷ của vòng gia hạn đã được trả lại: `asyncio.timeout` bên ngoài không đọc nhầm.
+    current = asyncio.current_task()
+    assert current is not None
+    assert current.cancelling() == 0
+
+
+async def test_hold_lets_a_body_error_raised_after_losing_the_lock_through(safe_client: AsyncRedis) -> None:
+    """Thân đổi lượt huỷ thành lỗi của chính nó: lỗi đó nổi lên nguyên trạng, lượt huỷ được trả lại."""
+
+    async def converting() -> None:
+        async with lock(safe_client).hold(RENEW_MS):
+            await safe_client.delete(KEY)
+            try:
+                await asyncio.wait_for(asyncio.Event().wait(), WAIT_S)
+            except asyncio.CancelledError:
+                raise RuntimeError("dọn dở") from None
+
+    with pytest.raises(RuntimeError, match="dọn dở"):
+        await converting()
+    current = asyncio.current_task()
+    assert current is not None
+    assert current.cancelling() == 0
+
+
+async def test_hold_reports_a_lock_lost_under_a_blocking_body(safe_client: AsyncRedis) -> None:
+    """Khối đồng bộ dài không nhường vòng sự kiện, nên vòng gia hạn không chen vào được; khoá mất
+    (hết hạn, bị lấy) trong lúc đó thì `hold` báo `LockLost` lúc thoát (NO-025)."""
+    blocking = safe_redis_sync()
+    try:
+        with pytest.raises(LockLost, match=NAME):
+            async with lock(safe_client).hold(RENEW_MS):
+                blocking.delete(KEY)  # lời gọi đồng bộ: thân không có một điểm `await` nào
+    finally:
+        blocking.close()
 
 
 async def test_hold_treats_a_broken_redis_as_a_lost_lock(monkeypatch: pytest.MonkeyPatch) -> None:
