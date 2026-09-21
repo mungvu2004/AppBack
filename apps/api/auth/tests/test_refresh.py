@@ -30,6 +30,7 @@ from apps.api.auth.tests.support import (
 from apps.api.auth.tokens import new_refresh_token
 from apps.api.core.app import create_app
 from packages.core.keys import current_key
+from packages.core.logging import JsonFormatter
 from packages.core.settings import get_core_settings, reset_settings_cache
 from packages.db.hooks import after_commit_idle
 from packages.db.models.auth import User
@@ -517,8 +518,9 @@ async def test_reuse_is_logged_without_the_token(
         assert (await refresh_with(auth_client, t0)).status_code == 401
     records = [record for record in caplog.records if record.getMessage() == "refresh_reuse_revoked"]
     assert len(records) == 1
-    assert getattr(records[0], "sid", None) == _sid(t0)
-    assert t0.split(".", 1)[1] not in caplog.text
+    line = JsonFormatter().format(records[0])
+    assert f'"sid": "{_sid(t0)}"' in line
+    assert all(t0.split(".", 1)[1] not in JsonFormatter().format(record) for record in caplog.records)
 
 
 async def test_junk_token_with_a_previous_key_never_revokes(

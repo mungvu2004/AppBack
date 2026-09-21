@@ -393,9 +393,10 @@ def _chain_reaches(token: str, current_hash: str, lookback: int) -> bool:
 
     Xoay luôn ký bằng khoá hiện hành, nên chuỗi của một phiên chỉ đổi khoá ở mốc xoay
     `SECRET_KEY`: vài bước đầu bằng một khoá cũ, phần còn lại bằng khoá mới. Dò cả chuỗi một
-    khoá lẫn chuỗi đổi khoá **một** lần (≈ `lookback²/2` HMAC mỗi khoá cũ, dưới 1 ms, chỉ trên
-    đường token lạ). Hai lần xoay khoá trong `lookback` bước không dò (R-05: xoay khoá là việc
-    tay, cách nhau hàng tháng; nâng cấp = dò mọi thứ tự khoá cũ nếu có lịch xoay tự động).
+    khoá lẫn chuỗi đổi khoá **một** lần (≈ `lookback²/2` HMAC mỗi khoá cũ; đo 1,4 ms với một
+    khoá cũ, 4,4 ms với ba — chỉ trên đường token lạ, sau hạn mức tầng thất bại). Hai lần xoay
+    khoá trong `lookback` bước không dò (R-05: xoay khoá là việc tay, cách nhau hàng tháng;
+    nâng cấp = dò mọi thứ tự khoá cũ nếu có lịch xoay tự động).
     """
     newest, *older = verification_keys("refresh")
     if _walk(token, newest, current_hash, lookback):

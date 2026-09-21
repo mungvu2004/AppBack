@@ -6,7 +6,9 @@ Create Date: 2026-09-21
 
 Bảng `users` và `refresh_sessions` của đăng nhập và phiên (B1-01, BE-00 §5). Chỉ tạo
 bảng và index mới, không đụng bảng nào đang có: thuộc nhánh "expand", lùi được bằng
-`downgrade()`. Index tạo cùng revision với bảng nên không cần `CONCURRENTLY` (§6.1).
+`downgrade()`. Index tạo cùng revision với bảng nên không cần `CONCURRENTLY` (§6.1). Tên `CHECK` đã đầy đủ
+nên bọc `op.f(...)`: quy ước `ck_%(table_name)s_%(constraint_name)s` của `Base.metadata` không
+ghép tiền tố lần hai (`ck_users_ck_users_role`), tên trong DB đúng bằng tên của model.
 """
 
 from collections.abc import Sequence
@@ -52,11 +54,11 @@ def _create_users() -> None:
         sa.Column("phone", sa.Text(), nullable=True),
         sa.Column("language", sa.Text(), server_default=sa.text("'vi'"), nullable=False),
         sa.Column("avatar_key", sa.Text(), nullable=True),
-        sa.CheckConstraint("role IN ('admin', 'engineer', 'viewer')", name=f"ck_{USERS}_role"),
-        sa.CheckConstraint("status IN ('active', 'pending', 'disabled')", name=f"ck_{USERS}_status"),
-        sa.CheckConstraint("language IN ('vi', 'en')", name=f"ck_{USERS}_language"),
-        sa.CheckConstraint("char_length(name) BETWEEN 1 AND 120", name=f"ck_{USERS}_name_length"),
-        sa.CheckConstraint("token_version >= 0", name=f"ck_{USERS}_token_version"),
+        sa.CheckConstraint("role IN ('admin', 'engineer', 'viewer')", name=op.f(f"ck_{USERS}_role")),
+        sa.CheckConstraint("status IN ('active', 'pending', 'disabled')", name=op.f(f"ck_{USERS}_status")),
+        sa.CheckConstraint("language IN ('vi', 'en')", name=op.f(f"ck_{USERS}_language")),
+        sa.CheckConstraint("char_length(name) BETWEEN 1 AND 120", name=op.f(f"ck_{USERS}_name_length")),
+        sa.CheckConstraint("token_version >= 0", name=op.f(f"ck_{USERS}_token_version")),
         sa.PrimaryKeyConstraint("id", name=f"pk_{USERS}"),
     )
     op.create_index(
@@ -83,9 +85,9 @@ def _create_sessions() -> None:
         sa.CheckConstraint(
             "revoked_reason IN ('logout', 'reuse', 'replaced', 'password_change', 'password_reset', "
             "'disabled', 'deleted', 'expired')",
-            name=f"ck_{SESSIONS}_revoked_reason",
+            name=op.f(f"ck_{SESSIONS}_revoked_reason"),
         ),
-        sa.CheckConstraint("(revoked_at IS NULL) = (revoked_reason IS NULL)", name=f"ck_{SESSIONS}_revoked_pair"),
+        sa.CheckConstraint("(revoked_at IS NULL) = (revoked_reason IS NULL)", name=op.f(f"ck_{SESSIONS}_revoked_pair")),
         sa.ForeignKeyConstraint(["user_id"], [f"{USERS}.id"], name=f"fk_{SESSIONS}_user_id_{USERS}"),
         sa.PrimaryKeyConstraint("id", name=f"pk_{SESSIONS}"),
     )

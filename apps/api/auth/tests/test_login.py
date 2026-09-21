@@ -30,6 +30,7 @@ from apps.api.auth.tests.support import (
     wait_until,
 )
 from apps.api.core.app import create_app
+from packages.core.logging import JsonFormatter
 from packages.core.settings import get_core_settings
 from packages.db.models.auth import User
 from packages.db.settings import reset_database_settings_cache
@@ -444,6 +445,7 @@ async def test_lock_is_logged_once_without_the_email(
     assert statuses == [401] * limit + [429, 429]
     records = [record for record in caplog.records if record.getMessage() == "login_throttled"]
     assert len(records) == 1
-    assert getattr(records[0], "emailKey", None) == email_key(user.email)
-    assert getattr(records[0], "reason", None) == "email_ip_locked"
-    assert user.email not in caplog.text
+    line = JsonFormatter().format(records[0])
+    assert f'"emailKey": "{email_key(user.email)}"' in line
+    assert '"reason": "email_ip_locked"' in line
+    assert all(user.email not in JsonFormatter().format(record) for record in caplog.records)

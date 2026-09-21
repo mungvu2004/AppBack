@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 from redis.exceptions import ResponseError
-from sqlalchemy import update
+from sqlalchemy import CheckConstraint, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
@@ -29,7 +29,8 @@ from apps.api.auth.tokens import (
 )
 from packages.core.errors import AppError
 from packages.core.settings import reset_settings_cache
-from packages.db.models.auth import RefreshSession
+from packages.db.base import Base
+from packages.db.models.auth import RefreshSession, User
 from packages.messaging.redis import AsyncRedis
 from packages.testing.factories.auth import TEST_PASSWORD, make_user
 from packages.testing.fixtures.clock import FakeClock
@@ -193,3 +194,21 @@ async def test_revocation_always_carries_a_reason(
             update(RefreshSession).where(RefreshSession.id == UUID(sid)).values(revoked_at=fake_clock.now())
         )
     await db_session.rollback()
+
+
+async def test_check_constraint_names_match_the_model(auth_env: None, db_session: AsyncSession) -> None:
+    """Tên `CHECK` trong DB (sau migration) đúng bằng tên model dựng theo quy ước — không ghép tiền tố hai lần."""
+    rows = await db_session.execute(
+        text(
+            "SELECT conname FROM pg_constraint WHERE contype = 'c' "
+            "AND conrelid IN ('users'::regclass, 'refresh_sessions'::regclass)"
+        )
+    )
+    in_model = {
+        str(constraint.name)
+        for table in (Base.metadata.tables[User.__tablename__], Base.metadata.tables[RefreshSession.__tablename__])
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    assert {row[0] for row in rows} == in_model
+    assert "ck_users_role" in in_model
