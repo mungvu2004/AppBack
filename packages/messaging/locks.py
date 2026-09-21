@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from typing import Final
 
+from packages.core.errors import AppError
 from packages.messaging.redis import AsyncRedis, redis_errors
 
 _log: Final = logging.getLogger(__name__)
@@ -93,6 +94,17 @@ class SafeLock:
         with redis_errors():
             return bool(await self._release_script(keys=[self._key], args=[f":{token}"]))
 
+    async def _release_quietly(self, token: int) -> None:
+        """Trả khoá trên đường thân **đã ném**: Redis hỏng thì ghi `WARNING` rồi bỏ qua (NO-028).
+
+        Ném lại ở đây là che mất lỗi thật của thân; khoá không trả được thì TTL dọn hộ.
+        Chỉ nuốt lỗi phụ thuộc (`redis_errors` đã đổi thành `AppError`), lỗi lạ vẫn nổi lên.
+        """
+        try:
+            await self.release(token)
+        except AppError as exc:
+            _log.warning("lock_release_failed", extra={"lock": self.name, "error": exc.code.code})
+
     @asynccontextmanager
     async def hold(self, renew_every_ms: int) -> AsyncIterator[int]:
         """Giữ khoá suốt thân `async with`, tự gia hạn; mất khoá → `LockLost`.
@@ -125,7 +137,7 @@ class SafeLock:
                     await keeper
         except BaseException as exc:
             if not state.lost:
-                await self.release(token)
+                await self._release_quietly(token)
                 raise
             holder.uncancel()  # trả lượt huỷ mà vòng gia hạn gửi, dù thân đã đổi nó thành lỗi khác
             if isinstance(exc, asyncio.CancelledError):

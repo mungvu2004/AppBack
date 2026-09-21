@@ -7,6 +7,7 @@ khoá hết hạn giữa hai lượt gia hạn.
 """
 
 import asyncio
+import logging
 import time
 from contextlib import suppress
 
@@ -222,6 +223,31 @@ async def test_hold_reports_a_lock_lost_under_a_blocking_body(safe_client: Async
                 blocking.delete(KEY)  # lời gọi đồng bộ: thân không có một điểm `await` nào
     finally:
         blocking.close()
+
+
+async def test_a_failed_release_never_hides_the_body_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Thân ném, rồi trả khoá hỏng vì Redis chết: người gọi phải nhận lỗi **của thân** (NO-028).
+
+    Chu kỳ gia hạn gần bằng TTL nên vòng gia hạn chưa kịp chạy (`lost` còn `False`) và `hold`
+    chắc chắn đi vào nhánh trả khoá; khoá không trả được thì TTL dọn hộ.
+    """
+    with ephemeral_broker(monkeypatch) as admin:
+        client = safe_redis()
+
+        async def failing_body() -> None:
+            async with SafeLock(client, NAME, TTL_MS).hold(TTL_MS - 1):
+                admin.shutdown(nosave=True)
+                raise ZeroDivisionError
+
+        try:
+            with caplog.at_level(logging.WARNING), pytest.raises(ZeroDivisionError):
+                await failing_body()
+        finally:
+            await client.aclose()
+
+    assert "lock_release_failed" in caplog.text
 
 
 async def test_hold_treats_a_broken_redis_as_a_lost_lock(monkeypatch: pytest.MonkeyPatch) -> None:
