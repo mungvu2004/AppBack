@@ -58,6 +58,7 @@ def single_head(versions: Path) -> str:
 
 
 def test_creates_revision_with_charter_name(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Revision mới mang tên theo hiến chương và nối vào head hiện hành (BE-00 §6.1)."""
     head_before = single_head(versions)
     assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"]) == 0
     created = list(versions.glob(f"r{TODAY}_b2_01_*.py"))
