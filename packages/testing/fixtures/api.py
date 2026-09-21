@@ -8,19 +8,17 @@
   đã đăng ký. Observer sẵn có ghi **vết case** cho `tools/case_gate.py`: không có
   vết thì một test đặt đúng tên vẫn không được tính (CASE §2.3).
 
-Bucket rate limit sống trong `redis-cache`, mà mọi lượt ASGI đều đến từ IP
-`127.0.0.1`; vì vậy `api_app` phụ thuộc `cache_client` để DB cache được `FLUSHDB`
-sau mỗi test, không thì test thứ hai bị chính test thứ nhất làm 429.
+Bucket rate limit sống ở `redis-cache` **và** ở DB an toàn (`store="safe"`, khoá đăng
+nhập), mà mọi lượt ASGI đều đến từ IP `127.0.0.1`; vì vậy `api_env` phụ thuộc cả
+`cache_client` lẫn `safe_client` để cả hai DB được `FLUSHDB` sau mỗi test, không thì
+test sau bị chính test trước làm 429 (NO-055).
 """
 
 import json
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
-from functools import cache
 from pathlib import Path
-from re import Pattern
-from re import compile as re_compile
 from typing import Any, Final
 
 import httpx
@@ -30,7 +28,6 @@ from fastapi import FastAPI
 
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier, Principal, fake_token
-from apps.api.core.openapi import operations
 from packages.core.ids import new_id
 from packages.core.settings import get_core_settings, reset_settings_cache
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S
@@ -39,6 +36,7 @@ from packages.messaging.redis import AsyncRedis
 from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
+from packages.testing.golden.recorder import resolve_operation
 
 BASE_URL: Final = "https://testserver"
 TRACE_ENV: Final = "CASE_TRACE_FILE"
@@ -64,22 +62,15 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
     _current_item = item
 
 
-@cache
-def _op_matchers() -> tuple[tuple[str, Pattern[str], str], ...]:
-    """(method, regex của đường, operationId) cho mọi thao tác đã mount."""
-    matchers = []
-    for operation in operations():
-        pattern = re_compile("^" + re_compile(r"\{[^}]+\}").sub("[^/]+", operation.path) + "$")
-        matchers.append((operation.method, pattern, operation.op))
-    return tuple(matchers)
-
-
 def operation_of(method: str, path: str) -> str | None:
-    """`operationId` của một request đã gửi, hay `None` nếu nó không thuộc app thật."""
-    for expected, pattern, op in _op_matchers():
-        if expected == method.upper() and pattern.match(path):
-            return op
-    return None
+    """`operationId` của một request đã gửi, hay `None` nếu nó không thuộc app thật.
+
+    Dùng chung bảng khớp với bộ ghi golden (FIX-028, R-07): vết case và mẫu golden của
+    cùng một response luôn quy về cùng thao tác. Tên được gắn lúc nhập, nên test của bộ ghi
+    thay `recorder.resolve_operation` bằng bảng của app thử không làm vết case lệch theo.
+    """
+    matched = resolve_operation(method, path)
+    return None if matched is None else matched.op
 
 
 def _error_code(response: httpx.Response) -> str | None:
@@ -145,6 +136,7 @@ def api_env(
     tmp_path: Path,
     messaging_env: None,
     cache_client: AsyncRedis,
+    safe_client: AsyncRedis,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:
     """Biến môi trường của một app thật trỏ vào dịch vụ thật của test."""

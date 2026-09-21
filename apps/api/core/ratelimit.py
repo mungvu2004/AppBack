@@ -7,8 +7,10 @@ Hai kho tách nhau có chủ đích (BE-00 §1): bộ đếm đăng nhập đặ
 (`redis-broker`, `noeviction`) vì `redis-cache` chạy `allkeys-lru` và sẽ **đuổi**
 đúng khoá đang chặn kẻ dò mật khẩu khi bộ nhớ đầy.
 
-`limit` và `window_s` cố định lúc khai route, không đọc từ request: C11 dựng bằng
-chính hạn mức thật (gửi `limit` lượt rồi thêm một lượt).
+`limit` và `window_s` không bao giờ đọc từ request: C11 dựng bằng chính hạn mức thật
+(gửi `limit` lượt rồi thêm một lượt). Mỗi giá trị là số cố định (sai luật hỏng lúc nạp
+module), hoặc hàm không tham số đọc **cấu hình** lúc request — cho module có hạn mức
+trong cấu hình đọc lười, không đọc được lúc nhập (NO-054).
 """
 
 import ipaddress
@@ -37,6 +39,7 @@ STATE_ATTR: Final = "rate_limit_scripts"
 type Store = Literal["cache", "safe"]
 type OnError = Literal["open", "closed"]
 type KeyFn = Callable[[Request], Awaitable[str]]
+type Quota = int | Callable[[], int]
 
 # KEYS[1] = khoá bộ đếm · ARGV[1] = độ dài cửa sổ (giây).
 # Trả (số lượt trong cửa sổ, TTL còn lại) — TTL đọc trong cùng lượt để không phải
@@ -91,11 +94,19 @@ def retry_after(ttl_s: int) -> int:
     return max(1, min(ttl_s, MAX_RETRY_AFTER_S))
 
 
+def _quota(value: Quota, what: str) -> int:
+    """Giá trị nguyên của một hạn mức (gọi hàm nếu là hàm); < 1 là khai sai → `ValueError`."""
+    resolved = value() if callable(value) else value
+    if resolved < 1:
+        raise ValueError(f"{what} phải ≥ 1, nhận {resolved}")
+    return resolved
+
+
 def rate_limit(
     name: str,
     *,
-    limit: int,
-    window_s: int,
+    limit: Quota,
+    window_s: Quota,
     key: KeyFn,
     store: Store,
     on_error: OnError,
@@ -104,15 +115,18 @@ def rate_limit(
 
     `key` chạy **trước** khi Pydantic kiểm thân, nên nó không được ném: thân hỏng
     vẫn phải tính vào hạn mức, nếu không kẻ dò chỉ cần gửi thân rác để thoát đếm.
+    Hạn mức là số thì kiểm ngay lúc khai; là hàm thì kiểm ở mỗi lượt gọi.
     """
-    if limit < 1 or window_s < 1:
-        raise ValueError(f"limit và window_s phải ≥ 1, nhận {limit}, {window_s}")
+    for value, what in ((limit, "limit"), (window_s, "window_s")):
+        if not callable(value):
+            _quota(value, what)
 
     async def dependency(request: Request) -> None:
         """Đếm một lượt; vượt hạn mức → 429, Redis hỏng → theo `on_error`."""
+        quota, window = _quota(limit, "limit"), _quota(window_s, "window_s")
         bucket = await key(request)
         try:
-            count, ttl = await _call(request, store, f"rl:{name}:{bucket}", window_s)
+            count, ttl = await _call(request, store, f"rl:{name}:{bucket}", window)
         except Exception as exc:  # phân loại ngay dưới: lỗi lệnh được ném lại nguyên trạng
             app_error = translate_redis_error(exc)
             if app_error is None:
@@ -122,7 +136,7 @@ def rate_limit(
             _log.warning("rate_limit_open", extra={"limit_name": name, "error": repr(exc)})
             return
         # TTL âm = khoá không còn hạn (vừa hết giữa INCR và TTL): coi như không khoá.
-        if count > limit and ttl >= 0:
+        if count > quota and ttl >= 0:
             raise RATE_LIMITED.error(retry_after=retry_after(ttl))
 
     return dependency

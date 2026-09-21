@@ -23,12 +23,15 @@ def _by_op(app: FastAPI) -> dict[str, Operation]:
     return {operation.op: operation for operation in operations(app)}
 
 
-def test_real_app_has_exactly_three_operations() -> None:
-    """Hôm nay repo chỉ có ba route, cả ba đều công khai (khối [7] của B0-06)."""
-    ops = operations()
-    assert tuple(operation.op for operation in ops) == REAL_OPS
-    assert all(operation.protected is False for operation in ops)
-    assert all(operation.idempotency == "off" for operation in ops)
+def test_real_app_keeps_the_core_operations_public() -> None:
+    """Ba route lõi luôn có và công khai (khối [7] của B0-06); route công khai không bao giờ có idempotency.
+
+    Không ghim tổng số thao tác: mỗi prompt sau thêm route của nó (FIX-029).
+    """
+    ops = {operation.op: operation for operation in operations()}
+    assert set(REAL_OPS) <= set(ops)
+    assert all(ops[op].protected is False for op in REAL_OPS)
+    assert all(operation.idempotency == "off" for operation in ops.values() if not operation.protected)
 
 
 def test_operation_rows_have_every_field() -> None:
