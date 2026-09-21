@@ -6,12 +6,14 @@ import inspect
 import io
 import smtplib
 import socket
+from pathlib import Path
 from urllib.parse import urlparse
 
 import asyncpg
 import httpx
 import pytest
 import redis
+import yaml
 from minio import Minio
 
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S
@@ -22,11 +24,14 @@ from packages.testing.fixtures.services import (
     refused_url,
 )
 
-# Container đã dừng: IPv4 của host.docker.internal từ chối (111), IPv6 không tới được (101);
-# asyncpg / socket gộp các lỗi này thành OSError.
-_STOPPED = r"Errno (101|111)"
+# Bản đã dừng hỏng theo đường nối: trong container verify (nối thẳng IP bridge, NO-007) IP không còn
+# ai nhận → hết giờ hay "no route"; ngoài container (CI) cổng host bị từ chối (111). Đều là `OSError`.
+_STOPPED = r"^$|timed out|Errno (101|111|113)"
+"""Lỗi hợp lệ của bản đã dừng: `''` (hết giờ của asyncpg), `timed out` (socket), 113 (no route),
+111/101 (cổng host bị từ chối, IPv6 không tới — CI chạy ngoài container)."""
 _STOPPED_TIMEOUT_S = 5
-"""Trần bắt tay tới bản **đã dừng**: lỗi `Errno 101/111` tới ngay, trần chỉ để test không treo."""
+"""Trần bắt tay tới bản **đã dừng**: chỉ để test không treo; mọi đường đều hỏng trong trần này."""
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _pg_dsn(url: str) -> str:
@@ -88,7 +93,7 @@ def test_ephemeral_redis_dừng_xong_bản_dùng_chung_vẫn_chạy(redis_broker
     client = eph.get_client(socket_connect_timeout=2)
     assert client.ping()
     eph.stop()
-    with pytest.raises(redis.exceptions.ConnectionError):
+    with pytest.raises((redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)):
         client.ping()
     assert redis.Redis.from_url(redis_broker_url).ping()
 
@@ -130,3 +135,17 @@ def test_trần_bắt_tay_theo_trạng_thái_bản_postgres() -> None:
     """
     assert inspect.signature(_select_one).parameters["connect_timeout_s"].default == GATE_CONNECT_TIMEOUT_S
     assert _STOPPED_TIMEOUT_S < GATE_CONNECT_TIMEOUT_S
+
+
+def test_container_verify_nối_thẳng_ip_container_dịch_vụ() -> None:
+    """NO-007: trong container verify, testcontainers nối **thẳng** IP bridge của container dịch vụ.
+
+    Đường `host.docker.internal` đi qua bộ chuyển tiếp cổng của Docker Desktop trên máy Windows.
+    Đo 2026-09-21 (10 lượt, mỗi lượt 20 000 lần nối TCP, 16 song song): lượt bị từ chối hàng loạt và 6 lượt
+    kẹt 69,4 tới 69,8 s; đường IP container cùng tải: 0 lỗi, không lượt nào quá 1,1 s. Hai container
+    cùng mạng `bridge` mặc định nên tới được nhau. CI chạy ngoài container, không đặt biến này.
+    """
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "compose" / "verify.yml").read_text(encoding="utf-8"))
+    service = compose["services"]["verify"]
+    assert service["network_mode"] == "bridge"
+    assert "TESTCONTAINERS_CONNECTION_MODE=bridge_ip" in service["environment"]
