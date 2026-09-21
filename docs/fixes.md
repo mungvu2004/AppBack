@@ -223,6 +223,6 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 ## FIX-028 cho B0-06 — hai bộ khớp (method, đường) → thao tác (NO-044)
 
 - **[1–3]** `packages/testing/fixtures/api.py:_op_matchers/operation_of` trùng việc với `packages/testing/golden/recorder.py:operation_resolver` (R-07).
-- **[4]** Sửa: `packages/testing/fixtures/api.py` (trên nhánh B0-07).
+- **[4]** Sửa: `packages/testing/fixtures/api.py`, test ở `packages/testing/golden/tests/test_recorder.py` (trên nhánh B0-07).
 - **[5]** `operation_of` trả `.op` của `recorder.resolve_operation(method, path)`; xoá `_op_matchers`.
 - **[6]** Test hiện có của `trace_case` (`apps/api/core/tests/test_fixtures.py`) giữ nguyên và xanh; thêm test khẳng định vết case và bộ ghi golden khớp **cùng** thao tác cho một request.

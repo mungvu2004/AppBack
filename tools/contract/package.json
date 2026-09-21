@@ -1,0 +1,10 @@
+{
+  "name": "appback-contract",
+  "private": true,
+  "type": "module",
+  "description": "Runner hợp đồng FE của bước 7 (B0-07): giải mẫu golden bằng chính schema zod của AppFront.",
+  "dependencies": {
+    "tsx": "4.23.15",
+    "zod": "3.23.8"
+  }
+}
