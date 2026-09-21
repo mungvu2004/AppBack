@@ -37,6 +37,7 @@ from packages.storage.port import (
     SignedUrl,
     content_disposition,
     content_type_of,
+    disk_errors,
     expiry,
     iter_chunks,
     next_batch,
@@ -122,13 +123,15 @@ class S3Storage:
         # Đệm để biết `sha256`, `kind` và độ dài trước khi gửi: vượt `max_bytes` là
         # không có lượt ghi nào, nên không bao giờ còn object dở trên bucket (C12).
         with tempfile.SpooledTemporaryFile(max_size=MULTIPART_PART_SIZE) as buffer:
-            async for chunk in iter_chunks(data):
-                size += len(chunk)
-                if size > max_bytes:
-                    raise PAYLOAD_TOO_LARGE.error()
-                digest.update(chunk)
-                head += chunk[: SNIFF_BYTES - len(head)]
-                await asyncio.to_thread(buffer.write, chunk)
+            # Quá `MULTIPART_PART_SIZE` bộ đệm tràn xuống đĩa: đĩa đầy là 503 như kho local (NO-014).
+            with disk_errors():
+                async for chunk in iter_chunks(data):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise PAYLOAD_TOO_LARGE.error()
+                    digest.update(chunk)
+                    head += chunk[: SNIFF_BYTES - len(head)]
+                    await asyncio.to_thread(buffer.write, chunk)
             buffer.seek(0)
             kind = sniff(head)
             with _s3_errors():

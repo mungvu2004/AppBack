@@ -16,7 +16,6 @@
 
 import asyncio
 import base64
-import errno
 import hashlib
 import hmac
 import json
@@ -24,22 +23,21 @@ import os
 import secrets
 import shutil
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Final, cast
 
 from packages.core.clock import Clock
-from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND, PAYLOAD_TOO_LARGE
+from packages.core.error_codes import NOT_FOUND, PAYLOAD_TOO_LARGE
 from packages.core.keys import current_key, verification_keys
 from packages.storage.keys import META_SUFFIX, check_key, check_prefix
 from packages.storage.port import (
     CHUNK_SIZE,
-    RETRY_AFTER_S,
     Disposition,
     FileGrant,
     ObjectInfo,
     SignedUrl,
+    disk_errors,
     expiry,
     iter_chunks,
     next_batch,
@@ -50,24 +48,11 @@ from packages.storage.sniff import SNIFF_BYTES, ImageKind, as_kind, sniff
 
 FILES_ROUTE: Final = "/api/files/"
 _DISPOSITIONS: Final = frozenset(("attachment", "inline"))
-# Đĩa đầy hoặc chỉ đọc là "phụ thuộc hỏng" (C13), không phải lỗi của người gọi.
-_UNAVAILABLE_ERRNOS: Final = frozenset((errno.ENOSPC, errno.EROFS, errno.EDQUOT))
 
 
 def _open_write(path: Path) -> BinaryIO:
     """Mở file để ghi — điểm tiêm lỗi đĩa duy nhất của bộ điều hợp này."""
     return path.open("wb")
-
-
-@contextmanager
-def _disk_errors() -> Iterator[None]:
-    """Đĩa đầy hay chỉ đọc → 503 (C13); lỗi hệ thống tệp khác giữ nguyên."""
-    try:
-        yield
-    except OSError as exc:
-        if exc.errno in _UNAVAILABLE_ERRNOS:
-            raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
-        raise
 
 
 class LocalDiskStorage:
@@ -101,7 +86,7 @@ class LocalDiskStorage:
         size = 0
         head = b""
         try:
-            with _disk_errors():
+            with disk_errors():
                 await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
                 handle = await asyncio.to_thread(self._open, temporary)
                 try:
@@ -150,14 +135,14 @@ class LocalDiskStorage:
         """Xoá object và file metadata kèm theo; không có thì im lặng."""
         check_key(key)
         path = self._path(key)
-        with _disk_errors():
+        with disk_errors():
             await asyncio.to_thread(_remove, path)
             await asyncio.to_thread(_remove, _meta_path(path))
 
     async def delete_prefix(self, prefix: str) -> None:
         """Xoá cả cây thư mục của tiền tố; mục đã không còn thì bỏ qua, lỗi khác nổi lên (NO-012)."""
         check_prefix(prefix)
-        with _disk_errors():
+        with disk_errors():
             await asyncio.to_thread(shutil.rmtree, self._root / prefix, onexc=_ignore_missing)
 
     async def list_prefix(self, prefix: str, *, older_than: datetime | None = None) -> AsyncIterator[ObjectInfo]:

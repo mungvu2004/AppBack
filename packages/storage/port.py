@@ -5,8 +5,10 @@ dựng khoá hay ký URL.
 """
 
 import asyncio
+import errno
 import unicodedata
 from collections.abc import AsyncIterable, AsyncIterator, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from itertools import islice
@@ -14,7 +16,7 @@ from typing import Final, Literal, Protocol
 from urllib.parse import quote
 
 from packages.core.clock import Clock
-from packages.core.error_codes import NOT_FOUND
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND
 from packages.core.instants import floor_to_hour
 from packages.storage.keys import server_chosen_kind
 from packages.storage.sniff import IMAGE_KINDS, ImageKind, Kind
@@ -24,6 +26,8 @@ LIST_BATCH: Final = 1000
 """Số mục `list_prefix` giữ trong RAM mỗi lượt — bằng một trang `ListObjectsV2` của S3 (NO-013)."""
 RETRY_AFTER_S: Final = 5
 """`Retry-After` của `DEPENDENCY_UNAVAILABLE` khi kho hỏng (C13)."""
+UNAVAILABLE_ERRNOS: Final = frozenset((errno.ENOSPC, errno.EROFS, errno.EDQUOT))
+"""Đĩa đầy hoặc chỉ đọc là "phụ thuộc hỏng" (C13), không phải lỗi của người gọi."""
 
 SIGNED_URL_TTL: Final = timedelta(hours=2)
 """Ký từ đầu giờ nên URL sống 60-120 phút và **giống hệt nhau** trong cùng một giờ (W23, K16)."""
@@ -126,6 +130,21 @@ async def iter_chunks(data: bytes | AsyncIterable[bytes]) -> AsyncIterator[bytes
     else:
         async for chunk in data:
             yield chunk
+
+
+@contextmanager
+def disk_errors() -> Iterator[None]:
+    """Đĩa đầy hay chỉ đọc → 503 (C13); lỗi hệ thống tệp khác giữ nguyên.
+
+    Dùng chung cho kho local và bộ đệm đĩa của `S3Storage.put` (NO-014): cùng một sự cố
+    phải ra cùng một mã ở cả hai bộ điều hợp.
+    """
+    try:
+        yield
+    except OSError as exc:
+        if exc.errno in UNAVAILABLE_ERRNOS:
+            raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+        raise
 
 
 def expiry(clock: Clock) -> tuple[datetime, datetime]:

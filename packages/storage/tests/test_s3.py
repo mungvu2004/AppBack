@@ -1,9 +1,11 @@
 """Riêng `S3Storage`: MinIO thật (K23), URL ký phục vụ được, phụ thuộc hỏng (C13)."""
 
+import errno
 import hashlib
 import logging
 import re
 import secrets
+import tempfile
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
@@ -205,3 +207,34 @@ async def test_delete_prefix_reports_objects_it_could_not_delete(proxied: tuple[
 
     with pytest.raises(RuntimeError, match=rf"1 object .*{re.escape(KEY)}: AccessDenied"):
         await storage.delete_prefix(keys.project_prefix(PROJECT))
+
+
+class _FullDiskSpool:
+    """Bộ đệm mà mọi lần ghi đều gặp đĩa đầy — tiêm lỗi cho nhánh đệm xuống đĩa của `put`."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        """Nhận mọi tham số của `SpooledTemporaryFile` và bỏ qua."""
+
+    def __enter__(self) -> "_FullDiskSpool":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Không giữ tài nguyên nào."""
+
+    def write(self, data: bytes) -> int:
+        raise OSError(errno.ENOSPC, "tiêm lỗi đĩa đầy")
+
+    def seek(self, offset: int) -> int:
+        return offset
+
+
+async def test_put_on_a_full_spool_disk_returns_503(s3_storage: S3Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-014: đĩa đầy khi đệm luồng vào → 503 như bản local (C13), không `OSError` thô ra 500."""
+    monkeypatch.setattr(tempfile, "SpooledTemporaryFile", _FullDiskSpool)
+
+    with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE") as raised:
+        await s3_storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+
+    assert raised.value.retry_after == 5
+    monkeypatch.undo()
+    assert await s3_storage.stat(KEY) is None
