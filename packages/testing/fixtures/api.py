@@ -17,10 +17,7 @@ import json
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
-from functools import cache
 from pathlib import Path
-from re import Pattern
-from re import compile as re_compile
 from typing import Any, Final
 
 import httpx
@@ -30,7 +27,6 @@ from fastapi import FastAPI
 
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier, Principal, fake_token
-from apps.api.core.openapi import operations
 from packages.core.ids import new_id
 from packages.core.settings import get_core_settings, reset_settings_cache
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S
@@ -39,6 +35,7 @@ from packages.messaging.redis import AsyncRedis
 from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
+from packages.testing.golden.recorder import resolve_operation
 
 BASE_URL: Final = "https://testserver"
 TRACE_ENV: Final = "CASE_TRACE_FILE"
@@ -64,22 +61,15 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
     _current_item = item
 
 
-@cache
-def _op_matchers() -> tuple[tuple[str, Pattern[str], str], ...]:
-    """(method, regex của đường, operationId) cho mọi thao tác đã mount."""
-    matchers = []
-    for operation in operations():
-        pattern = re_compile("^" + re_compile(r"\{[^}]+\}").sub("[^/]+", operation.path) + "$")
-        matchers.append((operation.method, pattern, operation.op))
-    return tuple(matchers)
-
-
 def operation_of(method: str, path: str) -> str | None:
-    """`operationId` của một request đã gửi, hay `None` nếu nó không thuộc app thật."""
-    for expected, pattern, op in _op_matchers():
-        if expected == method.upper() and pattern.match(path):
-            return op
-    return None
+    """`operationId` của một request đã gửi, hay `None` nếu nó không thuộc app thật.
+
+    Dùng chung bảng khớp với bộ ghi golden (FIX-028, R-07): vết case và mẫu golden của
+    cùng một response luôn quy về cùng thao tác. Tên được gắn lúc nhập, nên test của bộ ghi
+    thay `recorder.resolve_operation` bằng bảng của app thử không làm vết case lệch theo.
+    """
+    matched = resolve_operation(method, path)
+    return None if matched is None else matched.op
 
 
 def _error_code(response: httpx.Response) -> str | None:

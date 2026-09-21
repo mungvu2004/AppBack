@@ -259,6 +259,22 @@ def test_resolver_needs_the_same_method() -> None:
     assert recorder.resolve_operation("get", "/api/health") == recorder.OperationMatch("health_live", "/api/health", {})
 
 
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "/api/health"), ("GET", "/api/files/token-bat-ky"), ("POST", "/api/health"), ("GET", "/api/khong-co")],
+)
+def test_case_trace_and_golden_resolve_the_same_operation(method: str, path: str) -> None:
+    """FIX-028: vết case (B0-06) và bộ ghi golden quy một request về **cùng** thao tác."""
+    matched = recorder.resolve_operation(method, path)
+    assert api_fixtures.operation_of(method, path) == (None if matched is None else matched.op)
+
+
+def test_probe_table_does_not_leak_into_case_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test bộ ghi thay bảng khớp bằng bảng app thử; vết case vẫn chỉ biết app thật (FIX-028)."""
+    monkeypatch.setattr(recorder, "resolve_operation", lambda _m, p: recorder.OperationMatch("golden_x", p, {}))
+    assert api_fixtures.operation_of("GET", "/api/khong-co") is None
+
+
 def test_record_stream_event_writes_frames(samples_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Khung SSE → `<op>/<case>-event-<n>.json`; tên lạ → `ValueError`; ngoài cổng → không ghi."""
     record_stream_event("streams_open_progress", "S03", {"id": "u"})
