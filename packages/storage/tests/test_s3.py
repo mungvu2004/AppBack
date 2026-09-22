@@ -1,5 +1,6 @@
 """Riêng `S3Storage`: MinIO thật (K23), URL ký phục vụ được, phụ thuộc hỏng (C13)."""
 
+import asyncio
 import errno
 import hashlib
 import logging
@@ -29,6 +30,10 @@ KEY = keys.upload_page(PROJECT, FLOOR, UPLOAD, 0)
 PNG = b"\x89PNG\r\n\x1a\n" + b"pixels" * 8
 MAX_BYTES = 64 * 1024 * 1024
 PUBLIC_HOST = "files.appback.test:9000"
+DELETE_BATCH = 1000
+"""Trần khoá mỗi lượt `DeleteObjects` của S3 (`minio.remove_objects` gom theo trần này)."""
+WRITE_CONCURRENCY = 8
+"""Trần lượt ghi song song: dưới `maxsize=10` của pool `http_client`, không nghẽn MinIO dùng chung."""
 
 
 def client_for(endpoint: str, access_key: str = "x" * 8, secret_key: str = "y" * 8) -> Minio:
@@ -184,18 +189,26 @@ async def test_server_error_with_xml_body_returns_503(
 
 
 async def test_delete_prefix_deletes_in_batches(proxied: tuple[S3Storage, FaultProxy]) -> None:
-    """NO-010: xoá tiền tố gom khoá vào `DeleteObjects` (≤ 1000 khoá/lượt), không một `DELETE` mỗi object."""
+    """NO-010, NO-072: 1001 object → đúng 2 lượt `DeleteObjects` (≤ 1000 khoá/lượt), không một `DELETE` nào."""
     storage, proxy = proxied
-    for index in range(3):
-        page = keys.upload_page(PROJECT, FLOOR, UPLOAD, index)
-        await storage.put(page, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    gate = asyncio.Semaphore(WRITE_CONCURRENCY)
+
+    async def put_page(index: int) -> None:
+        """Ghi một ảnh trang, giữ trần đồng thời."""
+        async with gate:
+            page = keys.upload_page(PROJECT, FLOOR, UPLOAD, index)
+            await storage.put(page, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+
+    async with asyncio.TaskGroup() as group:
+        for index in range(DELETE_BATCH + 1):
+            group.create_task(put_page(index))
     proxy.requests.clear()
 
     await storage.delete_prefix(keys.project_prefix(PROJECT))
 
     assert [method for method, _ in proxy.requests].count("DELETE") == 0
-    assert [path for method, path in proxy.requests if method == "POST" and "delete" in path] != []
-    assert len([method for method, path in proxy.requests if method == "POST"]) == 1
+    assert len([path for method, path in proxy.requests if method == "POST" and "delete" in path]) == 2
+    assert len([method for method, path in proxy.requests if method == "POST"]) == 2
     assert [info async for info in storage.list_prefix(keys.project_prefix(PROJECT))] == []
 
 
