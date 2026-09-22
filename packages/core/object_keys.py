@@ -74,10 +74,11 @@ def upload_prefix(project: str, floor: str, upload: str) -> str:
 def upload_prefix_of(key: str) -> str:
     """Tiền tố lượt tải lên đứng đầu `key` (khoá không tin trong payload ML); sai → `ValueError`.
 
-    Đọc id ở vị trí đoạn của bố cục rồi dựng lại bằng `upload_prefix`: chỉ nhận khi bản dựng lại là
-    đầu của `key` từng byte, nên bố cục không có bản tách thứ hai (NO-077).
+    Kiểm cả khoá bằng `check_key` trước (fail-closed, NO-088): đuôi `../x` hay `//` không được ra
+    tiền tố. Đọc id ở vị trí đoạn của bố cục rồi dựng lại bằng `upload_prefix`: chỉ nhận khi bản
+    dựng lại là đầu của `key` từng byte, nên bố cục không có bản tách thứ hai (NO-077).
     """
-    parts = key.split("/", 6)
+    parts = check_key(key).split("/", 6)
     if len(parts) == 7:
         prefix = upload_prefix(parts[1], parts[3], parts[5])
         if key.startswith(prefix):

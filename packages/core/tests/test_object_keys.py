@@ -117,17 +117,25 @@ def test_upload_prefix_reads_id_rules_of_core_ids(
         object_keys.upload_prefix(PROJECT, FLOOR, UPLOAD)
 
 
-@pytest.mark.parametrize("key", [f"{UPLOAD_PREFIX}pages/0.png", f"{UPLOAD_PREFIX}runs/x/y/z.json", UPLOAD_PREFIX])
+@pytest.mark.parametrize("key", [f"{UPLOAD_PREFIX}pages/0.png", f"{UPLOAD_PREFIX}runs/x/y/z.json"])
 def test_upload_prefix_of_accepts(key: str) -> None:
+    """Khoá hợp lệ dưới một lượt tải lên → đúng tiền tố của lượt đó."""
     assert object_keys.upload_prefix_of(key) == UPLOAD_PREFIX
 
 
 @pytest.mark.parametrize(
     ("key", "match"),
     [
-        ("", NOT_UNDER),
+        ("", "khoá rỗng"),
         ("library/x/pages/0.png", NOT_UNDER),
         (UPLOAD_PREFIX[:-1], NOT_UNDER),
+        (UPLOAD_PREFIX, DOTS),
+        (f"{UPLOAD_PREFIX}../x", DOTS),
+        (f"{UPLOAD_PREFIX}../../../../x", DOTS),
+        (f"{UPLOAD_PREFIX}pages//0.png", DOTS),
+        (f"{UPLOAD_PREFIX}pages/./0.png", DOTS),
+        (f"{UPLOAD_PREFIX}pages/0 .png", CHARS),
+        (f"{UPLOAD_PREFIX}x.meta.json", r"kết thúc bằng \.meta\.json"),
         (f"project/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png", NOT_UNDER),
         (f"projects/{PROJECT}/levels/{FLOOR}/uploads/{UPLOAD}/pages/0.png", NOT_UNDER),
         (f"projects/{PROJECT}/floors/{FLOOR}/upload/{UPLOAD}/pages/0.png", NOT_UNDER),
@@ -137,7 +145,10 @@ def test_upload_prefix_of_accepts(key: str) -> None:
     ],
 )
 def test_upload_prefix_of_rejects(key: str, match: str) -> None:
-    """Sai chữ của bố cục, thiếu đoạn, hay id sai mẫu ở vị trí id → `ValueError`."""
+    """Sai chữ của bố cục, thiếu đoạn, id sai mẫu ở vị trí id, hay khoá không an toàn (NO-088) → `ValueError`.
+
+    Tiền tố trần (`/` cuối) không phải khoá nên cũng bị từ chối: đầu vào là khoá object, không phải tiền tố.
+    """
     with pytest.raises(ValueError, match=match):
         object_keys.upload_prefix_of(key)
 
