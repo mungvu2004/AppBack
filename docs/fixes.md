@@ -66,11 +66,11 @@
 | FIX-057 | 2026-09-22 | B0-04 | NO-077 | `storage.keys.upload_prefix` giữ bản riêng của bố cục dùng chung | `318dc5b` |
 | FIX-058 | 2026-09-22 | B5-01 | NO-077 | `ml_contracts._upload_prefix` dựng lại bố cục khoá của `storage` | `778c052` |
 | FIX-059 | 2026-09-22 | B0-05 | NO-078 | Worker Celery thử để logger gốc ở ERROR sau test messaging | `81ac394` |
-| FIX-060 | 2026-09-22 | B0-02 | NO-088 | `upload_prefix_of` chỉ kiểm phần đầu khoá | nhánh `fix/b0-04-layout-and-c11-debts` |
-| FIX-061 | 2026-09-22 | B0-02 | NO-081 | Bố cục `runs/…/` và `ml/models/…/` chưa có ở `packages/core` | nhánh `fix/b0-04-layout-and-c11-debts` |
-| FIX-062 | 2026-09-22 | B0-04 | NO-081 | `storage.keys` dựng `runs/…/`, `ml/models/…/` bằng bản riêng | nhánh `fix/b0-04-layout-and-c11-debts` |
-| FIX-063 | 2026-09-22 | B5-01 | NO-081 | `ml_contracts` dựng lại `runs/…/`, `ml/models/…/`; `_id_of` chép `check_id` | nhánh `fix/b0-04-layout-and-c11-debts` |
-| FIX-064 | 2026-09-22 | B1-01 | NO-082 | Bộ kiểm của C11 gọi lỗi đếm thật là "cửa sổ thứ hai" | nhánh `fix/b0-04-layout-and-c11-debts` |
+| FIX-060 | 2026-09-22 | B0-02 | NO-088 | `upload_prefix_of` chỉ kiểm phần đầu khoá | `225b4dc` |
+| FIX-061 | 2026-09-22 | B0-02 | NO-081 | Bố cục `runs/…/` và `ml/models/…/` chưa có ở `packages/core` | `2eaa822` |
+| FIX-062 | 2026-09-22 | B0-04 | NO-081 | `storage.keys` dựng `runs/…/`, `ml/models/…/` bằng bản riêng | `4bdbbbe` |
+| FIX-063 | 2026-09-22 | B5-01 | NO-081 | `ml_contracts` dựng lại `runs/…/`, `ml/models/…/`; `_id_of` chép `check_id` | `e9d8f3f` |
+| FIX-064 | 2026-09-22 | B1-01 | NO-082 | Bộ kiểm của C11 gọi lỗi đếm thật là "cửa sổ thứ hai" | `d1913ec` |
 | FIX-065 | 2026-09-22 | B0-01 | NO-089 | Log cổng không có traceback, không "mã thoát" khi lượt verify ném lỗi | nhánh `fix/b0-01-gate-log-followups` |
 | FIX-066 | 2026-09-22 | B0-01 | NO-090 | Log cổng `.cache/src-out/verify/*.log` dồn mãi, không trần | nhánh `fix/b0-01-gate-log-followups` |
 | FIX-067 | 2026-09-22 | B0-05 | NO-087 | Worker Celery thử để dấu cấp tiến trình (env, `captureWarnings`) | nhánh `fix/b0-01-gate-log-followups` |
