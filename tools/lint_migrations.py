@@ -20,7 +20,10 @@ CONTRACTS_TOML = REPO_ROOT / "docs" / "contracts.toml"
 
 MAX_REVISION_LEN = 32
 
-_BANNED_CALL_NAMES = {"drop_table", "drop_column", "drop_constraint", "rename_table", "batch_alter_table"}
+# Phá huỷ: cấm trong expand, miễn cho revision contract đã đăng ký (FIX-038).
+_DESTRUCTIVE_CALL_NAMES = {"drop_table", "drop_column", "drop_constraint", "rename_table"}
+# Không phá huỷ nhưng dựng lại cả bảng (chép dữ liệu, khoá bảng): cấm cả trong contract.
+_BATCH_ALTER_TABLE = "batch_alter_table"
 _ALTER_COLUMN_BANNED_KWARGS = {"new_column_name", "nullable", "type_"}
 _RAW_SQL_FUNCS = {"execute", "text", "exec_driver_sql"}
 _SQL_DANGER_RE = re.compile(
@@ -84,8 +87,7 @@ def _module_level_str(tree: ast.Module, name: str) -> str | None:
         else:
             continue
         if hit:
-            value = node.value
-            return value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else None
+            return _const_str(node.value)
     return None
 
 
@@ -127,27 +129,121 @@ def _nodes_excluding_downgrade(tree: ast.Module) -> list[ast.AST]:
     return out
 
 
+def _const_str(node: ast.AST | None) -> str | None:
+    """Giá trị của hằng chuỗi; `None` với mọi thứ khác (biến, f-string, thiếu đối số)."""
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _is_const(node: ast.AST | None, value: bool) -> bool:
+    """`node` là đúng hằng `True`/`False` viết trong mã (biểu thức tính ra thì không tính)."""
+    return isinstance(node, ast.Constant) and node.value is value
+
+
+def _keywords(call: ast.Call) -> dict[str | None, ast.expr]:
+    """Tham số khoá của một lời gọi; `**kw` mang khoá `None`."""
+    return {kw.arg: kw.value for kw in call.keywords}
+
+
 def _collect_created_tables(nodes: list[ast.AST]) -> set[str]:
-    tables: set[str] = set()
-    for node in nodes:
-        if _call_attr(node) == "create_table" and isinstance(node, ast.Call) and node.args:
-            first = node.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                tables.add(first.value)
-    return tables
+    """Bảng tạo trong chính revision: index trên chúng chưa khoá ai, khỏi cần `CONCURRENTLY`."""
+    calls = [n for n in nodes if isinstance(n, ast.Call) and _call_attr(n) == "create_table" and n.args]
+    return {name for call in calls if (name := _const_str(call.args[0])) is not None}
 
 
-def _in_autocommit_block(node: ast.Call, ancestors: list[ast.AST]) -> bool:
-    for anc in ancestors:
-        if isinstance(anc, ast.With):
-            for item in anc.items:
-                src = ast.dump(item.context_expr)
-                if "autocommit_block" in src:
-                    return True
-    return False
+def _ancestors(node: ast.AST, parents: dict[int, ast.AST]) -> list[ast.AST]:
+    """Chuỗi node cha của `node`, gần nhất trước."""
+    out: list[ast.AST] = []
+    while id(node) in parents:
+        node = parents[id(node)]
+        out.append(node)
+    return out
 
 
-def _lint_body(source: str, tree: ast.Module, report: Report, filename: str, *, contract: bool = False) -> None:
+def _in_autocommit_block(ancestors: list[ast.AST]) -> bool:
+    """Có tổ tiên `with ...autocommit_block():`: `CREATE INDEX CONCURRENTLY` không chạy được trong giao dịch."""
+    return any(
+        "autocommit_block" in ast.dump(item.context_expr)
+        for anc in ancestors
+        if isinstance(anc, ast.With)
+        for item in anc.items
+    )
+
+
+@dataclass(frozen=True)
+class _Finding:
+    """Vi phạm của một lời gọi; `destructive` = luật phá huỷ của expand, miễn cho contract đã đăng ký."""
+
+    rule: str
+    detail: str
+    destructive: bool
+
+
+def _check_banned_call(attr: str) -> list[_Finding]:
+    """Thao tác cấm (§6.1): tên trong `_DESTRUCTIVE_CALL_NAMES` miễn cho contract, `batch_alter_table` thì không."""
+    if attr in _DESTRUCTIVE_CALL_NAMES:
+        return [_Finding("thao tác cấm (§6.1)", attr, destructive=True)]
+    if attr == _BATCH_ALTER_TABLE:
+        return [_Finding("thao tác cấm (§6.1)", attr, destructive=False)]
+    return []
+
+
+def _check_alter_column(node: ast.Call) -> list[_Finding]:
+    """`alter_column` đổi tên, đổi kiểu hay `nullable=False` làm hỏng mã cũ còn chạy song song (expand)."""
+    return [
+        _Finding("alter_column cấm tham số", str(kw.arg), destructive=True)
+        for kw in node.keywords
+        if kw.arg in _ALTER_COLUMN_BANNED_KWARGS and (kw.arg != "nullable" or _is_const(kw.value, False))
+    ]
+
+
+def _check_add_column(node: ast.Call) -> list[_Finding]:
+    """`add_column` NOT NULL thiếu `server_default` hỏng trên bảng đã có dòng."""
+    columns = [arg for arg in node.args if isinstance(arg, ast.Call) and _call_attr(arg) == "Column"]
+    return [
+        _Finding("add_column NOT NULL thiếu server_default", "", destructive=True)
+        for kwargs in map(_keywords, columns)
+        if _is_const(kwargs.get("nullable"), False) and "server_default" not in kwargs
+    ]
+
+
+def _check_raw_sql(node: ast.Call, attr: str) -> list[_Finding]:
+    """SQL thô: không phải hằng thì không duyệt được (cấm cả contract); hằng có từ khoá phá huỷ thì cấm expand."""
+    sql = _const_str(node.args[0]) if node.args else None
+    if sql is None:
+        return [_Finding(f"{attr} đối số không phải hằng chuỗi", "", destructive=False)]
+    if _SQL_DANGER_RE.search(sql):
+        return [_Finding(f"{attr} chuỗi SQL cấm", sql, destructive=True)]
+    return []
+
+
+def _check_create_index(node: ast.Call, created_tables: set[str], parents: dict[int, ast.AST]) -> list[_Finding]:
+    """Index trên bảng có sẵn khoá bảng trừ khi `CONCURRENTLY` trong `autocommit_block` (cấm cả contract)."""
+    kwargs = _keywords(node)
+    positional = _const_str(node.args[1]) if len(node.args) >= 2 else None
+    table = positional if positional is not None else _const_str(kwargs.get("table_name"))
+    if table is None or table in created_tables:
+        return []
+    if not _is_const(kwargs.get("postgresql_concurrently"), True):
+        return [_Finding("create_index thiếu postgresql_concurrently=True", table, destructive=False)]
+    if not _in_autocommit_block(_ancestors(node, parents)):
+        return [_Finding("create_index CONCURRENTLY ngoài autocommit_block", table, destructive=False)]
+    return []
+
+
+def _check_call(node: ast.Call, attr: str, created_tables: set[str], parents: dict[int, ast.AST]) -> list[_Finding]:
+    """Luật của §6.1 cho lời gọi `<x>.<attr>(...)`; mỗi tên thuộc đúng một luật."""
+    if attr == "alter_column":
+        return _check_alter_column(node)
+    if attr == "add_column":
+        return _check_add_column(node)
+    if attr in _RAW_SQL_FUNCS:
+        return _check_raw_sql(node, attr)
+    if attr == "create_index":
+        return _check_create_index(node, created_tables, parents)
+    return _check_banned_call(attr)
+
+
+def _lint_body(tree: ast.Module, report: Report, filename: str, *, contract: bool = False) -> None:
     """Luật thân revision (BE-00 §6.1), bỏ thân `downgrade()`.
 
     `contract` = revision `# contract:` đã đăng ký: luật phá huỷ của expand (drop, rename,
@@ -155,76 +251,16 @@ def _lint_body(source: str, tree: ast.Module, report: Report, filename: str, *, 
     Vẫn áp: SQL không phải hằng (không đọc được thì không duyệt được), `batch_alter_table`,
     index khoá bảng có sẵn (khoá bảng không phụ thuộc expand hay contract).
     """
-    # Báo cáo bỏ đi: vi phạm phá huỷ của revision contract không vào `report`.
-    destructive = Report() if contract else report
     nodes = _nodes_excluding_downgrade(tree)
     created_tables = _collect_created_tables(nodes)
-
-    # ancestry đủ để biết một Call có nằm trong `with ...autocommit_block():` không
-    parent: dict[int, ast.AST] = {}
-    for n in nodes:
-        for child in ast.iter_child_nodes(n):
-            parent[id(child)] = n
-
-    def ancestors_of(node: ast.AST) -> list[ast.AST]:
-        out = []
-        cur = node
-        while id(cur) in parent:
-            cur = parent[id(cur)]
-            out.append(cur)
-        return out
-
+    # cha của từng node: đủ để biết một Call có nằm trong `with ...autocommit_block():` không
+    parents = {id(child): node for node in nodes for child in ast.iter_child_nodes(node)}
     for node in nodes:
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.Call) or (attr := _call_attr(node)) is None:
             continue
-        attr = _call_attr(node)
-        if attr is None:
-            continue
-
-        if attr in _BANNED_CALL_NAMES:
-            (report if attr == "batch_alter_table" else destructive).add(filename, "thao tác cấm (§6.1)", attr)
-
-        if attr == "alter_column":
-            for kw in node.keywords:
-                if kw.arg in _ALTER_COLUMN_BANNED_KWARGS:
-                    if kw.arg == "nullable" and not (isinstance(kw.value, ast.Constant) and kw.value.value is False):
-                        continue
-                    destructive.add(filename, "alter_column cấm tham số", str(kw.arg))
-
-        if attr == "add_column":
-            for arg in node.args:
-                if _call_attr(arg) == "Column" and isinstance(arg, ast.Call):
-                    kwargs = {kw.arg: kw.value for kw in arg.keywords}
-                    nullable = kwargs.get("nullable")
-                    is_not_null = isinstance(nullable, ast.Constant) and nullable.value is False
-                    if is_not_null and "server_default" not in kwargs:
-                        destructive.add(filename, "add_column NOT NULL thiếu server_default", "")
-
-        if attr in _RAW_SQL_FUNCS:
-            first = node.args[0] if node.args else None
-            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
-                report.add(filename, f"{attr} đối số không phải hằng chuỗi", "")
-            elif _SQL_DANGER_RE.search(first.value):
-                destructive.add(filename, f"{attr} chuỗi SQL cấm", first.value)
-
-        if attr == "create_index":
-            table_name: str | None = None
-            if len(node.args) >= 2:
-                t = node.args[1]
-                if isinstance(t, ast.Constant) and isinstance(t.value, str):
-                    table_name = t.value
-            kwargs = {kw.arg: kw.value for kw in node.keywords}
-            if table_name is None:
-                kw_table = kwargs.get("table_name")
-                if isinstance(kw_table, ast.Constant) and isinstance(kw_table.value, str):
-                    table_name = kw_table.value
-            if table_name is not None and table_name not in created_tables:
-                concurrently = kwargs.get("postgresql_concurrently")
-                has_concurrently = isinstance(concurrently, ast.Constant) and concurrently.value is True
-                if not has_concurrently:
-                    report.add(filename, "create_index thiếu postgresql_concurrently=True", table_name)
-                elif not _in_autocommit_block(node, ancestors_of(node)):
-                    report.add(filename, "create_index CONCURRENTLY ngoài autocommit_block", table_name)
+        for finding in _check_call(node, attr, created_tables, parents):
+            if not (contract and finding.destructive):
+                report.add(filename, finding.rule, finding.detail)
 
 
 def _lint_file(path: Path, contracts: set[str], report: Report) -> None:
@@ -251,7 +287,7 @@ def _lint_file(path: Path, contracts: set[str], report: Report) -> None:
     if has_contract_comment and not registered:
         report.add(rel, "# contract: chưa đăng ký ở docs/contracts.toml", revision or "?")
 
-    _lint_body(source, tree, report, rel, contract=has_contract_comment and registered)
+    _lint_body(tree, report, rel, contract=has_contract_comment and registered)
 
 
 def _load_contracts() -> set[str]:
