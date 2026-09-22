@@ -88,7 +88,14 @@ run_container() {
 # ---------------------------------------------------------------------------
 case "$VERIFY_TASK" in
   verify)
-    run_container verify verify "$@"
+    # Log cổng ra host (NO-080): container tự xoá khi thoát, output chỉ đi qua client compose — shell
+    # bọc bị cắt là mất bảng, file này thì còn. steps.py ghi song song stdout, không thay stdout.
+    log_dir="$CACHE_DIR/src-out/verify"
+    mkdir -p "$log_dir"
+    log_name="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short=12 HEAD).log"
+    echo "log cổng: $(win_path "$log_dir")/$log_name"
+    run_container -v "$(win_path "$log_dir"):/src-out/verify" -e "VERIFY_LOG_FILE=/src-out/verify/$log_name" \
+      verify verify "$@"
     ;;
 
   lock)

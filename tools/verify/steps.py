@@ -12,10 +12,12 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
+import threading
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from tools.charter import merged_prompts
 from tools.contract import runner_client
@@ -264,7 +266,8 @@ def run_steps(steps: Sequence[tuple[str, Callable[[], StepOutcome]]], wanted: se
     return outcomes
 
 
-def cmd_verify(args: argparse.Namespace) -> int:
+def _run_verify(args: argparse.Namespace) -> int:
+    """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng"."""
     wanted = set(args.steps.split(",")) if args.steps else None
     # Không ai gõ bước "0": nó đi kèm khi lượt có bước cần runner Node.
     if wanted is not None and wanted & _RUNNER_STEPS:
@@ -278,6 +281,107 @@ def cmd_verify(args: argparse.Namespace) -> int:
         outcomes.append(_infra_failure("—", "chép mẫu golden", exc))
     _print_table(outcomes)
     return 1 if any(o.status == STATUS_FAIL for o in outcomes) else 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Lượt verify; `run.sh` đặt `VERIFY_LOG_FILE` thì cả output của lượt đồng thời vào file đó (NO-080).
+
+    Log là bản sao, stdout vẫn là nguồn chính: ghi log hỏng giữa lượt chỉ báo ra stderr, không đổi mã
+    thoát. Không mở được file log → `OSError` ngay, trước bước đầu (thiếu mount là cấu hình hỏng).
+    """
+    log_file = os.environ.get("VERIFY_LOG_FILE")
+    if not log_file:
+        return _run_verify(args)
+    with _tee_output(Path(log_file)) as problems:
+        rc = _run_verify(args)
+        print(f"mã thoát: {rc}")
+    for problem in problems:
+        print(f"log cổng {log_file}: {problem}", file=sys.stderr)
+    return rc
+
+
+# ---------------------------------------------------------------------------
+# Log cổng ra thư mục host — NO-080
+# ---------------------------------------------------------------------------
+
+LOG_DRAIN_TIMEOUT_S = 10.0
+"""Trần chờ mỗi luồng chép xả nốt ống khi lượt xong. Quá trần nghĩa là một tiến trình con mồ côi còn giữ
+đầu ghi của ống: bỏ đợi thay vì treo cổng — phần nó in sau đó không vào log."""
+
+
+def _write_each(sinks: list[BinaryIO], chunk: bytes, problems: list[str]) -> None:
+    """Ghi `chunk` vào từng đích; đích hỏng (đĩa đầy, file đã đóng) thì gỡ khỏi `sinks`, lý do vào `problems`."""
+    for sink in list(sinks):
+        try:
+            sink.write(chunk)
+            sink.flush()
+        except (OSError, ValueError) as exc:
+            sinks.remove(sink)
+            problems.append(f"bỏ một đích ghi: {exc}")
+
+
+def _pump(read_fd: int, sinks: list[BinaryIO], problems: list[str]) -> None:
+    """Chép từng khúc của một ống sang mọi đích tới khi mọi đầu ghi đã đóng (EOF).
+
+    Đích hỏng không làm luồng dừng: luồng chết là ống đầy, mọi tiến trình đang in bị chặn — cổng treo.
+    """
+    with open(read_fd, "rb", buffering=0) as src:
+        while chunk := src.read(65536):
+            _write_each(sinks, chunk, problems)
+
+
+def _start_pump(fd: int, log: BinaryIO, problems: list[str]) -> tuple[int, BinaryIO, threading.Thread]:
+    """Thay `fd` bằng đầu ghi của một ống mới (tiến trình con thừa hưởng); một luồng chép ống sang fd gốc và `log`."""
+    original = os.fdopen(os.dup(fd), "wb")
+    read_fd, write_fd = os.pipe()
+    os.dup2(write_fd, fd)
+    os.close(write_fd)
+    thread = threading.Thread(target=_pump, args=(read_fd, [original, log], problems), daemon=True)
+    thread.start()
+    return fd, original, thread
+
+
+def _stop_pumps(pumps: list[tuple[int, BinaryIO, threading.Thread]], problems: list[str]) -> None:
+    """Trả fd gốc (đóng đầu ghi của mình → EOF), đợi mỗi luồng xả nốt trong `LOG_DRAIN_TIMEOUT_S`."""
+    for fd, original, _thread in pumps:
+        os.dup2(original.fileno(), fd)
+    for fd, original, thread in pumps:
+        thread.join(LOG_DRAIN_TIMEOUT_S)
+        if thread.is_alive():
+            problems.append(f"tiến trình con còn giữ fd {fd} sau {LOG_DRAIN_TIMEOUT_S} s — phần in sau đó mất")
+        original.close()
+
+
+@contextmanager
+def _tee_output(log_file: Path) -> Iterator[list[str]]:
+    """Chép output của lượt — cả của tiến trình con (ruff, pytest, coverage_gate) — vào `log_file` (NO-080).
+
+    Container `verify-run` tự xoá khi thoát và output chỉ đi qua client `docker compose run`: client chết
+    (shell bọc bị cắt) là mất log. `run.sh` mount thư mục host của `log_file`, nên file còn lại. fd 1 và 2
+    mỗi fd một ống + một luồng chép: stdout/stderr vẫn tách như cũ, chỉ một đối tượng ghi file. Đợi luồng
+    xả xong rồi mới trả, để dòng cuối (bảng, mã thoát) không mất khi tiến trình thoát. Trao danh sách vấn đề
+    của log (đích hỏng, tiến trình con mồ côi), đọc sau khi khối `with` xong.
+    """
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    problems: list[str] = []
+    with (
+        log_file.open("ab") as log,
+        # sys.stdout có thể là đối tượng không đi qua fd 1 (pytest capture): print đi qua fd 1, 2 đã đổi.
+        open(1, "w", encoding="utf-8", buffering=1, closefd=False) as out,
+        open(2, "w", encoding="utf-8", buffering=1, closefd=False) as err,
+    ):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        pumps = [_start_pump(fd, log, problems) for fd in (1, 2)]
+        saved = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = out, err
+        try:
+            yield problems
+        finally:
+            out.flush()
+            err.flush()
+            sys.stdout, sys.stderr = saved
+            _stop_pumps(pumps, problems)
 
 
 # ---------------------------------------------------------------------------
