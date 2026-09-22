@@ -521,6 +521,34 @@ def test_verify_không_có_mẫu_thì_thư_mục_ra_rỗng(repo: Path, tmp_path:
     assert list(out.iterdir()) == []
 
 
+def _table_rows(out: str) -> dict[str, str]:
+    """Dòng bảng cổng theo cột `#` (một dòng mỗi bước)."""
+    return {line.split("|")[0].strip(): line for line in out.splitlines() if " | " in line}
+
+
+def test_verify_chép_mẫu_hỏng_vẫn_in_đủ_bảng_và_thoát_1(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """NO-075: thư mục ra không ghi được → bảng vẫn in đủ, thêm một dòng lỗi chép mẫu, thoát 1 — không traceback.
+
+    Container chạy bằng root nên quyền tệp không chặn được ghi; dựng lỗi bằng thư mục ra nằm dưới một file
+    (`NotADirectoryError`), cùng họ `OSError` với probe `VERIFY_OUT_DIR=/proc/rv` của review.
+    """
+    blocker = tmp_path / "là-file"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(steps, "OUT_DIR", blocker / "out")
+    monkeypatch.setenv("CONTRACT_SAMPLES_DIR", str(tmp_path / "contract-samples"))
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("1", lambda: steps.StepOutcome("1", "a", steps.STATUS_OK))])
+    assert steps.main(["verify"]) == 1
+    captured = capsys.readouterr()
+    rows = _table_rows(captured.out)
+    assert steps.STATUS_OK in rows["1"]
+    assert "chép mẫu golden" in rows["—"]
+    assert steps.STATUS_FAIL in rows["—"]
+    assert "Not a directory" in rows["—"]
+    assert "chép mẫu golden hỏng" in captured.err
+
+
 def test_verify_ngoài_container_không_chép(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Không đặt `CONTRACT_SAMPLES_DIR` (chạy ngoài cổng) → không tạo gì dưới thư mục ra."""
     monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
@@ -591,7 +619,7 @@ def test_verify_làm_ấm_hỏng_là_lỗi_hạ_tầng_của_cổng(
     monkeypatch.setattr(runner_client, "ensure_node_modules", _warm(fake, error))
     assert steps.main(["verify"]) == 1
     assert not fake.ran("coverage run")
-    rows = {line.split("|")[0].strip(): line for line in capsys.readouterr().out.splitlines() if " | " in line}
+    rows = _table_rows(capsys.readouterr().out)
     assert steps.STATUS_FAIL in rows["0"]
     assert str(error).splitlines()[0] in rows["0"]
     assert steps.STATUS_SKIP in rows["5"]

@@ -67,6 +67,16 @@ def _gate_status(condition_file: Path, owner: str) -> str | None:
     return STATUS_NA
 
 
+def _infra_failure(number: str, name: str, exc: Exception) -> StepOutcome:
+    """Lỗi hạ tầng của chính cổng (npm, đĩa, thư mục ra) thành một dòng bảng "hỏng".
+
+    Bảng một dòng mỗi bước: bảng chỉ giữ dòng đầu (≤ 160 ký tự), lỗi đầy đủ in ra stderr ngay lúc đó.
+    """
+    print(f"{name} hỏng: {exc}", file=sys.stderr)
+    first_line = str(exc).partition("\n")[0][:160]
+    return StepOutcome(number, name, STATUS_FAIL, f"lỗi hạ tầng cổng: {first_line}")
+
+
 def _print_table(outcomes: list[StepOutcome]) -> None:
     print()
     print(f"{'#':>3} | {'Bước':<28} | {'Trạng thái':<14} | Chi tiết")
@@ -96,10 +106,7 @@ def step_warm_node_modules() -> StepOutcome:
     try:
         target = runner_client.ensure_node_modules(runner_client.node_dir_from_env())
     except (runner_client.RunnerError, OSError) as exc:
-        print(f"làm ấm node_modules hỏng: {exc}", file=sys.stderr)
-        # Bảng một dòng mỗi bước: chỉ dòng đầu; stderr đầy đủ của npm đã in ngay trên.
-        first_line = str(exc).partition("\n")[0][:160]
-        return StepOutcome("0", name, STATUS_FAIL, f"lỗi hạ tầng cổng: {first_line}")
+        return _infra_failure("0", name, exc)
     return StepOutcome("0", name, STATUS_OK, str(target))
 
 
@@ -263,8 +270,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if wanted is not None and wanted & _RUNNER_STEPS:
         wanted.add("0")
     outcomes = run_steps(_ALL_STEPS, wanted)
-    # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất.
-    export_contract_samples()
+    # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất. Chép hỏng
+    # là một dòng bảng "hỏng" (thoát 1), không phải traceback thay chỗ cả bảng (NO-075).
+    try:
+        export_contract_samples()
+    except OSError as exc:
+        outcomes.append(_infra_failure("—", "chép mẫu golden", exc))
     _print_table(outcomes)
     return 1 if any(o.status == STATUS_FAIL for o in outcomes) else 0
 
