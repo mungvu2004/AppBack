@@ -54,6 +54,10 @@ export VERIFY_CHANGED
 CACHE_DIR="$REPO_ROOT/.cache"
 mkdir -p "$CACHE_DIR"
 
+# Số log cổng tối đa trong .cache/src-out/verify sau một lượt, tính cả log của lượt đó: 20 lượt ≈ 0,5 MB lượt
+# đạt, đủ so lượt đỏ với vài lượt trước nó; log cần giữ lâu hơn thì chép ra ngoài (NO-090).
+VERIFY_LOG_KEEP=20
+
 # AppFront @ APPFRONT_SHA — ENV §2 bước 3. Chưa có file SHA → thư mục rỗng.
 APPFRONT_SHA_FILE="$REPO_ROOT/tools/contract/APPFRONT_SHA"
 if [[ -f "$APPFRONT_SHA_FILE" ]]; then
@@ -92,6 +96,10 @@ case "$VERIFY_TASK" in
     # bọc bị cắt là mất bảng, file này thì còn. steps.py ghi song song stdout, không thay stdout.
     log_dir="$CACHE_DIR/src-out/verify"
     mkdir -p "$log_dir"
+    # Trần log (NO-090): mỗi lượt một file, không dọn thì checkout sống lâu dồn mãi (in_container.sh còn chép
+    # cả .cache mỗi lượt). Giữ VERIFY_LOG_KEEP - 1 log mới nhất (mtime) trước khi lượt này tạo log của nó.
+    find "$log_dir" -maxdepth 1 -type f -name '*.log' -printf '%T@\t%p\n' \
+      | sort -rn | tail -n +"$VERIFY_LOG_KEEP" | cut -f2- | xargs -r -d '\n' rm --
     log_name="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short=12 HEAD).log"
     echo "log cổng: $(win_path "$log_dir")/$log_name"
     run_container -v "$(win_path "$log_dir"):/src-out/verify" -e "VERIFY_LOG_FILE=/src-out/verify/$log_name" \
