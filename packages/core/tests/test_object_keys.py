@@ -1,5 +1,5 @@
-"""Luật khoá object của lõi (NO-060) và bố cục tiền tố lượt tải lên (NO-077): mẫu biên chung của `storage`
-và `ml_contracts`, kèm thông báo."""
+"""Luật khoá object của lõi (NO-060) và bố cục tiền tố dự án, lượt tải lên (NO-077), lượt chạy, mô hình (NO-081):
+mẫu biên chung của `storage` và `ml_contracts`, kèm thông báo."""
 
 from collections.abc import Callable
 
@@ -7,6 +7,7 @@ import pytest
 
 from packages.core import ids, object_keys
 from packages.core.object_keys import MAX_KEY_BYTES, check_key, check_prefix, is_segment
+from packages.core.pipeline import PIPELINE_STEPS
 
 DOTS = "đoạn rỗng, '.' hay '..'"
 CHARS = r"chỉ nhận \[A-Za-z0-9._-\]"
@@ -14,6 +15,8 @@ PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
 FLOOR = "L-ABCDEFGHIJ"
 UPLOAD = "upl_01ARZ3NDEKTSV4RRFFQ69G5FBW"
 UPLOAD_PREFIX = f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
+RUN = "run_01ARZ3NDEKTSV4RRFFQ69G5FCX"
+MODEL = "mdl_01ARZ3NDEKTSV4RRFFQ69G5FGA"
 NOT_UNDER = "không nằm dưới một lượt tải lên"
 
 
@@ -158,3 +161,49 @@ def test_upload_prefix_of_rebuilds_with_upload_prefix(monkeypatch: pytest.Monkey
     monkeypatch.setattr(object_keys, "upload_prefix", lambda *_: "khac/")
     with pytest.raises(ValueError, match=NOT_UNDER):
         object_keys.upload_prefix_of(f"{UPLOAD_PREFIX}pages/0.png")
+
+
+@pytest.mark.parametrize("step", [step for step, _ in PIPELINE_STEPS])
+def test_run_prefix_layout(step: str) -> None:
+    """BE-00 §8: artifact của mọi bước pipeline nằm ở `…/runs/{run}/{bước}/` dưới lượt tải lên (NO-081)."""
+    assert object_keys.run_prefix(UPLOAD_PREFIX, RUN, step) == f"{UPLOAD_PREFIX}runs/{RUN}/{step}/"
+
+
+def test_model_prefix_layout() -> None:
+    """BE-00 §8: phiên bản mô hình nằm ở `ml/models/{mdl}/`, dưới gốc `MODELS_PREFIX` (NO-081)."""
+    assert object_keys.MODELS_PREFIX == "ml/models/"
+    assert object_keys.model_prefix(MODEL) == f"ml/models/{MODEL}/"
+
+
+@pytest.mark.parametrize(
+    ("build", "match"),
+    [
+        (lambda: object_keys.run_prefix(UPLOAD_PREFIX, RUN, "sniff"), "bước pipeline"),
+        (lambda: object_keys.run_prefix(UPLOAD_PREFIX, RUN, ""), "bước pipeline"),
+        (lambda: object_keys.run_prefix(UPLOAD_PREFIX, RUN, "preprocess/x"), "bước pipeline"),
+        (lambda: object_keys.run_prefix(UPLOAD_PREFIX, UPLOAD, "preprocess"), "run_"),
+        (lambda: object_keys.run_prefix(UPLOAD_PREFIX, f"{RUN}/..", "preprocess"), "run_"),
+        (lambda: object_keys.model_prefix(UPLOAD), "mdl_"),
+        (lambda: object_keys.model_prefix(""), "mdl_"),
+    ],
+)
+def test_run_and_model_prefix_reject_wrong_parts(build: Callable[[], str], match: str) -> None:
+    """Bước ngoài `PIPELINE_STEPS` (kể cả đoạn lồng), id lượt chạy hay id mô hình sai → `ValueError` nêu đúng trường."""
+    with pytest.raises(ValueError, match=match):
+        build()
+
+
+@pytest.mark.parametrize(
+    ("build", "match"),
+    [
+        (lambda: object_keys.run_prefix(UPLOAD_PREFIX, RUN, "preprocess"), "run_"),
+        (lambda: object_keys.model_prefix(MODEL), "mdl_"),
+    ],
+)
+def test_run_and_model_prefix_read_id_rule_of_core_ids(
+    monkeypatch: pytest.MonkeyPatch, build: Callable[[], str], match: str
+) -> None:
+    """Đột biến `packages.core.ids.is_id` thì hai tiền tố từ chối theo — id qua `check_id`, không regex chép tay."""
+    monkeypatch.setattr(ids, "is_id", lambda *_: False)
+    with pytest.raises(ValueError, match=match):
+        build()
