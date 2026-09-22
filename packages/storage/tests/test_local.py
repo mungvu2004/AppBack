@@ -1,6 +1,7 @@
 """Riêng `LocalDiskStorage`: token tệp và lỗi đĩa (C13)."""
 
 import errno
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -10,7 +11,7 @@ import pytest
 
 from packages.core.errors import AppError
 from packages.core.settings import reset_settings_cache
-from packages.storage import keys
+from packages.storage import keys, port
 from packages.storage.local import FILES_ROUTE, LocalDiskStorage
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
@@ -18,6 +19,7 @@ from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
 PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
 FLOOR = "L-ABCDEFGHIJ"
 UPLOAD = "upl_01ARZ3NDEKTSV4RRFFQ69G5FBW"
+LATER_UPLOAD = "upl_01ARZ3NDEKTSV4RRFFQ69G5FCX"
 KEY = keys.upload_page(PROJECT, FLOOR, UPLOAD, 0)
 PNG = b"\x89PNG\r\n\x1a\n" + b"pixels" * 8
 MAX_BYTES = 1024 * 1024
@@ -63,14 +65,18 @@ async def sign(storage: LocalDiskStorage, filename: str | None = None) -> str:
 
 
 async def test_signed_url_goes_through_the_files_route(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
-    """K15: URL không bao giờ trỏ thẳng đường dẫn tệp."""
+    """K15: URL đi qua route tệp, không chứa đường dẫn hệ thống tệp hay khoá **dạng thô**.
+
+    Không khẳng định token là mờ: thân token là base64url **không mã hoá** của `{k,e,d,n}`
+    (token là bearer, BE-00 §8 chỉ cấm nó vào log), nên ai có URL vẫn giải ra được khoá.
+    """
     await local_storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
 
     signed = await local_storage.signed_url(KEY, disposition="attachment", filename="bản vẽ.png")
 
     assert signed.url.startswith(f"{PUBLIC_BASE_URL}{FILES_ROUTE}")
     assert str(tmp_path) not in signed.url
-    assert KEY not in signed.url
+    assert KEY not in signed.url  # dạng thô; bản base64url thì có, xem docstring
 
 
 async def test_verify_token_returns_the_grant(local_storage: LocalDiskStorage) -> None:
@@ -169,9 +175,51 @@ async def test_list_prefix_skips_metadata_files(local_storage: LocalDiskStorage)
 
 
 async def test_stat_uses_filesystem_time(local_storage: LocalDiskStorage) -> None:
+    """`last_modified` của `stat` là `st_mtime` của tệp, không phải giờ `Clock` (NO-016: mốc ghim bằng `os.utime`)."""
     await local_storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    moment = datetime(2024, 5, 6, 7, 8, 9, tzinfo=UTC)
+    os.utime(local_storage._path(KEY), (moment.timestamp(), moment.timestamp()))
 
     stored = await local_storage.stat(KEY)
 
     assert stored is not None
-    assert abs((stored.last_modified - datetime.now(UTC)).total_seconds()) < 60
+    assert stored.last_modified == moment
+
+
+async def test_delete_prefix_raises_instead_of_reporting_success(local_storage: LocalDiskStorage) -> None:
+    """NO-012: xoá hỏng (tiền tố là một **tệp**, `rmtree` gặp `ENOTDIR`) nổi lên, không báo thành công giả."""
+    prefix = keys.project_prefix(PROJECT)
+    blocker = local_storage._path(prefix.rstrip("/"))
+    blocker.parent.mkdir(parents=True)
+    blocker.write_bytes(b"khong-phai-thu-muc")
+
+    with pytest.raises(NotADirectoryError):
+        await local_storage.delete_prefix(prefix)
+
+    assert blocker.exists()
+
+
+async def test_delete_prefix_of_a_missing_prefix_is_silent(local_storage: LocalDiskStorage) -> None:
+    """Tiền tố chưa từng có object: dọn rác không có gì để xoá, không lỗi."""
+    await local_storage.delete_prefix(keys.project_prefix(PROJECT))
+
+
+async def test_list_prefix_streams_the_tree_in_batches(
+    local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-013: `list_prefix` kéo cây theo lô (R-22), không nạp cả cây trước khi trả mục đầu.
+
+    Lô 1 mục: object ghi **sau** khi đã nhận mục đầu, ở thư mục chưa duyệt tới, vẫn hiện ra.
+    """
+    monkeypatch.setattr(port, "LIST_BATCH", 1, raising=False)
+    early = keys.upload_page(PROJECT, FLOOR, UPLOAD, 0)
+    later = keys.upload_page(PROJECT, FLOOR, LATER_UPLOAD, 0)
+    for key in (early, later):
+        await local_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    listing = local_storage.list_prefix(keys.project_prefix(PROJECT))
+
+    first = await anext(listing)
+    late = keys.upload_page(PROJECT, FLOOR, LATER_UPLOAD, 1)
+    await local_storage.put(late, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+
+    assert [first.key, *[info.key async for info in listing]] == [early, later, late]

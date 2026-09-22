@@ -96,10 +96,15 @@ def test_builders_reject_wrong_ids(build: Callable[[], str], match: str) -> None
     [
         (f"users/{USER}/avatar/{ULID}.png", "png"),
         (f"users/{USER}/avatar/{ULID}.jpg", "jpeg"),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png", "png"),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/12.png", "png"),
         (f"users/{USER}/avatar/{ULID}.pdf", None),
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/original.png", None),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.jpg", None),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/sub/0.png", None),
         (f"users/{USER}/avatar/sub/{ULID}.png", None),
     ],
 )
-def test_avatar_kind_only_for_avatar_keys(key: str, expected: str | None) -> None:
-    assert keys.avatar_kind(key) == expected
+def test_server_chosen_kind_only_for_keys_the_server_names(key: str, expected: str | None) -> None:
+    """NO-011: ảnh đại diện và ảnh trang do server đặt đuôi sau khi đã kiểm magic bytes; `original.*` thì không."""
+    assert keys.server_chosen_kind(key) == expected

@@ -4,22 +4,30 @@ Gói này **không** kiểm quyền người dùng: người gọi phải kiểm
 dựng khoá hay ký URL.
 """
 
+import asyncio
+import errno
 import unicodedata
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from itertools import islice
 from typing import Final, Literal, Protocol
 from urllib.parse import quote
 
 from packages.core.clock import Clock
-from packages.core.error_codes import NOT_FOUND
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND
 from packages.core.instants import floor_to_hour
-from packages.storage.keys import avatar_kind
+from packages.storage.keys import server_chosen_kind
 from packages.storage.sniff import IMAGE_KINDS, ImageKind, Kind
 
 CHUNK_SIZE: Final = 1024 * 1024
+LIST_BATCH: Final = 1000
+"""Số mục `list_prefix` giữ trong RAM mỗi lượt — bằng một trang `ListObjectsV2` của S3 (NO-013)."""
 RETRY_AFTER_S: Final = 5
 """`Retry-After` của `DEPENDENCY_UNAVAILABLE` khi kho hỏng (C13)."""
+UNAVAILABLE_ERRNOS: Final = frozenset((errno.ENOSPC, errno.EROFS, errno.EDQUOT))
+"""Đĩa đầy hoặc chỉ đọc là "phụ thuộc hỏng" (C13), không phải lỗi của người gọi."""
 
 SIGNED_URL_TTL: Final = timedelta(hours=2)
 """Ký từ đầu giờ nên URL sống 60-120 phút và **giống hệt nhau** trong cùng một giờ (W23, K16)."""
@@ -53,7 +61,11 @@ class SignedUrl:
 
 @dataclass(frozen=True, slots=True)
 class FileGrant:
-    """Kết quả mở token của `LocalDiskStorage`; `GET /api/files/{token}` (B0-06) dùng."""
+    """Kết quả mở token của `LocalDiskStorage`; `GET /api/files/{token}` (B0-06) dùng.
+
+    Token **không** mang `kind`: luật `inline` chỉ kiểm lúc ký, nên nơi phục vụ phải tự đọc
+    `kind` trong metadata và chỉ trả `inline` cho PNG/JPEG (K15; `apps/api/files` đã làm).
+    """
 
     key: str
     disposition: Disposition
@@ -106,6 +118,15 @@ class ObjectStorage(Protocol):
         ...
 
 
+async def next_batch[T](items: Iterator[T]) -> list[T]:
+    """≤ `LIST_BATCH` mục kế tiếp của bộ duyệt đồng bộ, kéo trong luồng riêng; rỗng = hết.
+
+    `list_prefix` của hai bộ điều hợp đi qua đây để RAM chỉ giữ một lô, không cả cây (R-22).
+    """
+    size = LIST_BATCH
+    return await asyncio.to_thread(lambda: list(islice(items, size)))
+
+
 async def iter_chunks(data: bytes | AsyncIterable[bytes]) -> AsyncIterator[bytes]:
     """Đưa `bytes` và `AsyncIterable[bytes]` về cùng một luồng khúc để `put` chỉ có một đường đi."""
     if isinstance(data, bytes):
@@ -113,6 +134,21 @@ async def iter_chunks(data: bytes | AsyncIterable[bytes]) -> AsyncIterator[bytes
     else:
         async for chunk in data:
             yield chunk
+
+
+@contextmanager
+def disk_errors() -> Iterator[None]:
+    """Đĩa đầy hay chỉ đọc → 503 (C13); lỗi hệ thống tệp khác giữ nguyên.
+
+    Dùng chung cho kho local và bộ đệm đĩa của `S3Storage.put` (NO-014): cùng một sự cố
+    phải ra cùng một mã ở cả hai bộ điều hợp.
+    """
+    try:
+        yield
+    except OSError as exc:
+        if exc.errno in UNAVAILABLE_ERRNOS:
+            raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+        raise
 
 
 def expiry(clock: Clock) -> tuple[datetime, datetime]:
@@ -129,13 +165,14 @@ async def resolve_kind(
 ) -> Kind | None:
     """Luật K15 cho `signed_url`; trả `kind` dùng cho `response-content-type`.
 
-    `kind` truyền sẵn tránh một lượt `stat`, nhưng chỉ hợp lệ cho khoá có đuôi **do
-    server chọn sau khi đã kiểm magic bytes** (hiện chỉ ảnh đại diện). Khoá khác —
-    kể cả `original.<đuôi>` của lượt tải lên — phải để gói tự đọc metadata.
+    `kind` truyền sẵn tránh một lượt `stat` (ký danh sách thumbnail không tốn N `HEAD`), nhưng
+    chỉ hợp lệ cho khoá có đuôi **do server chọn sau khi đã kiểm magic bytes** — ảnh đại diện
+    và ảnh trang (`keys.server_chosen_kind`). Khoá khác — kể cả `original.<đuôi>` của lượt tải
+    lên — phải để gói tự đọc metadata.
     """
     if kind is not None:
-        if avatar_kind(key) != kind:
-            raise ValueError(f"kind={kind!r} chỉ hợp lệ cho khoá ảnh đại diện đúng đuôi: {key!r}")
+        if server_chosen_kind(key) != kind:
+            raise ValueError(f"kind={kind!r} chỉ hợp lệ cho khoá do server đặt tên, đúng đuôi: {key!r}")
         return kind
     if disposition == "inline":
         info = await storage.stat(key)

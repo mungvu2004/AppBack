@@ -24,9 +24,14 @@ _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
 _ULID_RE: Final = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")
 _STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)
 
-# Ảnh đại diện là nơi **duy nhất** đuôi khoá do server chọn sau khi đã kiểm magic
-# bytes, nên cũng là nơi duy nhất được ký URL với `kind` truyền sẵn (W23, K15).
-_AVATAR_RE: Final = re.compile(r"users/usr_[0-9A-HJKMNP-TV-Z]{26}/avatar/[0-9A-HJKMNP-TV-Z]{26}\.(png|jpg)")
+# Khoá mà **server** chọn đuôi sau khi đã kiểm magic bytes (ảnh đại diện, ảnh trang đã tách)
+# là nơi duy nhất được ký URL với `kind` truyền sẵn (W23, K15). `original.<đuôi>` mang đuôi
+# người dùng khai nên không bao giờ khớp (NO-011).
+_ULID: Final = _ULID_RE.pattern
+_SERVER_NAMED_RE: Final = re.compile(
+    rf"users/usr_{_ULID}/avatar/{_ULID}\.(?P<avatar>png|jpg)"
+    rf"|projects/prj_{_ULID}/floors/L-[0-9A-Z]{{10,64}}/uploads/upl_{_ULID}/pages/[0-9]+\.png"
+)
 _EXT_KIND: Final[dict[str, ImageKind]] = {"png": "png", "jpg": "jpeg"}
 
 
@@ -54,10 +59,12 @@ def check_prefix(prefix: str) -> str:
     return prefix
 
 
-def avatar_kind(key: str) -> ImageKind | None:
-    """Loại ảnh suy từ đuôi khoá ảnh đại diện; khoá khác → `None`."""
-    matched = _AVATAR_RE.fullmatch(key)
-    return _EXT_KIND[matched.group(1)] if matched else None
+def server_chosen_kind(key: str) -> ImageKind | None:
+    """Loại ảnh suy từ đuôi khoá do server đặt tên (ảnh đại diện, `…/pages/{i}.png`); khoá khác → `None`."""
+    matched = _SERVER_NAMED_RE.fullmatch(key)
+    if matched is None:
+        return None
+    return _EXT_KIND[matched.group("avatar") or "png"]
 
 
 def _entity_id(prefix: IdPrefix, value: str) -> str:

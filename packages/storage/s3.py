@@ -21,6 +21,7 @@ from typing import BinaryIO, Final, cast
 import urllib3
 from minio import Minio
 from minio.datatypes import Object
+from minio.deleteobjects import DeleteObject
 from minio.error import S3Error, ServerError
 from minio.helpers import md5sum_hash
 
@@ -36,8 +37,10 @@ from packages.storage.port import (
     SignedUrl,
     content_disposition,
     content_type_of,
+    disk_errors,
     expiry,
     iter_chunks,
+    next_batch,
     resolve_kind,
 )
 from packages.storage.sniff import SNIFF_BYTES, ImageKind, as_kind, sniff
@@ -51,6 +54,11 @@ CONNECT_TIMEOUT_S: Final = 3.0
 READ_TIMEOUT_S: Final = 15.0
 """Mặc định của `minio` là 300 s — quá dài so với trần 15 s của endpoint (W11, RES-01)."""
 
+SERVER_ERROR_STATUS: Final = 500
+CORS_UNSUPPORTED: Final = "NotImplemented"
+"""Mã MinIO trả cho `PutBucketCors`: CORS của MinIO đặt bằng biến môi trường, không bằng API."""
+DELETE_ERRORS_SHOWN: Final = 5
+"""Số object hỏng in trong thông điệp lỗi của `delete_prefix`; tổng số vẫn in đủ."""
 _MISSING_CODES: Final = frozenset(("NoSuchKey", "NoSuchObject", "NotFound"))
 _log: Final = logging.getLogger(__name__)
 
@@ -66,11 +74,20 @@ def http_client() -> urllib3.PoolManager:
 
 @contextmanager
 def _s3_errors() -> Iterator[None]:
-    """Lỗi kết nối, timeout hay 5xx → 503 (C13); lỗi khác của thư viện không bị nuốt."""
+    """Lỗi kết nối, timeout hay 5xx → 503 (C13); lỗi khác của thư viện không bị nuốt.
+
+    `minio` chỉ dựng `ServerError` cho 5xx **không** thân; S3/MinIO quá tải trả 5xx kèm thân
+    XML (`SlowDown`, `InternalError`) thành `S3Error` — cũng là phụ thuộc hỏng (NO-009).
+    `S3Error` 4xx (`AccessDenied`, `NoSuchBucket`) là sự cố cấu hình, nổi lên nguyên vẹn.
+    """
     try:
         yield
     except (urllib3.exceptions.HTTPError, ServerError) as exc:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+    except S3Error as exc:
+        if exc.response.status >= SERVER_ERROR_STATUS:
+            raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
+        raise
 
 
 class S3Storage:
@@ -89,7 +106,10 @@ class S3Storage:
                 await asyncio.to_thread(self._put_cors, cors_origin)
             except S3Error as exc:
                 # MinIO trả `NotImplemented`: CORS đặt bằng `MINIO_API_CORS_ALLOW_ORIGIN`
-                # trong compose của B0-08, không phải bằng API bucket.
+                # trong compose của B0-08, không phải bằng API bucket. Mã khác (`AccessDenied`,
+                # `NoSuchBucket`) là bucket production chạy với CORS sai: phải nổi lên (NO-015).
+                if exc.code != CORS_UNSUPPORTED:
+                    raise
                 _log.info("cors_managed_by_server", extra={"bucket": self._bucket, "code": exc.code})
 
     async def put(
@@ -108,13 +128,15 @@ class S3Storage:
         # Đệm để biết `sha256`, `kind` và độ dài trước khi gửi: vượt `max_bytes` là
         # không có lượt ghi nào, nên không bao giờ còn object dở trên bucket (C12).
         with tempfile.SpooledTemporaryFile(max_size=MULTIPART_PART_SIZE) as buffer:
-            async for chunk in iter_chunks(data):
-                size += len(chunk)
-                if size > max_bytes:
-                    raise PAYLOAD_TOO_LARGE.error()
-                digest.update(chunk)
-                head += chunk[: SNIFF_BYTES - len(head)]
-                await asyncio.to_thread(buffer.write, chunk)
+            # Quá `MULTIPART_PART_SIZE` bộ đệm tràn xuống đĩa: đĩa đầy là 503 như kho local (NO-014).
+            with disk_errors():
+                async for chunk in iter_chunks(data):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise PAYLOAD_TOO_LARGE.error()
+                    digest.update(chunk)
+                    head += chunk[: SNIFF_BYTES - len(head)]
+                    await asyncio.to_thread(buffer.write, chunk)
             buffer.seek(0)
             kind = sniff(head)
             with _s3_errors():
@@ -177,7 +199,7 @@ class S3Storage:
             await asyncio.to_thread(self._client.remove_object, self._bucket, key)
 
     async def delete_prefix(self, prefix: str) -> None:
-        """Xoá từng object dưới tiền tố (chỉ lịch dọn rác gọi)."""
+        """Xoá mọi object dưới tiền tố theo lô (chỉ lịch dọn rác gọi)."""
         check_prefix(prefix)
         with _s3_errors():
             await asyncio.to_thread(self._delete_under, prefix)
@@ -185,14 +207,19 @@ class S3Storage:
     async def list_prefix(self, prefix: str, *, older_than: datetime | None = None) -> AsyncIterator[ObjectInfo]:
         """Duyệt object dưới tiền tố, lọc theo `older_than` nếu có."""
         check_prefix(prefix)
-        with _s3_errors():
-            listed = await asyncio.to_thread(self._list_under, prefix)
-        for obj in listed:
-            # `ListObjectsV2` của S3 không trả `x-amz-meta-*`, nên metadata phải lấy
-            # bằng `stat` từng object. Chỉ lịch dọn rác gọi hàm này (BE-00 §7).
-            info = await self.stat(str(obj.object_name))
-            if info is not None and (older_than is None or info.last_modified < older_than):
-                yield info
+        # Bộ duyệt của `minio` lười: mỗi lô chỉ kéo trang `ListObjectsV2` cần tới (NO-013).
+        listed = self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+        while True:
+            with _s3_errors():
+                batch = await next_batch(listed)
+            if not batch:
+                return
+            for obj in batch:
+                # `ListObjectsV2` của S3 không trả `x-amz-meta-*`, nên metadata phải lấy
+                # bằng `stat` từng object. Chỉ lịch dọn rác gọi hàm này (BE-00 §7).
+                info = await self.stat(str(obj.object_name))
+                if info is not None and (older_than is None or info.last_modified < older_than):
+                    yield info
 
     async def signed_url(
         self,
@@ -237,14 +264,19 @@ class S3Storage:
             query_params={"cors": ""},
         )
 
-    def _list_under(self, prefix: str) -> list[Object]:
-        """Liệt kê object dưới tiền tố (đồng bộ, chạy trong luồng riêng)."""
-        return list(self._client.list_objects(self._bucket, prefix=prefix, recursive=True))
-
     def _delete_under(self, prefix: str) -> None:
-        """Xoá tuần tự mọi object dưới tiền tố (đồng bộ)."""
-        for obj in self._list_under(prefix):
-            self._client.remove_object(self._bucket, str(obj.object_name))
+        """Xoá mọi object dưới tiền tố bằng `DeleteObjects` (đồng bộ, NO-010).
+
+        `remove_objects` gom tối đa 1000 khoá mỗi lượt và kéo danh sách lười, nên 10k object là
+        10 lượt đi-về, không 10k. Lỗi từng object nằm trong thân 200 của `DeleteResult`: gom lại
+        và ném, để lịch dọn rác biết mình còn sót (không nuốt, R-16).
+        """
+        listed = self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+        names = (DeleteObject(str(obj.object_name)) for obj in listed)
+        errors = list(self._client.remove_objects(self._bucket, names))
+        if errors:
+            shown = ", ".join(f"{error.name}: {error.code}" for error in errors[:DELETE_ERRORS_SHOWN])
+            raise RuntimeError(f"không xoá được {len(errors)} object dưới {prefix}: {shown}")
 
 
 def _close(response: urllib3.BaseHTTPResponse) -> None:

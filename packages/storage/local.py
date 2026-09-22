@@ -16,7 +16,6 @@
 
 import asyncio
 import base64
-import errno
 import hashlib
 import hmac
 import json
@@ -24,24 +23,24 @@ import os
 import secrets
 import shutil
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Final, cast
 
 from packages.core.clock import Clock
-from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND, PAYLOAD_TOO_LARGE
+from packages.core.error_codes import NOT_FOUND, PAYLOAD_TOO_LARGE
 from packages.core.keys import current_key, verification_keys
 from packages.storage.keys import META_SUFFIX, check_key, check_prefix
 from packages.storage.port import (
     CHUNK_SIZE,
-    RETRY_AFTER_S,
     Disposition,
     FileGrant,
     ObjectInfo,
     SignedUrl,
+    disk_errors,
     expiry,
     iter_chunks,
+    next_batch,
     resolve_kind,
     safe_filename,
 )
@@ -49,24 +48,11 @@ from packages.storage.sniff import SNIFF_BYTES, ImageKind, as_kind, sniff
 
 FILES_ROUTE: Final = "/api/files/"
 _DISPOSITIONS: Final = frozenset(("attachment", "inline"))
-# Đĩa đầy hoặc chỉ đọc là "phụ thuộc hỏng" (C13), không phải lỗi của người gọi.
-_UNAVAILABLE_ERRNOS: Final = frozenset((errno.ENOSPC, errno.EROFS, errno.EDQUOT))
 
 
 def _open_write(path: Path) -> BinaryIO:
     """Mở file để ghi — điểm tiêm lỗi đĩa duy nhất của bộ điều hợp này."""
     return path.open("wb")
-
-
-@contextmanager
-def _disk_errors() -> Iterator[None]:
-    """Đĩa đầy hay chỉ đọc → 503 (C13); lỗi hệ thống tệp khác giữ nguyên."""
-    try:
-        yield
-    except OSError as exc:
-        if exc.errno in _UNAVAILABLE_ERRNOS:
-            raise DEPENDENCY_UNAVAILABLE.error(retry_after=RETRY_AFTER_S) from exc
-        raise
 
 
 class LocalDiskStorage:
@@ -100,7 +86,7 @@ class LocalDiskStorage:
         size = 0
         head = b""
         try:
-            with _disk_errors():
+            with disk_errors():
                 await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
                 handle = await asyncio.to_thread(self._open, temporary)
                 try:
@@ -149,23 +135,25 @@ class LocalDiskStorage:
         """Xoá object và file metadata kèm theo; không có thì im lặng."""
         check_key(key)
         path = self._path(key)
-        with _disk_errors():
+        with disk_errors():
             await asyncio.to_thread(_remove, path)
             await asyncio.to_thread(_remove, _meta_path(path))
 
     async def delete_prefix(self, prefix: str) -> None:
-        """Xoá cả cây thư mục của tiền tố."""
+        """Xoá cả cây thư mục của tiền tố; mục đã không còn thì bỏ qua, lỗi khác nổi lên (NO-012)."""
         check_prefix(prefix)
-        with _disk_errors():
-            await asyncio.to_thread(shutil.rmtree, self._root / prefix, ignore_errors=True)
+        with disk_errors():
+            await asyncio.to_thread(shutil.rmtree, self._root / prefix, onexc=_ignore_missing)
 
     async def list_prefix(self, prefix: str, *, older_than: datetime | None = None) -> AsyncIterator[ObjectInfo]:
-        """Duyệt object dưới tiền tố theo thứ tự khoá, bỏ file metadata."""
+        """Duyệt object dưới tiền tố theo thứ tự khoá, bỏ file metadata; kéo theo lô (NO-013)."""
         check_prefix(prefix)
-        for key in await asyncio.to_thread(self._keys_under, prefix):
-            info = await asyncio.to_thread(self._stat, key)
-            if info is not None and (older_than is None or info.last_modified < older_than):
-                yield info
+        keys = self._keys_under(self._root / prefix)
+        while batch := await next_batch(keys):
+            for key in batch:
+                info = await asyncio.to_thread(self._stat, key)
+                if info is not None and (older_than is None or info.last_modified < older_than):
+                    yield info
 
     async def signed_url(
         self,
@@ -177,6 +165,7 @@ class LocalDiskStorage:
     ) -> SignedUrl:
         """Dựng token `{k,e,d,n}` + MAC cho `GET /api/files/{token}` (BE-00 §8)."""
         check_key(key)
+        # Chỉ để chặn `inline` sai luật lúc ký; `kind` không vào token (xem `FileGrant`).
         await resolve_kind(self, key, disposition, kind)
         _, expires_at = expiry(self._clock)
         name = safe_filename(filename) if filename is not None else ""
@@ -240,11 +229,22 @@ class LocalDiskStorage:
             last_modified=datetime.fromtimestamp(stat.st_mtime, UTC),
         )
 
-    def _keys_under(self, prefix: str) -> list[str]:
-        """Khoá của mọi object dưới tiền tố, đã sắp, không gồm file metadata."""
-        base = self._root / prefix
-        paths = (path for path in base.rglob("*") if path.is_file() and not path.name.endswith(META_SUFFIX))
-        return sorted(path.relative_to(self._root).as_posix() for path in paths)
+    def _keys_under(self, directory: Path) -> Iterator[str]:
+        """Khoá của mọi object dưới `directory`, lười từng thư mục, theo thứ tự khoá đầy đủ như S3.
+
+        Thư mục `a` được xếp như chuỗi `a/`, nên `a.b` < `a/…` < `a0` — đúng thứ tự byte của
+        khoá, không phải thứ tự tên. RAM chỉ giữ danh mục của các thư mục đang mở.
+        """
+        try:
+            with os.scandir(directory) as scanned:
+                entries = sorted(scanned, key=lambda entry: entry.name + "/" if entry.is_dir() else entry.name)
+        except FileNotFoundError:
+            return
+        for entry in entries:
+            if entry.is_dir():
+                yield from self._keys_under(Path(entry.path))
+            elif not entry.name.endswith(META_SUFFIX):
+                yield Path(entry.path).relative_to(self._root).as_posix()
 
 
 def _meta_path(path: Path) -> Path:
@@ -257,10 +257,18 @@ def _remove(path: Path) -> None:
     path.unlink(missing_ok=True)
 
 
-def _message(body: dict[str, object]) -> bytes:
-    """Bản tin ký: `object_key | exp | disposition | filename` (BE-00 §8).
+def _ignore_missing(function: Callable[..., object], path: str, error: BaseException) -> None:
+    """`onexc` của `rmtree`: tiền tố hay mục con đã không còn (xoá đồng thời) là xong; lỗi khác ném lại."""
+    if not isinstance(error, FileNotFoundError):
+        raise error
 
-    Không giá trị nào chứa `|`: khoá qua `check_key`, tên tệp qua `safe_filename`.
+
+def _message(body: dict[str, object]) -> bytes:
+    """Bản tin ký: `object_key | exp | disposition | filename` — bốn trường `k|e|d|n`.
+
+    BE-00 §8 ghi ba trường đầu; trường `n` thêm vào để MAC buộc luôn tên tệp của
+    `Content-Disposition` (chặt hơn hiến chương, không lỏng hơn). Không giá trị nào chứa
+    `|`: khoá qua `check_key`, tên tệp qua `safe_filename`.
     """
     return "|".join(str(body[field]) for field in ("k", "e", "d", "n")).encode("utf-8")
 

@@ -1,7 +1,12 @@
 """Riêng `S3Storage`: MinIO thật (K23), URL ký phục vụ được, phụ thuộc hỏng (C13)."""
 
+import errno
 import hashlib
 import logging
+import re
+import secrets
+import tempfile
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -13,6 +18,7 @@ from minio.error import S3Error
 from packages.core.errors import AppError
 from packages.storage import keys
 from packages.storage.s3 import S3Storage, http_client
+from packages.storage.tests.fault_proxy import Fault, FaultProxy, delete_error_xml, fault_proxy, s3_error_xml
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.services import ephemeral_minio, refused_url
 
@@ -149,3 +155,95 @@ async def test_ensure_bucket_is_idempotent_and_survives_minio_cors(
     assert [record.message for record in caplog.records] == ["cors_managed_by_server"] * 2
     await storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
     assert await storage.stat(KEY) is not None
+
+
+@pytest.fixture
+def proxied(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> Iterator[tuple[S3Storage, FaultProxy]]:
+    """Kho trỏ qua proxy tiêm lỗi (`fault_proxy.py`), bucket riêng trên MinIO thật."""
+    endpoint, access_key, secret_key = minio_endpoint
+    bucket = f"test-{secrets.token_hex(6)}"
+    client_for(endpoint, access_key, secret_key).make_bucket(bucket)
+    with fault_proxy(endpoint) as proxy:
+        yield storage_on(client_for(proxy.endpoint, access_key, secret_key), bucket, fake_clock), proxy
+
+
+@pytest.mark.parametrize(("status", "code"), [(500, "InternalError"), (503, "SlowDown")])
+async def test_server_error_with_xml_body_returns_503(
+    proxied: tuple[S3Storage, FaultProxy], status: int, code: str
+) -> None:
+    """NO-009: 5xx **có thân XML** (S3 quá tải) → 503 + `Retry-After`, không lọt `S3Error` thô (C13)."""
+    storage, proxy = proxied
+    await storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    proxy.faults.append(Fault("GET", status, s3_error_xml(code)))
+
+    with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE") as raised:
+        [chunk async for chunk in storage.open_read(KEY)]
+
+    assert raised.value.retry_after == 5
+    assert b"".join([chunk async for chunk in storage.open_read(KEY)]) == PNG
+
+
+async def test_delete_prefix_deletes_in_batches(proxied: tuple[S3Storage, FaultProxy]) -> None:
+    """NO-010: xoá tiền tố gom khoá vào `DeleteObjects` (≤ 1000 khoá/lượt), không một `DELETE` mỗi object."""
+    storage, proxy = proxied
+    for index in range(3):
+        page = keys.upload_page(PROJECT, FLOOR, UPLOAD, index)
+        await storage.put(page, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    proxy.requests.clear()
+
+    await storage.delete_prefix(keys.project_prefix(PROJECT))
+
+    assert [method for method, _ in proxy.requests].count("DELETE") == 0
+    assert [path for method, path in proxy.requests if method == "POST" and "delete" in path] != []
+    assert len([method for method, path in proxy.requests if method == "POST"]) == 1
+    assert [info async for info in storage.list_prefix(keys.project_prefix(PROJECT))] == []
+
+
+async def test_delete_prefix_reports_objects_it_could_not_delete(proxied: tuple[S3Storage, FaultProxy]) -> None:
+    """Lỗi từng object trong `DeleteResult` (200) không bị nuốt: dọn rác phải biết mình dọn sót."""
+    storage, proxy = proxied
+    await storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+    proxy.faults.append(Fault("POST", 200, delete_error_xml(KEY, "AccessDenied"), query="delete"))
+
+    with pytest.raises(RuntimeError, match=rf"1 object .*{re.escape(KEY)}: AccessDenied"):
+        await storage.delete_prefix(keys.project_prefix(PROJECT))
+
+
+class _FullDiskSpool:
+    """Bộ đệm mà mọi lần ghi đều gặp đĩa đầy — tiêm lỗi cho nhánh đệm xuống đĩa của `put`."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        """Nhận mọi tham số của `SpooledTemporaryFile` và bỏ qua."""
+
+    def __enter__(self) -> "_FullDiskSpool":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Không giữ tài nguyên nào."""
+
+    def write(self, data: bytes) -> int:
+        raise OSError(errno.ENOSPC, "tiêm lỗi đĩa đầy")
+
+    def seek(self, offset: int) -> int:
+        return offset
+
+
+async def test_put_on_a_full_spool_disk_returns_503(s3_storage: S3Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-014: đĩa đầy khi đệm luồng vào → 503 như bản local (C13), không `OSError` thô ra 500."""
+    monkeypatch.setattr(tempfile, "SpooledTemporaryFile", _FullDiskSpool)
+
+    with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE") as raised:
+        await s3_storage.put(KEY, PNG, content_type="image/png", max_bytes=MAX_BYTES)
+
+    assert raised.value.retry_after == 5
+    monkeypatch.undo()
+    assert await s3_storage.stat(KEY) is None
+
+
+async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storage, FaultProxy]) -> None:
+    """NO-015: chỉ `NotImplemented` (CORS do MinIO tự đặt) được bỏ qua; S3 từ chối CORS phải nổi lên."""
+    storage, proxy = proxied
+    proxy.faults.append(Fault("PUT", 403, s3_error_xml("AccessDenied"), query="cors"))
+
+    with pytest.raises(S3Error, match="AccessDenied"):
+        await storage.ensure_bucket("https://appback.test")
