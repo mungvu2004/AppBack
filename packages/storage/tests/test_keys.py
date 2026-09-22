@@ -51,6 +51,15 @@ def test_key_rules_come_from_core() -> None:
     assert keys.check_prefix is object_keys.check_prefix
 
 
+def test_upload_layout_comes_from_core() -> None:
+    """NO-077: tiền tố dự án và lượt tải lên là đúng hàm của `packages.core.object_keys` — một nguồn với `ml_contracts`.
+
+    Mẫu biên của bố cục nằm ở `packages/core/tests/test_object_keys.py`.
+    """
+    assert keys.project_prefix is object_keys.project_prefix
+    assert keys.upload_prefix is object_keys.upload_prefix
+
+
 @pytest.mark.parametrize(
     ("build", "match"),
     [
@@ -113,18 +122,21 @@ def test_server_chosen_kind_follows_level_id_length(floor: str, expected: str | 
 
 
 @pytest.mark.parametrize(
-    ("rule", "key"),
+    ("module", "rule", "key"),
     [
-        ("is_spatial_id", f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png"),
-        ("is_id", f"users/{USER}/avatar/{ULID}.png"),
+        (object_keys, "is_spatial_id", f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png"),
+        (ids, "is_id", f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png"),
+        (ids, "is_id", f"users/{USER}/avatar/{ULID}.png"),
     ],
 )
-def test_server_chosen_kind_reads_id_rules_of_core(monkeypatch: pytest.MonkeyPatch, rule: str, key: str) -> None:
+def test_server_chosen_kind_reads_id_rules_of_core(
+    monkeypatch: pytest.MonkeyPatch, module: object, rule: str, key: str
+) -> None:
     """NO-073: đột biến luật id mà hàm dựng khoá dùng thì khoá đó thôi là khoá server đặt.
 
     Chốt một nguồn: `server_chosen_kind` hỏi đúng `is_id`/`is_spatial_id` của `packages.core.ids`
-    như hàm dựng, không hỏi regex chép tay.
+    (qua bố cục của `packages.core.object_keys`, NO-077) như hàm dựng, không hỏi regex chép tay.
     """
     assert keys.server_chosen_kind(key) is not None
-    monkeypatch.setattr(keys, rule, lambda *_: False)
+    monkeypatch.setattr(module, rule, lambda *_: False)
     assert keys.server_chosen_kind(key) is None

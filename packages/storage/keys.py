@@ -3,18 +3,21 @@
 Mọi hàm nhận khoá của gói này gọi `check_key`/`check_prefix` trước khi chạm kho:
 khoá không bao giờ được nối thẳng từ chuỗi người dùng. Luật khoá nằm ở
 `packages.core.object_keys` (một nguồn với `ml_contracts`, NO-060); ở đây xuất lại tên cũ
-cho `local.py`, `s3.py`. Hàm dựng khoá kiểm id theo đúng mẫu của `packages.core.ids`, nên
-khoá sinh ra luôn nằm trong cây đã khai.
+cho `local.py`, `s3.py`. Tiền tố dự án và lượt tải lên cũng là hàm của lõi, xuất lại giữ tên
+(NO-077). Hàm dựng khoá kiểm id bằng `packages.core.ids` (`check_id`, `is_ulid`), nên khoá
+sinh ra luôn nằm trong cây đã khai.
 """
 
 import re
 from typing import Final
 
-from packages.core.ids import IdPrefix, is_id, is_spatial_id, is_ulid
+from packages.core.ids import check_id, is_ulid
 from packages.core.object_keys import META_SUFFIX as META_SUFFIX
 from packages.core.object_keys import check_key as check_key
 from packages.core.object_keys import check_prefix as check_prefix
 from packages.core.object_keys import is_segment
+from packages.core.object_keys import project_prefix as project_prefix
+from packages.core.object_keys import upload_prefix as upload_prefix
 from packages.core.pipeline import PIPELINE_STEPS
 from packages.storage.sniff import ImageKind
 
@@ -24,20 +27,6 @@ _ITEM_RE: Final = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
 _STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)
 _EXT_KIND: Final[dict[str, ImageKind]] = {"png": "png", "jpg": "jpeg"}
-
-
-def _entity_id(prefix: IdPrefix, value: str) -> str:
-    """Id tài nguyên đúng tiền tố; sai → `ValueError` trước khi chạm kho."""
-    if not is_id(prefix, value):
-        raise ValueError(f"id phải có dạng {prefix}_<ULID>: {value!r}")
-    return value
-
-
-def _level_id(value: str) -> str:
-    """Id tầng do client sinh, đúng mẫu `L-<base36 HOA>` (W4)."""
-    if not is_spatial_id("level", value):
-        raise ValueError(f"id tầng sai mẫu L-<base36 HOA>: {value!r}")
-    return value
 
 
 def _name(value: str) -> str:
@@ -52,16 +41,6 @@ def _extension(value: str) -> str:
     if not _EXT_RE.fullmatch(value):
         raise ValueError(f"đuôi tệp phải là 1-8 ký tự [a-z0-9]: {value!r}")
     return value
-
-
-def project_prefix(project: str) -> str:
-    """Tiền tố mọi object của một dự án — dùng khi dọn rác dự án xoá mềm."""
-    return check_prefix(f"projects/{_entity_id('prj', project)}/")
-
-
-def upload_prefix(project: str, floor: str, upload: str) -> str:
-    """Tiền tố mọi object của một lượt tải lên (bản gốc, trang, artifact)."""
-    return check_prefix(f"{project_prefix(project)}floors/{_level_id(floor)}/uploads/{_entity_id('upl', upload)}/")
 
 
 def upload_original(project: str, floor: str, upload: str, ext: str) -> str:
@@ -81,7 +60,7 @@ def run_artifact(project: str, floor: str, upload: str, run: str, step: str, nam
     if step not in _STEP_IDS:
         raise ValueError(f"bước pipeline lạ: {step!r}")
     prefix = upload_prefix(project, floor, upload)
-    return check_key(f"{prefix}runs/{_entity_id('run', run)}/{step}/{_name(name)}")
+    return check_key(f"{prefix}runs/{check_id('run', run)}/{step}/{_name(name)}")
 
 
 def library_object(item: str, name: str) -> str:
@@ -93,12 +72,12 @@ def library_object(item: str, name: str) -> str:
 
 def model_artifact(model: str, name: str) -> str:
     """Khoá artifact của một phiên bản mô hình ML."""
-    return check_key(f"ml/models/{_entity_id('mdl', model)}/{_name(name)}")
+    return check_key(f"ml/models/{check_id('mdl', model)}/{_name(name)}")
 
 
 def dataset_object(dataset_version: str, name: str) -> str:
     """Khoá object của một phiên bản tập dữ liệu ML."""
-    return check_key(f"ml/datasets/{_entity_id('dsv', dataset_version)}/{_name(name)}")
+    return check_key(f"ml/datasets/{check_id('dsv', dataset_version)}/{_name(name)}")
 
 
 def avatar(user: str, ulid: str, ext: str) -> str:
@@ -107,7 +86,7 @@ def avatar(user: str, ulid: str, ext: str) -> str:
         raise ValueError(f"tên ảnh đại diện phải là ULID: {ulid!r}")
     if ext not in _EXT_KIND:
         raise ValueError(f"ảnh đại diện chỉ nhận đuôi {sorted(_EXT_KIND)}: {ext!r}")
-    return check_key(f"users/{_entity_id('usr', user)}/avatar/{ulid}.{ext}")
+    return check_key(f"users/{check_id('usr', user)}/avatar/{ulid}.{ext}")
 
 
 def server_chosen_kind(key: str) -> ImageKind | None:
