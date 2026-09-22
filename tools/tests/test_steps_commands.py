@@ -627,6 +627,25 @@ def test_verify_log_không_mở_được_thì_hỏng_trước_bước_đầu(
         steps.main(["verify"])
 
 
+def _exploding_step() -> steps.StepOutcome:
+    """Bước in một dòng rồi ném lỗi lạ, như thiếu công cụ trong venv (`FileNotFoundError`)."""
+    print("trước khi nổ")
+    raise RuntimeError("bước nổ giữa lượt")
+
+
+def test_verify_bước_ném_lỗi_lạ_vẫn_có_traceback_và_mã_thoát_trong_log(
+    log_file: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """NO-089: bước ném lỗi lạ → log có output trước đó, traceback và "mã thoát: 1"; stderr vẫn có traceback."""
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("1", _exploding_step)])
+    assert steps.main(["verify"]) == 1
+    text = log_file.read_text(encoding="utf-8")
+    for needle in ("trước khi nổ", "Traceback (most recent call last)", "RuntimeError: bước nổ giữa lượt"):
+        assert needle in text
+    assert text.rstrip().endswith("mã thoát: 1")
+    assert "RuntimeError: bước nổ giữa lượt" in capfd.readouterr().err
+
+
 def test_verify_tiến_trình_con_mồ_côi_không_treo_cổng(
     log_file: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
 ) -> None:

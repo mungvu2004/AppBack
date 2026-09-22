@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import traceback
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -288,12 +289,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     Log là bản sao, stdout vẫn là nguồn chính: ghi log hỏng giữa lượt chỉ báo ra stderr, không đổi mã
     thoát. Không mở được file log → `OSError` ngay, trước bước đầu (thiếu mount là cấu hình hỏng).
+    Bước ném lỗi lạ → traceback vào log và stderr, mã thoát 1, vẫn có dòng "mã thoát" (NO-089).
     """
     log_file = os.environ.get("VERIFY_LOG_FILE")
     if not log_file:
         return _run_verify(args)
     with _tee_output(Path(log_file)) as problems:
-        rc = _run_verify(args)
+        try:
+            rc = _run_verify(args)
+        # In traceback khi fd 1/2 còn nối vào log: để nó nổi qua `with` thì interpreter in ra stderr gốc, sau khi
+        # `_tee_output` đã trả fd — log dừng ở dòng output cuối, không lý do, không "mã thoát".
+        except Exception:  # noqa: BLE001 — không nuốt: traceback in ra đủ, mã thoát 1
+            traceback.print_exc()
+            rc = 1
         print(f"mã thoát: {rc}")
     for problem in problems:
         print(f"log cổng {log_file}: {problem}", file=sys.stderr)
