@@ -61,6 +61,26 @@ def test_upload_layout_comes_from_core() -> None:
 
 
 @pytest.mark.parametrize(
+    ("name", "build"),
+    [
+        ("run_prefix", lambda: keys.run_artifact(PROJECT, FLOOR, UPLOAD, RUN, "preprocess", "mask.png")),
+        ("model_prefix", lambda: keys.model_artifact(MODEL, "mask.png")),
+    ],
+)
+def test_run_and_model_layout_comes_from_core(
+    monkeypatch: pytest.MonkeyPatch, name: str, build: Callable[[], str]
+) -> None:
+    """NO-081: `run_artifact`, `model_artifact` dựng tiền tố bằng đúng hàm của `packages.core.object_keys`.
+
+    Một nguồn với `ml_contracts`: tên là hàm lõi (`is`), và đột biến nó thì khoá dựng ra đổi theo.
+    Mẫu biên của bố cục (và luật bước pipeline) nằm ở `packages/core/tests/test_object_keys.py`.
+    """
+    assert getattr(keys, name) is getattr(object_keys, name)
+    monkeypatch.setattr(keys, name, lambda *_: "khac/")
+    assert build() == "khac/mask.png"
+
+
+@pytest.mark.parametrize(
     ("build", "match"),
     [
         (lambda: keys.project_prefix("prj_lowercase"), "prj_"),
