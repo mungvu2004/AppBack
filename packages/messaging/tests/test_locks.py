@@ -250,6 +250,26 @@ async def test_a_failed_release_never_hides_the_body_error(
     assert "lock_release_failed" in caplog.text
 
 
+async def test_release_quietly_turns_a_dead_redis_into_one_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Đường công khai cho người tự giữ khoá ngoài `hold` (`gpu.py`, NO-074): Redis chết → một `WARNING`, không ném."""
+    with ephemeral_broker(monkeypatch) as admin:
+        client = safe_redis()
+        try:
+            held = lock(client)
+            token = await held.acquire()
+            assert token is not None
+            admin.shutdown(nosave=True)
+            with caplog.at_level(logging.WARNING):
+                await held.release_quietly(token)
+        finally:
+            await client.aclose()
+
+    warnings = [(r.name, r.getMessage()) for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings == [("packages.messaging.locks", "lock_release_failed")]
+
+
 async def test_hold_treats_a_broken_redis_as_a_lost_lock(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail-closed: gia hạn không xong vì Redis hỏng cũng là mất khoá.
 
