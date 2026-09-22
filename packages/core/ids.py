@@ -32,7 +32,7 @@ SPATIAL_PREFIX: Final[Mapping[SpatialKind, str]] = {
 
 _PREFIXES: Final = frozenset(get_args(IdPrefix))
 _CROCKFORD: Final = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-_ULID_BODY: Final = "[0-9A-HJKMNP-TV-Z]{26}"
+_ULID_RE: Final = re.compile("[0-9A-HJKMNP-TV-Z]{26}")
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 _MEASUREMENT_RE: Final = re.compile(r"MS-[0-9]{4,15}")
 
@@ -52,9 +52,20 @@ def new_id(prefix: IdPrefix, clock: Clock) -> str:
     return f"{prefix}_{body}"
 
 
+def is_ulid(value: str) -> bool:
+    """Thân ULID trần, không tiền tố: Crockford base32 HOA đúng 26 ký tự.
+
+    Nguồn duy nhất của luật thân ULID: `is_id` kiểm thân qua đây, `packages.storage.keys`
+    dùng cho tên ảnh đại diện (ULID trần) thay vì chép mẫu (NO-076).
+    """
+    return _ULID_RE.fullmatch(value) is not None
+
+
 def is_id(prefix: IdPrefix, value: str) -> bool:
+    """`value` là `<prefix>_<ULID>`; tiền tố ngoài `IdPrefix` → `ValueError` (lỗi của người gọi)."""
     _check_prefix(prefix)
-    return re.fullmatch(f"{prefix}_{_ULID_BODY}", value) is not None
+    head = f"{prefix}_"
+    return value.startswith(head) and is_ulid(value.removeprefix(head))
 
 
 def is_spatial_id(kind: SpatialKind, value: str) -> bool:
