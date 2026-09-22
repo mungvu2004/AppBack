@@ -1,29 +1,29 @@
 """Payload task ML: mỗi luật một ca hỏng và một ca đạt; M05 số đo đơn điệu theo split."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from pydantic import ValidationError
 
 from packages.core.clock import SystemClock
 from packages.core.ids import IdPrefix, new_id
+from packages.core.object_keys import check_key, check_prefix
 from packages.ml_contracts.payloads import (
     EvaluateVersionPayload,
     EvaluationDonePayload,
     InferStepPayload,
     MetricPoint,
     ModelRef,
+    ObjectKey,
     StepResultPayload,
     TrainingFinishedPayload,
     TrainingHeartbeatPayload,
     TrainingLogPayload,
     TrainingMetricsPayload,
     TrainJobPayload,
-    check_object_key,
 )
 from packages.ml_contracts.pinned import PINNED
-from packages.storage.keys import check_key
 
 SHA = "a" * 64
 
@@ -75,36 +75,17 @@ def infer(**changes: Any) -> InferStepPayload:
 
 # --- khoá object ----------------------------------------------------------------------
 
-KEY_SAMPLES = [
-    "a",
-    "ml/models/x/model.onnx",
-    "a/../b",
-    "a//b",
-    "./a",
-    "a/b/",
-    "a b",
-    "khóa",
-    "a" * 1025,
-    "a" * 1024,
-    "x.meta.json",
-    "",
-]
 
+def test_object_key_rules_come_from_core() -> None:
+    """NO-060: khoá và tiền tố khoá của payload đi qua đúng luật của `packages.core.object_keys`.
 
-@pytest.mark.parametrize("key", KEY_SAMPLES)
-def test_check_object_key_matches_storage_rules(key: str) -> None:
-    """Luật chép phải trùng luật của `packages.storage.keys.check_key` trên từng mẫu."""
-    try:
-        check_key(key)
-        expected = True
-    except ValueError:
-        expected = False
-    try:
-        check_object_key(key)
-        actual = True
-    except ValueError:
-        actual = False
-    assert actual is expected
+    Một nguồn với `packages.storage`; mẫu biên của luật nằm ở `packages/core/tests/test_object_keys.py`.
+    """
+    assert [validator.func for validator in get_args(ObjectKey)[1:]] == [check_key]
+    prefix_validators = InferStepPayload.model_fields["artifact_prefix"].metadata
+    assert [validator.func for validator in prefix_validators] == [check_prefix]
+    with pytest.raises(ValidationError, match="khoá có đoạn rỗng"):
+        infer(page_key=f"{UPLOAD}pages//0.png")
 
 
 # --- ModelRef -------------------------------------------------------------------------
