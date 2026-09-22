@@ -54,7 +54,7 @@
 | FIX-045 | 2026-09-22 | B5-01 | NO-060 | `ml_contracts.payloads` chép luật khoá object của `storage` | `4aad113` |
 | FIX-046 | 2026-09-22 | B0-04 | NO-073 | `_SERVER_NAMED_RE` chép tay luật id tầng của `core/ids.py` | `09e4b21` |
 | FIX-047 | 2026-09-22 | B0-04 | NO-072 | Test FIX-012 không chạm biên 1000 khoá/lượt `DeleteObjects` | `1bd891b` |
-| FIX-048 | 2026-09-22 | B1-01 | NO-066 | `test_auth_refresh__C11_parallel` chập chờn (21×401 thay vì 20) | nhánh `fix/b1-01-parallel-refresh-flake` |
+| FIX-048 | 2026-09-22 | B1-01 | NO-066 | `test_auth_refresh__C11_parallel` chập chờn (21×401 thay vì 20) | `b15a622` |
 | FIX-049 | 2026-09-22 | B0-01 | NO-067 | Bộ lọc case của `_found_cases_by_op` chưa test nào chạm | `3cb7abf` |
 | FIX-050 | 2026-09-22 | B0-05 | NO-074 | `SafeLock` chưa công khai đường trả khoá lặng lẽ | `7e56b05` |
 | FIX-051 | 2026-09-22 | B5-01 | NO-074 | `gpu.py` chép logic trả khoá lặng lẽ của `SafeLock` | `f6ee1dc` |
@@ -551,6 +551,7 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[1–3]** `packages/testing/fixtures/messaging.py:149` `start_worker(...)` dùng `loglevel` mặc định `"error"`; `app.log.setup`
   chiếm logger gốc (thay handler, đặt mức 40) và không trả lại → `WARNING` của test chạy sau không vào báo cáo đỏ.
 - **[4]** Sửa: `packages/testing/fixtures/messaging.py` + test của fixture (dưới `packages/testing/` hay `packages/messaging/tests/`).
-- **[5]** Fixture không để lại dấu trên logger gốc: `worker_hijack_root_logger=False` cho app thử, hoặc lưu mức + handler rồi
-  trả lại khi worker dừng.
+- **[5]** Fixture không để lại dấu trên logger gốc: nối một receiver vào `celery.signals.setup_logging` cho app thử (Celery
+  5.6.3 chỉ bỏ cấu hình logger gốc khi tín hiệu này có receiver — `worker_hijack_root_logger=False` KHÔNG đủ, logger gốc vẫn bị
+  đặt mức 40; probe P9 của review `fix/b1-01-parallel-refresh-flake`), hoặc lưu mức + handler rồi trả lại khi worker dừng.
 - **[6]** Test: mức và handler của logger gốc trước và sau fixture worker bằng nhau; đỏ trên mã hiện tại.
