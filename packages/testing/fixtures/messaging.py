@@ -21,6 +21,7 @@ import pytest
 import pytest_asyncio
 from celery import Celery
 from celery.contrib.testing.worker import start_worker
+from celery.signals import setup_logging
 
 from packages.messaging.celery_app import AFTER_COMMIT_INLINE_ENV, QUEUES, create_celery, reset_producer_app
 from packages.messaging.redis import (
@@ -146,17 +147,31 @@ def celery_worker_factory(celery_test_app: Celery) -> WorkerFactory:
         unknown = set(queues) - set(QUEUES)
         if unknown:
             raise ValueError(f"hàng lạ: {sorted(unknown)}")
-        with start_worker(
-            celery_test_app,
-            queues=list(queues),
-            pool="solo",
-            concurrency=1,
-            perform_ping_check=False,
-            shutdown_timeout=WORKER_SHUTDOWN_TIMEOUT_S,
-        ):
-            yield
+        setup_logging.connect(_keep_root_logger)
+        try:
+            with start_worker(
+                celery_test_app,
+                queues=list(queues),
+                pool="solo",
+                concurrency=1,
+                perform_ping_check=False,
+                shutdown_timeout=WORKER_SHUTDOWN_TIMEOUT_S,
+            ):
+                yield
+        finally:
+            setup_logging.disconnect(_keep_root_logger)
 
     return factory
+
+
+def _keep_root_logger(**_kwargs: object) -> None:
+    """Receiver `setup_logging` chỉ nối trong lúc dựng worker thử: logger gốc để nguyên cho pytest (NO-078).
+
+    `start_worker` gọi `app.log.setup`; không có receiver nào thì Celery 5.6 thay handler của logger gốc
+    (gỡ cả handler bắt log của pytest) và đặt mức ERROR mà không trả lại — `WARNING` của mọi test sau
+    không vào báo cáo đỏ. `worker_hijack_root_logger=False` không đủ: mức vẫn bị đặt. Có receiver thì
+    Celery bỏ hẳn phần cấu hình logger. Hàm cấp module: `Signal.connect` giữ tham chiếu yếu.
+    """
 
 
 @pytest.fixture

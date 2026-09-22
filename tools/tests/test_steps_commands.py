@@ -8,6 +8,7 @@ tiến trình thật.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import shutil
 import subprocess
@@ -15,7 +16,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import pytest
 
@@ -52,6 +53,8 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(steps, "WORK_DIR", tmp_path / "work")
     monkeypatch.delenv("VERIFY_BRANCH", raising=False)
     monkeypatch.delenv("VERIFY_CHANGED", raising=False)
+    # Lượt cổng thật (bước 5) đặt biến này: test không được ghi vào log thật của lượt đang chạy nó
+    monkeypatch.delenv("VERIFY_LOG_FILE", raising=False)
     # coverage `patch = subprocess` đo mọi tiến trình con qua biến này; tiến trình
     # con ở đây chạy trong repo giả (module openapi giả…) — không được lẫn vào số đo
     monkeypatch.delenv("COVERAGE_PROCESS_CONFIG", raising=False)
@@ -521,12 +524,148 @@ def test_verify_không_có_mẫu_thì_thư_mục_ra_rỗng(repo: Path, tmp_path:
     assert list(out.iterdir()) == []
 
 
+def _table_rows(out: str) -> dict[str, str]:
+    """Dòng bảng cổng theo cột `#` (một dòng mỗi bước)."""
+    return {line.split("|")[0].strip(): line for line in out.splitlines() if " | " in line}
+
+
+def test_verify_chép_mẫu_hỏng_vẫn_in_đủ_bảng_và_thoát_1(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """NO-075: thư mục ra không ghi được → bảng vẫn in đủ, thêm một dòng lỗi chép mẫu, thoát 1 — không traceback.
+
+    Container chạy bằng root nên quyền tệp không chặn được ghi; dựng lỗi bằng thư mục ra nằm dưới một file
+    (`NotADirectoryError`), cùng họ `OSError` với probe `VERIFY_OUT_DIR=/proc/rv` của review.
+    """
+    blocker = tmp_path / "là-file"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(steps, "OUT_DIR", blocker / "out")
+    monkeypatch.setenv("CONTRACT_SAMPLES_DIR", str(tmp_path / "contract-samples"))
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("1", lambda: steps.StepOutcome("1", "a", steps.STATUS_OK))])
+    assert steps.main(["verify"]) == 1
+    captured = capsys.readouterr()
+    rows = _table_rows(captured.out)
+    assert steps.STATUS_OK in rows["1"]
+    assert "chép mẫu golden" in rows["—"]
+    assert steps.STATUS_FAIL in rows["—"]
+    assert "Not a directory" in rows["—"]
+    assert "chép mẫu golden hỏng" in captured.err
+
+
 def test_verify_ngoài_container_không_chép(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Không đặt `CONTRACT_SAMPLES_DIR` (chạy ngoài cổng) → không tạo gì dưới thư mục ra."""
     monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
     _fail_one_step(monkeypatch)
     assert steps.main(["verify"]) == 1
     assert not (steps.OUT_DIR / "contract-samples").exists()
+
+
+# --- log cổng ra thư mục host (NO-080) ---------------------------------------------
+
+
+def _printing_step(number: str, status: str) -> tuple[str, Callable[[], steps.StepOutcome]]:
+    """Bước giả in qua một tiến trình con thật (`steps._run`, như pytest hay `coverage_gate`): ghi thẳng fd 1, 2."""
+
+    def fn() -> steps.StepOutcome:
+        code = f"import sys; print('tóm tắt pytest {number}'); print('cảnh báo {number}', file=sys.stderr)"
+        assert steps._run([sys.executable, "-c", code]).returncode == 0
+        return steps.StepOutcome(number, f"bước {number}", status)
+
+    return number, fn
+
+
+@pytest.fixture
+def log_file(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """`VERIFY_LOG_FILE` như `run.sh` đặt: một file dưới thư mục ra, thư mục cha chưa có."""
+    path = steps.OUT_DIR / "verify" / "20260922T000000Z-lượt.log"
+    monkeypatch.setenv("VERIFY_LOG_FILE", str(path))
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    return path
+
+
+def test_verify_ghi_cả_output_của_lượt_ra_file_log(
+    log_file: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """NO-080: file log có output của tiến trình con, bảng cổng và mã thoát; stdout/stderr vẫn như cũ, vẫn tách."""
+    monkeypatch.setattr(
+        steps, "_ALL_STEPS", [_printing_step("1", steps.STATUS_OK), _printing_step("2", steps.STATUS_FAIL)]
+    )
+    assert steps.main(["verify"]) == 1
+    captured = capfd.readouterr()
+    text = log_file.read_text(encoding="utf-8")
+    for needle in ("tóm tắt pytest 1", "cảnh báo 2", "Trạng thái", "mã thoát: 1"):
+        assert needle in text
+    rows = _table_rows(text)
+    assert rows == _table_rows(captured.out)
+    assert (steps.STATUS_OK in rows["1"], steps.STATUS_FAIL in rows["2"]) == (True, True)
+    assert "tóm tắt pytest 2" in captured.out.splitlines()
+    assert "cảnh báo 2" in captured.err.splitlines()
+    assert "cảnh báo 2" not in captured.out.splitlines()
+
+
+def test_verify_log_nối_thêm_không_đè_lượt_trước(log_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cùng tên file (hai lượt trong một giây) → nối tiếp, lượt trước không mất."""
+    monkeypatch.setattr(steps, "_ALL_STEPS", [_printing_step("1", steps.STATUS_OK)])
+    assert steps.main(["verify"]) == 0
+    assert steps.main(["verify"]) == 0
+    assert log_file.read_text(encoding="utf-8").count("mã thoát: 0") == 2
+
+
+def _no_step() -> steps.StepOutcome:
+    raise AssertionError("không được chạy bước nào khi chưa mở được log")
+
+
+def test_verify_log_không_mở_được_thì_hỏng_trước_bước_đầu(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Thư mục log không tạo được (thiếu mount, đường nằm dưới một file) → `OSError` trước khi chạy bước nào."""
+    blocker = tmp_path / "là-file"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("VERIFY_LOG_FILE", str(blocker / "verify" / "lượt.log"))
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("1", _no_step)])
+    with pytest.raises(NotADirectoryError):
+        steps.main(["verify"])
+
+
+def test_verify_tiến_trình_con_mồ_côi_không_treo_cổng(
+    log_file: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """Tiến trình con còn giữ fd 1 sau lượt → bỏ đợi sau `LOG_DRAIN_TIMEOUT_S`, báo stderr; log đủ, mã thoát giữ."""
+    orphans: list[subprocess.Popen[bytes]] = []
+
+    def step() -> steps.StepOutcome:
+        orphans.append(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]))
+        return steps.StepOutcome("1", "a", steps.STATUS_OK)
+
+    monkeypatch.setattr(steps, "LOG_DRAIN_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("1", step)])
+    try:
+        assert steps.main(["verify"]) == 0
+    finally:
+        for orphan in orphans:
+            orphan.kill()
+            orphan.wait()
+    assert "mã thoát: 0" in log_file.read_text(encoding="utf-8")
+    assert "tiến trình con còn giữ fd 1" in capfd.readouterr().err
+
+
+def test_write_each_bỏ_đích_hỏng_giữ_đích_còn_lại() -> None:
+    """Đĩa log đầy giữa lượt → bỏ riêng đích đó, stdout vẫn nhận đủ; luồng chép không chết (ống đầy là cổng treo)."""
+
+    class DiskFull(io.BytesIO):
+        """Đích ghi luôn báo đĩa đầy."""
+
+        def write(self, _b: Any) -> int:
+            raise OSError(28, "No space left on device")
+
+    full, good = DiskFull(), io.BytesIO()
+    sinks: list[BinaryIO] = [full, good]
+    problems: list[str] = []
+    steps._write_each(sinks, b"a", problems)
+    steps._write_each(sinks, b"b", problems)
+    assert (good.getvalue(), sinks) == (b"ab", [good])
+    assert len(problems) == 1
+    assert "No space left" in problems[0]
 
 
 # --- làm ấm runner Node (NO-048) ----------------------------------------------------
@@ -591,7 +730,7 @@ def test_verify_làm_ấm_hỏng_là_lỗi_hạ_tầng_của_cổng(
     monkeypatch.setattr(runner_client, "ensure_node_modules", _warm(fake, error))
     assert steps.main(["verify"]) == 1
     assert not fake.ran("coverage run")
-    rows = {line.split("|")[0].strip(): line for line in capsys.readouterr().out.splitlines() if " | " in line}
+    rows = _table_rows(capsys.readouterr().out)
     assert steps.STATUS_FAIL in rows["0"]
     assert str(error).splitlines()[0] in rows["0"]
     assert steps.STATUS_SKIP in rows["5"]
