@@ -19,6 +19,7 @@ from collections.abc import Iterator
 import pytest
 
 # testcontainers 4.13 (bản trong uv.lock) không có py.typed, cũng không có gói stub
+from testcontainers.core.config import ConnectionMode  # type: ignore[import-untyped]
 from testcontainers.core.container import DockerContainer  # type: ignore[import-untyped]
 from testcontainers.core.wait_strategies import HttpWaitStrategy  # type: ignore[import-untyped]
 from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
@@ -32,10 +33,25 @@ MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
 
 
-def _start_redis(policy: str) -> RedisContainer:
+def _redis(policy: str) -> RedisContainer:
+    """Redis ảnh ghim với chính sách bộ nhớ `policy`, **chưa** khởi động."""
     container = RedisContainer(REDIS_IMAGE)
     container.with_command(f"redis-server --maxmemory-policy {policy}")
-    container.start()
+    return container
+
+
+def _via_mapped_port(container: DockerContainer) -> DockerContainer:
+    """Cho bản ephemeral nối qua cổng map của máy chủ Docker, không qua IP bridge (FIX-009).
+
+    Bridge mặc định cấp lại **ngay** IP vừa giải phóng (đo 2026-09-22: dừng A `172.17.0.11`, container
+    kế nhận `172.17.0.11`), nên sau `.stop()` URL IP của bản ephemeral trỏ được vào container của phiên
+    verify khác — cùng ảnh, cùng mật khẩu mặc định — và test C13 thấy dịch vụ đã dừng "vẫn sống". Cổng
+    host thì Docker cấp tiếp chứ không cấp lại ngay. Đường này qua `host.docker.internal` (NO-007) nhưng
+    mỗi bản ephemeral chỉ vài kết nối; bản dùng chung vẫn đi IP bridge. Ghi đè `get_connection_mode` trên
+    `DockerClient` riêng của container (testcontainers 4.13 dựng một client mỗi container, mọi đường lấy
+    host/cổng đều hỏi nó): nâng testcontainers thì chạy lại `tools/tests/test_services.py`.
+    """
+    container.get_docker_client().get_connection_mode = lambda: ConnectionMode.docker_host
     return container
 
 
@@ -53,7 +69,7 @@ def postgres_url() -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def redis_broker_url() -> Iterator[str]:
-    container = _start_redis("noeviction")
+    container = _redis("noeviction").start()
     try:
         yield _redis_url(container)
     finally:
@@ -62,7 +78,7 @@ def redis_broker_url() -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def redis_cache_url() -> Iterator[str]:
-    container = _start_redis("allkeys-lru")
+    container = _redis("allkeys-lru").start()
     try:
         yield _redis_url(container)
     finally:
@@ -102,16 +118,12 @@ def refused_url(scheme: str) -> str:
 
 
 def ephemeral_postgres() -> PostgresContainer:
-    container = PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")
-    container.start()
-    return container
+    return _via_mapped_port(PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")).start()
 
 
 def ephemeral_redis(policy: str) -> RedisContainer:
-    return _start_redis(policy)
+    return _via_mapped_port(_redis(policy)).start()
 
 
 def ephemeral_minio() -> MinioContainer:
-    container = MinioContainer(MINIO_IMAGE)
-    container.start()
-    return container
+    return _via_mapped_port(MinioContainer(MINIO_IMAGE)).start()
