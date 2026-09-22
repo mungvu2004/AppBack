@@ -12,7 +12,7 @@ RUN corepack enable \
     && pnpm build \
     && test -f dist/draco/draco_decoder.wasm
 
-FROM nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0
+FROM nginxinc/nginx-unprivileged:1.31.5-alpine@sha256:19c132c9ab02d3b783f478743dafc7a7f42e27aa7d2bdcbec1bb1128ca8f2a07
 
 # Ảnh nền giữ server mặc định (server_name localhost, listen 8080) tại
 # /etc/nginx/conf.d/default.conf: mọi yêu cầu Host: localhost khớp nó TRƯỚC
