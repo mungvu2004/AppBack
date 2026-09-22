@@ -15,12 +15,19 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from typing import Final
 
+from packages.core.errors import AppError
 from packages.messaging.redis import AsyncRedis, redis_errors
 
 _log: Final = logging.getLogger(__name__)
 
 # Bộ đếm rào là khoá Redis duy nhất **không** TTL (BE-00 §5 của prompt B0-05): nó
 # chỉ tăng, mất nó là mất tính đơn điệu của token.
+# Ngưỡng (R-05, NO-029): ~70 byte cho mỗi **tên** khoá, không bao giờ thu hồi trên
+# instance `noeviction`. Tên cố định (`gpu:0`, `training:slot`) → vài KB, không cần dọn.
+# Tên theo id không giới hạn (vd claim theo job `training:claim:{job}`, BE-00 §7) thì
+# mỗi id để lại một bộ đếm vĩnh viễn: B6-03a **không** dùng `SafeLock` cho claim theo
+# job, hoặc nâng cấp bộ đếm sang `HINCRBY` một hash có TTL dài hơn đời job (đơn điệu
+# trong đời job là đủ cho token rào của nó).
 FENCE_SUFFIX: Final = ":fence"
 _SECRET_BYTES: Final = 16
 
@@ -88,18 +95,34 @@ class SafeLock:
         with redis_errors():
             return bool(await self._renew_script(keys=[self._key], args=[f":{token}", self._ttl_ms]))
 
-    async def release(self, token: int) -> None:
-        """Trả khoá nếu còn là của `token`; khoá của chủ mới không bị đụng tới."""
+    async def release(self, token: int) -> bool:
+        """Trả khoá nếu còn là của `token`; `False` khi khoá đã mất (khoá của chủ mới không bị đụng)."""
         with redis_errors():
-            await self._release_script(keys=[self._key], args=[f":{token}"])
+            return bool(await self._release_script(keys=[self._key], args=[f":{token}"]))
+
+    async def _release_quietly(self, token: int) -> None:
+        """Trả khoá trên đường thân **đã ném**: Redis hỏng thì ghi `WARNING` rồi bỏ qua (NO-028).
+
+        Ném lại ở đây là che mất lỗi thật của thân; khoá không trả được thì TTL dọn hộ.
+        Chỉ nuốt lỗi phụ thuộc (`redis_errors` đã đổi thành `AppError`), lỗi lạ vẫn nổi lên.
+        """
+        try:
+            await self.release(token)
+        except AppError as exc:
+            _log.warning("lock_release_failed", extra={"lock": self.name, "error": exc.code.code})
 
     @asynccontextmanager
     async def hold(self, renew_every_ms: int) -> AsyncIterator[int]:
         """Giữ khoá suốt thân `async with`, tự gia hạn; mất khoá → `LockLost`.
 
-        Task gia hạn huỷ task đang chạy thân (đúng cách `asyncio.timeout` làm) ngay
-        lần kiểm thấy mất khoá, nên việc dài không chạy tiếp dưới khoá của người
-        khác. Không lấy được khoá ngay từ đầu → `LockBusy`.
+        Task gia hạn huỷ task đang chạy thân (đúng cách `asyncio.timeout` làm) ngay lần
+        kiểm thấy mất khoá. Không lấy được khoá ngay từ đầu → `LockBusy`.
+
+        **Giới hạn của asyncio** (không ném được vào giữa thân): thân nuốt `CancelledError`,
+        hay chạy một khối đồng bộ dài không có `await`, thì vẫn chạy tiếp sau khi mất khoá.
+        `hold` không để việc đó thoát êm — lúc thoát nó báo `LockLost` nếu vòng gia hạn đã
+        thấy mất khoá hoặc khoá không còn là của mình khi trả (NO-025). Việc rất dài phải
+        tự gọi `renew()` giữa các bước và dừng khi nó trả `False`; phía ghi dùng token rào.
         """
         if not 0 < renew_every_ms < self._ttl_ms:
             raise ValueError(f"renew_every_ms phải trong (0, {self._ttl_ms}), nhận {renew_every_ms}")
@@ -112,18 +135,25 @@ class SafeLock:
         state = _Renewal(self, token, renew_every_ms, holder)
         keeper = asyncio.create_task(state.run())
         try:
-            yield token
-        except asyncio.CancelledError:
+            try:
+                yield token
+            finally:
+                keeper.cancel()
+                with suppress(asyncio.CancelledError):
+                    await keeper
+        except BaseException as exc:
             if not state.lost:
+                await self._release_quietly(token)
                 raise
-            holder.uncancel()
-            raise LockLost(self.name) from None
-        finally:
-            keeper.cancel()
-            with suppress(asyncio.CancelledError):
-                await keeper
-            if not state.lost:
-                await self.release(token)
+            holder.uncancel()  # trả lượt huỷ mà vòng gia hạn gửi, dù thân đã đổi nó thành lỗi khác
+            if isinstance(exc, asyncio.CancelledError):
+                raise LockLost(self.name) from None
+            raise
+        if state.lost:
+            holder.uncancel()  # thân đã nuốt lượt huỷ mà vòng gia hạn gửi
+            raise LockLost(self.name)
+        if not await self.release(token):
+            raise LockLost(self.name)
 
 
 class _Renewal:

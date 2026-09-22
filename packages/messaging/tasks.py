@@ -21,7 +21,7 @@ from typing import Any, Final
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from celery.signals import worker_process_init
+from celery.signals import worker_process_init, worker_process_shutdown
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -39,7 +39,15 @@ INTERNAL: Final = "INTERNAL"
 
 MAX_DELIVERIES: Final = 3
 DELIVERY_TTL_S: Final = 86_400
+ERROR_TEXT_LIMIT: Final = 200
 _CODE_RE: Final = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
+# `INCR` và `EXPIRE` trong **một** lệnh: hai lệnh rời thì đứt kết nối ở giữa là bộ đếm sống
+# mãi, và một `task_id` dùng lại bị gán nhầm `WORKER_LOST` sớm (NO-023). Cùng cách `publish_once`.
+_COUNT_DELIVERY: Final = """
+local count = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+return count
+"""
 
 _delivery_client: Final = ProcessLocal[SyncRedis](safe_redis_sync)
 _runner: Final = ProcessLocal[asyncio.Runner](asyncio.Runner)
@@ -109,6 +117,23 @@ def runner() -> asyncio.Runner:
 def _open_runner(**_: object) -> None:
     """Dựng sẵn vòng sự kiện ngay khi tiến trình con của worker khởi động."""
     runner()
+
+
+def reset_runner() -> None:
+    """Đóng vòng sự kiện của tiến trình hiện tại (nếu có) rồi quên nó; `runner()` sau dựng vòng mới.
+
+    `Runner.close()` huỷ task còn treo và tắt executor mặc định, để engine async đóng đàng
+    hoàng thay vì bị bỏ lại lúc tiến trình thoát (NO-024). Test gọi để về trạng thái sạch.
+    """
+    current = _runner.reset()
+    if current is not None:
+        current.close()
+
+
+@worker_process_shutdown.connect
+def _close_runner(**_: object) -> None:
+    """Tiến trình con của worker tắt: đóng vòng sự kiện đã mở ở `worker_process_init`."""
+    reset_runner()
 
 
 def register_task(task_name: str, fn: Callable[..., Any]) -> None:
@@ -219,20 +244,25 @@ def _deliveries(task: Any) -> int:
     """
     key = f"delivery:{task_id_of(task)}"
     with redis_errors():
-        client = _delivery_client.get()
-        count = sync_result(client.incr(key), int)
-        client.expire(key, DELIVERY_TTL_S)
+        # `eval` chứ không `register_script`: luôn đúng một lượt đi-về, kể cả lần đầu (không NOSCRIPT).
+        count = sync_result(_delivery_client.get().eval(_COUNT_DELIVERY, 1, key, str(DELIVERY_TTL_S)), int)
     return count - int(task.request.retries or 0)
 
 
 def _fail(spec: _TaskSpec, task_id: str, payload: BaseModel, code: str) -> None:
-    """Báo hỏng cho module chủ; `on_failed` tự ném thì log và nuốt, worker phải sống tiếp."""
+    """Báo hỏng cho module chủ; `on_failed` tự ném thì log và nuốt, worker phải sống tiếp.
+
+    Log chỉ mang tên lớp + `ERROR_TEXT_LIMIT` ký tự đầu, **không** stack: thông điệp của lỗi
+    module khác có thể chứa dữ liệu người dùng, mà stack in lại nguyên thông điệp (NO-030).
+    Module chủ muốn chi tiết thì tự log trong `on_failed` của mình.
+    """
     try:
         spec.on_failed(payload, code)
     except Exception as exc:  # noqa: BLE001 — on_failed là mã của module khác; hỏng thì log, không ném lại
-        _log.exception(
+        brief = f"{type(exc).__name__}: {str(exc)[:ERROR_TEXT_LIMIT]}"
+        _log.error(
             "on_failed_error",
-            extra={"task": spec.name, "task_id": task_id, "failure": code, "error": repr(exc)},
+            extra={"task": spec.name, "task_id": task_id, "failure": code, "error": brief},
         )
 
 

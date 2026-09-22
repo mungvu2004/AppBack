@@ -5,6 +5,7 @@ lại được kiểm bằng `task.apply()` — BE-00 §12 cho phép, và nó tr
 cho mỗi nhánh lỗi.
 """
 
+import asyncio
 import importlib
 import logging
 import os
@@ -17,13 +18,16 @@ from typing import Any
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.signals import worker_process_shutdown
 from pydantic import BaseModel
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, VALIDATION
+from packages.messaging import tasks as tasks_module
 from packages.messaging.celery_app import AFTER_COMMIT_INLINE_ENV, QUEUES, producer_app, send_task
 from packages.messaging.redis import AsyncRedis, broker_redis_sync, safe_redis, safe_redis_sync, sync_result
 from packages.messaging.settings import get_messaging_settings
 from packages.messaging.tasks import (
+    DELIVERY_TTL_S,
     INTERNAL,
     MAX_DELIVERIES,
     RETRY_EXHAUSTED,
@@ -35,6 +39,7 @@ from packages.messaging.tasks import (
     backoff_step,
     define_task,
     registered_tasks,
+    runner,
     task_entries,
 )
 from packages.testing.fixtures.messaging import WorkerFactory, ephemeral_broker, queued_payloads
@@ -143,6 +148,19 @@ def explode(payload: Job, code: str) -> None:
 
 @define_task(name="tests.tasks.on_failed_explodes", payload=Job, on_failed=explode)
 def run_on_failed_explodes(payload: Job) -> None:
+    raise PermanentError("BAD_INPUT")
+
+
+PRIVATE_TAIL = "du-lieu-nguoi-dung-o-cuoi"
+
+
+def explode_verbosely(payload: Job, code: str) -> None:
+    """`on_failed` của module khác ném kèm thông điệp dài, phần đuôi mang dữ liệu người dùng."""
+    raise RuntimeError("x" * 300 + PRIVATE_TAIL)
+
+
+@define_task(name="tests.tasks.on_failed_explodes_verbosely", payload=Job, on_failed=explode_verbosely)
+def run_on_failed_explodes_verbosely(payload: Job) -> None:
     raise PermanentError("BAD_INPUT")
 
 
@@ -290,6 +308,18 @@ def test_a_failing_on_failed_is_logged_and_swallowed(messaging_env: None, caplog
     assert "on_failed_error" in caplog.text
 
 
+def test_an_on_failed_error_is_logged_briefly(messaging_env: None, caplog: pytest.LogCaptureFixture) -> None:
+    """Lỗi của `on_failed` (mã module khác) chỉ vào log bằng tên lớp + 200 ký tự đầu, không stack:
+    thông điệp của nó có thể mang dữ liệu người dùng (NO-030)."""
+    with caplog.at_level(logging.ERROR):
+        apply_task(run_on_failed_explodes_verbosely, "explode-2")
+
+    record = next(record for record in caplog.records if record.msg == "on_failed_error")
+    assert getattr(record, "error", None) == "RuntimeError: " + "x" * 200
+    assert record.exc_info is None
+    assert PRIVATE_TAIL not in caplog.text
+
+
 @pytest.mark.parametrize(
     "args",
     [[{"bad": 1}], ["chuỗi"], [{"schema_version": 2, "run_id": "poison"}], [42]],
@@ -329,6 +359,34 @@ def test_too_many_redeliveries_end_as_worker_lost(messaging_env: None) -> None:
     assert runs("lost-1") == 0
 
 
+def test_the_delivery_count_and_its_ttl_are_one_atomic_command(
+    messaging_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`INCR` rồi `EXPIRE` rời nhau: đứt kết nối giữa hai lệnh là bộ đếm sống mãi và một `task_id`
+    dùng lại bị gán nhầm `WORKER_LOST` sớm (NO-023). Một lệnh duy nhất thì không có khe đó.
+
+    Chỉ **quan sát** lệnh gửi qua client thật (Redis vẫn chạy lệnh), không mock Redis (K23).
+    """
+    client = tasks_module._delivery_client.get()
+    sent: list[str] = []
+    real: Callable[..., Any] = client.execute_command
+
+    def spy(*args: Any, **options: Any) -> Any:
+        """Ghi tên lệnh rồi gửi thật."""
+        sent.append(str(args[0]).upper())
+        return real(*args, **options)
+
+    monkeypatch.setattr(client, "execute_command", spy)
+    try:
+        apply_task(run_ok, "atomic-1", task_id="tid-atomic")
+        assert sent == ["EVAL"]
+        assert 0 < sync_result(client.ttl("delivery:tid-atomic"), int) <= DELIVERY_TTL_S
+        assert sync_result(client.get("delivery:tid-atomic"), int) == 1
+    finally:
+        client.delete("delivery:tid-atomic")
+    assert runs("atomic-1") == 1
+
+
 def test_a_retried_task_is_not_mistaken_for_a_lost_worker(messaging_env: None) -> None:
     """Mỗi lượt `retry` cũng là một lượt giao: không trừ đi thì J02 hoá thành `WORKER_LOST`."""
     FAILURES.clear()
@@ -342,6 +400,20 @@ def test_a_retried_task_is_not_mistaken_for_a_lost_worker(messaging_env: None) -
 
     assert FAILURES == []
     assert runs("retried-1") == 1
+
+
+def test_the_worker_process_closes_its_event_loop_on_shutdown() -> None:
+    """Tiến trình con của worker tắt thì đóng vòng sự kiện đã mở lúc khởi động (NO-024);
+    lần `runner()` sau (tiến trình khác, hay test sau) dựng vòng mới chạy được."""
+    loop = runner().get_loop()
+
+    worker_process_shutdown.send(sender=None, pid=os.getpid(), exitcode=0)
+
+    assert loop.is_closed()
+    assert runner().get_loop() is not loop
+    assert runner().run(asyncio.sleep(0, result="chạy")) == "chạy"
+    tasks_module.reset_runner()
+    tasks_module.reset_runner()  # chưa có vòng nào: không có gì để đóng, không lỗi
 
 
 def test_async_tasks_share_one_event_loop(messaging_env: None) -> None:
