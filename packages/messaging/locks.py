@@ -100,10 +100,12 @@ class SafeLock:
         with redis_errors():
             return bool(await self._release_script(keys=[self._key], args=[f":{token}"]))
 
-    async def _release_quietly(self, token: int) -> None:
-        """Trả khoá trên đường thân **đã ném**: Redis hỏng thì ghi `WARNING` rồi bỏ qua (NO-028).
+    async def release_quietly(self, token: int) -> None:
+        """Trả khoá khi lỗi trả khoá **không được** nổi lên: Redis hỏng thì ghi `WARNING` rồi bỏ qua.
 
-        Ném lại ở đây là che mất lỗi thật của thân; khoá không trả được thì TTL dọn hộ.
+        Dùng thay `release` khi ném ở đây sẽ che lỗi thật của việc đang giữ khoá: thân
+        `hold` đã ném (NO-028), hay người tự giữ khoá trả nó lúc dọn dẹp (`gpu.py`, NO-074).
+        Cần biết khoá còn là của mình khi trả → `release`. Khoá không trả được thì TTL dọn hộ.
         Chỉ nuốt lỗi phụ thuộc (`redis_errors` đã đổi thành `AppError`), lỗi lạ vẫn nổi lên.
         """
         try:
@@ -143,7 +145,7 @@ class SafeLock:
                     await keeper
         except BaseException as exc:
             if not state.lost:
-                await self._release_quietly(token)
+                await self.release_quietly(token)
                 raise
             holder.uncancel()  # trả lượt huỷ mà vòng gia hạn gửi, dù thân đã đổi nó thành lỗi khác
             if isinstance(exc, asyncio.CancelledError):

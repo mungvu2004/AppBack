@@ -108,7 +108,11 @@ class _Keeper(threading.Thread):
             time.sleep(min(remaining, pause))
 
     def _renew_until_stopped(self, runner: asyncio.Runner, lock: SafeLock, token: int) -> None:
-        """Gia hạn mỗi `renew_every_ms`; mất khoá thì bật `lost` và thôi gia hạn; dừng thì trả khoá."""
+        """Gia hạn mỗi `renew_every_ms`; mất khoá thì bật `lost` và thôi gia hạn; dừng thì trả khoá.
+
+        Trả bằng `SafeLock.release_quietly` (một nguồn, NO-074): Redis hỏng lúc trả chỉ ghi
+        `WARNING`, không che lỗi của thân khối; khoá không trả được thì TTL dọn hộ.
+        """
         grace_s = (self._ttl_ms - self._renew_every_ms) / 1000
         last_ok = time.monotonic()
         while not self.stopping.wait(self._renew_every_ms / 1000):
@@ -124,16 +128,7 @@ class _Keeper(threading.Thread):
                 self.lost.set()
                 _log.warning("gpu_lock_lost", extra={"lock": GPU_LOCK_NAME, "token": token})
                 return
-        self._release(runner, lock, token)
-
-    def _release(self, runner: asyncio.Runner, lock: SafeLock, token: int) -> None:
-        """Trả khoá; Redis hỏng thì bỏ qua (TTL dọn hộ) để không che lỗi của thân khối."""
-        try:
-            runner.run(lock.release(token))
-        except AppError as exc:
-            if not _dependency_error(exc):
-                raise
-            _log.warning("gpu_lock_release_failed", extra={"lock": GPU_LOCK_NAME, "token": token})
+        runner.run(lock.release_quietly(token))
 
 
 async def _client() -> AsyncRedis:
