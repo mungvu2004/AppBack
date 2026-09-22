@@ -143,3 +143,105 @@ Cả hai là P1 chưa waiver, cùng cơ sở với #1 lượt một. Ma trận `
 3. Nit #11: tác giả tự quyết.
 4. Rebase lên `main` hiện tại (xung đột chỉ ở `DEBT.md`: giữ cả dòng NO-054..057 của `main` lẫn NO-060..064 của nhánh). Chạy lại `bash tools/verify/run.sh verify` trên bản đã rebase, thoát 0.
 5. Xin `/merge-review` lại ở **phiên mới** (R-37). Khi được duyệt: gộp bằng **squash**, nhánh chỉ mang trailer `Prompt: B5-01`.
+
+---
+
+## Lượt review lại (độc lập) — lần 3
+
+- Ngày: 2026-09-22 · Reviewer: phiên /merge-review — sub-agent độc lập (không mang ngữ cảnh tác giả; mọi khẳng định trong commit, báo cáo tác giả và hai phán quyết trước đều tự kiểm lại bằng lệnh) · Commit đầu nhánh: `eebe042` (`eebe0420…`; gốc rebase `567caa8`; 3 commit: `99bfb23` feat B5-01, `8972f0d` sửa review lượt một, `eebe042` sửa review lượt hai)
+- Cổng: `bash tools/verify/run.sh verify` **mã thoát 0** (chạy tại chỗ trên worktree sạch; log `scratchpad/review3/verify1.log`): `1953 passed, 10 skipped, 1 deselected` trong 319,34 s. 10 skip là `apps/api/core/tests/test_common.py` (tập tham số rỗng, có từ B0-06); 1 deselected là test `perf` chạy ở bước 5b. Số trùng khai báo tác giả (1953 passed).
+- Độ phủ (in từ `tools.coverage_gate`, không lấy từ báo cáo tác giả):
+  - tổng: dòng **99,32 %** · nhánh **97,16 %**
+  - `apps/ml`: 100,00 % / 100,00 %
+  - `apps/ml/runtime`: dòng 99,48 % · nhánh 97,95 %
+  - `packages/ml_contracts`: dòng 99,91 % · nhánh 99,58 %
+  - Mọi đơn vị bị chạm và tổng đều ≥ 90 % dòng **và** ≥ 90 % nhánh.
+
+| # | Bước | Trạng thái |
+|---|---|---|
+| 1 | `ruff format --check` | đạt |
+| 2 | `ruff check` | đạt |
+| 3 | `mypy --strict` | đạt |
+| 4 | `lint-imports` | đạt |
+| 5 | `coverage run -m pytest` → `coverage_gate` | đạt |
+| 5b | `pytest -m perf` → `case_gate` | đạt (1 test perf) |
+| 6 | `lint_migrations` → `migrate_check` | đạt (3 revision; 9/9) |
+| 7 | H1 H3 H4 H5 | đạt; H3/H4/H5 "không áp dụng" hợp lệ (B1-02, B3-05, B4-01 chưa hợp nhất) |
+| 8 | openapi | đạt (8 174 byte) |
+
+## Điều kiện dừng sớm (§2 của skill)
+
+| Kiểm | Kết quả |
+|---|---|
+| `git status --porcelain` rỗng | đạt |
+| `changes/B5-01.md` (3–10 dòng) | đạt (5 dòng nội dung) |
+| Dòng đầu Conventional Commits ≤ 72 ký tự | đạt: `feat(ml): …` (59), `fix(ml): walk function attribute defaults in onnx checks` (56), `fix(ml): reject local functions in storage onnx models` (54) |
+| Trailer `Prompt:` (R-36b) | đạt: cả ba commit → `B5-01`; `Co-Authored-By` cùng khối |
+| File cấm | không đụng. `git diff --name-only main...HEAD` = 12 file trong `so_huu` (`packages/ml_contracts/**`, `apps/ml/**`) + `DEBT.md` + `changes/B5-01.md`. Không `docs/charter/*`, `openapi.json`, `APPFRONT_SHA`, `uv.lock`, `pyproject.toml`, `tools/**` |
+| pragma / `type: ignore` trần / `noqa` trần / skip / xfail / hạ ngưỡng | không có cái mới. Lượt sửa xoá `_node_allowed` và import `onnx.inliner`; không dead code |
+
+Không điều kiện dừng sớm nào kích hoạt.
+
+## Bằng chứng tự đo (đóng gốc #9, #10 — R-19)
+
+Chạy trong ảnh container verify (`appback-verify-vendace-verify`, venv worktree, `--network none`), bản chép `/tmp/w`. Không chạm worktree. Log: `scratchpad/review3/redold.log`.
+
+- **Đỏ trên bản cũ, xanh trên bản mới (test load-bearing).** Chép `loader.py` của `8972f0d` đè lên bản mới, giữ nguyên test + helpers mới:
+  - **Bản mới (`eebe042`):** `test_structure_rules_reject_every_local_function`, `test_load_onnx_m03_local_functions_rejected`, `test_load_onnx_m03_exported_storage` → **3 passed**.
+  - **Bản cũ (`8972f0d`) dưới test mới:** `test_structure_rules_reject_every_local_function`, `test_load_onnx_m03_local_functions_rejected` → **2 failed**. Chứng minh bản sửa đóng đúng lỗ hổng, không phải test rỗng.
+- **Đường vượt còn lại của "ONNX không tin" dạng storage — đã tự tìm, không thấy đường nào có bằng chứng:**
+  - `_structure_allowed` (loader.py:158-160) nay: dạng storage có `len(model.functions) > 0` → từ chối; không hàm thì mọi node phải miền chuẩn (`{"", "ai.onnx"}`) và không `Loop`/`Scan`. Toàn bộ lớp lỗ hổng "hàm cục bộ" (trùng id op contrib/`ai.onnx.ml`, lệch `overload`, nở lồng cấp số nhân) đóng fail-closed một chỗ, trước cả bước inline.
+  - Node miền không chuẩn không kèm hàm → miền không thuộc `TRUSTED_DOMAINS` → từ chối. Không còn đường tới kernel `com.microsoft`/`ai.onnx.ml` từ model dạng storage.
+  - `Loop`/`Scan` giấu trong đồ thị con của `If` → `iter_nodes` qua `_parts` (loader.py:90-116) duyệt `graphs`/`g` nên bắt được → từ chối.
+  - Miền chuẩn, `If`, function-op chuẩn của ONNX (nở đồ thị nội bộ, bị chặn bởi đặc tả op chứ không bởi dữ liệu kẻ tấn công), `SequenceMap` (số vòng do độ dài chuỗi vào = dữ liệu): **hiến chương cho phép** (§9 chỉ cấm miền lạ, `Loop`/`Scan`, dữ liệu ngoài). Không phải finding.
+  - `training_info`, `metadata_props` không được duyệt nhưng ORT 1.30 không chạy/không đọc tensor ngoài trong đó (đã đo ở lượt hai), và §9 không nêu chúng. Không finding.
+  - Không hàm cục bộ thì số node bị chặn theo số byte model (≤ 512 MiB), không nở cấp số nhân được nữa → #10 đóng.
+- **Không chặn nhầm model hợp lệ:**
+  - `test_load_onnx_m03_exported_storage` (model `export_onnx`, 0 hàm cục bộ) → **passed** trên bản mới (đo trực tiếp trong container).
+  - Bản ghim miễn luật cấu trúc: `_structure_allowed` chỉ gọi khi `ref.pinned_name is None` (loader.py:177). Đường ghim **không đổi** so với lượt hai (đã xác nhận ba bản ghim thật nạp được). `test_load_onnx_m03_local_functions_rejected` còn khẳng định cùng model có hàm cục bộ vẫn nạp được ở dạng ghim (`run(session, 2.0) == 3.0`) → passed.
+  - ONNX do `export_yolo` sinh có 0 hàm cục bộ (đo lượt hai) → qua luật dạng storage.
+  - Luật mới **chặt hơn hiến chương** (từ chối mọi hàm cục bộ ở dạng storage) — được phép (§9 cho phép chặt hơn), có docstring nêu lý do (loader.py:150-157), và đúng đề xuất của phán quyết lượt hai.
+
+## Trạng thái 11 finding của hai lượt trước
+
+| # | Mức gốc | Nội dung | Trạng thái lần 3 | Bằng chứng |
+|---|---|---|---|---|
+| 1 | P1 | Luật "ONNX không tin" vượt qua `FunctionProto.attribute_proto` | **Đóng (gốc)** | `_parts` vẫn duyệt `attribute_proto` (loader.py:98-100) cho `has_external_data` ở bản ghim; gốc "luật phải thấy đúng thứ ORT chạy" nay đóng bằng từ chối mọi hàm cục bộ dạng storage |
+| 2 | P2 | MNT-05 kích thước nhánh | **Chấp nhận** | `NO-064` `➖`, đủ cột, lý do đứng được (như NO-039/NO-045) |
+| 3 | P3 | TOCTOU `export_yolo` | **Đã sửa** | `export_yolo.py:56-64`: chép trước (`shutil.copyfile`), băm bản chép (`file_sha256(work_pt)`), rồi mới `YOLO(...)` |
+| 4 | P3 | Thiếu docstring | **Đã sửa** | round hai; không hồi quy |
+| 5 | P3 | Ba bản gốc Pydantic | **Đã sửa** | `FrozenModel` gốc duy nhất (`artifacts.py:73`), `payloads`/`datasets` nhập lại; `lint-imports`/`mypy` đạt |
+| 6 | Nit | Docstring test "mọi độ sâu" | **Đã sửa** | round hai |
+| 7 | Nit | `ORT_ERRORS` thiếu 3 lớp | **Đã sửa** | `errors.py:41-55` đủ 15 lớp gồm `DeviceReset`, `ModelLoaded`, `ModelRequiresCompilation` |
+| 8 | Nit | Bộ giả ném với dấu giả trên trang nhỏ | **Đã sửa** (+ #11) | `fakes.py` dùng `can_render` |
+| 9 | P1 | Luật miền vượt bằng hàm cục bộ trùng id op đã đăng ký (+ hồi quy `overload`) | **Đã sửa (gốc)** | `_structure_allowed` từ chối mọi `model.functions` khác rỗng ở dạng storage; test đỏ trên `8972f0d`, xanh trên `eebe042` (đo trong container) |
+| 10 | P1 | Không có trần kích thước sau khi mở hàm cục bộ | **Đã sửa (gốc)** | Hàm bị từ chối trước cả `inline_local_functions`; `nested_function_model(12)` → `MODEL_FORMAT_UNSUPPORTED`; đường nở cấp số nhân biến mất |
+| 11 | Nit | `answer_for` bắt mọi `ValueError` (nuốt `pydantic.ValidationError`) | **Đã sửa** | `fakes.py:29-36` tiền kiểm `can_render`; lỗi thật của `render_plan` nay nổi lên; `_layout` dùng lại `can_render`; test `test_can_render_matches_render_plan` |
+
+## Finding mới
+
+Không có finding P0/P1/P2/P3 mới.
+
+**Quan sát mức Nit (không chặn merge, không hạ điểm):** nhánh đi sau `main` một commit docs-only (`9597669` thêm `NO-058` vào `DEBT.md`, sau khi nhánh rebase lên `567caa8`). `DEBT.md` của nhánh giữ đủ `NO-053..057` của `main` và thêm `NO-060..064`, không trùng id, không sót — đúng ở thời điểm rebase. Vì `main` thêm `NO-058` sau đó, người điều phối phải nối `NO-058` khi squash (nối cuối bảng giữa `NO-057` và `NO-060`; hợp nhất tầm thường, append-only). Không phải lỗi của nhánh.
+
+## Điểm (RULE.md §5)
+
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC – Bảo mật | 25 % | 5 (#1/#9 đóng gốc) | 1,25 |
+| CON – Concurrency & dữ liệu | 15 % | 5 | 0,75 |
+| LOG – Tính đúng đắn | 15 % | 5 (#11 đã sửa) | 0,75 |
+| PERF – Hiệu năng | 10 % | 5 (#10 đóng gốc) | 0,50 |
+| RES – Chịu lỗi | 10 % | 5 | 0,50 |
+| DB, API – Migration & contract | 10 % | 5 | 0,50 |
+| TEST – Kiểm thử | 7 % | 5 (test hồi quy đỏ-trên-cũ) | 0,35 |
+| OBS, OPS – Vận hành | 5 % | 5 | 0,25 |
+| MNT – Bảo trì | 3 % | 3 (P2 #2, đã chấp nhận `NO-064`) | 0,09 |
+
+Tổng: 1,25 + 0,75 + 0,75 + 0,50 + 0,50 + 0,50 + 0,35 + 0,25 + 0,09 = **4,94 / 5**
+
+## PHÁN QUYẾT: APPROVE
+
+Hai P1 của lượt hai (#9 luật miền vượt bằng hàm cục bộ trùng id op đã đăng ký; #10 không có trần kích thước sau khi mở hàm cục bộ) đã đóng **đúng gốc**, không phải vá triệu chứng (R-19). Bản sửa gộp cả gốc còn lại của #1 lượt một vào một luật fail-closed duy nhất: dạng storage có bất kỳ hàm cục bộ nào → `MODEL_FORMAT_UNSUPPORTED`, chặn trước cả bước inline. Tôi tự dựng bản cũ trong container: hai test hồi quy đỏ trên `8972f0d`, xanh trên `eebe042`; model `export_onnx` dạng storage vẫn nạp; đường ghim không đổi. Tự tìm đường vượt còn lại (function-op miền chuẩn, `If`/`SequenceMap`, `training_info`, `metadata_props`, tensor ngoài, model lớn ≤ 512 MiB) — thứ còn lọt đều là thứ hiến chương §9 cho phép, không có đường mới có bằng chứng. Nit #11 đã sửa gọn. Cổng thoát 0 (1953 passed), độ phủ mọi đơn vị ≥ 97,9 % nhánh. 11/11 finding của hai lượt trước đã đóng hoặc chấp nhận có căn cứ. Không còn P0/P1/P2/P3 mở. Điểm 4,94 ≥ 4,0 và không có P0/P1 chưa waiver → ma trận RULE.md §5 cho **APPROVE**.
+
+**Cách gộp:** squash (một prompt duy nhất), commit gộp mang trailer `Prompt: B5-01`. Trước/khi squash, người điều phối nối `NO-058` của `main` vào `DEBT.md` (rebase lại lên `main` hiện tại `9597669`; xung đột nếu có chỉ ở `DEBT.md`, giữ cả `NO-058` lẫn `NO-060..064`), rồi export `openapi.json` ra gốc cho bước 8 verify của `main`.
