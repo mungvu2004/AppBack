@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections import Counter
 from contextlib import suppress
 from datetime import timedelta
 from typing import Final
@@ -16,6 +17,8 @@ from starlette.responses import Response
 
 from apps.api.auth import sessions
 from apps.api.auth.cookies import REFRESH_COOKIE, STREAM_COOKIE
+from apps.api.auth.login_guard import peek
+from apps.api.auth.router import _fail_bucket
 from apps.api.auth.sessions import RefreshDenied, Refreshed, refresh_session, start_session
 from apps.api.auth.settings import get_auth_settings, reset_auth_settings_cache
 from apps.api.auth.tests.support import (
@@ -32,9 +35,11 @@ from apps.api.core.app import create_app
 from packages.core.keys import current_key
 from packages.core.logging import JsonFormatter
 from packages.core.settings import get_core_settings, reset_settings_cache
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.db.hooks import after_commit_idle
 from packages.db.models.auth import User
 from packages.db.settings import reset_database_settings_cache
+from packages.messaging.redis import AsyncRedis
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.testing.factories.auth import TEST_PASSWORD, make_user
 from packages.testing.fixtures.api import make_api_client
@@ -51,6 +56,13 @@ JUNK_ATTEMPTS: Final = 30
 ROTATED_SECRET: Final = "khoa-bi-mat-moi-sau-khi-xoay-vong-0002"  # noqa: S105 — khoá giả của test
 W16_KEYS: Final = {"accessToken", "expiresAt", "roles", "user"}
 CLAIMS: Final = {"sub", "sid", "ver", "iat", "exp", "aud"}
+BURST_WINDOW_S: Final = 2 * int(GATE_CONNECT_TIMEOUT_S)
+"""Cửa sổ tầng thất bại của các loạt song song (NO-066): dài hơn trần bắt tay Postgres mà cổng cố ý chịu.
+
+Một lượt kẹt ~69 s ở chặng `host.docker.internal` (NO-007) mà rơi sau khi cửa sổ 60 s mặc định hết thì
+`INCR` đếm lại từ 1 và thêm 401 — cổng chịu kẹt tới `GATE_CONNECT_TIMEOUT_S`, nên cửa sổ của loạt phải dài
+hơn thế. Không phải nới assert: số 401 vẫn đúng bằng `REFRESH_FAIL_LIMIT`, phần còn lại 429.
+"""
 
 
 async def _logged_in(client: httpx.AsyncClient, user: User, *, remember: bool = True) -> str:
@@ -463,14 +475,83 @@ async def test_denied_refresh_is_a_value_not_an_exception(
     assert outcome.code.code == "UNAUTHENTICATED"
 
 
-async def test_auth_refresh__C11_parallel(auth_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+async def _junk_with_long_window(client: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Cookie `sid` thật + token rác, với cửa sổ tầng thất bại `BURST_WINDOW_S` (đặt trước khi app đọc cấu hình)."""
+    monkeypatch.setenv("REFRESH_FAIL_WINDOW_S", str(BURST_WINDOW_S))
+    reset_auth_settings_cache()
+    user = await make_user(db)
+    return f"{_sid(await _logged_in(client, user))}.{new_refresh_token()}"
+
+
+async def _parallel_statuses(client: httpx.AsyncClient, cookie: str, count: int) -> list[int]:
+    """Mã trạng thái (đã sắp) của `count` lượt refresh song song cùng một cookie."""
+    responses = await asyncio.gather(*(refresh_with(client, cookie) for _ in range(count)))
+    return sorted(response.status_code for response in responses)
+
+
+def _bucket_of(cookie: str) -> str:
+    """Khoá Redis của bộ đếm tầng thất bại mà `cookie` rơi vào (cùng hàm khoá với router)."""
+    sid, token = cookie.split(".", 1)
+    return _fail_bucket(UUID(sid), token)
+
+
+def _opened(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Các sự kiện `rate_limit_open` đã log (logger: lỗi) — Redis cache hỏng, hạn mức mở."""
+    return [f"{r.name}: {getattr(r, 'error', '?')}" for r in caplog.records if r.getMessage() == "rate_limit_open"]
+
+
+def _assert_exact_fail_limit(statuses: list[int], opened: list[str], counter: tuple[int, int], limit: int) -> None:
+    """Kiểm của C11_parallel: gọi đúng tên nguyên nhân **trước** khi so số (NO-066).
+
+    `INCR` nguyên khối nên thừa 401 chỉ có hai đường, đều là hạ tầng chứ không phải `bump` đếm sai:
+    Redis cache hỏng → `soft_redis` mở (`rate_limit_open`); hay khoá bộ đếm biến mất giữa loạt (hết
+    cửa sổ vì một lượt kẹt, bị xoá) → đếm lại từ 1, bộ đếm cuối loạt dưới trần. `counter` = (giá trị,
+    TTL) đọc sau loạt; một cửa sổ nhận ≥ `limit` lượt bị từ chối thì giá trị cuối không thể dưới trần.
+    """
+    assert not opened, f"redis-cache hỏng giữa loạt → tầng thất bại mở (on_error=open), không phải đếm sai: {opened}"
+    assert counter[0] >= limit, (
+        f"bộ đếm mở cửa sổ thứ hai giữa loạt (cuối loạt (giá trị, TTL) = {counter}), không phải đếm sai: "
+        f"{Counter(statuses)}"
+    )
+    assert statuses == [401] * limit + [429] * limit, Counter(statuses)
+
+
+async def test_auth_refresh__C11_parallel(
+    auth_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    cache_client: AsyncRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Tầng thất bại dưới tải song song: 40 lượt cùng token rác → đúng `REFRESH_FAIL_LIMIT` lượt 401, còn lại 429."""
-    user = await make_user(db_session)
-    junk = f"{_sid(await _logged_in(auth_client, user))}.{new_refresh_token()}"
+    junk = await _junk_with_long_window(auth_client, db_session, monkeypatch)
     limit = get_auth_settings().refresh_fail_limit
-    responses = await asyncio.gather(*(refresh_with(auth_client, junk) for _ in range(2 * limit)))
-    statuses = sorted(response.status_code for response in responses)
-    assert statuses == [401] * limit + [429] * limit
+    with caplog.at_level(logging.WARNING):
+        statuses = await _parallel_statuses(auth_client, junk, 2 * limit)
+    _assert_exact_fail_limit(statuses, _opened(caplog), await peek(cache_client, _bucket_of(junk)), limit)
+
+
+async def test_a_denial_after_the_fail_window_counts_from_one(
+    auth_client: httpx.AsyncClient, db_session: AsyncSession, cache_client: AsyncRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Điều kiện gốc của NO-066, dựng tất định: khoá bộ đếm biến mất giữa loạt → lượt muộn đếm lại từ 1.
+
+    `2 * trần - 1` lượt song song, rồi `DEL` khoá bộ đếm (thay cho cửa sổ hết hạn — TTL chạy giờ thật,
+    TEST-02), rồi một lượt bị từ chối muộn, như lượt kẹt ~69 s ở bắt tay Postgres (NO-007). Lượt muộn
+    nhận 401 ở cửa sổ mới → đúng chữ ký đỏ `trần + 1` lượt 401; kiểm của C11_parallel gọi tên "cửa sổ
+    thứ hai" chứ không báo đếm sai.
+    """
+    junk = await _junk_with_long_window(auth_client, db_session, monkeypatch)
+    limit = get_auth_settings().refresh_fail_limit
+    early = await _parallel_statuses(auth_client, junk, 2 * limit - 1)
+    assert await cache_client.delete(_bucket_of(junk)) == 1
+    late = await refresh_with(auth_client, junk)
+    statuses = sorted([*early, late.status_code])
+    assert statuses == [401] * (limit + 1) + [429] * (limit - 1)
+    counter = await peek(cache_client, _bucket_of(junk))
+    assert counter[0] == 1
+    with pytest.raises(AssertionError, match="cửa sổ thứ hai"):
+        _assert_exact_fail_limit(statuses, [], counter, limit)
 
 
 async def test_old_token_across_a_key_rotation_revokes_the_session(
