@@ -58,6 +58,14 @@
 | FIX-049 | 2026-09-22 | B0-01 | NO-067 | Bộ lọc case của `_found_cases_by_op` chưa test nào chạm | `3cb7abf` |
 | FIX-050 | 2026-09-22 | B0-05 | NO-074 | `SafeLock` chưa công khai đường trả khoá lặng lẽ | `7e56b05` |
 | FIX-051 | 2026-09-22 | B5-01 | NO-074 | `gpu.py` chép logic trả khoá lặng lẽ của `SafeLock` | `f6ee1dc` |
+| FIX-052 | 2026-09-22 | B0-01 | NO-075 | Chép mẫu golden hỏng thì mất bảng cổng, lượt đạt vẫn thoát 1 | nhánh `fix/b0-01-gate-log-debts` |
+| FIX-053 | 2026-09-22 | B0-01 | NO-080 | Log cổng mất khi shell bọc `run.sh verify` bị cắt | nhánh `fix/b0-01-gate-log-debts` |
+| FIX-054 | 2026-09-22 | B0-02 | NO-076 | `core/ids.py` chưa phơi hàm kiểm thân ULID không tiền tố | nhánh `fix/b0-04-key-layout-debts` |
+| FIX-055 | 2026-09-22 | B0-04 | NO-076 | `storage.keys._ULID_RE` chép thân ULID của `core/ids.py` | nhánh `fix/b0-04-key-layout-debts` |
+| FIX-056 | 2026-09-22 | B0-02 | NO-077 | Bố cục tiền tố lượt tải lên chưa có ở `packages/core` | nhánh `fix/b0-04-key-layout-debts` |
+| FIX-057 | 2026-09-22 | B0-04 | NO-077 | `storage.keys.upload_prefix` giữ bản riêng của bố cục dùng chung | nhánh `fix/b0-04-key-layout-debts` |
+| FIX-058 | 2026-09-22 | B5-01 | NO-077 | `ml_contracts._upload_prefix` dựng lại bố cục khoá của `storage` | nhánh `fix/b0-04-key-layout-debts` |
+| FIX-059 | 2026-09-22 | B0-05 | NO-078 | Worker Celery thử để logger gốc ở ERROR sau test messaging | nhánh `fix/b0-01-gate-log-debts` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -487,3 +495,62 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
   `runner.run(lock.release_quietly(token))`, xoá bản chép. Tên sự kiện log giữ như test hiện có đòi hỏi, hoặc ghi rõ đổi.
 - **[6]** Test B5-01: Redis hỏng lúc trả khoá GPU → một `WARNING` từ đúng một nguồn, thân không bị che; test chốt `gpu.py` không
   còn tự bắt lỗi trả khoá (AST hoặc đột biến) — đỏ trên mã hiện tại.
+
+---
+
+> **Giao việc FIX-052..FIX-059 (đợt 3).** Tiếp yêu cầu ngày 2026-09-22 ("mỗi session 12 nợ … cho đến khi fix hết"). Đợt 3 nhận
+> các nợ mã do đợt 2 và các phiên review đợt 2 tìm ra: NO-075, NO-076, NO-077, NO-078, NO-080. Hai worktree:
+> `fix/b0-04-key-layout-debts` (FIX-054..058, NO-076, NO-077) chạy ngay; `fix/b0-01-gate-log-debts` (FIX-052, 053, 059,
+> NO-075, NO-078, NO-080) chạy sau khi `fix/b1-01-parallel-refresh-flake` (dòng NO-078) và `fix/b0-03-migration-tool-debts`
+> (dòng NO-080) vào `main`. **Không có FIX:** NO-079 cùng NO-050, NO-071 (hiến chương/prompt — người điều phối, chờ người
+> dùng quyết nơi sửa). Luật chung như đợt 1–2; trần 2 lượt verify cùng lúc.
+
+## FIX-052 cho B0-01 — chép mẫu golden hỏng thì mất bảng cổng (NO-075)
+
+- **[1–3]** `tools/verify/steps.py:267` `export_contract_samples()` chạy trước `_print_table` và không bắt lỗi: thư mục ra thiếu
+  hay không ghi được → traceback, không có bảng, lượt 8/8 đạt vẫn thoát 1 (probe review: `VERIFY_OUT_DIR=/proc/rv`).
+- **[4]** Sửa: `tools/verify/steps.py`, `tools/tests/test_steps*.py`.
+- **[5]** In bảng trước; lỗi `OSError` khi chép mẫu → một dòng lỗi rõ ra stderr (hoặc một dòng bảng "chép mẫu golden") và
+  thoát 1. Không nuốt lỗi.
+- **[6]** Test `VERIFY_OUT_DIR` không ghi được → bảng vẫn in đủ, có dòng lỗi chép mẫu, mã thoát 1; đỏ trên mã hiện tại.
+
+## FIX-053 cho B0-01 — log cổng mất khi shell bọc bị cắt (NO-080)
+
+- **[1–3]** Container `verify-run` AutoRemove, output chỉ đi qua stdout của client `docker compose run`; client chết → log
+  bước 4–8 mất, chỉ còn mã thoát qua `docker wait` (W6-DBTOOLS, `e5d0247`).
+- **[4]** Sửa: `tools/verify/in_container.sh` và/hoặc `tools/verify/steps.py`, `tools/verify/run.sh`; test dưới `tools/tests/`.
+  Không đổi `deploy/compose/verify.yml` trừ khi cần mount mới (ghi lý do).
+- **[5]** Toàn bộ output của lượt (bảng cổng, tóm tắt pytest, `coverage_gate`) đồng thời ghi ra file dưới thư mục mount host
+  (`/src-out/…` → `.cache/src-out/…` của worktree), sống sót khi client compose chết; `run.sh` in đường dẫn file lúc bắt đầu.
+- **[6]** Test: sau một lượt `verify` giả (bước rỗng/nhanh), file log trên thư mục ra có bảng cổng và mã thoát; đỏ trên mã hiện
+  tại (không có file).
+
+## FIX-054 cho B0-02, FIX-055 cho B0-04 — thân ULID có hai nguồn (NO-076)
+
+- **[1–3]** `packages/storage/keys.py:26` `_ULID_RE` chép thân ULID của `packages/core/ids.py:35` `_ULID_BODY` (ảnh đại diện
+  dùng ULID trần không tiền tố; `core/ids.py` chỉ phơi `is_id(prefix, value)`).
+- **[4]** FIX-054: `packages/core/ids.py` + test của `packages/core`. FIX-055: `packages/storage/keys.py` + test của
+  `packages/storage`.
+- **[5]** B0-02 phơi hàm kiểm thân ULID không tiền tố (vd `is_ulid(value)`), `is_id` dùng lại nó; B0-04 dùng trong `avatar`,
+  xoá `_ULID_RE`.
+- **[6]** Test một nguồn (đột biến `_ULID_BODY` làm test storage đỏ, hoặc `keys` không còn hằng regex ULID) — đỏ trên mã hiện tại.
+
+## FIX-056 cho B0-02, FIX-057 cho B0-04, FIX-058 cho B5-01 — bố cục tiền tố lượt tải lên có hai nguồn (NO-077)
+
+- **[1–3]** `packages/ml_contracts/payloads.py:115` `_upload_prefix` dựng lại `projects/{prj}/floors/{L-…}/uploads/{upl}/` của
+  `packages/storage/keys.py:64` `upload_prefix` (`ml_contracts` không được nhập `storage`).
+- **[4]** FIX-056: `packages/core/object_keys.py` + test. FIX-057: `packages/storage/keys.py` + test. FIX-058:
+  `packages/ml_contracts/payloads.py` + test.
+- **[5]** Dời phần bố cục dùng chung (tiền tố lượt tải lên, dựng từ id đã kiểm) xuống `packages/core/object_keys.py`; `storage`
+  và `ml_contracts` cùng gọi, xoá bản dựng lại. Nếu dời làm `core` phải biết quá nhiều về bố cục của `storage` (vd kéo theo
+  mọi hàm dựng khoá), dừng và `ask` — phương án khác là `➖` kèm lý do.
+- **[6]** Test một nguồn cho tiền tố lượt tải lên, đỏ trên mã hiện tại.
+
+## FIX-059 cho B0-05 — worker Celery thử để logger gốc ở ERROR (NO-078)
+
+- **[1–3]** `packages/testing/fixtures/messaging.py:149` `start_worker(...)` dùng `loglevel` mặc định `"error"`; `app.log.setup`
+  chiếm logger gốc (thay handler, đặt mức 40) và không trả lại → `WARNING` của test chạy sau không vào báo cáo đỏ.
+- **[4]** Sửa: `packages/testing/fixtures/messaging.py` + test của fixture (dưới `packages/testing/` hay `packages/messaging/tests/`).
+- **[5]** Fixture không để lại dấu trên logger gốc: `worker_hijack_root_logger=False` cho app thử, hoặc lưu mức + handler rồi
+  trả lại khi worker dừng.
+- **[6]** Test: mức và handler của logger gốc trước và sau fixture worker bằng nhau; đỏ trên mã hiện tại.
