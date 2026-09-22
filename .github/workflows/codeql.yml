@@ -1,0 +1,43 @@
+name: CodeQL
+
+# SAST cho AppBack — B0-09 (hop-dong.md §2, prompt [2]). Ngôn ngữ Python (mã
+# nghiệp vụ) và Actions (bắt nội suy `${{ github.event.* }}` nguy hiểm vào
+# `run:` trong chính các workflow này). `build-mode: none`: cả hai ngôn ngữ ở
+# đây đều không cần dựng mã để phân tích (Python thông dịch, Actions là YAML).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Thứ Hai 05:00 UTC hằng tuần — không trùng giờ cao điểm CI theo push/PR.
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # security-events: write để tải SARIF lên tab Code scanning; actions:
+      # read theo mẫu khởi tạo mặc định của GitHub cho ngôn ngữ `actions`
+      # (github/codeql-action, tài liệu "Configuring code scanning" — cần
+      # đọc metadata workflow runs khi phân tích chính các file .yml).
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          category: "/language:${{ matrix.language }}"

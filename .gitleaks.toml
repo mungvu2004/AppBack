@@ -1,0 +1,33 @@
+# Cấu hình gitleaks — B0-09 (hop-dong.md §2). Dùng nguyên bộ luật mặc định của
+# gitleaks (`[extend] useDefault = true`); miễn ĐÚNG đường dẫn `env.example`
+# (mẫu ví dụ) và ĐÚNG hai commit lịch sử đã có sẵn trên `main` (BE-04/B0-06)
+# chứa bí mật giả trong test — không miễn theo đường dẫn cho các file test đó,
+# vì miễn theo đường sẽ bỏ qua VĨNH VIỄN, kể cả bí mật thật thêm vào sau này;
+# miễn theo `commits` (SHA cố định, không đổi) chỉ tắt đúng hai commit đã đóng
+# băng đó, không ảnh hưởng bất kỳ commit nào sau (BE-KFM K24: không lách cổng
+# bằng cấu hình). `[allowlist]` (bảng số ít) là dạng CŨ, gitleaks 8.30.1 vẫn
+# đọc được — lỗi thật trước đó "AllowList expected a map, got 'slice'" là do
+# thử `[[allowlist]]` (mảng nhưng SAI tên khoá, thiếu "s"), không phải vì bản
+# này "không hỗ trợ mảng"; tên khoá mảng đúng là `[[allowlists]]` (số nhiều).
+# Giữ `[allowlist]` số ít vì đã đo hoạt động đúng, không đổi cú pháp không cần
+# thiết (/merge-review lượt 1 #18, đính chính chú thích cũ của w-workflow).
+title = "AppBack gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Mẫu ví dụ (path) và bí mật giả đã đóng băng trong 2 commit lịch sử (commits) — không phải bí mật thật"
+paths = [
+  # Mẫu biến môi trường ví dụ để commit — không phải bí mật thật.
+  '''^deploy/compose/env\.example$''',
+]
+# Hai commit đã có sẵn trên main (B0-04, B0-06 — ngoài so_huu của B0-09, không
+# sửa được để thêm chú thích gitleaks:allow tại dòng): gán chuỗi JWT/khoá giả
+# cho hằng/monkeypatch trong test, bắt bởi rule jwt và generic-api-key. Quét
+# lại qua cầu nối git bundle (nghiệm thu [11] mục C.4), đã đọc nguyên văn từng
+# dòng để xác nhận không phải bí mật thật trước khi miễn.
+commits = [
+  "eb40a3c513d685ffd48807986badb2a3dbcc2584", # apps/api/core/tests/test_common.py, rule jwt
+  "1b97b24564d433c356d8d6385ab11b4a90fa8a69", # packages/storage/tests/{test_settings,test_local}.py, rule generic-api-key
+]

@@ -1,0 +1,17 @@
+# Danh sách miễn cho `python -m tools.ci.audit` (B0-09 hop-dong.md §2, job `lint`).
+#
+# Định dạng mỗi mục (mảng bảng TOML):
+#
+#   [[ignore]]
+#   id = "GHSA-xxxx-xxxx-xxxx"      # id lỗ hổng theo pip-audit; alias (CVE-…) cũng khớp được
+#   reason = "lý do miễn, ít nhất 10 ký tự sau khi cắt khoảng trắng đầu/cuối"
+#   expires = 2026-12-31            # ngày TOML (không nháy); qua ngày này mục coi như hỏng cổng
+#
+# Luật (không phải ngoại lệ):
+# - thiếu `id`/`reason`/`expires`, `reason` quá ngắn, `expires` đã qua "hôm nay", hoặc hai mục
+#   cùng `id` → `tools.ci.audit` thoát 1, không đọc tiếp báo cáo pip-audit;
+# - mục miễn không khớp lỗ hổng nào trong báo cáo chỉ in nhắc, không hỏng cổng;
+# - lỗ hổng có `fix_versions` mà không được miễn → hỏng; lỗ hổng chưa có bản sửa chỉ được in.
+#
+# Bản commit ban đầu (B0-09 w-tools): chưa có lỗ hổng nào cần miễn, để trống — `ignore` vắng
+# mặt được đọc là mảng rỗng.

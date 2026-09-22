@@ -1,0 +1,44 @@
+version: 2
+
+# B0-09 (hop-dong.md §2, prompt [2]): ba hệ — uv (gốc), github-actions (gốc),
+# docker (deploy/docker). `commit-message.prefix` + `include: scope` sinh dòng
+# đầu "<prefix>(deps): Bump …" — qua được `.githooks/commit-msg` (BE-00 §13.2).
+# PR của Dependabot đổi `uv.lock` đi qua CI và người điều phối duyệt như PR
+# thường (BE-00 §13.1) — nhánh `dependabot/**` được miễn luật tên nhánh (job
+# `commits`, hop-dong.md §2).
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      uv-patches:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-patches:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-patches:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build"
+      include: "scope"
