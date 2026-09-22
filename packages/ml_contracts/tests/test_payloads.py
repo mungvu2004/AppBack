@@ -4,19 +4,24 @@ from collections.abc import Callable
 from typing import Any, get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from packages.core import object_keys
+from packages.core import ids, object_keys
 from packages.core.clock import SystemClock
 from packages.core.ids import IdPrefix, new_id
 from packages.core.object_keys import check_key, check_prefix
+from packages.ml_contracts import payloads
 from packages.ml_contracts.payloads import (
+    DatasetVersionId,
     EvaluateVersionPayload,
     EvaluationDonePayload,
     InferStepPayload,
+    JobId,
     MetricPoint,
     ModelRef,
+    ModelVersionId,
     ObjectKey,
+    RunId,
     StepResultPayload,
     TrainingFinishedPayload,
     TrainingHeartbeatPayload,
@@ -99,6 +104,52 @@ def test_upload_layout_comes_from_core(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(object_keys, "upload_prefix", lambda *_: "khac/")
     with pytest.raises(ValidationError, match="không nằm dưới một lượt tải lên"):
         infer()
+
+
+def finished() -> TrainingFinishedPayload:
+    """Job huấn luyện thành công hợp lệ: trọng số `.onnx` dưới gốc mô hình."""
+    return TrainingFinishedPayload(
+        job_id=JOB, status="succeeded", weights_key=f"ml/models/{MDL}/w.onnx", checksum_sha256=SHA, metrics={"iou": 0.4}
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "mutant", "build"),
+    [
+        ("run_prefix", lambda *_: "khac/", infer),
+        ("model_prefix", lambda *_: "khac/", storage_ref),
+        ("MODELS_PREFIX", "khac/", finished),
+    ],
+)
+def test_run_and_model_layout_comes_from_core(
+    monkeypatch: pytest.MonkeyPatch, name: str, mutant: object, build: Callable[[], object]
+) -> None:
+    """NO-081: tiền tố artifact của lượt chạy, của phiên bản mô hình và gốc mô hình là đúng tên của lõi.
+
+    Một nguồn với `packages.storage`: tên trong gói là của `packages.core.object_keys` (`is`), và đột
+    biến nó thì payload hợp lệ bị từ chối — gói không dựng lại chuỗi bố cục. Mẫu biên ở test của lõi.
+    """
+    build()
+    assert getattr(payloads, name) is getattr(object_keys, name)
+    monkeypatch.setattr(payloads, name, mutant)
+    with pytest.raises(ValidationError):
+        build()
+
+
+@pytest.mark.parametrize(
+    ("alias", "prefix"), [(RunId, "run"), (ModelVersionId, "mdl"), (JobId, "job"), (DatasetVersionId, "dsv")]
+)
+def test_id_rules_come_from_core(monkeypatch: pytest.MonkeyPatch, alias: object, prefix: IdPrefix) -> None:
+    """Id của payload kiểm bằng `check_id` của lõi (review `fix/b0-04-key-layout-debts` Nit #5).
+
+    Đột biến `packages.core.ids.is_id` thì id đúng bị từ chối, và thông báo là của `check_id` (nêu giá trị).
+    """
+    adapter: TypeAdapter[str] = TypeAdapter(alias)
+    value = some_id(prefix)
+    assert adapter.validate_python(value) == value
+    monkeypatch.setattr(ids, "is_id", lambda *_: False)
+    with pytest.raises(ValidationError, match=f"id phải có dạng {prefix}_<ULID>: '{value}'"):
+        adapter.validate_python(value)
 
 
 # --- ModelRef -------------------------------------------------------------------------

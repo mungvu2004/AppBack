@@ -5,25 +5,33 @@ lượt dưới khoá): id đúng tiền tố qua `is_id`, SHA-256 64 hex thư�
 luật B0-04, và mọi luật chéo trường ở validator. Sai → `ValidationError`; `define_task`
 coi đó là thông điệp độc (J08).
 
-Luật khoá object và bố cục tiền tố lượt tải lên lấy từ `packages.core.object_keys` — cùng
-một nguồn với `packages.storage` (gói không được nhập `storage`, [9] B5-01; NO-060, NO-077).
+Luật id (`check_id`), luật khoá object và bố cục tiền tố (lượt tải lên, artifact của lượt
+chạy, phiên bản mô hình) lấy từ `packages.core` — cùng một nguồn với `packages.storage` (gói
+không được nhập `storage`, [9] B5-01; NO-060, NO-077, NO-081).
 """
 
 import itertools
 import math
 import re
 from collections.abc import Mapping
+from functools import partial
 from typing import Annotated, Final, Literal, Self, get_args
 
 from pydantic import AfterValidator, Field, model_validator
 
-from packages.core.ids import IdPrefix, is_id
-from packages.core.object_keys import check_key, check_prefix, upload_prefix_of
+from packages.core.ids import IdPrefix, check_id
+from packages.core.object_keys import (
+    MODELS_PREFIX,
+    check_key,
+    check_prefix,
+    model_prefix,
+    run_prefix,
+    upload_prefix_of,
+)
 from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, FrozenModel
 from packages.ml_contracts.families import BASE_MODELS, MetricName, ModelFamily, TrainableFamily
 from packages.ml_contracts.pinned import PINNED
 
-MODELS_PREFIX: Final = "ml/models/"
 MAX_ARTIFACT_KEYS: Final = 8
 MAX_METRIC_POINTS: Final = 500
 MAX_LOG_PARAMS: Final = 16
@@ -35,15 +43,8 @@ _UNIT_METRICS: Final = frozenset({"iou", "map50"})
 
 
 def _id_of(prefix: IdPrefix) -> AfterValidator:
-    """Validator `<tiền tố>_<ULID>` qua `packages.core.ids.is_id`."""
-
-    def check(value: str) -> str:
-        """Trả lại chính id khi đúng mẫu; sai → `ValueError` (Pydantic đổi thành lỗi trường)."""
-        if not is_id(prefix, value):
-            raise ValueError(f"id phải có dạng {prefix}_<ULID>")
-        return value
-
-    return AfterValidator(check)
+    """Validator `<tiền tố>_<ULID>`: đúng `check_id` của lõi, `ValueError` thành lỗi trường của Pydantic."""
+    return AfterValidator(partial(check_id, prefix))
 
 
 RunId = Annotated[str, _id_of("run")]
@@ -107,7 +108,7 @@ class ModelRef(FrozenModel):
             pin = PINNED.get(self.pinned_name)
             if pin is None or pin.family != self.family or pin.onnx_sha256 is None:
                 raise ValueError(f"bản ghim {self.pinned_name!r} không có ONNX cho họ {self.family}")
-        elif not str(self.weights_key).startswith(f"{MODELS_PREFIX}{self.version_id}/"):
+        elif not str(self.weights_key).startswith(model_prefix(self.version_id)):
             raise ValueError("weights_key phải nằm dưới ml/models/{version_id}/")
         return self
 
@@ -129,8 +130,7 @@ class InferStepPayload(MlPayload):
         """Bước = họ model; trang và artifact cùng lượt tải lên; khổ trong trần mặt nạ."""
         if self.step != self.model.family:
             raise ValueError("step phải trùng model.family")
-        expected = f"{upload_prefix_of(self.page_key)}runs/{self.run_id}/{self.step}/"
-        if self.artifact_prefix != expected:
+        if self.artifact_prefix != run_prefix(upload_prefix_of(self.page_key), self.run_id, self.step):
             raise ValueError("artifact_prefix phải là <lượt tải lên>/runs/{run_id}/{step}/ của chính trang")
         if self.width_px * self.height_px > MASK_MAX_PIXELS:
             raise ValueError(f"khổ trang vượt {MASK_MAX_PIXELS} điểm")

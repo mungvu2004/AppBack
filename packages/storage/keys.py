@@ -4,8 +4,9 @@ Mọi hàm nhận khoá của gói này gọi `check_key`/`check_prefix` trướ
 khoá không bao giờ được nối thẳng từ chuỗi người dùng. Luật khoá nằm ở
 `packages.core.object_keys` (một nguồn với `ml_contracts`, NO-060); ở đây xuất lại tên cũ
 cho `local.py`, `s3.py`. Tiền tố dự án và lượt tải lên cũng là hàm của lõi, xuất lại giữ tên
-(NO-077). Hàm dựng khoá kiểm id bằng `packages.core.ids` (`check_id`, `is_ulid`), nên khoá
-sinh ra luôn nằm trong cây đã khai.
+(NO-077); tiền tố artifact của lượt chạy và của phiên bản mô hình dựng qua lõi (NO-081). Hàm
+dựng khoá kiểm id bằng `packages.core.ids` (`check_id`, `is_ulid`), nên khoá sinh ra luôn nằm
+trong cây đã khai.
 """
 
 import re
@@ -15,17 +16,15 @@ from packages.core.ids import check_id, is_ulid
 from packages.core.object_keys import META_SUFFIX as META_SUFFIX
 from packages.core.object_keys import check_key as check_key
 from packages.core.object_keys import check_prefix as check_prefix
-from packages.core.object_keys import is_segment
+from packages.core.object_keys import is_segment, model_prefix, run_prefix
 from packages.core.object_keys import project_prefix as project_prefix
 from packages.core.object_keys import upload_prefix as upload_prefix
-from packages.core.pipeline import PIPELINE_STEPS
 from packages.storage.sniff import ImageKind
 
 MAX_ITEM_LEN: Final = 64
 
 _ITEM_RE: Final = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
-_STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)
 _EXT_KIND: Final[dict[str, ImageKind]] = {"png": "png", "jpg": "jpeg"}
 
 
@@ -56,11 +55,8 @@ def upload_page(project: str, floor: str, upload: str, index: int) -> str:
 
 
 def run_artifact(project: str, floor: str, upload: str, run: str, step: str, name: str) -> str:
-    """Khoá artifact của một bước pipeline trong một lượt chạy."""
-    if step not in _STEP_IDS:
-        raise ValueError(f"bước pipeline lạ: {step!r}")
-    prefix = upload_prefix(project, floor, upload)
-    return check_key(f"{prefix}runs/{check_id('run', run)}/{step}/{_name(name)}")
+    """Khoá artifact của một bước pipeline trong một lượt chạy (bố cục và luật bước ở lõi, NO-081)."""
+    return check_key(f"{run_prefix(upload_prefix(project, floor, upload), run, step)}{_name(name)}")
 
 
 def library_object(item: str, name: str) -> str:
@@ -72,7 +68,7 @@ def library_object(item: str, name: str) -> str:
 
 def model_artifact(model: str, name: str) -> str:
     """Khoá artifact của một phiên bản mô hình ML."""
-    return check_key(f"ml/models/{check_id('mdl', model)}/{_name(name)}")
+    return check_key(f"{model_prefix(model)}{_name(name)}")
 
 
 def dataset_object(dataset_version: str, name: str) -> str:

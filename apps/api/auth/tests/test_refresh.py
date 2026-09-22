@@ -501,19 +501,24 @@ def _opened(caplog: pytest.LogCaptureFixture) -> list[str]:
 
 
 def _assert_exact_fail_limit(statuses: list[int], opened: list[str], counter: tuple[int, int], limit: int) -> None:
-    """Kiểm của C11_parallel: gọi đúng tên nguyên nhân **trước** khi so số (NO-066).
+    """Kiểm của C11_parallel: gọi đúng tên nguyên nhân **trước** khi so số (NO-066, NO-082).
 
-    `INCR` nguyên khối nên thừa 401 chỉ có hai đường, đều là hạ tầng chứ không phải `bump` đếm sai:
-    Redis cache hỏng → `soft_redis` mở (`rate_limit_open`); hay khoá bộ đếm biến mất giữa loạt (hết
-    cửa sổ vì một lượt kẹt, bị xoá) → đếm lại từ 1, bộ đếm cuối loạt dưới trần. `counter` = (giá trị,
-    TTL) đọc sau loạt; một cửa sổ nhận ≥ `limit` lượt bị từ chối thì giá trị cuối không thể dưới trần.
+    Hai đường hạ tầng cho thừa 401: Redis cache hỏng → `soft_redis` mở (`rate_limit_open`); hay khoá
+    bộ đếm biến mất giữa loạt (hết cửa sổ vì một lượt kẹt, bị xoá) → cửa sổ thứ hai đếm lại từ 1.
+    Với `INCR` nguyên khối, mỗi lượt muộn vừa thêm một 401 thừa vừa thêm một đơn vị vào cửa sổ mới,
+    nên chữ ký của cửa sổ thứ hai là `0 < giá trị cuối < trần` **và** số 401 thừa bằng đúng giá trị
+    cuối. Lệch chữ ký đó (vd `bump` không nguyên khối: 40 lượt 401, bộ đếm cuối 7) là đếm sai.
+    `counter` = (giá trị, TTL) đọc sau loạt.
     """
     assert not opened, f"redis-cache hỏng giữa loạt → tầng thất bại mở (on_error=open), không phải đếm sai: {opened}"
-    assert counter[0] >= limit, (
-        f"bộ đếm mở cửa sổ thứ hai giữa loạt (cuối loạt (giá trị, TTL) = {counter}), không phải đếm sai: "
+    extra = statuses.count(401) - limit
+    assert not (0 < counter[0] < limit and extra == counter[0]), (
+        f"bộ đếm mở cửa sổ thứ hai giữa loạt (cuối loạt (giá trị, TTL) = {counter}, {extra} lượt 401 thừa): "
         f"{Counter(statuses)}"
     )
-    assert statuses == [401] * limit + [429] * limit, Counter(statuses)
+    assert statuses == [401] * limit + [429] * limit, (
+        f"tầng thất bại đếm sai (cuối loạt (giá trị, TTL) = {counter}): {Counter(statuses)}"
+    )
 
 
 async def test_auth_refresh__C11_parallel(
@@ -552,6 +557,37 @@ async def test_a_denial_after_the_fail_window_counts_from_one(
     assert counter[0] == 1
     with pytest.raises(AssertionError, match="cửa sổ thứ hai"):
         _assert_exact_fail_limit(statuses, [], counter, limit)
+
+
+@pytest.mark.parametrize(
+    ("statuses", "counter", "cause"),
+    [
+        ([401] * 40, (7, 360), "đếm sai"),
+        ([401] * 20 + [503] * 20, (0, -2), "đếm sai"),
+        ([401] * 22 + [429] * 18, (1, 360), "đếm sai"),
+        ([401] * 21 + [429] * 19, (1, 360), "cửa sổ thứ hai"),
+        ([401] * 26 + [429] * 14, (6, 360), "cửa sổ thứ hai"),
+    ],
+)
+def test_fail_limit_checker_names_the_cause(statuses: list[int], counter: tuple[int, int], cause: str) -> None:
+    """NO-082: chỉ chữ ký của cửa sổ thứ hai (401 thừa = giá trị cuối, dưới trần) mới được gọi tên đó.
+
+    Ca đầu là đột biến M1 của review `fix/b1-01-parallel-refresh-flake` (`bump` đọc-rồi-ghi: 40 lượt
+    401, bộ đếm cuối 7); hai ca sau là khoá vắng (`peek` → `(0, -2)`) với mã lạ, và số 401 thừa lệch
+    giá trị cuối — đều là đếm sai. Hai ca cuối là chữ ký đã đo (21 lượt 401 → giá trị 1, probe P3 của
+    review đó; 26 → 6, NO-066).
+    """
+    with pytest.raises(AssertionError) as failure:
+        _assert_exact_fail_limit(statuses, [], counter, 20)
+    message = str(failure.value)
+    assert cause in message
+    assert ("cửa sổ thứ hai" in message) is (cause == "cửa sổ thứ hai")
+
+
+def test_fail_limit_checker_passes_an_exact_split() -> None:
+    """Đúng trần lượt 401 rồi trần lượt 429 thì bộ kiểm không ném, dù bộ đếm đọc sau loạt là gì."""
+    for counter in [(20, 360), (40, 360), (0, -2)]:
+        _assert_exact_fail_limit([401] * 20 + [429] * 20, [], counter, 20)
 
 
 async def test_old_token_across_a_key_rotation_revokes_the_session(

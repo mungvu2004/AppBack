@@ -3,22 +3,27 @@
 Khoá là chuỗi ASCII `[A-Za-z0-9._-]` chia đoạn bằng `/`, không đoạn rỗng, `.` hay `..`,
 tối đa `MAX_KEY_BYTES` byte, không trùng đuôi metadata của kho đĩa. Nằm ở lõi vì
 `ml_contracts` không được nhập `storage` ([9] B5-01) mà vẫn phải kiểm khoá trong payload
-không tin (NO-060). Cùng lý do, bố cục tiền tố dự án và lượt tải lên cũng ở đây (NO-077);
-các hàm dựng khoá khác vẫn ở `packages.storage.keys`. Sai luật → `ValueError`; người gọi
-đổi thành lỗi của tầng mình.
+không tin (NO-060). Cùng lý do, các tiền tố mà payload ML phải kiểm cũng ở đây: dự án, lượt
+tải lên (NO-077), artifact của một bước trong lượt chạy và phiên bản mô hình (NO-081); các
+hàm dựng khoá đầy đủ vẫn ở `packages.storage.keys`. Sai luật → `ValueError`; người gọi đổi
+thành lỗi của tầng mình.
 """
 
 import re
 from typing import Final
 
 from packages.core.ids import check_id, is_spatial_id
+from packages.core.pipeline import PIPELINE_STEPS
 
 MAX_KEY_BYTES: Final = 1024
 META_SUFFIX: Final = ".meta.json"
 """Đuôi file metadata của `LocalDiskStorage`; khoá object không được trùng."""
+MODELS_PREFIX: Final = "ml/models/"
+"""Gốc mọi phiên bản mô hình ML (BE-00 §8); payload kết thúc huấn luyện chỉ biết gốc này, chưa có id."""
 
 _DOT_SEGMENTS: Final = frozenset({"", ".", ".."})
 _SEGMENT_RE: Final = re.compile(r"[A-Za-z0-9._-]+")
+_STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)
 
 
 def is_segment(value: str) -> bool:
@@ -74,12 +79,30 @@ def upload_prefix(project: str, floor: str, upload: str) -> str:
 def upload_prefix_of(key: str) -> str:
     """Tiền tố lượt tải lên đứng đầu `key` (khoá không tin trong payload ML); sai → `ValueError`.
 
-    Đọc id ở vị trí đoạn của bố cục rồi dựng lại bằng `upload_prefix`: chỉ nhận khi bản dựng lại là
-    đầu của `key` từng byte, nên bố cục không có bản tách thứ hai (NO-077).
+    Kiểm cả khoá bằng `check_key` trước (fail-closed, NO-088): đuôi `../x` hay `//` không được ra
+    tiền tố. Đọc id ở vị trí đoạn của bố cục rồi dựng lại bằng `upload_prefix`: chỉ nhận khi bản
+    dựng lại là đầu của `key` từng byte, nên bố cục không có bản tách thứ hai (NO-077).
     """
-    parts = key.split("/", 6)
+    parts = check_key(key).split("/", 6)
     if len(parts) == 7:
         prefix = upload_prefix(parts[1], parts[3], parts[5])
         if key.startswith(prefix):
             return prefix
     raise ValueError(f"khoá không nằm dưới một lượt tải lên: {key!r}")
+
+
+def run_prefix(upload_root: str, run: str, step: str) -> str:
+    """Tiền tố artifact của bước `step` trong lượt chạy `run`: `{upload_root}runs/{run}/{step}/` (BE-00 §8).
+
+    Nguồn duy nhất cho `storage` (dựng khoá) và `ml_contracts` (kiểm `artifact_prefix`), NO-081.
+    `upload_root` là tiền tố do `upload_prefix`/`upload_prefix_of` trả — hàm không kiểm lại bố cục
+    của nó. Bước ngoài `PIPELINE_STEPS` hay id lượt chạy sai → `ValueError` nêu đúng trường.
+    """
+    if step not in _STEP_IDS:
+        raise ValueError(f"bước pipeline lạ: {step!r}")
+    return check_prefix(f"{upload_root}runs/{check_id('run', run)}/{step}/")
+
+
+def model_prefix(model: str) -> str:
+    """Tiền tố artifact của một phiên bản mô hình `ml/models/{mdl}/` — nguồn duy nhất, NO-081."""
+    return check_prefix(f"{MODELS_PREFIX}{check_id('mdl', model)}/")
