@@ -106,7 +106,11 @@ def blank_db_url(postgres_url: str) -> Iterator[str]:
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     # Pool nhỏ: mỗi test một database, Postgres dùng chung không phải giữ hàng trăm kết nối.
-    engine = create_engine(DatabaseSettings(database_url=db_url, db_pool_size=5, db_max_overflow=0))
+    # Trần bắt tay của đường cổng, không phải 10 s của đường request (NO-036, cùng lý do `_admin`).
+    settings = DatabaseSettings(
+        database_url=db_url, db_pool_size=5, db_max_overflow=0, db_connect_timeout_s=int(GATE_CONNECT_TIMEOUT_S)
+    )
+    engine = create_engine(settings)
     try:
         yield create_sessionmaker(engine)
     finally:
