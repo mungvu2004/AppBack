@@ -6,7 +6,9 @@ import inspect
 import io
 import smtplib
 import socket
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import asyncpg
@@ -24,11 +26,11 @@ from packages.testing.fixtures.services import (
     refused_url,
 )
 
-# Bản đã dừng hỏng theo đường nối: trong container verify (nối thẳng IP bridge, NO-007) IP không còn
-# ai nhận → hết giờ hay "no route"; ngoài container (CI) cổng host bị từ chối (111). Đều là `OSError`.
-_STOPPED = r"^$|timed out|Errno (101|111|113)"
-"""Lỗi hợp lệ của bản đã dừng: `''` (hết giờ của asyncpg), `timed out` (socket), 113 (no route),
-111/101 (cổng host bị từ chối, IPv6 không tới — CI chạy ngoài container)."""
+# Bản ephemeral đi cổng map của máy chủ Docker ở mọi nơi (FIX-009: IP bridge bị cấp lại ngay), nên bản đã
+# dừng hỏng ngay: cổng host bị từ chối (111), IPv6 không tới (101) — đo 2026-09-22: 9/9 lượt, 0,0 s.
+_STOPPED = r"^$|timed out|Errno (101|111)"
+"""Lỗi hợp lệ của bản đã dừng: 111/101 (cổng host đóng), `''` (hết giờ của asyncpg) và `timed out`
+(socket) khi chặng `host.docker.internal` kẹt (NO-007). Đều là `OSError`."""
 _STOPPED_TIMEOUT_S = 5
 """Trần bắt tay tới bản **đã dừng**: chỉ để test không treo; mọi đường đều hỏng trong trần này."""
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -90,11 +92,13 @@ def test_mailpit_nhận_thư(mailpit: tuple[str, int, int]) -> None:
 
 def test_ephemeral_redis_dừng_xong_bản_dùng_chung_vẫn_chạy(redis_broker_url: str) -> None:
     eph = ephemeral_redis("noeviction")
-    client = eph.get_client(socket_connect_timeout=2)
-    assert client.ping()
+    host, port = eph.get_container_host_ip(), eph.get_exposed_port(6379)
+    # Bản còn chạy chịu trần cổng (ephemeral đi `host.docker.internal`, NO-007); bản đã dừng trần ngắn.
+    assert eph.get_client(socket_connect_timeout=GATE_CONNECT_TIMEOUT_S).ping()
     eph.stop()
+    stopped = redis.Redis(host=host, port=port, socket_connect_timeout=_STOPPED_TIMEOUT_S)
     with pytest.raises((redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)):
-        client.ping()
+        stopped.ping()
     assert redis.Redis.from_url(redis_broker_url).ping()
 
 
@@ -149,3 +153,27 @@ def test_container_verify_nối_thẳng_ip_container_dịch_vụ() -> None:
     service = compose["services"]["verify"]
     assert service["network_mode"] == "bridge"
     assert "TESTCONTAINERS_CONNECTION_MODE=bridge_ip" in service["environment"]
+
+
+@pytest.mark.parametrize(
+    ("factory", "port"),
+    [(lambda: ephemeral_redis("noeviction"), 6379), (ephemeral_postgres, 5432), (ephemeral_minio, 9000)],
+    ids=["redis", "postgres", "minio"],
+)
+def test_ephemeral_dừng_xong_địa_chỉ_không_về_tay_bản_dựng_sau(factory: Callable[[], Any], port: int) -> None:
+    """FIX-009: địa chỉ của bản ephemeral đã dừng không trỏ sang container dựng ngay sau nó.
+
+    Bridge mặc định của Docker cấp lại **ngay** IP vừa giải phóng: đi IP bridge thì bản B nhận đúng IP
+    của A, URL của A nối được vào B (hay vào container của phiên verify khác — cùng ảnh, cùng mật khẩu
+    mặc định), và test C13 thấy dịch vụ đã dừng "vẫn sống".
+    """
+    first = factory()
+    endpoint = (first.get_container_host_ip(), int(first.get_exposed_port(port)))
+    first.stop()
+    second = factory()
+    try:
+        assert (second.get_container_host_ip(), int(second.get_exposed_port(port))) != endpoint
+        with pytest.raises(OSError, match=_STOPPED):
+            socket.create_connection(endpoint, timeout=_STOPPED_TIMEOUT_S)
+    finally:
+        second.stop()
