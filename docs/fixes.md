@@ -74,6 +74,8 @@
 | FIX-065 | 2026-09-22 | B0-01 | NO-089 | Log cổng không có traceback, không "mã thoát" khi lượt verify ném lỗi | `aa18bd7`, `8a1cf3d` |
 | FIX-066 | 2026-09-22 | B0-01 | NO-090 | Log cổng `.cache/src-out/verify/*.log` dồn mãi, không trần | `1b6bc06` |
 | FIX-067 | 2026-09-22 | B0-05 | NO-087 | Worker Celery thử để dấu cấp tiến trình (env, `captureWarnings`) | `54e2e91` |
+| FIX-068 | 2026-09-22 | B0-01 | NO-092 | Dọn log cổng cũ hỏng thì `run.sh verify` thoát trước khi chạy cổng | nhánh `fix/b0-01-gate-log-guard` |
+| FIX-069 | 2026-09-22 | B0-05 | NO-093 | Test FIX-067 không chốt phần `captureWarnings` của fixture worker | nhánh `fix/b0-01-gate-log-guard` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -634,3 +636,25 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Fixture lưu và trả các khoá môi trường đó và trạng thái `captureWarnings`/bộ lọc khi worker dừng; hoặc `➖` kèm chứng minh
   vô hại (ghi rõ lý do đứng được).
 - **[6]** Test trước = sau cho các khoá môi trường và `captureWarnings`; đỏ trên mã hiện tại.
+
+---
+
+> **Giao việc FIX-068..FIX-069 (đợt 6).** Tiếp yêu cầu ngày 2026-09-22. Hai nợ P3 do review `fix/b0-01-gate-log-followups` tìm
+> ra: NO-092, NO-093, trên nhánh `fix/b0-01-gate-log-guard` (một worker). Luật chung như đợt 1–5; trần 2 lượt verify cùng lúc.
+
+## FIX-068 cho B0-01 — dọn log cổng hỏng thì chặn cả cổng (NO-092)
+
+- **[1–3]** `tools/verify/run.sh:101-102`: `find`/`rm` dọn log cũ (FIX-066) chạy dưới `set -euo pipefail`; `rm` gặp log đang bị giữ
+  (Windows "Device or resource busy") → rc 123, docker không được gọi (probe P2x review `fix/b0-01-gate-log-followups`).
+- **[4]** Sửa: `tools/verify/run.sh`, test dưới `tools/tests/`.
+- **[5]** Dọn log là việc phụ: hỏng → một dòng cảnh báo ra stderr, cổng vẫn chạy, mã thoát là mã của cổng.
+- **[6]** Test `rm` giả hỏng → docker (giả) vẫn được gọi, rc 0, có dòng cảnh báo; đỏ trên mã hiện tại.
+
+## FIX-069 cho B0-05 — test FIX-067 không chốt phần `captureWarnings` (NO-093)
+
+- **[1–3]** `packages/messaging/tests/test_tasks.py:539-561`: đột biến bỏ `captureWarnings(False)` hay bỏ điều kiện "showwarning đã
+  đổi" trong `_restoring_process_logging` vẫn `2 passed` (probe P3m).
+- **[4]** Sửa: `packages/messaging/tests/test_tasks.py`.
+- **[5]** Kiểm hành vi: sau worker, ca clean — `captureWarnings(True)` phải còn đổi `warnings.showwarning` (tức logging không tự nhớ
+  là đang bắt); ca preset — `captureWarnings(False)` phải trả đúng hàm gốc lưu trước khi bật.
+- **[6]** Test mới đỏ dưới cả hai đột biến M1, M2 (bản đột biến chỉ trong `.cache/`), xanh trên mã hiện tại.
