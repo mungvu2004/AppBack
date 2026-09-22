@@ -102,6 +102,22 @@ def test_is_id_reads_ulid_rule_of_is_ulid(monkeypatch: pytest.MonkeyPatch) -> No
     assert not is_id("usr", f"usr_{ULID_BODY}")
 
 
+def test_check_id_returns_valid_id() -> None:
+    assert ids.check_id("upl", f"upl_{ULID_BODY}") == f"upl_{ULID_BODY}"
+
+
+@pytest.mark.parametrize("value", ["", f"prj_{ULID_BODY}", f"upl_{ULID_BODY[:-1]}", ULID_BODY])
+def test_check_id_rejects_naming_the_prefix(value: str) -> None:
+    """Dạng ném lỗi của `is_id` cho người dựng khoá: thông báo nêu đúng tiền tố cần."""
+    with pytest.raises(ValueError, match="upl_<ULID>"):
+        ids.check_id("upl", value)
+
+
+def test_check_id_rejects_unknown_prefix() -> None:
+    with pytest.raises(ValueError, match="tiền tố"):
+        ids.check_id("abc", f"abc_{ULID_BODY}")  # type: ignore[arg-type]  # kiểm lúc chạy
+
+
 @pytest.mark.parametrize(("kind", "letter"), SPATIAL_PREFIX.items())
 def test_is_spatial_id_each_kind(kind: SpatialKind, letter: str) -> None:
     assert is_spatial_id(kind, f"{letter}-0000010ABC")

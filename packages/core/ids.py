@@ -68,6 +68,17 @@ def is_id(prefix: IdPrefix, value: str) -> bool:
     return value.startswith(head) and is_ulid(value.removeprefix(head))
 
 
+def check_id(prefix: IdPrefix, value: str) -> str:
+    """Id đúng `<prefix>_<ULID>` → trả lại chính nó; sai → `ValueError` nêu tiền tố cần.
+
+    Dạng ném lỗi của `is_id` cho người dựng khoá object (`packages.core.object_keys`,
+    `packages.storage.keys`): id sai bị chặn, kèm tên trường, trước khi thành khoá.
+    """
+    if not is_id(prefix, value):
+        raise ValueError(f"id phải có dạng {prefix}_<ULID>: {value!r}")
+    return value
+
+
 def is_spatial_id(kind: SpatialKind, value: str) -> bool:
     return re.fullmatch(f"{SPATIAL_PREFIX[kind]}-[0-9A-Z]{{10,64}}", value) is not None
 
