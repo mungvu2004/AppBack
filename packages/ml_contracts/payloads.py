@@ -5,8 +5,8 @@ lượt dưới khoá): id đúng tiền tố qua `is_id`, SHA-256 64 hex thư�
 luật B0-04, và mọi luật chéo trường ở validator. Sai → `ValidationError`; `define_task`
 coi đó là thông điệp độc (J08).
 
-Luật khoá object lấy từ `packages.core.object_keys` — cùng một nguồn với `packages.storage`
-(gói không được nhập `storage`, [9] B5-01; NO-060).
+Luật khoá object và bố cục tiền tố lượt tải lên lấy từ `packages.core.object_keys` — cùng
+một nguồn với `packages.storage` (gói không được nhập `storage`, [9] B5-01; NO-060, NO-077).
 """
 
 import itertools
@@ -17,8 +17,8 @@ from typing import Annotated, Final, Literal, Self, get_args
 
 from pydantic import AfterValidator, Field, model_validator
 
-from packages.core.ids import IdPrefix, is_id, is_spatial_id
-from packages.core.object_keys import check_key, check_prefix
+from packages.core.ids import IdPrefix, is_id
+from packages.core.object_keys import check_key, check_prefix, upload_prefix_of
 from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, FrozenModel
 from packages.ml_contracts.families import BASE_MODELS, MetricName, ModelFamily, TrainableFamily
 from packages.ml_contracts.pinned import PINNED
@@ -112,20 +112,6 @@ class ModelRef(FrozenModel):
         return self
 
 
-def _upload_prefix(key: str) -> str:
-    """`projects/{prj}/floors/{L-…}/uploads/{upl}/` đứng đầu khoá; sai → `ValueError`."""
-    parts = key.split("/")
-    if (
-        len(parts) < 7
-        or parts[0::2][:3] != ["projects", "floors", "uploads"]
-        or not is_id("prj", parts[1])
-        or not is_spatial_id("level", parts[3])
-        or not is_id("upl", parts[5])
-    ):
-        raise ValueError(f"khoá không nằm dưới một lượt tải lên: {key!r}")
-    return "/".join(parts[:6]) + "/"
-
-
 class InferStepPayload(MlPayload):
     """Một bước suy luận trên trang đã nắn (task `ml.infer.*`, B5-02…B5-04)."""
 
@@ -143,7 +129,7 @@ class InferStepPayload(MlPayload):
         """Bước = họ model; trang và artifact cùng lượt tải lên; khổ trong trần mặt nạ."""
         if self.step != self.model.family:
             raise ValueError("step phải trùng model.family")
-        expected = f"{_upload_prefix(self.page_key)}runs/{self.run_id}/{self.step}/"
+        expected = f"{upload_prefix_of(self.page_key)}runs/{self.run_id}/{self.step}/"
         if self.artifact_prefix != expected:
             raise ValueError("artifact_prefix phải là <lượt tải lên>/runs/{run_id}/{step}/ của chính trang")
         if self.width_px * self.height_px > MASK_MAX_PIXELS:
