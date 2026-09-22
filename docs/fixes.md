@@ -60,11 +60,11 @@
 | FIX-051 | 2026-09-22 | B5-01 | NO-074 | `gpu.py` chép logic trả khoá lặng lẽ của `SafeLock` | `f6ee1dc` |
 | FIX-052 | 2026-09-22 | B0-01 | NO-075 | Chép mẫu golden hỏng thì mất bảng cổng, lượt đạt vẫn thoát 1 | nhánh `fix/b0-01-gate-log-debts` |
 | FIX-053 | 2026-09-22 | B0-01 | NO-080 | Log cổng mất khi shell bọc `run.sh verify` bị cắt | nhánh `fix/b0-01-gate-log-debts` |
-| FIX-054 | 2026-09-22 | B0-02 | NO-076 | `core/ids.py` chưa phơi hàm kiểm thân ULID không tiền tố | nhánh `fix/b0-04-key-layout-debts` |
-| FIX-055 | 2026-09-22 | B0-04 | NO-076 | `storage.keys._ULID_RE` chép thân ULID của `core/ids.py` | nhánh `fix/b0-04-key-layout-debts` |
-| FIX-056 | 2026-09-22 | B0-02 | NO-077 | Bố cục tiền tố lượt tải lên chưa có ở `packages/core` | nhánh `fix/b0-04-key-layout-debts` |
-| FIX-057 | 2026-09-22 | B0-04 | NO-077 | `storage.keys.upload_prefix` giữ bản riêng của bố cục dùng chung | nhánh `fix/b0-04-key-layout-debts` |
-| FIX-058 | 2026-09-22 | B5-01 | NO-077 | `ml_contracts._upload_prefix` dựng lại bố cục khoá của `storage` | nhánh `fix/b0-04-key-layout-debts` |
+| FIX-054 | 2026-09-22 | B0-02 | NO-076 | `core/ids.py` chưa phơi hàm kiểm thân ULID không tiền tố | `b2864d9` |
+| FIX-055 | 2026-09-22 | B0-04 | NO-076 | `storage.keys._ULID_RE` chép thân ULID của `core/ids.py` | `5c8586a` |
+| FIX-056 | 2026-09-22 | B0-02 | NO-077 | Bố cục tiền tố lượt tải lên chưa có ở `packages/core` | `271382b` |
+| FIX-057 | 2026-09-22 | B0-04 | NO-077 | `storage.keys.upload_prefix` giữ bản riêng của bố cục dùng chung | `318dc5b` |
+| FIX-058 | 2026-09-22 | B5-01 | NO-077 | `ml_contracts._upload_prefix` dựng lại bố cục khoá của `storage` | `778c052` |
 | FIX-059 | 2026-09-22 | B0-05 | NO-078 | Worker Celery thử để logger gốc ở ERROR sau test messaging | nhánh `fix/b0-01-gate-log-debts` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
