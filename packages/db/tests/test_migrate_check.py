@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import Boolean, CheckConstraint, Column, Enum, Integer, MetaData, Table, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Column, Enum, Integer, MetaData, Table, Text, make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.schema import CreateTable
 from sqlalchemy.types import TypeEngine
 
 from packages.db import migrate_check
@@ -207,6 +208,18 @@ async def test_check_bound_to_native_type_keeps_table_check_drift(migrations: Pa
     assert failed_steps(results) == [
         ("tên CHECK khớp model", "CHECK thừa trong DB: ['ck_thing_ck_thing_code']; thiếu trong DB: ['ck_thing_code']")
     ]
+
+
+async def test_column_check_with_ddl_if_is_still_expected(migrations: Path, url: str) -> None:
+    """`CREATE TABLE` phát mọi `CHECK` trong `Column(...)`, kể cả có `ddl_if` lệch dialect: bước vẫn đòi nó."""
+    guarded = CheckConstraint("n > 0", name="n_positive").ddl_if(dialect="sqlite")
+    metadata = checked_metadata(Column("n", Integer, guarded))
+    dialect = make_url(url).get_dialect()()  # dialect của DB thử, không mở kết nối
+    assert "ck_thing_n_positive" in str(CreateTable(metadata.tables["thing"]).compile(dialect=dialect))
+    column = ", n integer CONSTRAINT ck_thing_n_positive CHECK (n > 0)"
+    add_revision(migrations, "r20260921_b9_01", BASELINE, checked_thing("ck_thing_code", column), DROP_THING)
+    results = await run_checks(alembic_config(migrations), url, metadata=metadata, seed_runner=no_seed)
+    assert failed_steps(results) == []
 
 
 async def test_non_idempotent_seed_fails(migrations: Path, url: str) -> None:

@@ -24,7 +24,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import CheckConstraint, Column, Connection, MetaData, Table, text
+from sqlalchemy import CheckConstraint, Connection, MetaData, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateSchema
@@ -97,20 +97,24 @@ def _check_name_drift(connection: Connection, metadata: MetaData) -> str:
     """
     preparer = connection.dialect.identifier_preparer
     tables = list(metadata.tables.values())
-    # `CHECK` khai trong `Column(...)` nằm ở `column.constraints`, không ở `table.constraints`.
-    owners: list[Table | Column[Any]] = [*tables, *(column for table in tables for column in table.columns)]
     # R-05: `_should_create_for_compiler` là API riêng của SQLAlchemy, đúng cổng mà
-    # `DDLCompiler.create_table_constraints` dùng để bỏ `CHECK` (xét `_create_rule`, `ddl_if`). Ngưỡng: đã
-    # đọc mã của 2.0.54 (`uv.lock`); bản sau đổi tên thì bước ném `AttributeError` (đỏ, không xanh giả) và
-    # `test_check_bound_to_native_type_passes` đỏ. Đường nâng cấp: so với tên do `create_all` tạo ở schema tạm.
-    # Trình biên dịch chỉ cần mang dialect; `CreateSchema` là lệnh DDL rẻ nhất có kiểu (`DDL(...)` chưa gõ kiểu).
+    # `DDLCompiler.create_table_constraints` dùng để bỏ `CHECK` mức bảng (xét `_create_rule`, `ddl_if`).
+    # Ngưỡng: đã đọc mã của 2.0.54 (`uv.lock`); bản sau đổi tên thì bước ném `AttributeError` (đỏ, không
+    # xanh giả) và `test_check_bound_to_native_type_passes` đỏ. Đường nâng cấp: so với tên do `create_all`
+    # tạo ở schema tạm. Trình biên dịch chỉ cần mang dialect; `CreateSchema` là lệnh DDL rẻ nhất có kiểu.
     ddl = connection.dialect.ddl_compiler(connection.dialect, CreateSchema("public"))
-    checks = [
+    table_checks = [
         c
-        for owner in owners
-        for c in owner.constraints
+        for table in tables
+        for c in table.constraints
         if isinstance(c, CheckConstraint) and c._should_create_for_compiler(ddl)
     ]
+    # `CHECK` khai trong `Column(...)` nằm ở `column.constraints`; `visit_create_column` phát mọi ràng
+    # buộc ở đó, không qua cổng nào, nên cũng không lọc ở đây.
+    column_checks = [
+        c for table in tables for column in table.columns for c in column.constraints if isinstance(c, CheckConstraint)
+    ]
+    checks = [*table_checks, *column_checks]
     # `None` (CHECK không tên mà quy ước không dựng được tên) thành "None": hiện ra như một tên thiếu.
     in_model = {str(preparer.format_constraint(check)) for check in checks}
     rows = connection.execute(_DB_CHECK_NAMES, {"tables": [table.fullname for table in tables]})
