@@ -45,6 +45,19 @@
 | FIX-036 | 2026-09-22 | B0-03 | NO-057 | `migrate_check` không so tên `CHECK` của DB với model | `593bcea` |
 | FIX-037 | 2026-09-22 | B0-06 | NO-057 | Hai `CHECK` của `idempotency_records` lặp tiền tố tên | `4e8e2a5` |
 | FIX-038 | 2026-09-22 | B0-01 | NO-058 | `lint_migrations` không miễn revision contract đã đăng ký: đường contract của BE-00 §6.1 không dùng được | `f37c52e` |
+| FIX-039 | 2026-09-22 | B0-03 | NO-065 | `test_new_revision` đóng băng ngày lúc nhập, đỏ khi bộ test vắt qua nửa đêm UTC | nhánh `fix/b0-03-migration-tool-debts` |
+| FIX-040 | 2026-09-22 | B0-03 | NO-069 | `migrate_check.run_checks` vượt R-08 (82 dòng, CC 13) | nhánh `fix/b0-03-migration-tool-debts` |
+| FIX-041 | 2026-09-22 | B0-03 | NO-070 | Bước "tên CHECK khớp model" đỏ giả với CHECK gắn kiểu | nhánh `fix/b0-03-migration-tool-debts` |
+| FIX-042 | 2026-09-22 | B0-01 | NO-068 | `lint_migrations._lint_body` vượt R-08 (78 dòng, CC 28) | nhánh `fix/b0-03-migration-tool-debts` |
+| FIX-043 | 2026-09-22 | B0-02 | NO-060 | Luật khoá object chưa có ở `packages/core` | nhánh `fix/b0-04-object-key-debts` |
+| FIX-044 | 2026-09-22 | B0-04 | NO-060 | `storage.keys` giữ bản riêng của luật khoá object | nhánh `fix/b0-04-object-key-debts` |
+| FIX-045 | 2026-09-22 | B5-01 | NO-060 | `ml_contracts.payloads` chép luật khoá object của `storage` | nhánh `fix/b0-04-object-key-debts` |
+| FIX-046 | 2026-09-22 | B0-04 | NO-073 | `_SERVER_NAMED_RE` chép tay luật id tầng của `core/ids.py` | nhánh `fix/b0-04-object-key-debts` |
+| FIX-047 | 2026-09-22 | B0-04 | NO-072 | Test FIX-012 không chạm biên 1000 khoá/lượt `DeleteObjects` | nhánh `fix/b0-04-object-key-debts` |
+| FIX-048 | 2026-09-22 | B1-01 | NO-066 | `test_auth_refresh__C11_parallel` chập chờn (21×401 thay vì 20) | nhánh `fix/b1-01-parallel-refresh-flake` |
+| FIX-049 | 2026-09-22 | B0-01 | NO-067 | Bộ lọc case của `_found_cases_by_op` chưa test nào chạm | nhánh `fix/b0-05-quiet-release-case-filter` |
+| FIX-050 | 2026-09-22 | B0-05 | NO-074 | `SafeLock` chưa công khai đường trả khoá lặng lẽ | nhánh `fix/b0-05-quiet-release-case-filter` |
+| FIX-051 | 2026-09-22 | B5-01 | NO-074 | `gpu.py` chép logic trả khoá lặng lẽ của `SafeLock` | nhánh `fix/b0-05-quiet-release-case-filter` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -352,3 +365,125 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
   `batch_alter_table`, `create_index` thiếu `CONCURRENTLY`/ngoài `autocommit_block`, tên revision. Chưa đăng ký → như cũ.
 - **[6]** Contract đã đăng ký có `RENAME`/`DROP` → đạt (đỏ trước); có `execute` chuỗi không hằng → vẫn hỏng; chưa đăng
   ký có `RENAME` → hỏng.
+
+---
+
+> **Giao việc FIX-039..FIX-051 (đợt 2).** Người dùng yêu cầu ngày 2026-09-22: "thực hiện fix tiếp, dùng orca, mỗi session 12 nợ
+> kỹ thuật cho đến khi fix hết trong debt.md". Đợt 1 (FIX-006..038) đã vào `main` qua năm nhánh `fix/*`, mỗi nhánh một phiên
+> `/merge-review` riêng. Đợt 2 nhận đúng 12 nợ còn sửa được: mười nợ mã dưới đây (NO-060, NO-065..NO-070, NO-072..NO-074) và hai
+> dòng hiến chương của người điều phối (NO-050, NO-071 — người điều phối tự làm, không có FIX). Bốn worktree chạy song song theo
+> vùng file (ngoại lệ K27 do người điều phối giao, như đợt 1), trần 2 lượt verify cùng lúc trên máy (RAM):
+> `fix/b0-03-migration-tool-debts` (FIX-039..042), `fix/b0-04-object-key-debts` (FIX-043..047),
+> `fix/b1-01-parallel-refresh-flake` (FIX-048), `fix/b0-05-quiet-release-case-filter` (FIX-049..051).
+> **Không có FIX (chủ là prompt chưa chạy):** NO-006, NO-021, NO-062 (B0-08, `deploy/**`); NO-051 (job CI của B0-09);
+> NO-061 (B6-01, checksum bản gốc seed); NO-063 (B5-04, ràng buộc bàn giao).
+>
+> Luật chung như đợt 1: test [6] đỏ trước, xanh sau; không nới assert, không `skip`/`xfail`/retry (K24), không mock dịch vụ
+> (K23), không đổi hợp đồng HTTP; dòng `DEBT.md` chuyển `✅` trong chính commit sửa; commit `fix(<scope>): …` (hoặc
+> `refactor(...)`/`test(...)` khi đúng loại) + trailer liền nhau `Prompt: <chủ>`, `Fix: FIX-<nnn>`, `Co-Authored-By: …`.
+
+## FIX-039 cho B0-03 — `test_new_revision` đóng băng ngày lúc nhập (NO-065)
+
+- **[1–3]** `packages/db/tests/test_new_revision.py` tính `TODAY = datetime.now(UTC)…` một lần lúc nhập; `new_revision.main`
+  đọc `datetime.now(UTC)` lúc gọi (`packages/db/new_revision.py:66`). Bộ test vắt qua nửa đêm UTC → glob `r{TODAY}_…` rỗng,
+  `test_creates_revision_with_charter_name`, `test_fix_revision_allowed_once` đỏ (`F.F` ở bước 5, `fix/b0-05-messaging-debts`
+  @ `f4223f2`; tái hiện bằng lùi `TODAY` một ngày: `2 failed, 11 passed`).
+- **[4]** Sửa: `packages/db/new_revision.py`, `packages/db/tests/test_new_revision.py`. Cấm: revision đã có, `tools/**`.
+- **[5]** `new_revision` nhận ngày qua `Clock` của `packages/core/clock.py` (R-18; `main(argv, clock=SystemClock())` hoặc
+  tương đương), test ghim bằng `fake_clock`. Không nới assert.
+- **[6]** Test đặt đồng hồ giả qua nửa đêm giữa lúc dựng kỳ vọng và lúc gọi → tên revision theo ngày của đồng hồ tiêm vào; đỏ
+  trên mã hiện tại.
+
+## FIX-040 cho B0-03 — `run_checks` vượt R-08 (NO-069)
+
+- **[1–3]** `packages/db/migrate_check.py:run_checks` 82 dòng, CC 13 (review `fix/b0-03-check-constraint-names` finding #1).
+- **[4]** Sửa: `packages/db/migrate_check.py`, `packages/db/tests/test_migrate_check.py`.
+- **[5]** Đưa từng bước lên mức module (nhận `engine`/`config`/`target` qua tham số), `run_checks` chỉ còn vòng lặp và dọn
+  engine. Hành vi, tên bước, thứ tự bước, mã thoát không đổi.
+- **[6]** Tái cấu trúc thuần: không có test đỏ; bằng chứng là `packages/db/tests` xanh trước và sau với cùng số test, và số
+  dòng/CC mới của hàm ghi trong báo cáo (R-08).
+
+## FIX-041 cho B0-03 — bước "tên CHECK khớp model" đỏ giả với CHECK gắn kiểu (NO-070)
+
+- **[1–3]** `_check_name_drift` lấy mọi `CheckConstraint` của bảng. `Boolean(create_constraint=True)` làm bước ném
+  `InvalidRequestError`; `Enum(…, create_constraint=True)` native làm bước báo "thiếu trong DB" (probe của review trên
+  postgres:16-alpine). Chưa model nào dùng.
+- **[4]** Sửa: `packages/db/migrate_check.py`, `packages/db/tests/test_migrate_check.py`.
+- **[5]** Bỏ các ràng buộc mà DDL của dialect không phát ra (`_create_rule` trả `False` với DDL compiler), comment ghi ngưỡng
+  vì dùng API riêng của SQLAlchemy (R-05). Không đổi cách so với CHECK mức bảng.
+- **[6]** Metadata thử có `Boolean(create_constraint=True)` và `Enum(..., create_constraint=True)` → bước đạt (đỏ trước: ném /
+  báo thiếu); CHECK mức bảng lệch tên vẫn hỏng.
+
+## FIX-042 cho B0-01 — `_lint_body` vượt R-08 (NO-068)
+
+- **[1–3]** `tools/lint_migrations.py:_lint_body` 78 dòng, CC 28, 25 nhánh; phân loại "phá huỷ hay không" giấu trong vòng lặp
+  (`_BANNED_CALL_NAMES` trộn bốn thao tác phá huỷ với `batch_alter_table`, một `Report()` dùng để bỏ đi) — review
+  `fix/b0-03-check-constraint-names` finding #1, #4.
+- **[4]** Sửa: `tools/lint_migrations.py`, `tools/tests/test_lint_migrations*.py`.
+- **[5]** Mỗi luật một hàm `_check_<luật>(node, …)`; hằng `_DESTRUCTIVE_CALL_NAMES` tách khỏi `batch_alter_table`; bỏ `Report()`
+  dùng một lần. Hành vi (thông báo, luật miễn cho contract đã đăng ký của FIX-038) không đổi.
+- **[6]** Tái cấu trúc thuần: `tools/tests/test_lint_migrations*.py` xanh trước/sau cùng số test; thêm một test chốt rằng tên
+  thêm vào `_DESTRUCTIVE_CALL_NAMES` được miễn cho contract còn `batch_alter_table` thì không.
+
+## FIX-043 cho B0-02, FIX-044 cho B0-04, FIX-045 cho B5-01 — luật khoá object có hai nguồn (NO-060)
+
+- **[1–3]** `packages/ml_contracts/payloads.py:check_object_key` chép luật khoá của `packages/storage/keys.py:check_key`
+  (`ml_contracts` không được nhập `storage`, [9] B5-01); test `test_check_object_key_matches_storage_rules` giữ hai bản khớp.
+- **[4]** FIX-043: module mới dưới `packages/core/` (vd `object_keys.py`) + test dưới `packages/core/tests/`. FIX-044:
+  `packages/storage/keys.py` + test của `packages/storage`. FIX-045: `packages/ml_contracts/payloads.py` + test của
+  `packages/ml_contracts`. Cấm `.importlinter`.
+- **[5]** Dời `check_key`/`check_prefix` (và hằng `MAX_KEY_BYTES`, đuôi metadata, `_SEGMENT_RE`) xuống `packages/core`;
+  `storage` và `ml_contracts` cùng nhập, xoá bản chép (cả `payloads._prefix_key`). Vẫn ném `ValueError`; thông báo theo bản
+  của `storage` (test nào của `ml_contracts` chốt chuỗi cũ thì đổi theo, ghi rõ). `packages/core` không thêm thư viện (BE-00 §13.1).
+- **[6]** Test cũ khớp hai bản đổi thành test một nguồn: `payloads.check_object_key is object_keys.check_key` (hoặc gọi thẳng),
+  đỏ trên mã hiện tại; bộ 12 mẫu biên chuyển về test của `packages/core`.
+
+## FIX-046 cho B0-04 — `_SERVER_NAMED_RE` chép luật id tầng (NO-073)
+
+- **[1–3]** `packages/storage/keys.py:30-34` chép tay `L-[0-9A-Z]{10,64}` của `packages/core/ids.py:60` (`is_spatial_id`).
+- **[4]** Sửa: `packages/storage/keys.py` + test của `packages/storage`.
+- **[5]** Tách khoá theo `/` và kiểm từng đoạn bằng `is_id`/`is_spatial_id` như hàm dựng khoá; bỏ regex chép.
+- **[6]** Test khoá trang với id tầng dài 10 và 64 (đạt), 9 và 65 (không phải khoá do server đặt) và một id tầng mà luật của
+  `core/ids.py` chấp nhận nhưng regex cũ từ chối (hoặc ngược lại) → đỏ trước; nếu hai luật trùng khít trên mọi mẫu thì test
+  chốt một nguồn (đột biến luật ở `core` làm test storage đỏ), ghi rõ trong báo cáo.
+
+## FIX-047 cho B0-04 — test FIX-012 không chạm biên lô (NO-072)
+
+- **[1–3]** `packages/storage/tests/test_s3.py:186` `test_delete_prefix_deletes_in_batches` chỉ ghi 3 object; spec FIX-012 [6]
+  đòi "xoá > 1 lô".
+- **[4]** Sửa: `packages/storage/tests/test_s3.py`.
+- **[5]** 1001 object ghi song song (có trần đồng thời), khẳng định đúng 2 lượt `POST ?delete`, 0 `DELETE`, tiền tố rỗng.
+- **[6]** Test mới đỏ trên bản `_delete_under` trước FIX-012 (xoá từng object: 1001 `DELETE`) — dựng lại bản cũ trong `.cache/`.
+
+## FIX-048 cho B1-01 — `test_auth_refresh__C11_parallel` chập chờn (NO-066)
+
+- **[1–3]** Cổng bước 5 trên `fix/b0-05-messaging-debts` @ `22dee96`: `At index 20 diff: 401 != 429` (≥ 21 lượt 401 thay vì
+  `REFRESH_FAIL_LIMIT` = 20). Không tái hiện trong 14 lượt. Giả thuyết: `soft_redis(bump…)` trả `None` (Redis chậm quá
+  `CONNECT_TIMEOUT_S` = 2 s qua proxy cổng dưới tải) → lượt đó không đếm.
+- **[4]** Sửa: `apps/api/auth/tests/test_refresh.py`; `apps/api/auth/router.py` chỉ khi gốc nằm ở đó. Cấm `packages/**`.
+- **[5]** Tái hiện trước (R-35): chạy test dưới `coverage` nhiều lượt, song song tải CPU/verify khác; bắt log `rate_limit_open`.
+  Gốc là Redis hỏng → test phải báo đúng tên nguyên nhân (không thành "đếm sai"), hoặc sửa đường đếm nếu gốc là mã. Không nới
+  assert, không retry.
+- **[6]** Test đỏ tất định dựng lại đúng điều kiện gốc (vd kết nối bị treo quá trần ở đúng một lượt), xanh sau sửa. Không tái
+  hiện được sau số lượt đủ lớn → ghi `DEBT.md` số lượt, giả thuyết đã loại trừ và bằng chứng (R-35), `worker_done --outcome failed`.
+
+## FIX-049 cho B0-01 — bộ lọc của `_found_cases_by_op` chưa test nào chạm (NO-067)
+
+- **[1–3]** `tools/case_gate.py:347-348`: dòng `continue` chưa chạy lần nào; đột biến bỏ bộ lọc case chung vẫn `58 passed`
+  (review `fix/b0-07-contract-tool-debts` finding #1).
+- **[4]** Sửa: `tools/tests/test_case_gate.py`.
+- **[5]** Test `evaluate` với `test_common__C01[x_create]` và `test_x_create_is_public` (`passed`, có vết `op="x_create"`,
+  status 200) → `"C01"` không vào `found` của `x_create` và không vào case chung.
+- **[6]** Đỏ trên `case_gate.py` đã đột biến (bỏ vế lọc) — ghi lệnh; xanh trên mã hiện tại.
+
+## FIX-050 cho B0-05, FIX-051 cho B5-01 — trả khoá lặng lẽ có hai bản (NO-074)
+
+- **[1–3]** "Trả khoá; Redis hỏng thì `WARNING` rồi bỏ qua (TTL dọn hộ), không che lỗi của thân" có ở
+  `packages/messaging/locks.py:103` (`SafeLock._release_quietly`, riêng tư) và `apps/ml/runtime/gpu.py:129`
+  (`_Keeper._release`).
+- **[4]** FIX-050: `packages/messaging/locks.py` + test của `packages/messaging`. FIX-051: `apps/ml/runtime/gpu.py` + test của
+  `apps/ml/runtime`.
+- **[5]** B0-05 công khai `release_quietly(token)` (docstring nói rõ khi nào dùng thay `release`); B5-01 gọi
+  `runner.run(lock.release_quietly(token))`, xoá bản chép. Tên sự kiện log giữ như test hiện có đòi hỏi, hoặc ghi rõ đổi.
+- **[6]** Test B5-01: Redis hỏng lúc trả khoá GPU → một `WARNING` từ đúng một nguồn, thân không bị che; test chốt `gpu.py` không
+  còn tự bắt lỗi trả khoá (AST hoặc đột biến) — đỏ trên mã hiện tại.
