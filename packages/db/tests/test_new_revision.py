@@ -1,7 +1,7 @@
 """`python -m packages.db.new_revision` — tên revision theo BE-00 §6.1."""
 
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -9,9 +9,8 @@ from alembic.script import ScriptDirectory
 
 from packages.db import new_revision
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config
+from packages.testing.fixtures.clock import FakeClock
 from tools.lint_migrations import run as lint_migrations
-
-TODAY = datetime.now(UTC).strftime("%Y%m%d")
 
 SECOND_HEAD = '''\
 """thêm head thứ hai"""
@@ -57,17 +56,30 @@ def single_head(versions: Path) -> str:
     return str(heads[0])
 
 
-def test_creates_revision_with_charter_name(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_creates_revision_with_charter_name(
+    versions: Path, fake_clock: FakeClock, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Revision mới mang tên theo hiến chương và nối vào head hiện hành (BE-00 §6.1)."""
     head_before = single_head(versions)
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"]) == 0
-    created = list(versions.glob(f"r{TODAY}_b2_01_*.py"))
-    assert [path.name for path in created] == [f"r{TODAY}_b2_01_add_projects.py"]
+    rev = f"r{fake_clock.now():%Y%m%d}_b2_01"
+    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"], clock=fake_clock) == 0
+    created = list(versions.glob(f"{rev}_*.py"))
+    assert [path.name for path in created] == [f"{rev}_add_projects.py"]
     body = created[0].read_text(encoding="utf-8")
-    assert f'revision: str = "r{TODAY}_b2_01"' in body
+    assert f'revision: str = "{rev}"' in body
     assert f'down_revision: str | None = "{head_before}"' in body
-    assert f"r{TODAY}_b2_01" in capsys.readouterr().out
+    assert rev in capsys.readouterr().out
     assert lint_migrations(versions).violations == []
+
+
+def test_revision_date_read_from_clock_at_call_time(versions: Path, fake_clock: FakeClock) -> None:
+    """NO-065: đồng hồ qua nửa đêm UTC giữa lúc dựng kỳ vọng và lúc gọi → tên theo ngày lúc gọi."""
+    fake_clock.set(datetime(2026, 1, 1, 23, 59, 59, tzinfo=UTC))
+    day_before = f"{fake_clock.now():%Y%m%d}"
+    fake_clock.advance(timedelta(seconds=2))
+    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"], clock=fake_clock) == 0
+    assert [path.name for path in versions.glob("r*_b2_01_*.py")] == ["r20260102_b2_01_add_projects.py"]
+    assert not list(versions.glob(f"r{day_before}_b2_01_*.py"))
 
 
 def test_second_revision_for_same_prompt_is_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -77,11 +89,11 @@ def test_second_revision_for_same_prompt_is_rejected(versions: Path, capsys: pyt
     assert not list(versions.glob("*add_more*"))
 
 
-def test_fix_revision_allowed_once(versions: Path) -> None:
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"]) == 0
-    assert new_revision.main(["--code", "B2-01", "--slug", "fix_index", "--fix", "001"]) == 0
-    assert list(versions.glob(f"r{TODAY}_b2_01_fix001_fix_index.py"))
-    assert new_revision.main(["--code", "B2-01", "--slug", "again", "--fix", "001"]) == 2
+def test_fix_revision_allowed_once(versions: Path, fake_clock: FakeClock) -> None:
+    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"], clock=fake_clock) == 0
+    assert new_revision.main(["--code", "B2-01", "--slug", "fix_index", "--fix", "001"], clock=fake_clock) == 0
+    assert list(versions.glob(f"r{fake_clock.now():%Y%m%d}_b2_01_fix001_fix_index.py"))
+    assert new_revision.main(["--code", "B2-01", "--slug", "again", "--fix", "001"], clock=fake_clock) == 2
     assert lint_migrations(versions).violations == []
 
 
