@@ -71,6 +71,9 @@
 | FIX-062 | 2026-09-22 | B0-04 | NO-081 | `storage.keys` dựng `runs/…/`, `ml/models/…/` bằng bản riêng | nhánh `fix/b0-04-layout-and-c11-debts` |
 | FIX-063 | 2026-09-22 | B5-01 | NO-081 | `ml_contracts` dựng lại `runs/…/`, `ml/models/…/`; `_id_of` chép `check_id` | nhánh `fix/b0-04-layout-and-c11-debts` |
 | FIX-064 | 2026-09-22 | B1-01 | NO-082 | Bộ kiểm của C11 gọi lỗi đếm thật là "cửa sổ thứ hai" | nhánh `fix/b0-04-layout-and-c11-debts` |
+| FIX-065 | 2026-09-22 | B0-01 | NO-089 | Log cổng không có traceback, không "mã thoát" khi lượt verify ném lỗi | nhánh `fix/b0-01-gate-log-followups` |
+| FIX-066 | 2026-09-22 | B0-01 | NO-090 | Log cổng `.cache/src-out/verify/*.log` dồn mãi, không trần | nhánh `fix/b0-01-gate-log-followups` |
+| FIX-067 | 2026-09-22 | B0-05 | NO-087 | Worker Celery thử để dấu cấp tiến trình (env, `captureWarnings`) | nhánh `fix/b0-01-gate-log-followups` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -597,3 +600,37 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Chỉ báo cửa sổ thứ hai khi `counter[0] < trần` và `statuses.count(401) − trần == counter[0]`; còn lại báo đếm sai.
 - **[6]** Ca thuần gọi thẳng bộ kiểm (`[401]×40`, không sự kiện mở, `(7, 360)`, 20) không được khớp "cửa sổ thứ hai" — đỏ trên mã
   hiện tại.
+
+---
+
+> **Giao việc FIX-065..FIX-067 (đợt 5).** Tiếp yêu cầu ngày 2026-09-22. Đợt 5 nhận ba nợ công cụ cổng/test do đợt 3 và review
+> của nó tìm ra: NO-087, NO-089, NO-090, trên nhánh `fix/b0-01-gate-log-followups` (một worker, chạy song song đợt 4 vì khác
+> vùng file). Luật chung như đợt 1–4; trần 2 lượt verify cùng lúc.
+
+## FIX-065 cho B0-01 — log cổng không có traceback khi lượt verify ném lỗi (NO-089)
+
+- **[1–3]** `tools/verify/steps.py:295` `with _tee_output(...)`: bước ném lỗi lạ → `_tee_output` trả fd 1/2 trong `finally` rồi
+  ngoại lệ mới nổi lên; traceback ra stderr gốc, log host dừng ở dòng output cuối, không "mã thoát" (probe P3 review
+  `fix/b0-01-gate-log-debts`).
+- **[4]** Sửa: `tools/verify/steps.py`, `tools/tests/test_steps*.py`.
+- **[5]** Trong khối `with`: `except Exception` → in traceback (vào log), `rc = 1`, vẫn in "mã thoát". Không nuốt lỗi (mã thoát
+  khác 0, traceback có trong log và stderr).
+- **[6]** Test: bước ném `RuntimeError` → log có `Traceback` và "mã thoát: 1"; đỏ trên mã hiện tại.
+
+## FIX-066 cho B0-01 — log cổng dồn mãi (NO-090)
+
+- **[1–3]** `tools/verify/run.sh:93-97` tạo một file `.cache/src-out/verify/*.log` mỗi lượt, không dọn; `gc` không đụng tới;
+  `in_container.sh` chép cả `.cache` vào `/tmp/w` mỗi lượt.
+- **[4]** Sửa: `tools/verify/run.sh` (và `tools/verify/in_container.sh` nếu cần bỏ `.cache/src-out/verify` khỏi bản chép),
+  test dưới `tools/tests/`.
+- **[5]** Giữ N file mới nhất (vd 20) trước khi tạo file mới; hằng có tên và lý do. Không đụng file khác trong thư mục.
+- **[6]** Test: thư mục có N+k file → sau khi dọn còn đúng N file mới nhất; đỏ trên mã hiện tại.
+
+## FIX-067 cho B0-05 — worker Celery thử để dấu cấp tiến trình (NO-087)
+
+- **[1–3]** Sau worker thử (kể cả sau FIX-059): `os.environ` giữ `CELERY_LOG_LEVEL`, `CELERY_LOG_FILE`, `_MP_FORK_LOGLEVEL_`,
+  `_MP_FORK_LOGFILE_`, `_MP_FORK_LOGFORMAT_`; `logging.captureWarnings(True)`; bộ lọc `warnings` 'always'. Ảnh hưởng đọc được ~0.
+- **[4]** Sửa: `packages/testing/fixtures/messaging.py` + test của fixture.
+- **[5]** Fixture lưu và trả các khoá môi trường đó và trạng thái `captureWarnings`/bộ lọc khi worker dừng; hoặc `➖` kèm chứng minh
+  vô hại (ghi rõ lý do đứng được).
+- **[6]** Test trước = sau cho các khoá môi trường và `captureWarnings`; đỏ trên mã hiện tại.
