@@ -5,8 +5,8 @@ lượt dưới khoá): id đúng tiền tố qua `is_id`, SHA-256 64 hex thư�
 luật B0-04, và mọi luật chéo trường ở validator. Sai → `ValidationError`; `define_task`
 coi đó là thông điệp độc (J08).
 
-Gói không được nhập `packages.storage` ([9] B5-01), nên luật khoá object chép ở
-`check_object_key`; test so nó với `packages.storage.keys.check_key` trên cùng bộ mẫu.
+Luật khoá object lấy từ `packages.core.object_keys` — cùng một nguồn với `packages.storage`
+(gói không được nhập `storage`, [9] B5-01; NO-060).
 """
 
 import itertools
@@ -18,13 +18,11 @@ from typing import Annotated, Final, Literal, Self, get_args
 from pydantic import AfterValidator, Field, model_validator
 
 from packages.core.ids import IdPrefix, is_id, is_spatial_id
+from packages.core.object_keys import check_key, check_prefix
 from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, FrozenModel
 from packages.ml_contracts.families import BASE_MODELS, MetricName, ModelFamily, TrainableFamily
 from packages.ml_contracts.pinned import PINNED
 
-MAX_KEY_BYTES: Final = 1024
-_META_SUFFIX: Final = ".meta.json"
-_SEGMENT_RE: Final = re.compile(r"[A-Za-z0-9._-]+")
 MODELS_PREFIX: Final = "ml/models/"
 MAX_ARTIFACT_KEYS: Final = 8
 MAX_METRIC_POINTS: Final = 500
@@ -34,24 +32,6 @@ MAX_LOG_PARAM_CHARS: Final = 200
 StepId = ModelFamily | Literal["spatialDataBuild"]
 _METRIC_NAMES: Final = frozenset(get_args(MetricName))
 _UNIT_METRICS: Final = frozenset({"iou", "map50"})
-
-
-def check_object_key(key: str) -> str:
-    """Khoá object hợp lệ theo luật B0-04 (`packages.storage.keys.check_key`) → trả lại nó."""
-    if not key or len(key.encode("utf-8")) > MAX_KEY_BYTES or key.endswith(_META_SUFFIX):
-        raise ValueError(f"khoá object rỗng, dài quá {MAX_KEY_BYTES} byte hay trùng đuôi metadata")
-    for segment in key.split("/"):
-        if segment in ("", ".", "..") or not _SEGMENT_RE.fullmatch(segment):
-            raise ValueError(f"đoạn khoá sai luật: {key!r}")
-    return key
-
-
-def _prefix_key(prefix: str) -> str:
-    """Tiền tố khoá: kết thúc bằng `/`, phần trước nó là khoá hợp lệ."""
-    if not prefix.endswith("/"):
-        raise ValueError(f"tiền tố phải kết thúc bằng '/': {prefix!r}")
-    check_object_key(prefix[:-1])
-    return prefix
 
 
 def _id_of(prefix: IdPrefix) -> AfterValidator:
@@ -70,7 +50,7 @@ RunId = Annotated[str, _id_of("run")]
 ModelVersionId = Annotated[str, _id_of("mdl")]
 JobId = Annotated[str, _id_of("job")]
 DatasetVersionId = Annotated[str, _id_of("dsv")]
-ObjectKey = Annotated[str, AfterValidator(check_object_key)]
+ObjectKey = Annotated[str, AfterValidator(check_key)]
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 ErrorCode = Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]{2,63}$")]
 Millis = Annotated[int, Field(ge=0)]
@@ -154,7 +134,7 @@ class InferStepPayload(MlPayload):
     page_key: ObjectKey
     width_px: Annotated[int, Field(ge=1)]
     height_px: Annotated[int, Field(ge=1)]
-    artifact_prefix: Annotated[str, AfterValidator(_prefix_key)]
+    artifact_prefix: Annotated[str, AfterValidator(check_prefix)]
     model: ModelRef
     px_per_paper_mm: Annotated[float, Field(ge=1, le=100, allow_inf_nan=False)] | None = None
 

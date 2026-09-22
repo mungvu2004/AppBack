@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import pytest
 
+from packages.core import object_keys
 from packages.storage import keys
 
 PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
@@ -32,37 +33,13 @@ def test_prefixes_end_with_slash() -> None:
     assert keys.upload_prefix(PROJECT, FLOOR, UPLOAD) == f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
 
 
-@pytest.mark.parametrize(
-    "bad",
-    [
-        "",
-        "a/../b",
-        "../secret",
-        "a/./b",
-        "a\x00b",
-        "a\x7fb",
-        "a//b",
-        "/a",
-        "a\\b",
-        "x.meta.json",
-        "a" * 1025,
-        "tệp.png",
-    ],
-)
-def test_check_key_rejects_unsafe(bad: str) -> None:
-    with pytest.raises(ValueError, match=r"khoá|đoạn"):
-        keys.check_key(bad)
+def test_key_rules_come_from_core() -> None:
+    """NO-060: `storage` dùng đúng luật khoá của `packages.core.object_keys`, không giữ bản riêng.
 
-
-@pytest.mark.parametrize("good", ["a", "projects/prj_A/x.png", "a" * 1024])
-def test_check_key_accepts_safe(good: str) -> None:
-    assert keys.check_key(good) == good
-
-
-@pytest.mark.parametrize("bad", ["projects/prj_A", "", "projects/prj_A//"])
-def test_check_prefix_requires_trailing_slash(bad: str) -> None:
-    with pytest.raises(ValueError, match=r"tiền tố|khoá|đoạn"):
-        keys.check_prefix(bad)
+    Mẫu biên của luật nằm ở `packages/core/tests/test_object_keys.py`.
+    """
+    assert keys.check_key is object_keys.check_key
+    assert keys.check_prefix is object_keys.check_prefix
 
 
 @pytest.mark.parametrize(
@@ -103,8 +80,42 @@ def test_builders_reject_wrong_ids(build: Callable[[], str], match: str) -> None
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.jpg", None),
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/sub/0.png", None),
         (f"users/{USER}/avatar/sub/{ULID}.png", None),
+        (f"users/{USER}/avatar/{ULID}", None),
+        (f"users/{USER}/avatar/{ULID}.png.png", None),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0", None),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/007.png", None),
+        (f"projects/prj_lowercase/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png", None),
+        ("library/sofa/preview.png", None),
     ],
 )
 def test_server_chosen_kind_only_for_keys_the_server_names(key: str, expected: str | None) -> None:
     """NO-011: ảnh đại diện và ảnh trang do server đặt đuôi sau khi đã kiểm magic bytes; `original.*` thì không."""
     assert keys.server_chosen_kind(key) == expected
+
+
+@pytest.mark.parametrize(
+    ("floor", "expected"),
+    [("L-" + "A" * 10, "png"), ("L-" + "Z9" * 32, "png"), ("L-" + "A" * 9, None), ("L-" + "A" * 65, None)],
+)
+def test_server_chosen_kind_follows_level_id_length(floor: str, expected: str | None) -> None:
+    """NO-073: id tầng dài 10 và 64 là khoá trang do server đặt; 9 và 65 thì không (biên `is_spatial_id`)."""
+    page = f"projects/{PROJECT}/floors/{floor}/uploads/{UPLOAD}/pages/0.png"
+    assert keys.server_chosen_kind(page) == expected
+
+
+@pytest.mark.parametrize(
+    ("rule", "key"),
+    [
+        ("is_spatial_id", f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png"),
+        ("is_id", f"users/{USER}/avatar/{ULID}.png"),
+    ],
+)
+def test_server_chosen_kind_reads_id_rules_of_core(monkeypatch: pytest.MonkeyPatch, rule: str, key: str) -> None:
+    """NO-073: đột biến luật id mà hàm dựng khoá dùng thì khoá đó thôi là khoá server đặt.
+
+    Chốt một nguồn: `server_chosen_kind` hỏi đúng `is_id`/`is_spatial_id` của `packages.core.ids`
+    như hàm dựng, không hỏi regex chép tay.
+    """
+    assert keys.server_chosen_kind(key) is not None
+    monkeypatch.setattr(keys, rule, lambda *_: False)
+    assert keys.server_chosen_kind(key) is None
