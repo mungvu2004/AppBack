@@ -91,13 +91,58 @@ def test_alter_column_new_column_name_hỏng_nullable_true_đạt(tmp_path: Path
     assert [v.detail for v in run(tmp_path).violations] == ["new_column_name"]
 
 
-def test_contract_đã_đăng_ký_đạt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    contracts = _write(tmp_path, "contracts.toml", 'revisions = ["r20260918_b0_03"]\n')
+def _contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, upgrade: str, *, registered: bool = True) -> Report:
+    """Lint một revision `# contract:` với thân `upgrade` cho trước; `registered` = tên có trong contracts.toml."""
+    listed = '["r20260918_b0_03"]' if registered else "[]"
+    contracts = _write(tmp_path, "contracts.toml", f"revisions = {listed}\n")
     monkeypatch.setattr(lint_migrations, "CONTRACTS_TOML", contracts)
     versions = tmp_path / "versions"
     versions.mkdir()
-    _write(versions, "c.py", '# contract: bỏ cột cũ ở lần phát hành sau\nrevision = "r20260918_b0_03"\n')
-    assert run(versions).ok
+    _write(
+        versions,
+        "c.py",
+        '# contract: bỏ cột cũ ở lần phát hành sau\nrevision = "r20260918_b0_03"\nfrom alembic import op\n'
+        f"def upgrade() -> None:\n{upgrade}def downgrade() -> None:\n    pass\n",
+    )
+    return run(versions)
+
+
+def test_contract_đã_đăng_ký_đạt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _contract(tmp_path, monkeypatch, "    pass\n").ok
+
+
+def test_contract_đã_đăng_ký_được_phá_huỷ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FIX-038: đường contract của BE-00 §6.1 phải dùng được — drop/rename/NOT NULL không bị luật expand chặn."""
+    upgrade = (
+        '    op.execute("ALTER TABLE t RENAME CONSTRAINT ck_a TO ck_b")\n'
+        '    op.drop_constraint("ck_c", "t")\n'
+        '    op.alter_column("t", "a", nullable=False)\n'
+        '    op.add_column("t", sa.Column("b", sa.Integer(), nullable=False))\n'
+    )
+    report = _contract(tmp_path, monkeypatch, upgrade)
+    assert report.ok, report.violations
+
+
+def test_contract_đã_đăng_ký_vẫn_kiểm_luật_không_phá_huỷ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Miễn hẹp: SQL không hằng, `batch_alter_table`, index khoá bảng vẫn hỏng trong revision contract."""
+    upgrade = (
+        '    op.drop_column("t", "a")\n'
+        "    op.execute(sql)\n"
+        '    op.batch_alter_table("t")\n'
+        '    op.create_index("ix_t_c", "t", ["c"])\n'
+    )
+    report = _contract(tmp_path, monkeypatch, upgrade)
+    assert {(v.rule, v.detail) for v in report.violations} == {
+        ("execute đối số không phải hằng chuỗi", ""),
+        ("thao tác cấm (§6.1)", "batch_alter_table"),
+        ("create_index thiếu postgresql_concurrently=True", "t"),
+    }
+
+
+def test_contract_chưa_đăng_ký_không_được_phá_huỷ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    upgrade = '    op.execute("ALTER TABLE t RENAME CONSTRAINT ck_a TO ck_b")\n'
+    report = _contract(tmp_path, monkeypatch, upgrade, registered=False)
+    assert _rules(report) == {"# contract: chưa đăng ký ở docs/contracts.toml", "execute chuỗi SQL cấm"}
 
 
 def test_contracts_toml_thiếu_coi_như_rỗng(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

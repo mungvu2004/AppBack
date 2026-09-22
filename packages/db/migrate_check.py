@@ -3,7 +3,7 @@
 Vòng kiểm: đúng 1 head → `upgrade head` → seed hai lần (số dòng không đổi) →
 `downgrade -1` → `upgrade head` (revision mới nhất chạy trên DB **có dữ liệu**) →
 `downgrade base` (không còn bảng nào ngoài `alembic_version`) → `upgrade head` →
-model khớp DB.
+model khớp DB → tên `CHECK` khớp model (`compare_metadata` không so `CHECK`, FIX-036).
 
 Không có `DATABASE_URL` thì tự dựng `postgres:16-alpine` bằng Testcontainers (nhập
 lười trong hàm; `packages.db` không nhập `packages.testing`).
@@ -24,7 +24,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Connection, MetaData, text
+from sqlalchemy import CheckConstraint, Column, Connection, MetaData, Table, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -39,6 +39,11 @@ SCRIPT_LOCATION: Final = Path(__file__).resolve().parent / "migrations"
 SEED_ENV: Final = "ci"
 # Cùng ảnh với packages/testing/fixtures/services.py (không nhập được từ mã không phải test).
 POSTGRES_IMAGE: Final = "postgres:16-alpine"
+# `to_regclass` phân giải tên bảng theo search_path, như DDL của model (không ghi schema) đã tạo.
+_DB_CHECK_NAMES: Final = text(
+    "SELECT conname FROM pg_constraint WHERE contype = 'c' AND conrelid = ANY("
+    "SELECT to_regclass(qualified)::oid FROM unnest(CAST(:tables AS text[])) AS t(qualified))"
+)
 
 SeedRunner = Callable[[AsyncSession, str], Awaitable[Any]]
 
@@ -75,6 +80,28 @@ async def _table_counts(session: AsyncSession) -> dict[str, int]:
 def _compare(connection: Connection, metadata: MetaData) -> list[Any]:
     context = MigrationContext.configure(connection, opts={"compare_type": True, "compare_server_default": True})
     return list(compare_metadata(context, metadata))
+
+
+def _check_name_drift(connection: Connection, metadata: MetaData) -> str:
+    """So tên `CHECK` của model với DB trên các bảng của `metadata`; "" nếu khớp, không thì tên thừa/thiếu.
+
+    `compare_metadata` không so `CHECK`, nên tên lặp tiền tố (`ck_t_ck_t_x`: revision truyền tên đủ
+    tiền tố mà không bọc `op.f(...)`, NO-057) lọt qua "model khớp DB". Tên model dựng bằng
+    `format_constraint` của dialect: đúng quy ước và đúng cách cắt tên > 63 ký tự như DDL (tên cần
+    ngoặc kép trả về có ngoặc nên hiện lệch — quy ước chỉ sinh chữ thường). `CHECK` của domain
+    (`conrelid = 0`) và của bảng ngoài metadata không xét.
+    """
+    preparer = connection.dialect.identifier_preparer
+    tables = list(metadata.tables.values())
+    # `CHECK` khai trong `Column(...)` nằm ở `column.constraints`, không ở `table.constraints`.
+    owners: list[Table | Column[Any]] = [*tables, *(column for table in tables for column in table.columns)]
+    checks = [c for owner in owners for c in owner.constraints if isinstance(c, CheckConstraint)]
+    # `None` (CHECK không tên mà quy ước không dựng được tên) thành "None": hiện ra như một tên thiếu.
+    in_model = {str(preparer.format_constraint(check)) for check in checks}
+    rows = connection.execute(_DB_CHECK_NAMES, {"tables": [table.fullname for table in tables]})
+    in_db = {str(name) for (name,) in rows}
+    extra, missing = sorted(in_db - in_model), sorted(in_model - in_db)
+    return "" if not extra and not missing else f"CHECK thừa trong DB: {extra}; thiếu trong DB: {missing}"
 
 
 async def run_checks(
@@ -136,6 +163,10 @@ async def run_checks(
             diffs = await connection.run_sync(_compare, target)
         return "" if not diffs else f"{len(diffs)} khác biệt: {diffs}"
 
+    async def check_names_match() -> str:
+        async with engine.connect() as connection:
+            return await connection.run_sync(_check_name_drift, target)
+
     try:
         steps: list[tuple[str, Callable[[], Awaitable[str]]]] = [
             ("đúng 1 head", one_head),
@@ -147,6 +178,7 @@ async def run_checks(
             ("chỉ còn alembic_version", only_version_table),
             ("upgrade head lại", lambda: alembic("head")),
             ("model khớp DB", metadata_matches),
+            ("tên CHECK khớp model", check_names_match),
         ]
         for name, run in steps:
             if not await step(name, run):

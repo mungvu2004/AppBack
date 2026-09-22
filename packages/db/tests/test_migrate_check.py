@@ -6,10 +6,11 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Column, Integer, MetaData, Table, Text, text
+from sqlalchemy import CheckConstraint, Column, Integer, MetaData, Table, Text, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.db import migrate_check
+from packages.db.base import NAMING_CONVENTION
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config, run_checks
 from packages.testing.fixtures import db as db_fixtures
 
@@ -99,7 +100,7 @@ async def test_good_migrations_pass(migrations: Path, url: str) -> None:
     add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
     results = await run_checks(alembic_config(migrations), url, metadata=thing_metadata(), seed_runner=no_seed)
     assert failed_steps(results) == []
-    assert len(results) == 9
+    assert len(results) == 10
 
 
 async def test_two_heads_fail_first_step(migrations: Path, url: str) -> None:
@@ -130,6 +131,45 @@ async def test_model_without_migration_fails(migrations: Path, url: str) -> None
     assert "missing" in failed[0][1]
 
 
+def checked_metadata() -> MetaData:
+    """`thing` có `CHECK` mức bảng `code` và mức cột `id_positive`; quy ước của `Base` thêm `ck_thing_`."""
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    Table(
+        "thing",
+        metadata,
+        Column("id", Integer, CheckConstraint("id > 0", name="id_positive"), primary_key=True),
+        Column("code", Text),
+        CheckConstraint("code <> ''", name="code"),
+    )
+    return metadata
+
+
+def checked_thing(code_check: str) -> str:
+    """Revision tạo `thing` với `CHECK` của `code` mang đúng tên `code_check` trong DB."""
+    sql = (
+        "CREATE TABLE thing (id integer PRIMARY KEY CONSTRAINT ck_thing_id_positive CHECK (id > 0), "
+        f"code text CONSTRAINT {code_check} CHECK (code <> ''))"
+    )
+    return f'op.execute("{sql}")'
+
+
+async def test_check_names_matching_model_pass(migrations: Path, url: str) -> None:
+    add_revision(migrations, "r20260921_b9_01", BASELINE, checked_thing("ck_thing_code"), DROP_THING)
+    results = await run_checks(alembic_config(migrations), url, metadata=checked_metadata(), seed_runner=no_seed)
+    assert failed_steps(results) == []
+    assert results[-1][0] == "tên CHECK khớp model"
+
+
+async def test_check_name_with_doubled_prefix_fails(migrations: Path, url: str) -> None:
+    """NO-057: tên đủ tiền tố truyền không bọc `op.f(...)` bị quy ước ghép lần hai; `compare_metadata` không so."""
+    add_revision(migrations, "r20260921_b9_01", BASELINE, checked_thing("ck_thing_ck_thing_code"), DROP_THING)
+    results = await run_checks(alembic_config(migrations), url, metadata=checked_metadata(), seed_runner=no_seed)
+    failed = failed_steps(results)
+    assert [name for name, _ in failed] == ["tên CHECK khớp model"]
+    assert "ck_thing_ck_thing_code" in failed[0][1]  # thừa trong DB
+    assert "'ck_thing_code'" in failed[0][1]  # thiếu trong DB
+
+
 async def test_non_idempotent_seed_fails(migrations: Path, url: str) -> None:
     add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
     results = await run_checks(alembic_config(migrations), url, metadata=thing_metadata(), seed_runner=insert_rows(1))
@@ -157,7 +197,7 @@ def test_main_on_repo_migrations(url: str, capsys: pytest.CaptureFixture[str]) -
     assert migrate_check.main() == 0
     out = capsys.readouterr().out
     assert "migrate_check: đạt" in out
-    assert out.count("đạt") == 10  # 9 bước con + dòng kết
+    assert out.count("đạt") == 11  # 10 bước con + dòng kết
 
 
 def test_main_rejects_arguments(capsys: pytest.CaptureFixture[str]) -> None:
