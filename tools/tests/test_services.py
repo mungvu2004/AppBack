@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import inspect
 import io
 import smtplib
 import socket
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import asyncpg
 import httpx
 import pytest
 import redis
+import yaml
 from minio import Minio
 
+from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.testing.fixtures.services import (
     ephemeral_minio,
     ephemeral_postgres,
@@ -20,17 +26,23 @@ from packages.testing.fixtures.services import (
     refused_url,
 )
 
-# Container đã dừng: IPv4 của host.docker.internal từ chối (111), IPv6 không tới được (101);
-# asyncpg / socket gộp các lỗi này thành OSError.
-_STOPPED = r"Errno (101|111)"
+# Bản ephemeral đi cổng map của máy chủ Docker ở mọi nơi (FIX-009: IP bridge bị cấp lại ngay), nên bản đã
+# dừng hỏng ngay: cổng host bị từ chối (111), IPv6 không tới (101) — đo 2026-09-22: 9/9 lượt, 0,0 s.
+_STOPPED = r"^$|timed out|Errno (101|111)"
+"""Lỗi hợp lệ của bản đã dừng: 111/101 (cổng host đóng), `''` (hết giờ của asyncpg) và `timed out`
+(socket) khi chặng `host.docker.internal` kẹt (NO-007). Đều là `OSError`."""
+_STOPPED_TIMEOUT_S = 5
+"""Trần bắt tay tới bản **đã dừng**: chỉ để test không treo; mọi đường đều hỏng trong trần này."""
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _pg_dsn(url: str) -> str:
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-async def _select_one(url: str) -> int:
-    conn = await asyncpg.connect(_pg_dsn(url), timeout=5)
+async def _select_one(url: str, *, connect_timeout_s: float = GATE_CONNECT_TIMEOUT_S) -> int:
+    """`SELECT 1` qua kết nối mới; trần mặc định là của đường cổng (NO-042: chặng Docker có lúc kẹt ~68 s)."""
+    conn = await asyncpg.connect(_pg_dsn(url), timeout=connect_timeout_s)
     try:
         value: int = await conn.fetchval("select 1")
         return value
@@ -39,7 +51,7 @@ async def _select_one(url: str) -> int:
 
 
 async def test_postgres_16_lên_thật(postgres_url: str) -> None:
-    conn = await asyncpg.connect(_pg_dsn(postgres_url))
+    conn = await asyncpg.connect(_pg_dsn(postgres_url), timeout=GATE_CONNECT_TIMEOUT_S)
     try:
         version: str = await conn.fetchval("show server_version")
     finally:
@@ -80,11 +92,13 @@ def test_mailpit_nhận_thư(mailpit: tuple[str, int, int]) -> None:
 
 def test_ephemeral_redis_dừng_xong_bản_dùng_chung_vẫn_chạy(redis_broker_url: str) -> None:
     eph = ephemeral_redis("noeviction")
-    client = eph.get_client(socket_connect_timeout=2)
-    assert client.ping()
+    host, port = eph.get_container_host_ip(), eph.get_exposed_port(6379)
+    # Bản còn chạy chịu trần cổng (ephemeral đi `host.docker.internal`, NO-007); bản đã dừng trần ngắn.
+    assert eph.get_client(socket_connect_timeout=GATE_CONNECT_TIMEOUT_S).ping()
     eph.stop()
-    with pytest.raises(redis.exceptions.ConnectionError):
-        client.ping()
+    stopped = redis.Redis(host=host, port=port, socket_connect_timeout=_STOPPED_TIMEOUT_S)
+    with pytest.raises((redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)):
+        stopped.ping()
     assert redis.Redis.from_url(redis_broker_url).ping()
 
 
@@ -94,7 +108,7 @@ async def test_ephemeral_postgres_dừng_xong_bản_dùng_chung_vẫn_chạy(pos
     assert await _select_one(url) == 1
     eph.stop()
     with pytest.raises(OSError, match=_STOPPED):
-        await _select_one(url)
+        await _select_one(url, connect_timeout_s=_STOPPED_TIMEOUT_S)
     assert await _select_one(postgres_url) == 1
 
 
@@ -116,3 +130,50 @@ def test_refused_url_bị_từ_chối() -> None:
     assert url.port is not None
     with pytest.raises(ConnectionRefusedError):
         socket.create_connection((url.hostname, url.port), timeout=2)
+
+
+def test_trần_bắt_tay_theo_trạng_thái_bản_postgres() -> None:
+    """NO-042: bản còn chạy chịu trần cổng — chặng `host.docker.internal` có lúc kẹt ~68 s (NO-007).
+
+    Bản đã dừng giữ trần ngắn: lỗi `Errno 101/111` tới ngay, trần chỉ để test không treo.
+    """
+    assert inspect.signature(_select_one).parameters["connect_timeout_s"].default == GATE_CONNECT_TIMEOUT_S
+    assert _STOPPED_TIMEOUT_S < GATE_CONNECT_TIMEOUT_S
+
+
+def test_container_verify_nối_thẳng_ip_container_dịch_vụ() -> None:
+    """NO-007: trong container verify, testcontainers nối **thẳng** IP bridge của container dịch vụ.
+
+    Đường `host.docker.internal` đi qua bộ chuyển tiếp cổng của Docker Desktop trên máy Windows.
+    Đo 2026-09-21 (10 lượt, mỗi lượt 20 000 lần nối TCP, 16 song song): lượt bị từ chối hàng loạt và 6 lượt
+    kẹt 69,4 tới 69,8 s; đường IP container cùng tải: 0 lỗi, không lượt nào quá 1,1 s. Hai container
+    cùng mạng `bridge` mặc định nên tới được nhau. CI chạy ngoài container, không đặt biến này.
+    """
+    compose = yaml.safe_load((REPO_ROOT / "deploy" / "compose" / "verify.yml").read_text(encoding="utf-8"))
+    service = compose["services"]["verify"]
+    assert service["network_mode"] == "bridge"
+    assert "TESTCONTAINERS_CONNECTION_MODE=bridge_ip" in service["environment"]
+
+
+@pytest.mark.parametrize(
+    ("factory", "port"),
+    [(lambda: ephemeral_redis("noeviction"), 6379), (ephemeral_postgres, 5432), (ephemeral_minio, 9000)],
+    ids=["redis", "postgres", "minio"],
+)
+def test_ephemeral_dừng_xong_địa_chỉ_không_về_tay_bản_dựng_sau(factory: Callable[[], Any], port: int) -> None:
+    """FIX-009: địa chỉ của bản ephemeral đã dừng không trỏ sang container dựng ngay sau nó.
+
+    Bridge mặc định của Docker cấp lại **ngay** IP vừa giải phóng: đi IP bridge thì bản B nhận đúng IP
+    của A, URL của A nối được vào B (hay vào container của phiên verify khác — cùng ảnh, cùng mật khẩu
+    mặc định), và test C13 thấy dịch vụ đã dừng "vẫn sống".
+    """
+    first = factory()
+    endpoint = (first.get_container_host_ip(), int(first.get_exposed_port(port)))
+    first.stop()
+    second = factory()
+    try:
+        assert (second.get_container_host_ip(), int(second.get_exposed_port(port))) != endpoint
+        with pytest.raises(OSError, match=_STOPPED):
+            socket.create_connection(endpoint, timeout=_STOPPED_TIMEOUT_S)
+    finally:
+        second.stop()
