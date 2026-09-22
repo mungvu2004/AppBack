@@ -12,7 +12,11 @@ RUN corepack enable \
     && pnpm build \
     && test -f dist/draco/draco_decoder.wasm
 
-FROM nginxinc/nginx-unprivileged:1.31.5-alpine@sha256:19c132c9ab02d3b783f478743dafc7a7f42e27aa7d2bdcbec1bb1128ca8f2a07
+# Dòng stable. Sàn theo advisory nginx.org (2026-09-24): 1.30.5 là bản stable
+# đầu tiên "not vulnerable" ở MỌI dòng advisory, kể cả CVE-2026-90439
+# (ngx_http_v3_module, vá 1.30.5+/1.31.6+) mà mainline 1.31.5 còn dính.
+# Nâng: chỉ lên tag stable 1.30.x mới hơn; sang mainline phải ≥ 1.31.6.
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
 
 # Ảnh nền giữ server mặc định (server_name localhost, listen 8080) tại
 # /etc/nginx/conf.d/default.conf: mọi yêu cầu Host: localhost khớp nó TRƯỚC
