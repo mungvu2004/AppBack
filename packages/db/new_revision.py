@@ -1,7 +1,8 @@
 """`python -m packages.db.new_revision --code <mã> --slug <việc>` (BE-00 §6.1).
 
 Đặt tên thay cho người: `revision = r<yyyymmdd>_<mã>[_fix<nnn>]` (≤ 32 ký tự vì
-`alembic_version.version_num` là `VARCHAR(32)`), file `<revision>_<slug>.py`.
+`alembic_version.version_num` là `VARCHAR(32)`), file `<revision>_<slug>.py`; ngày
+UTC đọc từ `Clock` tiêm được lúc gọi (R-18).
 Từ chối khi prompt đã có revision, khi cây có > 1 head (rebase trước đã, không tạo
 revision merge — việc của người điều phối), khi slug sai mẫu hay id quá dài.
 """
@@ -9,13 +10,13 @@ revision merge — việc của người điều phối), khi slug sai mẫu hay
 import argparse
 import re
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
 from alembic import command
 from alembic.script import ScriptDirectory
 
+from packages.core.clock import Clock, SystemClock
 from packages.db.migrate_check import alembic_config
 
 MAX_REVISION_LEN: Final = 32
@@ -50,7 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, clock: Clock | None = None) -> int:
+    """Tạo revision theo tên hiến chương; 0 nếu tạo được, 2 nếu từ chối (lý do in ra stdout).
+
+    Ngày của tên lấy từ `clock` (mặc định `SystemClock`) đúng lúc gọi: test ghim ngày bằng
+    đồng hồ giả, không đoán ngày lúc nhập module rồi đỏ khi bộ test vắt qua nửa đêm (NO-065).
+    """
     args = build_parser().parse_args(argv)
     code = args.code.lower().replace("-", "_")
     if not _CODE_RE.fullmatch(code):
@@ -63,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         _say(f"--fix phải là ba chữ số: {args.fix}")
         return 2
 
-    new_id = revision_id(code, datetime.now(UTC).strftime("%Y%m%d"), args.fix)
+    new_id = revision_id(code, (clock or SystemClock()).now().strftime("%Y%m%d"), args.fix)
     if len(new_id) > MAX_REVISION_LEN:
         _say(f"revision id dài {len(new_id)} > {MAX_REVISION_LEN} ký tự: {new_id}")
         return 2

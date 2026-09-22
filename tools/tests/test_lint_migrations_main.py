@@ -145,6 +145,19 @@ def test_contract_chưa_đăng_ký_không_được_phá_huỷ(tmp_path: Path, mo
     assert _rules(report) == {"# contract: chưa đăng ký ở docs/contracts.toml", "execute chuỗi SQL cấm"}
 
 
+@pytest.mark.parametrize("registered", [True, False])
+def test_tên_thêm_vào_destructive_chỉ_được_miễn_cho_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, registered: bool
+) -> None:
+    """FIX-042: miễn cho contract đi theo `_DESTRUCTIVE_CALL_NAMES`; `batch_alter_table` ngoài tập nên vẫn hỏng."""
+    names = {*lint_migrations._DESTRUCTIVE_CALL_NAMES, "drop_index"}
+    monkeypatch.setattr(lint_migrations, "_DESTRUCTIVE_CALL_NAMES", names)
+    upgrade = '    op.drop_index("ix_t_c")\n    op.batch_alter_table("t")\n'
+    report = _contract(tmp_path, monkeypatch, upgrade, registered=registered)
+    banned = sorted(v.detail for v in report.violations if v.rule == "thao tác cấm (§6.1)")
+    assert banned == (["batch_alter_table"] if registered else ["batch_alter_table", "drop_index"])
+
+
 def test_contracts_toml_thiếu_coi_như_rỗng(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(lint_migrations, "CONTRACTS_TOML", tmp_path / "khong-co.toml")
     _write(tmp_path, "c.py", '# contract: lý do\nrevision = "r20260918_b0_03"\n')

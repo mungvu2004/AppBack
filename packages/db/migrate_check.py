@@ -24,9 +24,10 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import CheckConstraint, Column, Connection, MetaData, Table, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import CheckConstraint, Connection, MetaData, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
+from sqlalchemy.schema import CreateSchema
 
 from packages.db.base import Base
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S
@@ -46,6 +47,8 @@ _DB_CHECK_NAMES: Final = text(
 )
 
 SeedRunner = Callable[[AsyncSession, str], Awaitable[Any]]
+# Một bước của vòng kiểm: "" nếu đạt, không thì lý do hỏng.
+Step = Callable[[], Awaitable[str]]
 
 
 def _say(text: str) -> None:
@@ -89,19 +92,104 @@ def _check_name_drift(connection: Connection, metadata: MetaData) -> str:
     tiền tố mà không bọc `op.f(...)`, NO-057) lọt qua "model khớp DB". Tên model dựng bằng
     `format_constraint` của dialect: đúng quy ước và đúng cách cắt tên > 63 ký tự như DDL (tên cần
     ngoặc kép trả về có ngoặc nên hiện lệch — quy ước chỉ sinh chữ thường). `CHECK` của domain
-    (`conrelid = 0`) và của bảng ngoài metadata không xét.
+    (`conrelid = 0`), của bảng ngoài metadata, và `CHECK` mà DDL của dialect không phát (gắn với kiểu
+    native: `Boolean`/`Enum(create_constraint=True)` trên Postgres, NO-070) không xét.
     """
     preparer = connection.dialect.identifier_preparer
     tables = list(metadata.tables.values())
-    # `CHECK` khai trong `Column(...)` nằm ở `column.constraints`, không ở `table.constraints`.
-    owners: list[Table | Column[Any]] = [*tables, *(column for table in tables for column in table.columns)]
-    checks = [c for owner in owners for c in owner.constraints if isinstance(c, CheckConstraint)]
+    # R-05: `_should_create_for_compiler` là API riêng của SQLAlchemy, đúng cổng mà
+    # `DDLCompiler.create_table_constraints` dùng để bỏ `CHECK` mức bảng (xét `_create_rule`, `ddl_if`).
+    # Ngưỡng: đã đọc mã của 2.0.54 (`uv.lock`); bản sau đổi tên thì bước ném `AttributeError` (đỏ, không
+    # xanh giả) và `test_check_bound_to_native_type_passes` đỏ. Đường nâng cấp: so với tên do `create_all`
+    # tạo ở schema tạm. Trình biên dịch chỉ cần mang dialect; `CreateSchema` là lệnh DDL rẻ nhất có kiểu.
+    ddl = connection.dialect.ddl_compiler(connection.dialect, CreateSchema("public"))
+    table_checks = [
+        c
+        for table in tables
+        for c in table.constraints
+        if isinstance(c, CheckConstraint) and c._should_create_for_compiler(ddl)
+    ]
+    # `CHECK` khai trong `Column(...)` nằm ở `column.constraints`; `visit_create_column` phát mọi ràng
+    # buộc ở đó, không qua cổng nào, nên cũng không lọc ở đây.
+    column_checks = [
+        c for table in tables for column in table.columns for c in column.constraints if isinstance(c, CheckConstraint)
+    ]
+    checks = [*table_checks, *column_checks]
     # `None` (CHECK không tên mà quy ước không dựng được tên) thành "None": hiện ra như một tên thiếu.
     in_model = {str(preparer.format_constraint(check)) for check in checks}
     rows = connection.execute(_DB_CHECK_NAMES, {"tables": [table.fullname for table in tables]})
     in_db = {str(name) for (name,) in rows}
     extra, missing = sorted(in_db - in_model), sorted(in_model - in_db)
     return "" if not extra and not missing else f"CHECK thừa trong DB: {extra}; thiếu trong DB: {missing}"
+
+
+async def _one_head(config: Config) -> str:
+    """Cây revision có đúng một head; hai head là hai nhánh chưa rebase (BE-00 §6.1)."""
+    heads = ScriptDirectory.from_config(config).get_heads()
+    return "" if len(heads) == 1 else f"{len(heads)} head: {', '.join(heads) or 'không có'}"
+
+
+async def _alembic(action: Callable[[Config, str], None], config: Config, revision: str) -> str:
+    """Chạy `command.upgrade`/`command.downgrade` ở luồng khác (`env.py` gọi `asyncio.run`); lỗi nổi lên."""
+    await asyncio.to_thread(action, config, revision)
+    return ""
+
+
+async def _seed_twice(engine: AsyncEngine, seed_runner: SeedRunner) -> str:
+    """Seed `SEED_ENV` hai lần: số dòng mọi bảng sau lượt hai phải bằng sau lượt một (idempotent)."""
+    async with AsyncSession(engine) as session:
+        await seed_runner(session, SEED_ENV)
+        await session.commit()
+        first = await _table_counts(session)
+        await seed_runner(session, SEED_ENV)
+        await session.commit()
+        second = await _table_counts(session)
+    drift = {name: (first[name], second[name]) for name in first if first[name] != second[name]}
+    return "" if not drift else f"seed không idempotent: {drift}"
+
+
+async def _only_version_table(engine: AsyncEngine) -> str:
+    """Sau `downgrade base` không còn bảng nào ngoài `alembic_version`: mọi `downgrade()` dọn đủ."""
+    async with AsyncSession(engine) as session:
+        counts = await _table_counts(session)
+    return "" if not counts else f"còn bảng: {', '.join(sorted(counts))}"
+
+
+async def _metadata_matches(engine: AsyncEngine, target: MetaData) -> str:
+    """`compare_metadata` (kiểu, default phía server) giữa `target` và DB không ra khác biệt nào."""
+    async with engine.connect() as connection:
+        diffs = await connection.run_sync(_compare, target)
+    return "" if not diffs else f"{len(diffs)} khác biệt: {diffs}"
+
+
+async def _check_names_match(engine: AsyncEngine, target: MetaData) -> str:
+    """Tên `CHECK` của `target` khớp DB (`_check_name_drift`, FIX-036)."""
+    async with engine.connect() as connection:
+        return await connection.run_sync(_check_name_drift, target)
+
+
+def _steps(config: Config, engine: AsyncEngine, target: MetaData, seed_runner: SeedRunner) -> list[tuple[str, Step]]:
+    """Mười bước theo đúng thứ tự vòng kiểm của BE-00 §6.1; tên bước là chuỗi cổng in ra."""
+    return [
+        ("đúng 1 head", lambda: _one_head(config)),
+        ("upgrade head", lambda: _alembic(command.upgrade, config, "head")),
+        (f"seed {SEED_ENV} hai lần", lambda: _seed_twice(engine, seed_runner)),
+        ("downgrade -1", lambda: _alembic(command.downgrade, config, "-1")),
+        ("upgrade head trên DB có dữ liệu", lambda: _alembic(command.upgrade, config, "head")),
+        ("downgrade base", lambda: _alembic(command.downgrade, config, "base")),
+        ("chỉ còn alembic_version", lambda: _only_version_table(engine)),
+        ("upgrade head lại", lambda: _alembic(command.upgrade, config, "head")),
+        ("model khớp DB", lambda: _metadata_matches(engine, target)),
+        ("tên CHECK khớp model", lambda: _check_names_match(engine, target)),
+    ]
+
+
+async def _run_step(run: Step) -> str:
+    """Lý do hỏng của bước, "" nếu đạt; ngoại lệ của bước thành lý do (`repr`), không nổi ra khỏi cổng."""
+    try:
+        return await run()
+    except Exception as exc:  # noqa: BLE001 — migration hỏng là kết quả của cổng, không phải sự cố của nó
+        return repr(exc)
 
 
 async def run_checks(
@@ -120,68 +208,11 @@ async def run_checks(
     target = metadata if metadata is not None else Base.metadata
     results: list[tuple[str, str]] = []
     engine = create_async_engine(url, poolclass=NullPool, connect_args={"timeout": GATE_CONNECT_TIMEOUT_S})
-
-    async def step(name: str, run: Callable[[], Awaitable[str]]) -> bool:
-        try:
-            detail = await run()
-        except Exception as exc:  # noqa: BLE001 — migration hỏng là kết quả của cổng, không phải sự cố của nó
-            detail = repr(exc)
-        results.append((name, detail))
-        return not detail
-
-    async def one_head() -> str:
-        heads = ScriptDirectory.from_config(config).get_heads()
-        return "" if len(heads) == 1 else f"{len(heads)} head: {', '.join(heads) or 'không có'}"
-
-    async def alembic(argument: str) -> str:
-        if argument == "base":
-            await asyncio.to_thread(command.downgrade, config, "base")
-        elif argument == "-1":
-            await asyncio.to_thread(command.downgrade, config, "-1")
-        else:
-            await asyncio.to_thread(command.upgrade, config, argument)
-        return ""
-
-    async def seed_twice() -> str:
-        async with AsyncSession(engine) as session:
-            await seed_runner(session, SEED_ENV)
-            await session.commit()
-            first = await _table_counts(session)
-            await seed_runner(session, SEED_ENV)
-            await session.commit()
-            second = await _table_counts(session)
-        drift = {name: (first[name], second[name]) for name in first if first[name] != second[name]}
-        return "" if not drift else f"seed không idempotent: {drift}"
-
-    async def only_version_table() -> str:
-        async with AsyncSession(engine) as session:
-            counts = await _table_counts(session)
-        return "" if not counts else f"còn bảng: {', '.join(sorted(counts))}"
-
-    async def metadata_matches() -> str:
-        async with engine.connect() as connection:
-            diffs = await connection.run_sync(_compare, target)
-        return "" if not diffs else f"{len(diffs)} khác biệt: {diffs}"
-
-    async def check_names_match() -> str:
-        async with engine.connect() as connection:
-            return await connection.run_sync(_check_name_drift, target)
-
     try:
-        steps: list[tuple[str, Callable[[], Awaitable[str]]]] = [
-            ("đúng 1 head", one_head),
-            ("upgrade head", lambda: alembic("head")),
-            (f"seed {SEED_ENV} hai lần", seed_twice),
-            ("downgrade -1", lambda: alembic("-1")),
-            ("upgrade head trên DB có dữ liệu", lambda: alembic("head")),
-            ("downgrade base", lambda: alembic("base")),
-            ("chỉ còn alembic_version", only_version_table),
-            ("upgrade head lại", lambda: alembic("head")),
-            ("model khớp DB", metadata_matches),
-            ("tên CHECK khớp model", check_names_match),
-        ]
-        for name, run in steps:
-            if not await step(name, run):
+        for name, run in _steps(config, engine, target, seed_runner):
+            detail = await _run_step(run)
+            results.append((name, detail))
+            if detail:
                 break
     finally:
         await engine.dispose()
