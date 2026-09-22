@@ -45,10 +45,10 @@
 | FIX-036 | 2026-09-22 | B0-03 | NO-057 | `migrate_check` không so tên `CHECK` của DB với model | `593bcea` |
 | FIX-037 | 2026-09-22 | B0-06 | NO-057 | Hai `CHECK` của `idempotency_records` lặp tiền tố tên | `4e8e2a5` |
 | FIX-038 | 2026-09-22 | B0-01 | NO-058 | `lint_migrations` không miễn revision contract đã đăng ký: đường contract của BE-00 §6.1 không dùng được | `f37c52e` |
-| FIX-039 | 2026-09-22 | B0-03 | NO-065 | `test_new_revision` đóng băng ngày lúc nhập, đỏ khi bộ test vắt qua nửa đêm UTC | nhánh `fix/b0-03-migration-tool-debts` |
-| FIX-040 | 2026-09-22 | B0-03 | NO-069 | `migrate_check.run_checks` vượt R-08 (82 dòng, CC 13) | nhánh `fix/b0-03-migration-tool-debts` |
-| FIX-041 | 2026-09-22 | B0-03 | NO-070 | Bước "tên CHECK khớp model" đỏ giả với CHECK gắn kiểu | nhánh `fix/b0-03-migration-tool-debts` |
-| FIX-042 | 2026-09-22 | B0-01 | NO-068 | `lint_migrations._lint_body` vượt R-08 (78 dòng, CC 28) | nhánh `fix/b0-03-migration-tool-debts` |
+| FIX-039 | 2026-09-22 | B0-03 | NO-065 | `test_new_revision` đóng băng ngày lúc nhập, đỏ khi bộ test vắt qua nửa đêm UTC | `5ce33f0` |
+| FIX-040 | 2026-09-22 | B0-03 | NO-069 | `migrate_check.run_checks` vượt R-08 (82 dòng, CC 13) | `646740e` |
+| FIX-041 | 2026-09-22 | B0-03 | NO-070 | Bước "tên CHECK khớp model" đỏ giả với CHECK gắn kiểu | `eda31d6`, `3b4f01c` |
+| FIX-042 | 2026-09-22 | B0-01 | NO-068 | `lint_migrations._lint_body` vượt R-08 (78 dòng, CC 28) | `76ec3fd` |
 | FIX-043 | 2026-09-22 | B0-02 | NO-060 | Luật khoá object chưa có ở `packages/core` | `f6fb907` |
 | FIX-044 | 2026-09-22 | B0-04 | NO-060 | `storage.keys` giữ bản riêng của luật khoá object | `59e9e32` |
 | FIX-045 | 2026-09-22 | B5-01 | NO-060 | `ml_contracts.payloads` chép luật khoá object của `storage` | `4aad113` |

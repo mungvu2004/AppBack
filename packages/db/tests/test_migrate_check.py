@@ -4,10 +4,13 @@ import os
 import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
-from sqlalchemy import CheckConstraint, Column, Integer, MetaData, Table, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Column, Enum, Integer, MetaData, Table, Text, make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.schema import CreateTable
+from sqlalchemy.types import TypeEngine
 
 from packages.db import migrate_check
 from packages.db.base import NAMING_CONVENTION
@@ -131,7 +134,7 @@ async def test_model_without_migration_fails(migrations: Path, url: str) -> None
     assert "missing" in failed[0][1]
 
 
-def checked_metadata() -> MetaData:
+def checked_metadata(*extra: Column[Any]) -> MetaData:
     """`thing` có `CHECK` mức bảng `code` và mức cột `id_positive`; quy ước của `Base` thêm `ck_thing_`."""
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
     Table(
@@ -139,18 +142,36 @@ def checked_metadata() -> MetaData:
         metadata,
         Column("id", Integer, CheckConstraint("id > 0", name="id_positive"), primary_key=True),
         Column("code", Text),
+        *extra,
         CheckConstraint("code <> ''", name="code"),
     )
     return metadata
 
 
-def checked_thing(code_check: str) -> str:
-    """Revision tạo `thing` với `CHECK` của `code` mang đúng tên `code_check` trong DB."""
+def checked_thing(code_check: str, extra_sql: str = "") -> str:
+    """Revision tạo `thing` với `CHECK` của `code` mang đúng tên `code_check` trong DB; `extra_sql` thêm cột."""
     sql = (
         "CREATE TABLE thing (id integer PRIMARY KEY CONSTRAINT ck_thing_id_positive CHECK (id > 0), "
-        f"code text CONSTRAINT {code_check} CHECK (code <> ''))"
+        f"code text CONSTRAINT {code_check} CHECK (code <> ''){extra_sql})"
     )
     return f'op.execute("{sql}")'
+
+
+# `create_constraint=True` gắn một `CHECK` vào kiểu; Postgres có boolean và enum native nên DDL không phát nó.
+NATIVE_CHECKED_TYPES: dict[str, tuple[Callable[[], TypeEngine[Any]], str]] = {
+    "boolean": (lambda: Boolean(create_constraint=True), "boolean"),
+    "enum": (lambda: Enum("a", "b", name="kind", create_constraint=True), "kind"),
+}
+
+
+def typed_thing(migrations: Path, code_check: str, kind: str) -> MetaData:
+    """Revision và model của `thing` như `checked_thing`, thêm cột `flag` kiểu `kind` của `NATIVE_CHECKED_TYPES`."""
+    make_type, sql_type = NATIVE_CHECKED_TYPES[kind]
+    # Kiểu `kind` tạo cho cả hai trường hợp: một revision, một đường lùi.
+    create_type = """op.execute("CREATE TYPE kind AS ENUM ('a', 'b')")"""
+    upgrade = f"{create_type}\n    {checked_thing(code_check, f', flag {sql_type}')}"
+    add_revision(migrations, "r20260921_b9_01", BASELINE, upgrade, f'{DROP_THING}\n    op.execute("DROP TYPE kind")')
+    return checked_metadata(Column("flag", make_type()))
 
 
 async def test_check_names_matching_model_pass(migrations: Path, url: str) -> None:
@@ -168,6 +189,37 @@ async def test_check_name_with_doubled_prefix_fails(migrations: Path, url: str) 
     assert [name for name, _ in failed] == ["tên CHECK khớp model"]
     assert "ck_thing_ck_thing_code" in failed[0][1]  # thừa trong DB
     assert "'ck_thing_code'" in failed[0][1]  # thiếu trong DB
+
+
+@pytest.mark.parametrize("kind", sorted(NATIVE_CHECKED_TYPES))
+async def test_check_bound_to_native_type_passes(migrations: Path, url: str, kind: str) -> None:
+    """NO-070: `CHECK` gắn kiểu mà DDL Postgres không phát thì không bị đòi trong DB (trước: `boolean` ném)."""
+    metadata = typed_thing(migrations, "ck_thing_code", kind)
+    results = await run_checks(alembic_config(migrations), url, metadata=metadata, seed_runner=no_seed)
+    assert failed_steps(results) == []
+    assert results[-1][0] == "tên CHECK khớp model"
+
+
+@pytest.mark.parametrize("kind", sorted(NATIVE_CHECKED_TYPES))
+async def test_check_bound_to_native_type_keeps_table_check_drift(migrations: Path, url: str, kind: str) -> None:
+    """Bỏ `CHECK` gắn kiểu không làm mù bước: `CHECK` mức bảng lệch tên vẫn hỏng, đúng hai tên đó."""
+    metadata = typed_thing(migrations, "ck_thing_ck_thing_code", kind)
+    results = await run_checks(alembic_config(migrations), url, metadata=metadata, seed_runner=no_seed)
+    assert failed_steps(results) == [
+        ("tên CHECK khớp model", "CHECK thừa trong DB: ['ck_thing_ck_thing_code']; thiếu trong DB: ['ck_thing_code']")
+    ]
+
+
+async def test_column_check_with_ddl_if_is_still_expected(migrations: Path, url: str) -> None:
+    """`CREATE TABLE` phát mọi `CHECK` trong `Column(...)`, kể cả có `ddl_if` lệch dialect: bước vẫn đòi nó."""
+    guarded = CheckConstraint("n > 0", name="n_positive").ddl_if(dialect="sqlite")
+    metadata = checked_metadata(Column("n", Integer, guarded))
+    dialect = make_url(url).get_dialect()()  # dialect của DB thử, không mở kết nối
+    assert "ck_thing_n_positive" in str(CreateTable(metadata.tables["thing"]).compile(dialect=dialect))
+    column = ", n integer CONSTRAINT ck_thing_n_positive CHECK (n > 0)"
+    add_revision(migrations, "r20260921_b9_01", BASELINE, checked_thing("ck_thing_code", column), DROP_THING)
+    results = await run_checks(alembic_config(migrations), url, metadata=metadata, seed_runner=no_seed)
+    assert failed_steps(results) == []
 
 
 async def test_non_idempotent_seed_fails(migrations: Path, url: str) -> None:
