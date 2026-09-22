@@ -1,23 +1,25 @@
 """Khoá object (BE-00 §8) và kiểm khoá an toàn (K13).
 
 Mọi hàm nhận khoá của gói này gọi `check_key`/`check_prefix` trước khi chạm kho:
-khoá không bao giờ được nối thẳng từ chuỗi người dùng. Hàm dựng khoá kiểm id theo
-đúng mẫu của `packages.core.ids`, nên khoá sinh ra luôn nằm trong cây đã khai.
+khoá không bao giờ được nối thẳng từ chuỗi người dùng. Luật khoá nằm ở
+`packages.core.object_keys` (một nguồn với `ml_contracts`, NO-060); ở đây xuất lại tên cũ
+cho `local.py`, `s3.py`. Hàm dựng khoá kiểm id theo đúng mẫu của `packages.core.ids`, nên
+khoá sinh ra luôn nằm trong cây đã khai.
 """
 
 import re
 from typing import Final
 
 from packages.core.ids import IdPrefix, is_id, is_spatial_id
+from packages.core.object_keys import META_SUFFIX as META_SUFFIX
+from packages.core.object_keys import check_key as check_key
+from packages.core.object_keys import check_prefix as check_prefix
+from packages.core.object_keys import is_segment
 from packages.core.pipeline import PIPELINE_STEPS
 from packages.storage.sniff import ImageKind
 
-MAX_KEY_BYTES: Final = 1024
 MAX_ITEM_LEN: Final = 64
-META_SUFFIX: Final = ".meta.json"
-"""Đuôi file metadata của `LocalDiskStorage`; khoá object không được trùng."""
 
-_SEGMENT_RE: Final = re.compile(r"[A-Za-z0-9._-]+")
 _ITEM_RE: Final = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
 # Thân ULID của `packages.core.ids` (Crockford base32 HOA, 26 ký tự).
@@ -33,30 +35,6 @@ _SERVER_NAMED_RE: Final = re.compile(
     rf"|projects/prj_{_ULID}/floors/L-[0-9A-Z]{{10,64}}/uploads/upl_{_ULID}/pages/[0-9]+\.png"
 )
 _EXT_KIND: Final[dict[str, ImageKind]] = {"png": "png", "jpg": "jpeg"}
-
-
-def check_key(key: str) -> str:
-    """Khoá hợp lệ → trả lại chính nó; sai → `ValueError` (không bao giờ ra ngoài kho)."""
-    if not key:
-        raise ValueError("khoá rỗng")
-    if len(key.encode("utf-8")) > MAX_KEY_BYTES:
-        raise ValueError(f"khoá dài hơn {MAX_KEY_BYTES} byte")
-    if key.endswith(META_SUFFIX):
-        raise ValueError(f"khoá không được kết thúc bằng {META_SUFFIX}")
-    for segment in key.split("/"):
-        if segment in ("", ".", ".."):
-            raise ValueError(f"khoá có đoạn rỗng, '.' hay '..': {key!r}")
-        if not _SEGMENT_RE.fullmatch(segment):
-            raise ValueError(f"đoạn khoá chỉ nhận [A-Za-z0-9._-]: {key!r}")
-    return key
-
-
-def check_prefix(prefix: str) -> str:
-    """Tiền tố luôn kết thúc bằng `/` — nhờ vậy `projects/prj_A/` không chạm `projects/prj_AB/`."""
-    if not prefix.endswith("/"):
-        raise ValueError(f"tiền tố phải kết thúc bằng '/': {prefix!r}")
-    check_key(prefix[:-1])
-    return prefix
 
 
 def server_chosen_kind(key: str) -> ImageKind | None:
@@ -83,7 +61,7 @@ def _level_id(value: str) -> str:
 
 def _name(value: str) -> str:
     """Tên object là **một** đoạn khoá — chặn tên lồng đường dẫn."""
-    if value in (".", "..") or not _SEGMENT_RE.fullmatch(value):
+    if not is_segment(value):
         raise ValueError(f"tên object phải là một đoạn [A-Za-z0-9._-]: {value!r}")
     return value
 

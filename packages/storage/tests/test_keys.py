@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import pytest
 
+from packages.core import object_keys
 from packages.storage import keys
 
 PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
@@ -32,37 +33,13 @@ def test_prefixes_end_with_slash() -> None:
     assert keys.upload_prefix(PROJECT, FLOOR, UPLOAD) == f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
 
 
-@pytest.mark.parametrize(
-    "bad",
-    [
-        "",
-        "a/../b",
-        "../secret",
-        "a/./b",
-        "a\x00b",
-        "a\x7fb",
-        "a//b",
-        "/a",
-        "a\\b",
-        "x.meta.json",
-        "a" * 1025,
-        "tệp.png",
-    ],
-)
-def test_check_key_rejects_unsafe(bad: str) -> None:
-    with pytest.raises(ValueError, match=r"khoá|đoạn"):
-        keys.check_key(bad)
+def test_key_rules_come_from_core() -> None:
+    """NO-060: `storage` dùng đúng luật khoá của `packages.core.object_keys`, không giữ bản riêng.
 
-
-@pytest.mark.parametrize("good", ["a", "projects/prj_A/x.png", "a" * 1024])
-def test_check_key_accepts_safe(good: str) -> None:
-    assert keys.check_key(good) == good
-
-
-@pytest.mark.parametrize("bad", ["projects/prj_A", "", "projects/prj_A//"])
-def test_check_prefix_requires_trailing_slash(bad: str) -> None:
-    with pytest.raises(ValueError, match=r"tiền tố|khoá|đoạn"):
-        keys.check_prefix(bad)
+    Mẫu biên của luật nằm ở `packages/core/tests/test_object_keys.py`.
+    """
+    assert keys.check_key is object_keys.check_key
+    assert keys.check_prefix is object_keys.check_prefix
 
 
 @pytest.mark.parametrize(
