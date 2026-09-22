@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -320,20 +321,26 @@ def _emit(line: str) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Dựng runner, chạy tám kiểm, in bảng; 1 khi có gì hỏng."""
+    """Dựng runner, chạy tám kiểm, in bảng; 1 khi có gì hỏng.
+
+    Không `--build-dir` → thư mục tạm `contract-*`, xoá khi xong dù đạt hay hỏng (≈ 16 MB bản chép
+    `src`, NO-052); symlink `node_modules` bị gỡ, kho dùng chung trên volume không bị chạm.
+    Có `--build-dir` → giữ lại để gỡ lỗi.
+    """
     parser = argparse.ArgumentParser(prog="python -m tools.contract.check")
-    parser.add_argument("--build-dir", type=Path, help="thư mục chưa có hay rỗng; mặc định một thư mục tạm mới")
+    parser.add_argument("--build-dir", type=Path, help="thư mục chưa có hay rỗng, giữ lại; mặc định thư mục tạm, xoá")
     args = parser.parse_args(argv)
     _emit(f"Bước 7 — AppFront @ {SHA_FILE.read_text(encoding='utf-8').strip()}")
     started = time.monotonic()
-    build_dir = args.build_dir or Path(tempfile.mkdtemp(prefix="contract-"))
-    try:
-        build_layout(appfront_dir_from_env(), node_dir_from_env(), build_dir)
-        built = time.monotonic()
-        results = run_checks(build_dir, gather_inputs())
-    except (AppFrontMissingError, RunnerError, SampleError) as exc:
-        _emit(f"bước 7 hỏng: {exc}")
-        return 1
+    with ExitStack() as scratch:
+        build_dir = args.build_dir or Path(scratch.enter_context(tempfile.TemporaryDirectory(prefix="contract-")))
+        try:
+            build_layout(appfront_dir_from_env(), node_dir_from_env(), build_dir)
+            built = time.monotonic()
+            results = run_checks(build_dir, gather_inputs())
+        except (AppFrontMissingError, RunnerError, SampleError) as exc:
+            _emit(f"bước 7 hỏng: {exc}")
+            return 1
     for line in render(results):
         _emit(line)
     _emit(f"thời gian: {time.monotonic() - started:.1f} s (dựng runner {built - started:.1f} s)")

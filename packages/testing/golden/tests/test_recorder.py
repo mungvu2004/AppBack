@@ -7,6 +7,7 @@ với router mẫu `/api/golden-probe/...`. Bộ ghi khớp thao tác trên bả
 `CONTRACT_SAMPLES_DIR` thật của lượt verify (H1 sẽ báo "không có trong bản đồ").
 """
 
+import ast
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -213,6 +214,19 @@ def test_both_plugin_orders_register_one_recorder(golden_first: bool) -> None:
 def test_split_test_name_follows_case_gate(name: str, expected: tuple[str, str, str] | None) -> None:
     """Tên test tách đúng như `case_gate` (CASE §2.3); hậu tố chỉ giữ ký tự an toàn cho tên file."""
     assert recorder.split_test_name(name) == expected
+
+
+def test_recorder_imports_no_private_name_of_case_gate() -> None:
+    """Bộ ghi chỉ nhập tên công khai của `tools.case_gate` (NO-049): B0-01 đổi tên nội bộ không làm hỏng lúc nhập."""
+    tree = ast.parse(Path(recorder.__file__).read_text(encoding="utf-8"))
+    names = [
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "tools.case_gate"
+        for alias in node.names
+    ]
+    assert names
+    assert [name for name in names if name.startswith("_")] == []
 
 
 def test_mask_tokens_keeps_shape_at_any_depth() -> None:

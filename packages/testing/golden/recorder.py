@@ -29,7 +29,7 @@ import httpx
 import pytest
 
 from apps.api.core.openapi import Operation, operations
-from tools.case_gate import _TEST_COMMON_RE, _TEST_OP_CASE_RE
+from tools.case_gate import split_case_test_name
 
 SAMPLES_ENV: Final = "CONTRACT_SAMPLES_DIR"
 EVENT_STREAM: Final = "text/event-stream"
@@ -64,18 +64,14 @@ def samples_root() -> Path | None:
 def split_test_name(name: str) -> tuple[str, str, str] | None:
     """`(op, case, gốc tên file)` theo CASE §2.3, hay `None` khi tên không phải test case.
 
-    Dùng đúng hai mẫu của `case_gate` (nguồn duy nhất), mẫu chung xét trước như ở đó.
+    Tách bằng `split_case_test_name` của `case_gate` (nguồn duy nhất, R-07).
     Hậu tố (`_missing`, `[tham-số]`) thành `<case>_<hậu tố>`, chỉ giữ ký tự an toàn cho tên file.
     """
-    common = _TEST_COMMON_RE.match(name)
-    if common:
-        return common.group("op"), common.group("case"), common.group("case")
-    match = _TEST_OP_CASE_RE.match(name)
-    if match is None:
+    parts = split_case_test_name(name)
+    if parts is None:
         return None
-    case = match.group("case")
-    suffix = _UNSAFE_CHARS_RE.sub("_", name[match.end("case") :]).strip("_")
-    return match.group("op"), case, f"{case}_{suffix}" if suffix else case
+    suffix = _UNSAFE_CHARS_RE.sub("_", parts.tail).strip("_")
+    return parts.op, parts.case, f"{parts.case}_{suffix}" if suffix else parts.case
 
 
 def _path_pattern(template: str) -> re.Pattern[str]:
