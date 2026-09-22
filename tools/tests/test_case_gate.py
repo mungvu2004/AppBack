@@ -469,6 +469,17 @@ def test_test_hỏng_không_được_tính() -> None:
     assert "C01" not in result.op_results[0].found
 
 
+def test_dạng_chung_với_case_riêng_và_tên_lạ_không_được_tính() -> None:
+    """`test_common__C01[op]` không thoả C01 (không phải case chung); tên ngoài mẫu case bị bỏ qua (NO-067)."""
+    row = _row(case_type="C", lock="—")
+    op = _op(protected=False)
+    names = ["test_common__C01[x_create]", "test_x_create_is_public"]
+    tests = [TestResult(name=n, outcome="passed") for n in names]
+    trace = [CaseTraceEntry(test=n, op="x_create", status=200) for n in names]
+    result = evaluate([op], [row], {}, tests, trace, [], [])
+    assert result.op_results[0].found == set()
+
+
 # --- nối dữ liệu thật ------------------------------------------------------------------
 
 
