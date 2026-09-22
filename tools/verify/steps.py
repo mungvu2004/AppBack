@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.charter import merged_prompts
+from tools.contract import runner_client
 from tools.coverage_gate import unit_of
 from tools.lint_migrations import MERGE_REVISION_RE, revision_of
 from tools.lint_migrations import main as lint_migrations_main
@@ -73,6 +74,33 @@ def _print_table(outcomes: list[StepOutcome]) -> None:
     for o in outcomes:
         print(f"{o.number:>3} | {o.name:<28} | {o.status:<14} | {o.detail}")
     print()
+
+
+# ---------------------------------------------------------------------------
+# Pha chuẩn bị
+# ---------------------------------------------------------------------------
+
+_RUNNER_STEPS = {"5", "7"}
+"""Bước chạy runner Node: 5 (fixture `contract_build` của pytest) và 7 (`tools.contract.check`)."""
+
+
+def step_warm_node_modules() -> StepOutcome:
+    """Cài `node_modules` của runner Node trước bước 5, để pytest không tải mạng (NO-048).
+
+    Lượt lạnh `npm ci` tải từ `registry.npmjs.org`; để fixture `contract_build` làm là tải mạng
+    giữa test. Gọi đúng `ensure_node_modules(node_dir_from_env())` như `build_layout`: cùng thư mục,
+    cùng băm lock, cùng kho npm, nên bước 5 và 7 thấy đích đã có. npm, mạng hay đĩa hỏng là lỗi
+    hạ tầng của cổng: bước hỏng, mọi bước sau "chưa chạy" — không để pytest thử tải lại.
+    """
+    name = "làm ấm node_modules"
+    try:
+        target = runner_client.ensure_node_modules(runner_client.node_dir_from_env())
+    except (runner_client.RunnerError, OSError) as exc:
+        print(f"làm ấm node_modules hỏng: {exc}", file=sys.stderr)
+        # Bảng một dòng mỗi bước: chỉ dòng đầu; stderr đầy đủ của npm đã in ngay trên.
+        first_line = str(exc).partition("\n")[0][:160]
+        return StepOutcome("0", name, STATUS_FAIL, f"lỗi hạ tầng cổng: {first_line}")
+    return StepOutcome("0", name, STATUS_OK, str(target))
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +227,7 @@ _STEP_LABELS = {
 }
 
 _ALL_STEPS = [
+    ("0", step_warm_node_modules),
     ("1", step_ruff_format),
     ("2", step_ruff_check),
     ("3", step_mypy),
@@ -230,6 +259,9 @@ def run_steps(steps: Sequence[tuple[str, Callable[[], StepOutcome]]], wanted: se
 
 def cmd_verify(args: argparse.Namespace) -> int:
     wanted = set(args.steps.split(",")) if args.steps else None
+    # Không ai gõ bước "0": nó đi kèm khi lượt có bước cần runner Node.
+    if wanted is not None and wanted & _RUNNER_STEPS:
+        wanted.add("0")
     outcomes = run_steps(_ALL_STEPS, wanted)
     # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất.
     export_contract_samples()

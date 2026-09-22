@@ -19,6 +19,8 @@ from typing import Any
 
 import pytest
 
+from tools.contract import runner_client
+from tools.contract.runner_client import RunnerError
 from tools.verify import steps
 
 
@@ -525,3 +527,71 @@ def test_verify_ngoài_container_không_chép(repo: Path, monkeypatch: pytest.Mo
     _fail_one_step(monkeypatch)
     assert steps.main(["verify"]) == 1
     assert not (steps.OUT_DIR / "contract-samples").exists()
+
+
+# --- làm ấm runner Node (NO-048) ----------------------------------------------------
+
+
+def _warm(fake: FakeRun, error: Exception | None = None) -> Callable[[Path], Path]:
+    """Thay `ensure_node_modules`: ghi lượt gọi vào cùng sổ lệnh của `fake` để so thứ tự với bước 5.
+
+    Chỉ nhận đúng một đối số vị trí: gọi kèm `cache_dir`/`package_dir` (lệch kho npm hay băm lock
+    của fixture `contract_build`) thì `TypeError`.
+    """
+
+    def ensure(node_dir: Path) -> Path:
+        fake.calls.append(["ensure_node_modules", str(node_dir)])
+        if error is not None:
+            raise error
+        return node_dir / "băm-lock"
+
+    return ensure
+
+
+@pytest.mark.parametrize("argv", [[], ["--steps", "5"], ["--steps", "7"], ["--steps", "1,5b,7"]])
+def test_verify_làm_ấm_node_modules_trước_bước_5(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """NO-048: `npm ci` lạnh chạy ở pha chuẩn bị, trên đúng thư mục của `contract_build`, trước mọi lệnh bước 5."""
+    node_dir = tmp_path / "contract-node"
+    monkeypatch.setenv("CONTRACT_NODE_DIR", str(node_dir))
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    fake = _fake(monkeypatch)
+    monkeypatch.setattr(runner_client, "ensure_node_modules", _warm(fake))
+    assert steps.main(["verify", *argv]) == 0
+    assert fake.calls[0] == ["ensure_node_modules", str(runner_client.node_dir_from_env())]
+    assert [c for c in fake.calls if c[0] == "ensure_node_modules"] == [fake.calls[0]]
+
+
+@pytest.mark.parametrize("argv", [["--steps", "1,2,4"], ["--steps", "5b,6,8"]])
+def test_verify_không_bước_cần_runner_thì_không_làm_ấm(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """`--steps` không gồm 5 hay 7 → không đụng `npm`, không đổi volume."""
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    fake = _fake(monkeypatch)
+    monkeypatch.setattr(runner_client, "ensure_node_modules", _warm(fake))
+    assert steps.main(["verify", *argv]) == 0
+    assert not fake.ran("ensure_node_modules")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RunnerError("npm thoát 1: getaddrinfo ENOTFOUND registry.npmjs.org\nnpm ERR! chi tiết"),
+        PermissionError(13, "cấm"),
+    ],
+)
+def test_verify_làm_ấm_hỏng_là_lỗi_hạ_tầng_của_cổng(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], error: Exception
+) -> None:
+    """npm hay đĩa hỏng lúc làm ấm → cổng hỏng, bảng nêu lỗi; bước 5 không chạy (không để pytest tải mạng)."""
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    fake = _fake(monkeypatch)
+    monkeypatch.setattr(runner_client, "ensure_node_modules", _warm(fake, error))
+    assert steps.main(["verify"]) == 1
+    assert not fake.ran("coverage run")
+    rows = {line.split("|")[0].strip(): line for line in capsys.readouterr().out.splitlines() if " | " in line}
+    assert steps.STATUS_FAIL in rows["0"]
+    assert str(error).splitlines()[0] in rows["0"]
+    assert steps.STATUS_SKIP in rows["5"]
