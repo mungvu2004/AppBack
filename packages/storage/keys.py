@@ -10,7 +10,7 @@ khoá sinh ra luôn nằm trong cây đã khai.
 import re
 from typing import Final
 
-from packages.core.ids import IdPrefix, is_id, is_spatial_id
+from packages.core.ids import IdPrefix, is_id, is_spatial_id, is_ulid
 from packages.core.object_keys import META_SUFFIX as META_SUFFIX
 from packages.core.object_keys import check_key as check_key
 from packages.core.object_keys import check_prefix as check_prefix
@@ -22,8 +22,6 @@ MAX_ITEM_LEN: Final = 64
 
 _ITEM_RE: Final = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
-# Thân ULID của `packages.core.ids` (Crockford base32 HOA, 26 ký tự).
-_ULID_RE: Final = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")
 _STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)
 _EXT_KIND: Final[dict[str, ImageKind]] = {"png": "png", "jpg": "jpeg"}
 
@@ -105,7 +103,7 @@ def dataset_object(dataset_version: str, name: str) -> str:
 
 def avatar(user: str, ulid: str, ext: str) -> str:
     """Khoá ảnh đại diện; đuôi do server chọn sau khi đã kiểm magic bytes (K14)."""
-    if not _ULID_RE.fullmatch(ulid):
+    if not is_ulid(ulid):
         raise ValueError(f"tên ảnh đại diện phải là ULID: {ulid!r}")
     if ext not in _EXT_KIND:
         raise ValueError(f"ảnh đại diện chỉ nhận đuôi {sorted(_EXT_KIND)}: {ext!r}")

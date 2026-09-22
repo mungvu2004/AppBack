@@ -1,8 +1,9 @@
+import re
 from collections.abc import Callable
 
 import pytest
 
-from packages.core import object_keys
+from packages.core import ids, object_keys
 from packages.storage import keys
 
 PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
@@ -31,6 +32,14 @@ def test_keys_follow_charter_layout() -> None:
 def test_prefixes_end_with_slash() -> None:
     assert keys.project_prefix(PROJECT) == f"projects/{PROJECT}/"
     assert keys.upload_prefix(PROJECT, FLOOR, UPLOAD) == f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
+
+
+def test_avatar_name_follows_ulid_rule_of_core(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-076: đột biến luật thân ULID của `packages.core.ids` thì tên ảnh đại diện đổi theo — không mẫu chép tay."""
+    assert keys.avatar(USER, ULID, "png") == f"users/{USER}/avatar/{ULID}.png"
+    monkeypatch.setattr(ids, "_ULID_RE", re.compile("X{26}"), raising=False)
+    with pytest.raises(ValueError, match="tên ảnh đại diện"):
+        keys.avatar(USER, ULID, "png")
 
 
 def test_key_rules_come_from_core() -> None:
