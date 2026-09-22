@@ -1,7 +1,7 @@
 # Ảnh cổng verify — ENV §2, B0-01 [6]B. Chạy bằng root (mặc định ảnh gốc).
 # Không dùng uv/Python/Node của máy Windows: mọi thứ nằm trong ảnh này.
 
-FROM node:20-bookworm-slim AS node
+FROM node:26-bookworm-slim AS node
 
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
