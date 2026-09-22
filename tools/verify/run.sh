@@ -98,8 +98,11 @@ case "$VERIFY_TASK" in
     mkdir -p "$log_dir"
     # Trần log (NO-090): mỗi lượt một file, không dọn thì checkout sống lâu dồn mãi (in_container.sh còn chép
     # cả .cache mỗi lượt). Giữ VERIFY_LOG_KEEP - 1 log mới nhất (mtime) trước khi lượt này tạo log của nó.
-    find "$log_dir" -maxdepth 1 -type f -name '*.log' -printf '%T@\t%p\n' \
-      | sort -rn | tail -n +"$VERIFY_LOG_KEEP" | cut -f2- | xargs -r -d '\n' rm --
+    # Dọn là việc phụ (NO-092): log cũ đang bị giữ trên Windows ("Device or resource busy") làm `rm` hỏng,
+    # file biến mất giữa lúc `find` đọc thư mục làm `find` hỏng — cảnh báo rồi vẫn chạy cổng.
+    { find "$log_dir" -maxdepth 1 -type f -name '*.log' -printf '%T@\t%p\n' \
+        | sort -rn | tail -n +"$VERIFY_LOG_KEEP" | cut -f2- | xargs -r -d '\n' rm --; } \
+      || echo "dọn log cổng cũ hỏng — bỏ qua, cổng vẫn chạy" >&2
     log_name="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short=12 HEAD).log"
     echo "log cổng: $(win_path "$log_dir")/$log_name"
     run_container -v "$(win_path "$log_dir"):/src-out/verify" -e "VERIFY_LOG_FILE=/src-out/verify/$log_name" \

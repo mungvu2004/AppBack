@@ -543,22 +543,29 @@ def test_the_worker_factory_leaves_no_process_logging_state(
 
     Trạng thái đầu đặt tường minh — khoá vắng và capture tắt, hoặc khoá có giá trị và capture bật — để test
     vẫn đỏ khi một worker thử chạy trước trong cùng tiến trình đã để dấu, và để capture bật từ trước không bị tắt.
+    `catch_warnings` trả `showwarning` nhưng không trả hàm gốc `logging` tự nhớ, nên capture còn được kiểm bằng
+    hành vi (NO-093): sau worker, đảo capture phải có tác dụng — ca clean bật được, ca preset tắt về đúng hàm gốc.
     """
     for key in CELERY_PROCESS_ENV:
         if preset:
             monkeypatch.setenv(key, "trước worker")
         else:
             monkeypatch.delenv(key, raising=False)
+    logging.captureWarnings(False)
+    original = warnings.showwarning
     logging.captureWarnings(preset)
     try:
         before = _process_logging_state()
         with celery_worker_factory(["default"]):
             during = _process_logging_state()
         after = _process_logging_state()
+        logging.captureWarnings(not preset)
+        toggled = warnings.showwarning
     finally:
         logging.captureWarnings(False)
     assert during != before
     assert after == before
+    assert (toggled is original) == preset
 
 
 def test_the_inline_flag_does_not_survive_the_worker_fixtures() -> None:
