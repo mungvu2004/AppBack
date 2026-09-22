@@ -511,6 +511,24 @@ def test_the_worker_factory_refuses_an_unknown_queue(celery_worker_factory: Work
         pytest.fail("không được dựng worker cho hàng không khai")
 
 
+def test_the_worker_factory_leaves_the_root_logger_alone(
+    messaging_env: None, celery_worker_factory: WorkerFactory, caplog: pytest.LogCaptureFixture
+) -> None:
+    """NO-078: mức và handler của logger gốc trước, trong và sau worker thử như nhau.
+
+    Celery từng đặt logger gốc ở ERROR và thay handler (gỡ cả handler bắt log của pytest):
+    `WARNING` của test chạy sau không vào báo cáo đỏ nếu test không tự `caplog.at_level`.
+    """
+    root = logging.getLogger()
+    before = (root.level, list(root.handlers))
+    with celery_worker_factory(["default"]):
+        during = (root.level, list(root.handlers))
+    assert during == before
+    assert (root.level, list(root.handlers)) == before
+    logging.getLogger("apps.sau_worker").warning("rate_limit_open")
+    assert [r.getMessage() for r in caplog.records if r.name == "apps.sau_worker"] == ["rate_limit_open"]
+
+
 def test_the_inline_flag_does_not_survive_the_worker_fixtures() -> None:
     """Test ngay sau các test dùng `celery_test_app`/`celery_worker_factory` (BE-00 §7)."""
     assert AFTER_COMMIT_INLINE_ENV not in os.environ
