@@ -14,6 +14,9 @@ và `DB_AFTER_COMMIT_INLINE` do `create_celery` đặt không được rò sang 
 
 import base64
 import json
+import logging
+import os
+import warnings
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, asynccontextmanager, contextmanager, suppress
 
@@ -149,13 +152,16 @@ def celery_worker_factory(celery_test_app: Celery) -> WorkerFactory:
             raise ValueError(f"hàng lạ: {sorted(unknown)}")
         setup_logging.connect(_keep_root_logger)
         try:
-            with start_worker(
-                celery_test_app,
-                queues=list(queues),
-                pool="solo",
-                concurrency=1,
-                perform_ping_check=False,
-                shutdown_timeout=WORKER_SHUTDOWN_TIMEOUT_S,
+            with (
+                _restoring_process_logging(),
+                start_worker(
+                    celery_test_app,
+                    queues=list(queues),
+                    pool="solo",
+                    concurrency=1,
+                    perform_ping_check=False,
+                    shutdown_timeout=WORKER_SHUTDOWN_TIMEOUT_S,
+                ),
             ):
                 yield
         finally:
@@ -172,6 +178,38 @@ def _keep_root_logger(**_kwargs: object) -> None:
     không vào báo cáo đỏ. `worker_hijack_root_logger=False` không đủ: mức vẫn bị đặt. Có receiver thì
     Celery bỏ hẳn phần cấu hình logger. Hàm cấp module: `Signal.connect` giữ tham chiếu yếu.
     """
+
+
+CELERY_PROCESS_ENV = (
+    "CELERY_LOG_LEVEL",
+    "CELERY_LOG_FILE",
+    "_MP_FORK_LOGLEVEL_",
+    "_MP_FORK_LOGFILE_",
+    "_MP_FORK_LOGFORMAT_",
+)
+"""Biến môi trường `app.log.setup` của Celery 5.6 đặt cho cả tiến trình, có receiver `setup_logging` hay không."""
+
+
+@contextmanager
+def _restoring_process_logging() -> Iterator[None]:
+    """Trả lại dấu cấp tiến trình mà `app.log.setup` để lại khi worker thử dừng (NO-087).
+
+    Các dòng này chạy ngoài nhánh `if not receivers` nên `_keep_root_logger` không chặn được: `os.environ`
+    (`CELERY_PROCESS_ENV`), `warnings.filterwarnings('always', …)`, `logging.captureWarnings(True)`.
+    `catch_warnings` trả bộ lọc và `showwarning`; `captureWarnings(False)` còn xoá hàm cũ mà `logging` giữ,
+    và chỉ gọi khi chính worker bật capture (`showwarning` đã đổi) — capture ai bật từ trước thì để nguyên.
+    """
+    saved_env = {key: os.environ[key] for key in CELERY_PROCESS_ENV if key in os.environ}
+    showwarning = warnings.showwarning
+    with warnings.catch_warnings():
+        try:
+            yield
+        finally:
+            if warnings.showwarning is not showwarning:
+                logging.captureWarnings(False)
+            for key in CELERY_PROCESS_ENV:
+                os.environ.pop(key, None)
+            os.environ.update(saved_env)
 
 
 @pytest.fixture

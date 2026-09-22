@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,7 @@ from packages.messaging.tasks import (
     runner,
     task_entries,
 )
-from packages.testing.fixtures.messaging import WorkerFactory, ephemeral_broker, queued_payloads
+from packages.testing.fixtures.messaging import CELERY_PROCESS_ENV, WorkerFactory, ephemeral_broker, queued_payloads
 
 PROBE_TTL_S = 300
 WAIT_TIMEOUT_S = 20.0
@@ -527,6 +528,37 @@ def test_the_worker_factory_leaves_the_root_logger_alone(
     assert (root.level, list(root.handlers)) == before
     logging.getLogger("apps.sau_worker").warning("rate_limit_open")
     assert [r.getMessage() for r in caplog.records if r.name == "apps.sau_worker"] == ["rate_limit_open"]
+
+
+def _process_logging_state() -> tuple[dict[str, str], object, tuple[object, ...]]:
+    """Dấu cấp tiến trình `app.log.setup` của Celery có thể để lại: `os.environ`, `showwarning`, bộ lọc `warnings`."""
+    return dict(os.environ), warnings.showwarning, tuple(warnings.filters)
+
+
+@pytest.mark.parametrize("preset", [False, True], ids=["clean", "preset"])
+def test_the_worker_factory_leaves_no_process_logging_state(
+    messaging_env: None, celery_worker_factory: WorkerFactory, monkeypatch: pytest.MonkeyPatch, preset: bool
+) -> None:
+    """NO-087: biến môi trường, `logging.captureWarnings` và bộ lọc `warnings` sau worker thử như trước nó.
+
+    Trạng thái đầu đặt tường minh — khoá vắng và capture tắt, hoặc khoá có giá trị và capture bật — để test
+    vẫn đỏ khi một worker thử chạy trước trong cùng tiến trình đã để dấu, và để capture bật từ trước không bị tắt.
+    """
+    for key in CELERY_PROCESS_ENV:
+        if preset:
+            monkeypatch.setenv(key, "trước worker")
+        else:
+            monkeypatch.delenv(key, raising=False)
+    logging.captureWarnings(preset)
+    try:
+        before = _process_logging_state()
+        with celery_worker_factory(["default"]):
+            during = _process_logging_state()
+        after = _process_logging_state()
+    finally:
+        logging.captureWarnings(False)
+    assert during != before
+    assert after == before
 
 
 def test_the_inline_flag_does_not_survive_the_worker_fixtures() -> None:
