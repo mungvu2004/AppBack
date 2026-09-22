@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from packages.core import ids
 from packages.core.ids import SPATIAL_PREFIX, SpatialKind, is_id, is_measurement_id, is_spatial_id, new_id
 from packages.testing.fixtures.clock import FakeClock
 
@@ -69,6 +70,52 @@ def test_is_id_rejects(value: str) -> None:
 def test_is_id_rejects_unknown_prefix() -> None:
     with pytest.raises(ValueError, match="tiền tố"):
         is_id("abc", f"abc_{ULID_BODY}")  # type: ignore[arg-type]  # kiểm lúc chạy
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        (ULID_BODY, True),
+        ("7" + "Z" * 25, True),
+        ("", False),
+        (ULID_BODY.lower(), False),
+        (ULID_BODY[:-1], False),
+        (f"{ULID_BODY}0", False),
+        (f"{ULID_BODY[:-1]}I", False),
+        (f"{ULID_BODY[:-1]}L", False),
+        (f"{ULID_BODY[:-1]}O", False),
+        (f"{ULID_BODY[:-1]}U", False),
+        (f"{ULID_BODY}\n", False),
+        (ULID_BODY[:-1] + chr(0xFF10), False),  # chữ số toàn khổ: không thuộc Crockford base32
+        (f"usr_{ULID_BODY}", False),
+    ],
+)
+def test_is_ulid(value: str, ok: bool) -> None:
+    """NO-076: thân ULID trần (tên ảnh đại diện) — Crockford base32 HOA đúng 26 ký tự, không tiền tố."""
+    assert ids.is_ulid(value) is ok
+
+
+def test_is_id_reads_ulid_rule_of_is_ulid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-076: `is_id` kiểm thân bằng đúng `is_ulid` — luật thân ULID chỉ có một nguồn."""
+    assert is_id("usr", f"usr_{ULID_BODY}")
+    monkeypatch.setattr(ids, "is_ulid", lambda _: False)
+    assert not is_id("usr", f"usr_{ULID_BODY}")
+
+
+def test_check_id_returns_valid_id() -> None:
+    assert ids.check_id("upl", f"upl_{ULID_BODY}") == f"upl_{ULID_BODY}"
+
+
+@pytest.mark.parametrize("value", ["", f"prj_{ULID_BODY}", f"upl_{ULID_BODY[:-1]}", ULID_BODY])
+def test_check_id_rejects_naming_the_prefix(value: str) -> None:
+    """Dạng ném lỗi của `is_id` cho người dựng khoá: thông báo nêu đúng tiền tố cần."""
+    with pytest.raises(ValueError, match="upl_<ULID>"):
+        ids.check_id("upl", value)
+
+
+def test_check_id_rejects_unknown_prefix() -> None:
+    with pytest.raises(ValueError, match="tiền tố"):
+        ids.check_id("abc", f"abc_{ULID_BODY}")  # type: ignore[arg-type]  # kiểm lúc chạy
 
 
 @pytest.mark.parametrize(("kind", "letter"), SPATIAL_PREFIX.items())

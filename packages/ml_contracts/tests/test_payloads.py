@@ -6,6 +6,7 @@ from typing import Any, get_args
 import pytest
 from pydantic import ValidationError
 
+from packages.core import object_keys
 from packages.core.clock import SystemClock
 from packages.core.ids import IdPrefix, new_id
 from packages.core.object_keys import check_key, check_prefix
@@ -86,6 +87,18 @@ def test_object_key_rules_come_from_core() -> None:
     assert [validator.func for validator in prefix_validators] == [check_prefix]
     with pytest.raises(ValidationError, match="khoá có đoạn rỗng"):
         infer(page_key=f"{UPLOAD}pages//0.png")
+
+
+def test_upload_layout_comes_from_core(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-077: trang và artifact cùng lượt tải lên kiểm bằng bố cục của `packages.core.object_keys`.
+
+    Đột biến hàm dựng tiền tố lượt tải lên của lõi thì payload hợp lệ bị từ chối — gói không giữ
+    bản tách riêng. Mẫu biên của bố cục nằm ở `packages/core/tests/test_object_keys.py`.
+    """
+    infer()
+    monkeypatch.setattr(object_keys, "upload_prefix", lambda *_: "khac/")
+    with pytest.raises(ValidationError, match="không nằm dưới một lượt tải lên"):
+        infer()
 
 
 # --- ModelRef -------------------------------------------------------------------------

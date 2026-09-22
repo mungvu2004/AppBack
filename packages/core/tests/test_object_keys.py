@@ -1,11 +1,20 @@
-"""Luật khoá object của lõi (NO-060): mẫu biên chung của `storage` và `ml_contracts`, kèm thông báo."""
+"""Luật khoá object của lõi (NO-060) và bố cục tiền tố lượt tải lên (NO-077): mẫu biên chung của `storage`
+và `ml_contracts`, kèm thông báo."""
+
+from collections.abc import Callable
 
 import pytest
 
+from packages.core import ids, object_keys
 from packages.core.object_keys import MAX_KEY_BYTES, check_key, check_prefix, is_segment
 
 DOTS = "đoạn rỗng, '.' hay '..'"
 CHARS = r"chỉ nhận \[A-Za-z0-9._-\]"
+PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+FLOOR = "L-ABCDEFGHIJ"
+UPLOAD = "upl_01ARZ3NDEKTSV4RRFFQ69G5FBW"
+UPLOAD_PREFIX = f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
+NOT_UNDER = "không nằm dưới một lượt tải lên"
 
 
 @pytest.mark.parametrize(
@@ -72,3 +81,69 @@ def test_check_prefix_accepts_valid_prefix() -> None:
 def test_is_segment(value: str, expected: bool) -> None:
     """Một đoạn không chứa `/` và không là đoạn chấm."""
     assert is_segment(value) is expected
+
+
+def test_upload_prefix_layout() -> None:
+    """BE-00 §8: lượt tải lên nằm dưới tiền tố dự án, nên dọn rác dự án phủ mọi lượt tải lên."""
+    assert object_keys.project_prefix(PROJECT) == f"projects/{PROJECT}/"
+    assert object_keys.upload_prefix(PROJECT, FLOOR, UPLOAD) == UPLOAD_PREFIX
+
+
+@pytest.mark.parametrize(
+    ("build", "match"),
+    [
+        (lambda: object_keys.project_prefix("prj_lowercase"), "prj_"),
+        (lambda: object_keys.upload_prefix(UPLOAD, FLOOR, UPLOAD), "prj_"),
+        (lambda: object_keys.upload_prefix(PROJECT, "W-ABCDEFGHIJ", UPLOAD), "id tầng"),
+        (lambda: object_keys.upload_prefix(PROJECT, "L-" + "A" * 9, UPLOAD), "id tầng"),
+        (lambda: object_keys.upload_prefix(PROJECT, FLOOR, PROJECT), "upl_"),
+    ],
+)
+def test_upload_prefix_rejects_wrong_ids(build: Callable[[], str], match: str) -> None:
+    """Id sai mẫu → `ValueError` nêu đúng trường, trước khi thành khoá."""
+    with pytest.raises(ValueError, match=match):
+        build()
+
+
+@pytest.mark.parametrize(
+    ("module", "rule", "match"), [(object_keys, "is_spatial_id", "id tầng"), (ids, "is_id", "prj_")]
+)
+def test_upload_prefix_reads_id_rules_of_core_ids(
+    monkeypatch: pytest.MonkeyPatch, module: object, rule: str, match: str
+) -> None:
+    """Đột biến luật id của `packages.core.ids` thì bố cục từ chối theo — không regex id chép tay."""
+    monkeypatch.setattr(module, rule, lambda *_: False)
+    with pytest.raises(ValueError, match=match):
+        object_keys.upload_prefix(PROJECT, FLOOR, UPLOAD)
+
+
+@pytest.mark.parametrize("key", [f"{UPLOAD_PREFIX}pages/0.png", f"{UPLOAD_PREFIX}runs/x/y/z.json", UPLOAD_PREFIX])
+def test_upload_prefix_of_accepts(key: str) -> None:
+    assert object_keys.upload_prefix_of(key) == UPLOAD_PREFIX
+
+
+@pytest.mark.parametrize(
+    ("key", "match"),
+    [
+        ("", NOT_UNDER),
+        ("library/x/pages/0.png", NOT_UNDER),
+        (UPLOAD_PREFIX[:-1], NOT_UNDER),
+        (f"project/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png", NOT_UNDER),
+        (f"projects/{PROJECT}/levels/{FLOOR}/uploads/{UPLOAD}/pages/0.png", NOT_UNDER),
+        (f"projects/{PROJECT}/floors/{FLOOR}/upload/{UPLOAD}/pages/0.png", NOT_UNDER),
+        (f"projects/{PROJECT}/floors/bad/uploads/{UPLOAD}/pages/0.png", "id tầng"),
+        (f"projects/{UPLOAD}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png", "prj_"),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{PROJECT}/pages/0.png", "upl_"),
+    ],
+)
+def test_upload_prefix_of_rejects(key: str, match: str) -> None:
+    """Sai chữ của bố cục, thiếu đoạn, hay id sai mẫu ở vị trí id → `ValueError`."""
+    with pytest.raises(ValueError, match=match):
+        object_keys.upload_prefix_of(key)
+
+
+def test_upload_prefix_of_rebuilds_with_upload_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-077: bộ tách hỏi đúng hàm dựng — đột biến `upload_prefix` thì `upload_prefix_of` đổi theo."""
+    monkeypatch.setattr(object_keys, "upload_prefix", lambda *_: "khac/")
+    with pytest.raises(ValueError, match=NOT_UNDER):
+        object_keys.upload_prefix_of(f"{UPLOAD_PREFIX}pages/0.png")
