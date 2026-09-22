@@ -1,0 +1,40 @@
+# Server app dev: chỉ http trên 8080, cùng origin với /api (W19).
+map $http_x_request_id $appback_request_id {
+    "~^[A-Za-z0-9-]{8,64}$" $http_x_request_id;
+    default $request_id;
+}
+
+# Biến nginx mức http cho giá trị theo môi trường dùng trong snippets/security_headers.conf.
+map '' $csp_s3_origin {
+    default "${S3_PUBLIC_ENDPOINT}";
+}
+
+# Rỗng ở dev: add_header với biến rỗng không gửi header (đã kiểm bằng chạy thực).
+map '' $hsts_header {
+    default "";
+}
+
+# Token /api/files/{token} là quyền đọc file, không vào log (BE-00 §8). Đặt ở
+# mức server (snippets/app_locations.conf) để giữ đúng ngay cả khi error_page
+# chuyển hướng nội bộ sang /__errors/503 (api không tới được). Regex không phân
+# biệt hoa/thường (~*), chấp nhận nhiều dấu / liên tiếp và mỗi chữ của "files"
+# ở dạng phần trăm-mã-hoá (%66=f…): $request_uri là URI THÔ (chưa chuẩn hoá như
+# $uri), nên //api/files/, /api//files/, /api/%66iles/ vẫn tới đúng location
+# /api/files/ (nginx tự chuẩn hoá path khi định tuyến) mà lọt map cũ — review
+# 2026-09-22 #16, probe R2.
+map $request_uri $appback_access_log {
+    default 1;
+    "~*^/+api/+(?:f|%66)(?:i|%69)(?:l|%6c)(?:e|%65)(?:s|%73)(?:/|%2f)" 0;
+}
+
+resolver 127.0.0.11 valid=10s;
+
+server {
+    listen 8080 default_server;
+    root /usr/share/nginx/html;
+
+    # Dùng bởi snippets/proxy_common.conf (BE-00 §11): chuẩn hoá bỏ cổng.
+    set $appback_proxy_host $host;
+
+    include /etc/nginx/appback/snippets/app_locations.conf;
+}

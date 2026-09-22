@@ -1,0 +1,43 @@
+# Vhost riêng cho MinIO tự chạy (BE-00 §8): S3/MinIO không đặt được nosniff
+# trên chính nó, nên nginx đứng trước, chỉ GET/HEAD, giữ Host thật (chữ ký SigV4
+# tính trên Host) và thêm nosniff. server_name lấy từ host của S3_PUBLIC_ENDPOINT,
+# suy ra bởi docker-entrypoint.d/15-s3-public-host.envsh (nguồn duy nhất, không
+# đợi biến riêng — tránh S3_PUBLIC_ENDPOINT và host lệch nhau).
+#
+# Include snippets/proxy_common.conf như mọi location proxy_pass khác (luật
+# prompt [8]): $appback_proxy_host đặt = $http_host ở đây (giữ nguyên cả cổng,
+# MinIO cần dùng để kiểm chữ ký SigV4) thay vì $host như server app — snippet
+# chỉ đặt MỘT proxy_set_header Host, không còn hai header Host trùng (400, đã
+# kiểm bằng chạy thực trước khi sửa). resolver khai riêng ở đây (không dựa vào
+# thứ tự nạp file .conf khác trong conf.d) để nginx phân giải được "minio".
+#
+# access_log off + error_log crit trong location /: mỗi GET tới đây mang
+# X-Amz-Signature/X-Amz-Credential (URL ký 2 giờ của ObjectStorage.signed_url,
+# packages/storage/port.py) trong $request — cùng lớp lộ bí mật vào log như
+# /api/files/ (BE-00 §8), nhưng lượt trước bỏ sót vhost MinIO (review
+# 2026-09-22 #14 P1, probe R5: access log + error log khi minio gián đoạn đều
+# ghi nguyên chữ ký).
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${S3_PUBLIC_HOST};
+
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+    resolver 127.0.0.11 valid=10s;
+    set $minio http://minio:9000;
+    set $appback_proxy_host $http_host;
+
+    location / {
+        access_log off;
+        error_log /var/log/nginx/error.log crit;
+        limit_except GET HEAD {
+            deny all;
+        }
+        include /etc/nginx/appback/snippets/proxy_common.conf;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "sandbox" always;
+        proxy_pass $minio;
+    }
+}

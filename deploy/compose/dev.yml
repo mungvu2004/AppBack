@@ -1,0 +1,210 @@
+# Compose dev — máy phát triển, build ảnh từ mã nguồn tại chỗ.
+# Gọi độc lập: docker compose -f deploy/compose/dev.yml [--profile ml] [--profile gpu] ...
+services:
+  postgres:
+    extends:
+      file: base.yml
+      service: postgres
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  redis-broker:
+    extends:
+      file: base.yml
+      service: redis-broker
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_BROKER_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis-broker-data:/data
+
+  redis-cache:
+    extends:
+      file: base.yml
+      service: redis-cache
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_CACHE_HOST_PORT:-6380}:6379"
+
+  minio:
+    extends:
+      file: base.yml
+      service: minio
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    environment:
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_BASE_URL}
+    ports:
+      - "127.0.0.1:${MINIO_API_HOST_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    extends:
+      file: base.yml
+      service: minio-init
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:v1.20.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - appback
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_HOST_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_HOST_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    extends:
+      file: base.yml
+      service: migrate
+    build:
+      context: ../..
+      dockerfile: deploy/docker/api.Dockerfile
+    image: appback-api:dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    extends:
+      file: base.yml
+      service: api
+    build:
+      context: ../..
+      dockerfile: deploy/docker/api.Dockerfile
+    image: appback-api:dev
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    volumes:
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    extends:
+      file: base.yml
+      service: worker
+    build:
+      context: ../..
+      dockerfile: deploy/docker/worker.Dockerfile
+    image: appback-worker:dev
+    volumes:
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  beat:
+    extends:
+      file: base.yml
+      service: beat
+    build:
+      context: ../..
+      dockerfile: deploy/docker/worker.Dockerfile
+    image: appback-worker:dev
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis-broker:
+        condition: service_healthy
+
+  ml:
+    extends:
+      file: base.yml
+      service: ml
+    build:
+      context: ../..
+      dockerfile: deploy/docker/ml.Dockerfile
+      args:
+        ML_VARIANT: cpu
+    image: appback-ml:dev
+    profiles: ["ml"]
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  ml-gpu:
+    extends:
+      file: base.yml
+      service: ml-gpu
+    build:
+      context: ../..
+      dockerfile: deploy/docker/ml.Dockerfile
+      args:
+        ML_VARIANT: cuda
+        CUDA_TAG: cu126
+    image: appback-ml-cuda:dev
+    profiles: ["gpu"]
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  web:
+    extends:
+      file: base.yml
+      service: web
+    build:
+      context: ../..
+      dockerfile: deploy/docker/web.Dockerfile
+      additional_contexts:
+        appfront: ${APPFRONT_CONTEXT:?bắt buộc — thư mục nguồn AppFront do web-context.sh xuất}
+      args:
+        APPFRONT_SHA: ${APPFRONT_SHA:?bắt buộc — SHA của AppFront}
+    image: appback-web:dev
+    environment:
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/appback/templates/dev
+    ports:
+      - "127.0.0.1:${WEB_HTTP_PORT:-8080}:8080"
+
+networks:
+  appback:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.200.0/24
+  ml-internal:
+    internal: true
+
+volumes:
+  pg-data:
+  redis-broker-data:
+  minio-data:
+  local-storage:
+  ml-tmp:

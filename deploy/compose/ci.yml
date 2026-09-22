@@ -1,0 +1,165 @@
+# Compose ci — dùng ảnh đã build sẵn (IMAGE_TAG), không volume dữ liệu bền,
+# STORAGE_BACKEND=s3 với MinIO tự chạy. Trình duyệt e2e vào http://localhost:8080
+# (KHÔNG vào web:8080 trực tiếp — cookie Secure sẽ bị bỏ vì origin không phải https/localhost đã ký).
+# STORAGE_BACKEND ép cứng "s3" ở mọi dịch vụ dùng &app-env (không dựa vào biến ngoài
+# ${STORAGE_BACKEND} của base.yml) — CI luôn dùng MinIO, không nhận cấu hình local.
+services:
+  postgres:
+    extends:
+      file: base.yml
+      service: postgres
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+
+  redis-broker:
+    extends:
+      file: base.yml
+      service: redis-broker
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_BROKER_HOST_PORT:-6379}:6379"
+
+  redis-cache:
+    extends:
+      file: base.yml
+      service: redis-cache
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_CACHE_HOST_PORT:-6380}:6379"
+
+  minio:
+    extends:
+      file: base.yml
+      service: minio
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    environment:
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_BASE_URL}
+    ports:
+      - "127.0.0.1:${MINIO_API_HOST_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+
+  minio-init:
+    extends:
+      file: base.yml
+      service: minio-init
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:v1.20.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - appback
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_HOST_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_HOST_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    extends:
+      file: base.yml
+      service: migrate
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-api:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    environment:
+      STORAGE_BACKEND: s3
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    extends:
+      file: base.yml
+      service: api
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-api:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    environment:
+      STORAGE_BACKEND: s3
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    extends:
+      file: base.yml
+      service: worker
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-worker:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    environment:
+      STORAGE_BACKEND: s3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  beat:
+    extends:
+      file: base.yml
+      service: beat
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-worker:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    environment:
+      STORAGE_BACKEND: s3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis-broker:
+        condition: service_healthy
+
+  ml:
+    extends:
+      file: base.yml
+      service: ml
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-ml:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    profiles: ["ml"]
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  web:
+    extends:
+      file: base.yml
+      service: web
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-web:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    environment:
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/appback/templates/dev
+    ports:
+      - "127.0.0.1:${WEB_HTTP_PORT:-8080}:8080"
+
+networks:
+  appback:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.200.0/24
+  ml-internal:
+    internal: true
+
+volumes:
+  ml-tmp:

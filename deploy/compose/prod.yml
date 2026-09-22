@@ -1,0 +1,210 @@
+# Compose prod — VPS. Không mailpit. minio/minio-init dưới profile "minio" (chỉ khi
+# tự chạy MinIO, không dùng S3 ngoài). Postgres/Redis/MinIO API không công bố cổng.
+# migrate chạy một lần — B0-10 gọi TRƯỚC khi đổi container (không tự chạy ở đây).
+#
+# LỆNH CHUẨN (B0-10 dùng): `docker compose --env-file /etc/appback/appback.env
+# -f deploy/compose/prod.yml …` — CÙNG một tệp cho cả nội suy `${VAR}` lúc compose
+# đọc file lẫn `env_file` của từng container. `environment:` (kế thừa từ base.yml,
+# nội suy ngay lúc đọc file) ĐÈ `env_file:` lúc container khởi động; thiếu `--env-file`
+# thì shell không có biến, `${SECRET_KEY}` v.v. nội suy ra chuỗi rỗng và đè mất giá trị
+# thật trong `/etc/appback/appback.env`. `env_file` để `required: false` chỉ để
+# `docker compose config` chạy được trên máy dev/CI khi file chưa tồn tại (kiểm #1 của
+# prompt) — trên VPS thật file luôn có mặt trước khi gọi compose.
+services:
+  postgres:
+    extends:
+      file: base.yml
+      service: postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  redis-broker:
+    extends:
+      file: base.yml
+      service: redis-broker
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    volumes:
+      - redis-broker-data:/data
+
+  redis-cache:
+    extends:
+      file: base.yml
+      service: redis-cache
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+
+  minio:
+    extends:
+      file: base.yml
+      service: minio
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    profiles: ["minio"]
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    environment:
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_BASE_URL}
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    extends:
+      file: base.yml
+      service: minio-init
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: ["minio"]
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  migrate:
+    extends:
+      file: base.yml
+      service: migrate
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-api:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    extends:
+      file: base.yml
+      service: api
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-api:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    volumes:
+      # Chỉ có tác dụng khi STORAGE_BACKEND=local; STORAGE_BACKEND=s3 thì bỏ qua.
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+
+  worker:
+    extends:
+      file: base.yml
+      service: worker
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-worker:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    volumes:
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+
+  beat:
+    extends:
+      file: base.yml
+      service: beat
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-worker:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+
+  ml:
+    extends:
+      file: base.yml
+      service: ml
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-ml:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    profiles: ["ml"]
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+
+  ml-gpu:
+    extends:
+      file: base.yml
+      service: ml-gpu
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-ml-cuda:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    profiles: ["gpu"]
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+
+  web:
+    extends:
+      file: base.yml
+      service: web
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-web:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    environment:
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/appback/templates/prod
+    healthcheck:
+      # base.yml không khai healthcheck cho web (một nguồn — review 2026-09-22
+      # #3): HEALTHCHECK của ảnh gọi http://127.0.0.1:8080/index.html — ở prod
+      # 8080 chỉ redirect sang https (curl -f không coi 301 là lỗi nên "đạt"
+      # mà không kiểm gì thật), đè bằng cổng 8443 https thật (probe Q3).
+      test: ["CMD", "curl", "-kfsS", "-o", "/dev/null", "https://127.0.0.1:8443/index.html"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      # Chứng chỉ chỉ đọc; thư mục và các tệp trên host cũng phải chỉ đọc cho tiến trình
+      # nginx (hợp đồng §3) — chủ sở hữu host chịu trách nhiệm đặt quyền tệp.
+      - ${TLS_CERT_DIR:-/etc/appback/tls}:/etc/nginx/certs:ro
+
+networks:
+  appback:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.200.0/24
+  ml-internal:
+    internal: true
+
+volumes:
+  pg-data:
+  redis-broker-data:
+  minio-data:
+  local-storage:
+  ml-tmp:

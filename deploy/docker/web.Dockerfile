@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+# Ảnh web: nginx không root đón front cho SPA AppFront + /api cùng origin
+# (BE-00 §8, W19). Build context = gốc repo; build-context phụ "appfront" do
+# deploy/docker/web-context.sh xuất.
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS build
+WORKDIR /src
+COPY --from=appfront . .
+RUN corepack enable \
+    && corepack prepare pnpm@9.4.0 --activate \
+    && pnpm install --frozen-lockfile \
+    && pnpm draco \
+    && pnpm build \
+    && test -f dist/draco/draco_decoder.wasm
+
+FROM nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0
+
+# Ảnh nền giữ server mặc định (server_name localhost, listen 8080) tại
+# /etc/nginx/conf.d/default.conf: mọi yêu cầu Host: localhost khớp nó TRƯỚC
+# app.conf, nuốt /api (404 HTML) và mất CSP của SPA (review 2026-09-22 #1,
+# probe Q1 — localhost là URL PUBLIC_BASE_URL/e2e dùng). Lệnh chạy bằng uid 101
+# của ảnh nền (USER 10001 của prompt này chưa có hiệu lực ở đây) — uid đó là
+# chủ /etc/nginx/conf.d nên xoá được default.conf mà không cần root.
+RUN rm /etc/nginx/conf.d/default.conf
+
+ARG APPFRONT_SHA
+RUN [ -n "$APPFRONT_SHA" ] || { echo "APPFRONT_SHA is required" >&2; exit 1; }
+LABEL org.opencontainers.image.revision.appfront=${APPFRONT_SHA}
+
+# Compose prod đổi sang templates/prod (chứng chỉ TLS, vhost MinIO).
+ENV NGINX_ENVSUBST_TEMPLATE_DIR=/etc/nginx/appback/templates/dev
+
+COPY --from=build /src/dist /usr/share/nginx/html
+COPY deploy/nginx/ /etc/nginx/appback/
+COPY --chmod=0755 deploy/nginx/docker-entrypoint.d/15-s3-public-host.envsh /docker-entrypoint.d/15-s3-public-host.envsh
+
+EXPOSE 8080 8443
+# Location không phụ thuộc api: index.html tĩnh, phục vụ được cả dev và prod
+# (prod 8080 trả 301 — không phải lỗi, curl -f không coi 3xx là hỏng).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --start-interval=2s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8080/index.html -o /dev/null || exit 1
+
+USER 10001

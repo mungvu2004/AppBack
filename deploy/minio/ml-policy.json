@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::__BUCKET__/projects/*/floors/*/uploads/*/pages/*",
+        "arn:aws:s3:::__BUCKET__/ml/models/*",
+        "arn:aws:s3:::__BUCKET__/ml/datasets/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": [
+        "arn:aws:s3:::__BUCKET__/projects/*/floors/*/uploads/*/runs/*",
+        "arn:aws:s3:::__BUCKET__/ml/models/*"
+      ]
+    }
+  ]
+}

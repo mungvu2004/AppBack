@@ -1,0 +1,21 @@
+#!/bin/sh
+# Suy S3_PUBLIC_HOST (chỉ tên host, không scheme/cổng/đường) từ S3_PUBLIC_ENDPOINT
+# để templates/prod/minio.conf.template dùng làm server_name. Nguồn duy nhất:
+# không đợi có một biến riêng có thể lệch với S3_PUBLIC_ENDPOINT thật.
+# Phải executable + đuôi .envsh để docker-entrypoint.sh "source" thay vì chạy
+# tiến trình con (chỉ cách export được biến ra ngoài cho 20-envsubst-on-templates.sh
+# — đã kiểm bằng chạy thực).
+set -eu
+
+s3_endpoint="${S3_PUBLIC_ENDPOINT:-}"
+if [ -z "$s3_endpoint" ]; then
+  # STORAGE_BACKEND=local (không có S3_PUBLIC_ENDPOINT) là cấu hình hợp lệ
+  # (prod.yml mount local-storage cho đúng trường hợp này); server_name rỗng
+  # làm `nginx -t` hỏng "[emerg] invalid number of arguments" và web khởi
+  # động lại liên tục (review 2026-09-22 #4, probe Q4). "_" không khớp Host
+  # nào thật nên vhost MinIO thành vô hại thay vì chặn cả server khởi động.
+  S3_PUBLIC_HOST=_
+else
+  S3_PUBLIC_HOST=$(printf '%s' "$s3_endpoint" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#[:/].*$##')
+fi
+export S3_PUBLIC_HOST

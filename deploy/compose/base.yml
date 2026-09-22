@@ -1,0 +1,249 @@
+# Cấu hình dùng chung cho dev/ci/prod — mỗi dịch vụ ở dev/ci/prod extends từ đây
+# (hợp đồng B0-08 §2). Không đặt ports/depends_on/profiles/image/build/container_name
+# ở file này; volume dữ liệu bền (pg-data, redis-broker-data, minio-data, local-storage)
+# cũng không đặt ở đây vì ci.yml không dùng volume có tên (chỉ khai ở dev.yml/prod.yml).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Mặc định khớp packages/messaging/settings.py — mọi app dùng chung broker
+# (migrate/api/worker/beat/ml/ml-gpu, NO-021) đọc cùng anchor, không chép tay
+# 2 lần (review 2026-09-22 #17).
+x-celery-task-env: &celery-task-env
+  CELERY_VISIBILITY_TIMEOUT_S: ${CELERY_VISIBILITY_TIMEOUT_S:-7200}
+  TASK_TIME_LIMIT_S: ${TASK_TIME_LIMIT_S:-3600}
+  TASK_SOFT_TIME_LIMIT_S: ${TASK_SOFT_TIME_LIMIT_S:-3300}
+  TASK_RETRY_BACKOFF_S: ${TASK_RETRY_BACKOFF_S:-10,60,300}
+  STREAM_MAXLEN: ${STREAM_MAXLEN:-1000}
+
+services:
+  postgres:
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-appback}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?bắt buộc — mật khẩu Postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-appback}
+    networks:
+      - appback
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appback}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-broker:
+    logging: *logging
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    networks:
+      - appback
+      - ml-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-cache:
+    logging: *logging
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    networks:
+      - appback
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    logging: *logging
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?bắt buộc — khoá gốc MinIO}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?bắt buộc — khoá gốc MinIO}
+    networks:
+      - appback
+      - ml-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio-init:
+    logging: *logging
+    entrypoint: ["sh", "/deploy/minio/init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?bắt buộc — khoá gốc MinIO}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?bắt buộc — khoá gốc MinIO}
+      S3_ENDPOINT: ${S3_ENDPOINT:?bắt buộc — endpoint MinIO nội bộ}
+      S3_BUCKET: ${S3_BUCKET:?bắt buộc}
+      # Khoá chung của app (api/worker/beat/migrate) — F3: trước đây minio-init
+      # không cấp danh tính MinIO nào cho khoá này, nên /api/ready 503 khi
+      # S3_ACCESS_KEY khác MINIO_ROOT_USER (review 2026-09-22 #15).
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?bắt buộc — khoá chung của app}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?bắt buộc — khoá chung của app}
+      S3_ML_ACCESS_KEY: ${S3_ML_ACCESS_KEY:?bắt buộc — khoá riêng của ml}
+      S3_ML_SECRET_KEY: ${S3_ML_SECRET_KEY:?bắt buộc — khoá riêng của ml}
+    networks:
+      - appback
+    volumes:
+      - ../minio/init.sh:/deploy/minio/init.sh:ro
+      - ../minio/app-policy.json:/deploy/minio/app-policy.json:ro
+      - ../minio/ml-policy.json:/deploy/minio/ml-policy.json:ro
+
+  migrate:
+    logging: *logging
+    command: ["sh", "-c", "alembic -c packages/db/alembic.ini upgrade head && python -m packages.db.seeds"]
+    environment: &app-env
+      APP_ENV: ${APP_ENV:?bắt buộc — không mặc định}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_BROKER_URL: ${REDIS_BROKER_URL}
+      REDIS_CACHE_URL: ${REDIS_CACHE_URL}
+      # NO-021 phần còn lại (review 2026-09-22 #10): trước đây không có nơi khai
+      # nên dev/ci không chỉnh được nếu không sửa compose.
+      <<: *celery-task-env
+      SECRET_KEY_PREVIOUS: ${SECRET_KEY_PREVIOUS:-}
+      STORAGE_BACKEND: ${STORAGE_BACKEND}
+      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      SMTP_URL: ${SMTP_URL:-}
+    networks:
+      - appback
+    healthcheck:
+      # ảnh api có HEALTHCHECK cho server (/api/health); migrate không mở cổng nên tắt (hợp đồng §2).
+      disable: true
+
+  api:
+    logging: *logging
+    command:
+      - uvicorn
+      - apps.api.core.app:create_app
+      - --factory
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=${FORWARDED_ALLOW_IPS}
+      - --no-access-log
+    environment:
+      <<: *app-env
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS}
+    networks:
+      - appback
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=3)
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    logging: *logging
+    command: ["celery", "-A", "apps.worker.celery_main", "worker", "-Q", "default,pipeline.cpu", "--concurrency", "${WORKER_CONCURRENCY:-2}"]
+    mem_limit: ${WORKER_MEM_LIMIT:-3g}
+    environment: *app-env
+    networks:
+      - appback
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A apps.worker.celery_main inspect ping -d celery@$$HOSTNAME --timeout 5"]
+      interval: 10s
+      timeout: 8s
+      retries: 10
+
+  beat:
+    logging: *logging
+    command: ["celery", "-A", "apps.worker.celery_main", "beat", "-s", "/tmp/celerybeat-schedule"]
+    environment: *app-env
+    networks:
+      - appback
+    healthcheck:
+      # ảnh worker có HEALTHCHECK theo hàng đợi; beat không nghe hàng nên tắt (hợp đồng §2).
+      disable: true
+
+  ml:
+    logging: *logging
+    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer,ml.training", "--concurrency", "1"]
+    init: true
+    shm_size: "1gb"
+    mem_limit: ${ML_MEM_LIMIT:-6g}
+    environment:
+      # create_celery("ml") đọc CELERY_VISIBILITY_TIMEOUT_S/TASK_*/STREAM_MAXLEN
+      # như worker (BE-00 §7: giá trị NHỎ NHẤT giữa các app dùng chung broker
+      # thắng) nhưng thiếu ở dev/ci trước đây — review 2026-09-22 #17.
+      <<: *celery-task-env
+      APP_ENV: ${APP_ENV:?bắt buộc — không mặc định}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      REDIS_BROKER_URL: ${REDIS_BROKER_URL}
+      REDIS_CACHE_URL: ${REDIS_CACHE_URL}
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ML_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_ML_SECRET_KEY}
+      ML_DEVICE: ${ML_DEVICE:-auto}
+    volumes:
+      # Không tmpfs: /tmp cần ≥ 20 GiB đĩa trống (xuất ONNX, tệp tạm huấn luyện).
+      - ml-tmp:/tmp
+    networks:
+      - ml-internal
+
+  ml-gpu:
+    logging: *logging
+    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer,ml.training", "--concurrency", "1"]
+    init: true
+    shm_size: "1gb"
+    mem_limit: ${ML_MEM_LIMIT:-6g}
+    environment:
+      <<: *celery-task-env
+      APP_ENV: ${APP_ENV:?bắt buộc — không mặc định}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      REDIS_BROKER_URL: ${REDIS_BROKER_URL}
+      REDIS_CACHE_URL: ${REDIS_CACHE_URL}
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ML_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_ML_SECRET_KEY}
+      ML_DEVICE: cuda
+    volumes:
+      - ml-tmp:/tmp
+    networks:
+      - ml-internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
+
+  web:
+    logging: *logging
+    environment:
+      # nginx cần hai biến này để envsubst template (CSP img-src/connect-src, origin S3).
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+    networks:
+      - appback
+    # Không khai healthcheck ở đây (một nguồn — review 2026-09-22 #3): dev/ci
+    # dùng đúng HEALTHCHECK của ảnh (web.Dockerfile, cổng 8080 HTTP); prod đè
+    # bằng cổng 8443 HTTPS thật vì 8080 ở đó chỉ redirect (prod.yml).
