@@ -66,6 +66,11 @@
 | FIX-057 | 2026-09-22 | B0-04 | NO-077 | `storage.keys.upload_prefix` giữ bản riêng của bố cục dùng chung | `318dc5b` |
 | FIX-058 | 2026-09-22 | B5-01 | NO-077 | `ml_contracts._upload_prefix` dựng lại bố cục khoá của `storage` | `778c052` |
 | FIX-059 | 2026-09-22 | B0-05 | NO-078 | Worker Celery thử để logger gốc ở ERROR sau test messaging | nhánh `fix/b0-01-gate-log-debts` |
+| FIX-060 | 2026-09-22 | B0-02 | NO-088 | `upload_prefix_of` chỉ kiểm phần đầu khoá | nhánh `fix/b0-04-layout-and-c11-debts` |
+| FIX-061 | 2026-09-22 | B0-02 | NO-081 | Bố cục `runs/…/` và `ml/models/…/` chưa có ở `packages/core` | nhánh `fix/b0-04-layout-and-c11-debts` |
+| FIX-062 | 2026-09-22 | B0-04 | NO-081 | `storage.keys` dựng `runs/…/`, `ml/models/…/` bằng bản riêng | nhánh `fix/b0-04-layout-and-c11-debts` |
+| FIX-063 | 2026-09-22 | B5-01 | NO-081 | `ml_contracts` dựng lại `runs/…/`, `ml/models/…/`; `_id_of` chép `check_id` | nhánh `fix/b0-04-layout-and-c11-debts` |
+| FIX-064 | 2026-09-22 | B1-01 | NO-082 | Bộ kiểm của C11 gọi lỗi đếm thật là "cửa sổ thứ hai" | nhánh `fix/b0-04-layout-and-c11-debts` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -555,3 +560,40 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
   5.6.3 chỉ bỏ cấu hình logger gốc khi tín hiệu này có receiver — `worker_hijack_root_logger=False` KHÔNG đủ, logger gốc vẫn bị
   đặt mức 40; probe P9 của review `fix/b1-01-parallel-refresh-flake`), hoặc lưu mức + handler rồi trả lại khi worker dừng.
 - **[6]** Test: mức và handler của logger gốc trước và sau fixture worker bằng nhau; đỏ trên mã hiện tại.
+
+---
+
+> **Giao việc FIX-060..FIX-064 (đợt 4).** Tiếp yêu cầu ngày 2026-09-22. Đợt 4 nhận các nợ mã do phiên review đợt 2–3 tìm ra:
+> NO-081, NO-082, NO-088, trên một nhánh `fix/b0-04-layout-and-c11-debts` (một worker, tiết kiệm RAM). NO-087 (Nit, W10) vào đợt
+> sau khi `fix/b0-01-gate-log-debts` hợp nhất. **Không có FIX ở đợt này:** NO-083..NO-086 (phiên B0-08 đang chạy song song ghi;
+> chủ là AppFront/B0-09, B0-08 v2, B5-01·B0-05, FE/B4-01 — người điều phối xét sau khi B0-08 hợp nhất), NO-079 cùng NO-050,
+> NO-071 (hiến chương/prompt — chờ người dùng). Luật chung như đợt 1–3; trần 2 lượt verify cùng lúc.
+
+## FIX-060 cho B0-02 — `upload_prefix_of` chỉ kiểm phần đầu khoá (NO-088)
+
+- **[1–3]** `packages/core/object_keys.py:74` `upload_prefix_of` (công khai, docstring "khoá không tin") trả tiền tố hợp lệ cho
+  `…/uploads/{upl}/../../../../x` hay `…/pages//0.png` (probe P4 review `fix/b0-04-key-layout-debts`).
+- **[4]** Sửa: `packages/core/object_keys.py` + test của `packages/core`.
+- **[5]** `check_key(key)` ở dòng đầu (fail-closed); không đổi hành vi với khoá hợp lệ.
+- **[6]** Ca `…/uploads/{upl}/../x` và `…//…` trong test từ chối — đỏ trên mã hiện tại.
+
+## FIX-061 cho B0-02, FIX-062 cho B0-04, FIX-063 cho B5-01 — bố cục `runs/…/` và `ml/models/…/` có hai nguồn (NO-081)
+
+- **[1–3]** `packages/storage/keys.py:63` (`runs/{run}/{step}/` trong `run_artifact`), `:75` (`ml/models/{mdl}/` trong
+  `model_artifact`); `packages/ml_contracts/payloads.py:26` `MODELS_PREFIX`, `:110`, `:132`, `:297` dựng lại cùng bố cục.
+- **[4]** FIX-061: `packages/core/object_keys.py` + test. FIX-062: `packages/storage/keys.py` + test. FIX-063:
+  `packages/ml_contracts/payloads.py` + test.
+- **[5]** Lõi giữ đúng phần bố cục mà `ml_contracts` phải kiểm (tiền tố lượt chạy của một bước, tiền tố model), theo cùng luật đặt
+  của FIX-056 (lõi giữ bố cục mà gói không nhập `storage` được phải kiểm; hàm dựng khoá đầy đủ ở `storage`). `storage` dựng
+  qua lõi; `ml_contracts` kiểm qua lõi, xoá `MODELS_PREFIX`/chuỗi dựng lại. Cùng lượt: `ml_contracts._id_of` dùng `check_id`
+  của lõi (review `fix/b0-04-key-layout-debts` Nit #5).
+- **[6]** Test một nguồn cho từng tiền tố (đột biến bố cục ở lõi làm test `storage` và `ml_contracts` cùng đỏ), đỏ trên mã hiện tại.
+
+## FIX-064 cho B1-01 — bộ kiểm của C11 gọi lỗi đếm thật là "cửa sổ thứ hai" (NO-082)
+
+- **[1–3]** `apps/api/auth/tests/test_refresh.py:503` `_assert_exact_fail_limit`: `bump` không nguyên khối (đột biến M1) →
+  thông báo "bộ đếm mở cửa sổ thứ hai …, không phải đếm sai" dù thực là đếm sai (test vẫn đỏ, chỉ sai tên nguyên nhân).
+- **[4]** Sửa: `apps/api/auth/tests/test_refresh.py`.
+- **[5]** Chỉ báo cửa sổ thứ hai khi `counter[0] < trần` và `statuses.count(401) − trần == counter[0]`; còn lại báo đếm sai.
+- **[6]** Ca thuần gọi thẳng bộ kiểm (`[401]×40`, không sự kiện mở, `(7, 360)`, 20) không được khớp "cửa sổ thứ hai" — đỏ trên mã
+  hiện tại.
