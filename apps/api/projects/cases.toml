@@ -1,0 +1,19 @@
+# Bảng case bắt buộc thêm/miễn của module dự án (B2-01 [8], CASE.md §2.3).
+#
+# `projects_list_projects` (Đ*), `projects_read_project` (Đ), `projects_update_project` (G)
+# không cần khai gì: case của Loại đã đủ, tính từ metadata + cột BE-BIND.
+
+[[endpoint]]
+op = "projects_create_project"
+# G* không tự đòi C07/C16/C18 (chỉ G mới có ba chú thích này); #25 có Khoá thật
+# (`project.create`), thân có chuỗi người nhập, và có Nhật ký — thêm tay theo B2-01 [2] §8.
+extra = ["C07", "C16", "C18"]
+
+[[endpoint]]
+op = "projects_delete_project"
+waive = { C16 = "DELETE không có thân" }
+
+[[endpoint]]
+op = "projects_list_summaries"
+# Đ* không tự đòi C02; N1 có query `cursor`/`limit` nên cần kiểm thân/tham số sai kiểu.
+extra = ["C02"]
