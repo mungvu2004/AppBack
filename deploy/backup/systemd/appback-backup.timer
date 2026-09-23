@@ -1,0 +1,11 @@
+# Lịch chạy appback-backup.service — 02:30 hằng ngày theo GIỜ MÁY chủ (không phải UTC);
+# đặt múi giờ máy đích = UTC nếu muốn khớp đúng "02:30 UTC" của kế hoạch (B0-10 [2]).
+[Unit]
+Description=Lịch sao lưu AppBack hằng ngày
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

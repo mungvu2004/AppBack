@@ -1,0 +1,263 @@
+name: Deploy
+
+# B0-10 hop-dong.md §5. Ba đường: staging (theo dõi CI xanh trên main), production
+# (tag v*, có người duyệt qua Environment), rollback thủ công (workflow_dispatch).
+# Chưa có VPS/secret thật -> job staging/production/rollback tự bỏ qua có ::notice::.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Môi trường rollback"
+        type: choice
+        options: [staging, production]
+        required: true
+      tag:
+        description: "Tag hoặc sha-<12> để rollback về"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Staging — build + push 4 ảnh sha-<12> rồi ssh deploy.sh, chỉ khi CI xanh trên main
+  # ---------------------------------------------------------------------------
+  images:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      APPFRONT_REPO: ${{ github.workspace }}/appfront
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - id: appfront-sha
+        run: echo "sha=$(tr -d '[:space:]' < tools/contract/APPFRONT_SHA)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mungvu2004/AppFront
+          ref: ${{ steps.appfront-sha.outputs.sha }}
+          path: appfront
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+      - env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<<"$GHCR_TOKEN"
+      - id: sha12
+        run: echo "sha12=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - env:
+          SHA12: ${{ steps.sha12.outputs.sha12 }}
+        run: |
+          docker buildx build --cache-from "type=gha,scope=appback-api" --cache-to "type=gha,mode=max,scope=appback-api" \
+            --push -t "ghcr.io/mungvu2004/appback-api:sha-${SHA12}" -f deploy/docker/api.Dockerfile .
+      - env:
+          SHA12: ${{ steps.sha12.outputs.sha12 }}
+        run: |
+          docker buildx build --cache-from "type=gha,scope=appback-worker" --cache-to "type=gha,mode=max,scope=appback-worker" \
+            --push -t "ghcr.io/mungvu2004/appback-worker:sha-${SHA12}" -f deploy/docker/worker.Dockerfile .
+      - env:
+          SHA12: ${{ steps.sha12.outputs.sha12 }}
+        run: |
+          docker buildx build --cache-from "type=gha,scope=appback-ml" --cache-to "type=gha,mode=max,scope=appback-ml" \
+            --build-arg ML_VARIANT=cpu \
+            --push -t "ghcr.io/mungvu2004/appback-ml:sha-${SHA12}" -f deploy/docker/ml.Dockerfile .
+      - env:
+          APPFRONT_SHA: ${{ steps.appfront-sha.outputs.sha }}
+        run: bash deploy/docker/web-context.sh "$APPFRONT_SHA" .cache/ci-appfront-web-context
+      - env:
+          APPFRONT_SHA: ${{ steps.appfront-sha.outputs.sha }}
+          SHA12: ${{ steps.sha12.outputs.sha12 }}
+        run: |
+          docker buildx build --cache-from "type=gha,scope=appback-web" --cache-to "type=gha,mode=max,scope=appback-web" \
+            --build-context "appfront=.cache/ci-appfront-web-context" --build-arg "APPFRONT_SHA=${APPFRONT_SHA}" \
+            --push -t "ghcr.io/mungvu2004/appback-web:sha-${SHA12}" -f deploy/docker/web.Dockerfile .
+
+  staging:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    environment: staging
+    env:
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - id: sha12
+        run: echo "sha12=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: deploy len staging qua ssh
+        env:
+          SHA12: ${{ steps.sha12.outputs.sha12 }}
+        run: |
+          if [ -z "$STAGING_SSH_KEY" ] || [ -z "$STAGING_HOST" ] || [ -z "$STAGING_KNOWN_HOSTS" ]; then
+            echo "::notice::bỏ qua staging — chưa cấu hình"
+            exit 0
+          fi
+          key_file="$RUNNER_TEMP/staging_ssh_key"
+          known_hosts_file="$RUNNER_TEMP/staging_known_hosts"
+          trap 'rm -f "$key_file" "$known_hosts_file"' EXIT
+          printf '%s\n' "$STAGING_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$known_hosts_file"
+          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
+            deploy/compose/prod.yml "deploy@${STAGING_HOST}:/opt/appback/prod.yml"
+          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
+            deploy/scripts "deploy@${STAGING_HOST}:/opt/appback/scripts"
+          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
+            deploy/backup "deploy@${STAGING_HOST}:/opt/appback/backup"
+          ssh -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
+            "deploy@${STAGING_HOST}" "/opt/appback/scripts/deploy.sh sha-${SHA12}"
+
+  # ---------------------------------------------------------------------------
+  # Production — gắn tag len ảnh sha đã có (không build lại), rồi ssh deploy.sh
+  # ---------------------------------------------------------------------------
+  promote:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    env:
+      HEAD_SHA: ${{ github.sha }}
+      TAG_NAME: ${{ github.ref_name }}
+    steps:
+      - name: kiem tag truoc khi dung (cung regex voi rollback)
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12})$ ]]; then
+            echo "::error::tag không hợp lệ: $TAG_NAME"
+            exit 1
+          fi
+      - env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<<"$GHCR_TOKEN"
+      - id: sha12
+        run: echo "sha12=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - env:
+          SHA12: ${{ steps.sha12.outputs.sha12 }}
+        run: |
+          for img in api worker ml web; do
+            docker buildx imagetools create \
+              -t "ghcr.io/mungvu2004/appback-${img}:${TAG_NAME}" \
+              "ghcr.io/mungvu2004/appback-${img}:sha-${SHA12}"
+          done
+
+  production:
+    needs: promote
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment: production
+    env:
+      PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+      TAG_NAME: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: kiem tag truoc khi dung (cung regex voi rollback)
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12})$ ]]; then
+            echo "::error::tag không hợp lệ: $TAG_NAME"
+            exit 1
+          fi
+      - name: deploy len production qua ssh
+        run: |
+          if [ -z "$PRODUCTION_SSH_KEY" ] || [ -z "$PRODUCTION_HOST" ] || [ -z "$PRODUCTION_KNOWN_HOSTS" ]; then
+            echo "::notice::bỏ qua production — chưa cấu hình"
+            exit 0
+          fi
+          key_file="$RUNNER_TEMP/production_ssh_key"
+          known_hosts_file="$RUNNER_TEMP/production_known_hosts"
+          trap 'rm -f "$key_file" "$known_hosts_file"' EXIT
+          printf '%s\n' "$PRODUCTION_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > "$known_hosts_file"
+          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
+            deploy/compose/prod.yml "deploy@${PRODUCTION_HOST}:/opt/appback/prod.yml"
+          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
+            deploy/scripts "deploy@${PRODUCTION_HOST}:/opt/appback/scripts"
+          scp -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -r \
+            deploy/backup "deploy@${PRODUCTION_HOST}:/opt/appback/backup"
+          ssh -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
+            "deploy@${PRODUCTION_HOST}" "/opt/appback/scripts/deploy.sh ${TAG_NAME}"
+
+  # ---------------------------------------------------------------------------
+  # Rollback thủ công — target chọn Environment (production vẫn cần người duyệt)
+  # ---------------------------------------------------------------------------
+  rollback:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-${{ inputs.target }}
+      cancel-in-progress: false
+    environment: ${{ inputs.target }}
+    env:
+      TARGET: ${{ inputs.target }}
+      TAG: ${{ inputs.tag }}
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: rollback qua ssh, tag da kiem regex truoc
+        run: |
+          if [[ ! "$TAG" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12})$ ]]; then
+            echo "::error::tag không hợp lệ: $TAG"
+            exit 1
+          fi
+          if [ "$TARGET" = "staging" ]; then
+            ssh_key="$STAGING_SSH_KEY"; ssh_host="$STAGING_HOST"; ssh_known_hosts="$STAGING_KNOWN_HOSTS"
+          else
+            ssh_key="$PRODUCTION_SSH_KEY"; ssh_host="$PRODUCTION_HOST"; ssh_known_hosts="$PRODUCTION_KNOWN_HOSTS"
+          fi
+          if [ -z "$ssh_key" ] || [ -z "$ssh_host" ] || [ -z "$ssh_known_hosts" ]; then
+            echo "::notice::bỏ qua rollback $TARGET — chưa cấu hình"
+            exit 0
+          fi
+          key_file="$RUNNER_TEMP/rollback_ssh_key"
+          known_hosts_file="$RUNNER_TEMP/rollback_known_hosts"
+          trap 'rm -f "$key_file" "$known_hosts_file"' EXIT
+          printf '%s\n' "$ssh_key" > "$key_file"
+          chmod 600 "$key_file"
+          printf '%s\n' "$ssh_known_hosts" > "$known_hosts_file"
+          ssh -i "$key_file" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" \
+            "deploy@${ssh_host}" "/opt/appback/scripts/rollback.sh $TAG"

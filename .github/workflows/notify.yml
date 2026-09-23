@@ -1,0 +1,59 @@
+name: Notify
+
+# B0-10 [6]: một tin cảnh báo khi CI hỏng trên main, khi Deploy xong hoặc hỏng, khi
+# Restore drill hỏng. Không checkout, không chạy mã của lượt được báo (lượt từ PR
+# fork vẫn kích hoạt workflow_run, có secret) — mọi giá trị sự kiện đi qua env:.
+on:
+  workflow_run:
+    workflows: [CI, Deploy, "Restore drill"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HTML_URL: ${{ github.event.workflow_run.html_url }}
+      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+    steps:
+      - name: quyet dinh co gui tin hay khong
+        run: |
+          send=0
+          case "$WORKFLOW_NAME" in
+            CI)
+              [ "$CONCLUSION" = "failure" ] && [ "$HEAD_BRANCH" = "main" ] && send=1
+              ;;
+            Deploy)
+              if [ "$CONCLUSION" = "success" ] || [ "$CONCLUSION" = "failure" ]; then
+                send=1
+              fi
+              ;;
+            "Restore drill")
+              [ "$CONCLUSION" = "failure" ] && send=1
+              ;;
+          esac
+          if [ "$send" -ne 1 ]; then
+            echo "không gửi — $WORKFLOW_NAME kết thúc $CONCLUSION, nhánh $HEAD_BRANCH không thuộc điều kiện gửi"
+            exit 0
+          fi
+          echo "SEND_ALERT=1" >> "$GITHUB_ENV"
+      - name: gui tin canh bao
+        if: env.SEND_ALERT == '1'
+        run: |
+          if [ -z "$ALERT_WEBHOOK_URL" ]; then
+            echo "::notice::bỏ qua thông báo — chưa cấu hình"
+            exit 0
+          fi
+          sha12="${HEAD_SHA:0:12}"
+          message="Workflow ${WORKFLOW_NAME} kết thúc ${CONCLUSION} trên ${HEAD_BRANCH} (${sha12}): ${HTML_URL}"
+          payload="$(MESSAGE="$message" python3 -c 'import json, os; m = os.environ["MESSAGE"]; print(json.dumps({"text": m, "content": m}))')"
+          if ! printf '%s' "$payload" | curl --fail --max-time 10 -H 'Content-Type: application/json' --data @- "$ALERT_WEBHOOK_URL"; then
+            echo "::warning::gửi thông báo thất bại"
+            exit 0
+          fi

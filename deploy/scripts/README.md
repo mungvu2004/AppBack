@@ -1,0 +1,272 @@
+# `deploy/scripts` — hướng dẫn cho người
+
+Tài liệu này dành cho người vận hành (không phải CI). Mỗi mục ghi **ai làm,
+lệnh, cách kiểm** — làm đúng thứ tự vì mục sau có thể cần mục trước (vd secret
+GitHub cần VPS đã có SSH key). Tham chiếu biến môi trường đầy đủ: bảng ở
+[§ Biến môi trường](#biến-môi-trường) (theo `hop-dong.md` §1).
+
+## 1. Chuẩn bị VPS
+
+**Ai:** người vận hành có quyền tạo máy chủ (ngoài phạm vi CI/Orca — không
+agent nào tự làm việc này).
+
+1. Tạo VPS Linux (Debian/Ubuntu khuyến nghị), cài Docker Engine + Docker
+   Compose plugin.
+2. Tạo người dùng `deploy`, thêm vào nhóm `docker` (không `sudo` cho các script
+   triển khai — chúng chạy bằng `deploy`, không leo quyền):
+   ```bash
+   sudo adduser --disabled-password deploy
+   sudo usermod -aG docker deploy
+   ```
+3. Mở tường lửa **chỉ** ba cổng: `22` (SSH), `80`, `443` (HTTP/HTTPS — nginx
+   redirect 80→443 và phục vụ 443 thật).
+4. Tạo cấu trúc thư mục dưới `/opt/appback/` (chủ `deploy`):
+   ```
+   /opt/appback/
+     prod.yml           # chép từ deploy/compose/prod.yml (deploy.sh scp lên)
+     scripts/           # chép từ deploy/scripts/ (deploy.sh scp lên)
+     backup/            # backup.sh ghi bản sao lưu cục bộ tạm trước khi đẩy xa
+     current_tag        # tag ảnh đang chạy (deploy.sh ghi)
+     previous_tag        # tag trước đó (rollback.sh đọc mặc định)
+   ```
+5. Tạo `/etc/appback/appback.env` (chủ `deploy`, quyền **600** — chứa
+   `SECRET_KEY`, mật khẩu Postgres, khoá MinIO...):
+   ```bash
+   sudo install -o deploy -g deploy -m 600 /dev/null /etc/appback/appback.env
+   ```
+
+**Kiểm:**
+```bash
+ssh deploy@<host> 'id; ls -la /opt/appback; stat -c "%a %U" /etc/appback/appback.env'
+# id có nhóm docker; /etc/appback/appback.env → "600 deploy"
+```
+
+## 2. Khoá SSH riêng cho CI
+
+**Ai:** người vận hành.
+
+1. Sinh một cặp khoá **chỉ dùng cho CI** (không dùng khoá cá nhân):
+   ```bash
+   ssh-keygen -t ed25519 -f ci-appback -C "ci@appback" -N ""
+   ```
+2. `cat ci-appback.pub` → thêm vào `~deploy/.ssh/authorized_keys` trên VPS.
+3. Lấy `known_hosts` cho host thật (**không** dùng `StrictHostKeyChecking=no`
+   — hợp đồng B0-10 §6 bắt `StrictHostKeyChecking=yes`):
+   ```bash
+   ssh-keyscan -t ed25519 <host> > known_hosts_appback
+   ```
+
+**Kiểm:**
+```bash
+ssh -i ci-appback -o UserKnownHostsFile=known_hosts_appback deploy@<host> 'echo ok'
+```
+
+## 3. Secret GitHub
+
+**Ai:** admin repo GitHub. **Ở đâu:** Settings → Environments (mục 5) rồi
+Settings → Secrets and variables → Actions, hoặc secret theo từng
+Environment.
+
+| Secret | Giá trị | Dùng ở |
+|---|---|---|
+| `STAGING_SSH_KEY` | nội dung `ci-appback` (khoá **riêng**) | job `staging` của `deploy.yml` |
+| `STAGING_HOST` | host hoặc IP VPS staging | " |
+| `STAGING_KNOWN_HOSTS` | nội dung `known_hosts_appback` | " |
+| `PRODUCTION_SSH_KEY` | khoá riêng cho production (khuyến nghị khác staging) | job `production` |
+| `PRODUCTION_HOST` | host hoặc IP VPS production | " |
+| `PRODUCTION_KNOWN_HOSTS` | `known_hosts` của host production | " |
+| `ALERT_WEBHOOK_URL` | URL webhook cảnh báo — mục 4 | `notify.yml`, `healthcheck.sh` |
+| `BACKUP_TARGET` | đường đích sao lưu (cục bộ hoặc điểm gắn đã đồng bộ ra xa) | `backup.sh` trên VPS |
+| `BACKUP_AGE_RECIPIENT` | khoá công khai `age` — mục 6 | `backup.sh` trên VPS |
+
+Thiếu `STAGING_*`/`PRODUCTION_*` → `deploy.yml` tự bỏ qua job đó với
+`::notice::`, thoát 0 (không đỏ CI) — đúng hành vi khi VPS chưa có.
+
+**Kiểm:** `gh secret list --env staging`, `gh secret list --env production`
+(cần quyền admin repo).
+
+## 4. Lấy `ALERT_WEBHOOK_URL`
+
+Một URL duy nhất dùng chung cho `healthcheck.sh` và `notify.yml`; thân gửi
+luôn có cả `text` (Slack) và `content` (Discord) — chọn nền tảng nào cũng
+chạy được không cần đổi mã.
+
+**Telegram:**
+1. Tạo bot qua [@BotFather](https://t.me/BotFather) → `/newbot` → lấy token.
+2. Lấy `chat_id`: gửi một tin cho bot rồi gọi
+   `https://api.telegram.org/bot<token>/getUpdates`, đọc `message.chat.id`.
+3. URL: `https://api.telegram.org/bot<token>/sendMessage?chat_id=<chat_id>`.
+
+**Discord:** Server settings → Integrations → Webhooks → New Webhook → copy
+URL (dạng `https://discord.com/api/webhooks/…`).
+
+**Slack:** tạo Incoming Webhook cho app Slack (`https://hooks.slack.com/services/…`).
+
+**Gửi thử (cả ba nền tảng đọc được thân này):**
+```bash
+curl --fail --max-time 10 -H 'Content-Type: application/json' \
+  -d '{"text":"thử ALERT_WEBHOOK_URL","content":"thử ALERT_WEBHOOK_URL"}' \
+  "$ALERT_WEBHOOK_URL"
+```
+
+## 5. GitHub Environment `staging`, `production`
+
+**Ai:** admin repo. **Ở đâu:** Settings → Environments → New environment.
+
+- `staging`: không bắt buộc người duyệt (deploy tự động sau CI xanh trên
+  `main`), nhưng gắn `STAGING_*` secret ở đây (phạm vi environment, không lộ
+  cho job khác).
+- `production`: bật **Required reviewers** — ít nhất một người phải bấm
+  duyệt trước khi job `promote`/`production` chạy (K4). Gắn `PRODUCTION_*` +
+  không cho môi trường này chạy trên nhánh khác ngoài tag `v*` (deployment
+  branch policy → "Selected branches and tags" → thêm pattern `v*`).
+
+**Kiểm:** Settings → Environments → `production` → xác nhận "Required
+reviewers" đã bật và có ít nhất một người.
+
+## 6. Gói GHCR (GitHub Container Registry)
+
+**Ai:** admin repo (đặt public) hoặc người vận hành VPS (nếu để private).
+
+- **Cách A — public:** sau lượt đẩy ảnh đầu tiên, vào
+  `github.com/mungvu2004?tab=packages` → từng gói `appback-{api,worker,ml,web}`
+  → Package settings → Change visibility → Public. VPS `docker pull` không
+  cần đăng nhập.
+- **Cách B — giữ private:** tạo Personal Access Token (classic) phạm vi
+  `read:packages`, rồi trên VPS:
+  ```bash
+  echo "<PAT>" | docker login ghcr.io -u <tài khoản GitHub> --password-stdin
+  ```
+  (chạy một lần, Docker lưu credential ở `~deploy/.docker/config.json`).
+
+**Kiểm:** `docker pull ghcr.io/mungvu2004/appback-api:<tag>` trên VPS không
+hỏi mật khẩu và tải được.
+
+## 7. Tên miền, chứng chỉ TLS
+
+**Ai:** người vận hành.
+
+1. Trỏ DNS của tên miền (vd `app.example.com`) về IP VPS.
+2. Lấy chứng chỉ TLS (vd `certbot`) — **phải phủ cả host phục vụ tệp tĩnh
+   MinIO** (vhost console/API MinIO nếu lộ ra ngoài qua cùng domain hoặc
+   subdomain riêng, tuỳ cấu hình `S3_PUBLIC_ENDPOINT`).
+3. Đặt thư mục chứng chỉ vào `TLS_CERT_DIR` (mặc định
+   `/etc/appback/tls`, biến trong `appback.env`) — `prod.yml` mount thư mục
+   này vào `web` (nginx 8443 HTTPS thật, khác cổng 8080 dev/ci).
+
+**Kiểm:** `curl -vI https://<domain>/api/health` không cảnh báo chứng chỉ.
+
+## 8. Khoá `age` và bản sao `SECRET_KEY`
+
+**Ai:** người vận hành. **Bắt buộc mã hoá trước khi bản sao lưu rời máy** —
+không có ngoại lệ.
+
+1. Sinh cặp khoá `age` (không cài trên VPS nếu không cần giải mã tại chỗ):
+   ```bash
+   age-keygen -o appback-backup.key   # in ra "# public key: age1…"
+   ```
+2. Đặt khoá công khai vào secret `BACKUP_AGE_RECIPIENT` (mục 3) và biến
+   `BACKUP_AGE_RECIPIENT` trong `appback.env` trên VPS (chỉ khoá công khai —
+   `backup.sh` chỉ cần khoá này để mã hoá).
+3. **Khoá riêng** (`appback-backup.key`) và **bản sao `SECRET_KEY`** (từ
+   `appback.env`) cất ở nơi **ngoài** VPS (kho mật của tổ chức, két vật lý,
+   máy quản trị riêng) — mất VPS không kéo theo mất khả năng giải mã hoặc mất
+   khả năng xác thực phiên đã ký.
+4. Khi cần khôi phục thật: đặt `BACKUP_AGE_IDENTITY=<đường khoá riêng>` tạm
+   thời trước khi gọi `restore.sh`, xoá lại sau khi xong.
+
+**Kiểm:** `backup.sh` chạy xong, mở một tệp `.age` trong bản sao lưu bằng
+`age -d -i appback-backup.key <tệp>.age | head -c1` (đọc được vài byte, không
+lỗi "no identity matched").
+
+## 9. Bật lịch sao lưu và cảnh báo sức khoẻ
+
+**Ai:** người vận hành, trên VPS.
+
+Unit systemd nằm ở `deploy/backup/systemd/` (`appback-backup.service`,
+`appback-backup.timer`) và `deploy/scripts/systemd/`
+(`appback-health.service`, `appback-health.timer`) — chép vào
+`/etc/systemd/system/`, rồi:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now appback-backup.timer appback-health.timer
+```
+
+- `appback-backup.timer`: chạy `backup.sh` 02:30 hằng ngày (giờ hệ thống VPS).
+- `appback-health.timer`: chạy `healthcheck.sh` mỗi 5 phút — `/api/ready`
+  hỏng hai lần liên tiếp hoặc đĩa > 85% → POST `ALERT_WEBHOOK_URL`.
+
+**Kiểm:**
+```bash
+systemctl list-timers | grep appback
+journalctl -u appback-health.service -n 20   # có dòng chạy gần nhất
+```
+
+## 10. Deploy / rollback tay
+
+**Ai:** người vận hành (bình thường CI làm qua `deploy.yml`; mục này cho lúc
+CI không chạy được).
+
+```bash
+# Trên VPS, thư mục /opt/appback, người dùng deploy:
+bash scripts/deploy.sh sha-abc123def456          # deploy ảnh cụ thể
+bash scripts/deploy.sh sha-abc123def456 --dry-run  # chỉ in kế hoạch, không đổi gì
+bash scripts/rollback.sh                          # về previous_tag
+bash scripts/rollback.sh v1.2.2                    # về tag chỉ định
+```
+
+**Kiểm:** `cat current_tag`; `curl -fsS http://127.0.0.1/api/health`;
+`docker compose ps` chỉ có một `api` đang chạy sau khi lệnh kết thúc.
+
+## 11. Chạy `drill.sh` ở mỗi mốc M1–M4
+
+**Ai:** người vận hành (hoặc CI qua `restore-drill.yml` hằng tuần).
+
+```bash
+bash tools/ci/job.sh build --no-scan   # dựng ảnh IMAGE_TAG=ci cục bộ trước
+bash deploy/scripts/drill.sh           # diễn tập trên deploy/compose/ci.yml
+```
+
+Đọc bảng so sánh in ra cuối lượt (`bảng/đối tượng | gốc | pha A | pha B |
+khớp`) — mọi dòng phải `có`; mã thoát khác 0 nghĩa là khôi phục không đúng,
+**dừng lại điều tra trước khi đi tiếp mốc M**. Chạy lại ở mỗi mốc M1 (compose
+tại chỗ), M2–M4 (khi đã có VPS staging/production) để chắc quy trình sao
+lưu/khôi phục vẫn đúng sau mỗi đợt đổi lớn.
+
+## 12. Việc người phải làm trước M1
+
+- [ ] VPS (§1): Docker, người dùng `deploy`, tường lửa 22/80/443, cấu trúc
+      `/opt/appback/`, `appback.env` quyền 600.
+- [ ] Khoá SSH riêng cho CI + `known_hosts` (§2).
+- [ ] Secret GitHub `STAGING_*`, `ALERT_WEBHOOK_URL`, `BACKUP_TARGET`,
+      `BACKUP_AGE_RECIPIENT` (§3, §4).
+- [ ] Environment `staging` tạo, gắn secret (§5).
+- [ ] Gói GHCR public hoặc PAT + `docker login` trên VPS (§6).
+- [ ] Tên miền + chứng chỉ TLS phủ cả vhost MinIO (§7).
+- [ ] Cặp khoá `age` sinh xong; khoá riêng + bản sao `SECRET_KEY` cất ngoài
+      VPS; `BACKUP_AGE_RECIPIENT` đã đặt (§8).
+- [ ] `appback-backup.timer`, `appback-health.timer` bật (§9).
+- [ ] `bash deploy/scripts/drill.sh` chạy đạt trên máy tại chỗ (M1, không cần
+      VPS — dùng `deploy/compose/ci.yml`).
+
+`production` (M3+) còn cần thêm: Environment `production` có người duyệt,
+`PRODUCTION_*` secret, VPS production riêng (§1–§8 lặp lại cho máy đó).
+
+## Biến môi trường
+
+Đầy đủ ở `backend/dieu-phoi/chay/B0-10/hop-dong.md` §1; các biến người vận
+hành cần đặt tay trong `appback.env` hoặc secret GitHub:
+
+| Biến | Mặc định | Đặt ở đâu |
+|---|---|---|
+| `APPBACK_DIR` | `/opt/appback` | môi trường shell trên VPS (thường không cần đổi) |
+| `IMAGE_REGISTRY` | `ghcr.io/mungvu2004` | `appback.env` (để trống nếu chạy ảnh cục bộ) |
+| `APPBACK_BASE_URL` | `http://127.0.0.1` | `appback.env` → domain thật sau khi có TLS (§7) |
+| `APPBACK_HEALTH_TIMEOUT_S` | `180` | `appback.env`, chỉnh nếu máy chậm khởi động |
+| `ALERT_WEBHOOK_URL` | rỗng | secret GitHub + `appback.env` (§3, §4) |
+| `BACKUP_TARGET` | `/var/backups/appback` | secret GitHub + `appback.env` (§3) |
+| `BACKUP_AGE_RECIPIENT` | rỗng → không mã hoá | secret GitHub + `appback.env` (§8, **bắt buộc** trước khi bản sao lưu rời máy) |
+| `BACKUP_AGE_IDENTITY` | rỗng | chỉ đặt tạm lúc khôi phục thật (§8) |
+| `APPBACK_STORAGE` | `s3` | `appback.env` (`local` nếu dùng volume `local-storage` thay MinIO) |
+| `APPBACK_API_SWAP_SETTLE_S` | `11` | không cần đặt tay — chỉnh chỉ khi đổi `valid=…` của `resolver` trong `deploy/nginx/templates/{dev,prod}/app.conf.template` (>= TTL mới + 1s biên); `0` để tắt khi kiểm |

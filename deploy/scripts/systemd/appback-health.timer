@@ -1,0 +1,10 @@
+# Kích hoạt appback-health.service mỗi 5 phút, bắt đầu 5 phút sau khi boot.
+[Unit]
+Description=AppBack — lich kiem suc khoe moi 5 phut
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
