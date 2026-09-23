@@ -2,7 +2,7 @@
 # Ảnh web: nginx không root đón front cho SPA AppFront + /api cùng origin
 # (BE-00 §8, W19). Build context = gốc repo; build-context phụ "appfront" do
 # deploy/docker/web-context.sh xuất.
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS build
+FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS build
 WORKDIR /src
 COPY --from=appfront . .
 RUN corepack enable \
@@ -12,7 +12,7 @@ RUN corepack enable \
     && pnpm build \
     && test -f dist/draco/draco_decoder.wasm
 
-FROM nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0
+FROM nginxinc/nginx-unprivileged:1.31.5-alpine@sha256:19c132c9ab02d3b783f478743dafc7a7f42e27aa7d2bdcbec1bb1128ca8f2a07
 
 # Ảnh nền giữ server mặc định (server_name localhost, listen 8080) tại
 # /etc/nginx/conf.d/default.conf: mọi yêu cầu Host: localhost khớp nó TRƯỚC
