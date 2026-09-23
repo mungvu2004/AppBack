@@ -152,10 +152,17 @@ def test_openapi_url_hidden_in_production(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_discover_routers_finds_real_modules() -> None:
-    """Dò đúng mọi `apps/api/<module>/router.py` có trên đĩa, theo thứ tự tên (không ghim số module)."""
+    """Dò đúng mọi `apps/api/<module>/router.py` có trên đĩa, theo thứ tự tên (không ghim số module).
+
+    Một module có thể góp **nhiều** router (`ROUTERS: tuple[APIRouter, ...]`, BE-00 §2):
+    module có cả route bảo vệ lẫn route công khai (vd `apps/api/telemetry`) buộc phải khai
+    hai router vì lớp route (`protected_router`/`public_router`) gắn theo router, không
+    theo module — nên `names` có thể lặp tên module, chỉ `set(names)` mới khớp `on_disk`.
+    """
     on_disk = sorted(f"apps.api.{path.parent.name}.router" for path in API_DIR.glob("*/router.py"))
     names = [name for name, _router in discover_routers()]
-    assert names == sorted(set(names)) == on_disk
+    assert names == sorted(names)
+    assert sorted(set(names)) == on_disk
     assert {"apps.api.files.router", "apps.api.health.router"} <= set(names)
 
 
