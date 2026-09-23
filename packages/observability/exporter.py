@@ -25,11 +25,12 @@ HANDLER_TIMEOUT_S: Final = 5
 
 
 class _Handler(BaseHTTPRequestHandler):
-    """Chỉ `GET /metrics` → 200; `GET` đường khác hay `POST /metrics` → 404. Không log từng request."""
+    """Chỉ `GET /metrics` → 200; mọi đường/method khác → 404. Không log từng request."""
 
     timeout = HANDLER_TIMEOUT_S
 
     def _dispatch(self) -> None:
+        """Một hàm cho mọi method: `GET /metrics` → 200, còn lại → 404 (không nhánh chết)."""
         if self.command == "GET" and self.path == METRICS_PATH:
             self._serve_metrics()
         else:
@@ -43,10 +44,28 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # `http.server` gọi `do_<METHOD>`; thiếu `do_<METHOD>` là 501 mặc định của
+    # `BaseHTTPRequestHandler`, nên method lạ cũng phải khai để `_dispatch()` (một thân
+    # duy nhất, không nhánh chết) đưa nó về 404.
     def do_GET(self) -> None:
         self._dispatch()
 
     def do_POST(self) -> None:
+        self._dispatch()
+
+    def do_PUT(self) -> None:
+        self._dispatch()
+
+    def do_DELETE(self) -> None:
+        self._dispatch()
+
+    def do_PATCH(self) -> None:
+        self._dispatch()
+
+    def do_HEAD(self) -> None:
+        self._dispatch()
+
+    def do_OPTIONS(self) -> None:
         self._dispatch()
 
     def log_message(self, log_format: str, *args: object) -> None:

@@ -53,7 +53,7 @@ def _count_sql() -> Iterator[list[str]]:
         event.remove(Engine, "before_cursor_execute", on_execute)
 
 
-async def test_c01_frontend_shaped_batch_is_204(api_client: httpx.AsyncClient) -> None:
+async def test_telemetry_ingest_batch__C01(api_client: httpx.AsyncClient) -> None:
     body = _body(
         events=[
             {"sequence": 0, "atMs": 1, "event": {"name": "ai.started"}},
@@ -67,7 +67,7 @@ async def test_c01_frontend_shaped_batch_is_204(api_client: httpx.AsyncClient) -
     assert response.content == b""
 
 
-async def test_c11_rate_limit_is_fixed_at_route_declaration(api_client: httpx.AsyncClient) -> None:
+async def test_telemetry_ingest_batch__C11(api_client: httpx.AsyncClient) -> None:
     """`rate_limit` khai lúc nạp route; gửi đúng hạn mức rồi thêm một lượt → 429."""
     limit = telemetry_router._settings.telemetry_rate_limit
     body = _body()
@@ -79,14 +79,14 @@ async def test_c11_rate_limit_is_fixed_at_route_declaration(api_client: httpx.As
     assert 1 <= int(over.headers["retry-after"]) <= 10
 
 
-async def test_c12_content_length_over_limit_is_413(api_client: httpx.AsyncClient) -> None:
+async def test_telemetry_ingest_batch__C12_content_length(api_client: httpx.AsyncClient) -> None:
     max_bytes = get_telemetry_settings().telemetry_body_max_bytes
     oversized = b"x" * (max_bytes + 1)
     response = await api_client.post(PATH, content=oversized, headers={"content-type": "application/json"})
     assert response.status_code == 413
 
 
-async def test_c12_streamed_body_over_limit_is_413_without_content_length(api_client: httpx.AsyncClient) -> None:
+async def test_telemetry_ingest_batch__C12_streamed(api_client: httpx.AsyncClient) -> None:
     max_bytes = get_telemetry_settings().telemetry_body_max_bytes
     chunk = b"x" * 4096
 

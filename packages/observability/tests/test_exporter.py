@@ -46,6 +46,18 @@ async def test_other_path_and_method_are_404() -> None:
         exporter.stop()
 
 
+@pytest.mark.parametrize("method", ["PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def test_every_other_method_on_metrics_is_404(method: str) -> None:
+    """Prompt B7-01 [6]: 'đường khác, method khác → 404', không phải 501 mặc định của `http.server`."""
+    exporter = start_exporter(host="127.0.0.1", port=0)
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.request(method, f"http://127.0.0.1:{exporter.port}/metrics")
+        assert response.status_code == 404
+    finally:
+        exporter.stop()
+
+
 async def test_two_starts_share_one_server_and_stop_is_reference_counted() -> None:
     """Gọi hai lần → cùng server; `stop()` lần một vẫn trả lời, lần hai tắt."""
     first = start_exporter(host="127.0.0.1", port=0)

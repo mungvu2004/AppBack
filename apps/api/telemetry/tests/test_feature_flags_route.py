@@ -46,7 +46,7 @@ def _principal(fake_clock: FakeClock, role: Role) -> Principal:
     return Principal(user_id=new_id("usr", fake_clock), session_id=f"sid-{role}", role=role)
 
 
-async def test_c01_five_keys_resolved_by_role(
+async def test_telemetry_read_feature_flags__C01(
     api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, fake_clock: FakeClock
 ) -> None:
     """C01: 5 khoá cấu hình đủ, một khoá theo vai — `admin` → true, `viewer` → false."""
@@ -68,7 +68,7 @@ async def test_c01_five_keys_resolved_by_role(
     assert viewer.json()["rules.parallel-run"] is False
 
 
-async def test_c17_empty_configuration_is_empty_object(
+async def test_telemetry_read_feature_flags__C17_empty(
     api_client: httpx.AsyncClient, fake_principal: Principal
 ) -> None:
     """C17: `FEATURE_FLAGS={}` → thân `{}`."""
@@ -77,7 +77,7 @@ async def test_c17_empty_configuration_is_empty_object(
     assert response.json() == {}
 
 
-async def test_c17_two_configured_keys_are_exactly_two_no_null(
+async def test_telemetry_read_feature_flags__C17_two_keys(
     api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, fake_principal: Principal
 ) -> None:
     monkeypatch.setenv("FEATURE_FLAGS", TWO_KEYS)
