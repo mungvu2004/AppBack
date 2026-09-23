@@ -112,7 +112,7 @@ def _parse_table(lines: list[str]) -> list[BindRow]:
                 operation_id=operation_id,
                 case_type=case_type,
                 outside=outside,
-                lock=cells[col_lock].strip(),
+                lock=_strip_markdown(cells[col_lock]),
                 logged=cells[col_logged].strip() == "có",
                 owner=owner,
             )

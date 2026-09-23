@@ -3,6 +3,7 @@
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Final
 
 import pytest
 from alembic.script import ScriptDirectory
@@ -11,6 +12,13 @@ from packages.db import new_revision
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config
 from packages.testing.fixtures.clock import FakeClock
 from tools.lint_migrations import run as lint_migrations
+
+CODE: Final = "B9-98"
+"""Mã ví dụ **không prompt nào dùng** (NO-131): dùng mã prompt thật (vd B2-01) trùng revision
+thật khi prompt đó gộp vào main, luật một-revision-mỗi-prompt (BE-00 §6.1) trả 2 và làm test đỏ.
+Cùng họ với head mẫu `r20260920_b9_99` (`SECOND_HEAD` dưới đây), khác số để không đụng nó."""
+CODE_LOWER: Final = "b9_98"
+"""`CODE` sau khi `new_revision.main` hạ chữ + đổi `-` thành `_` — khuôn revision id dùng dạng này."""
 
 SECOND_HEAD = '''\
 """thêm head thứ hai"""
@@ -61,8 +69,8 @@ def test_creates_revision_with_charter_name(
 ) -> None:
     """Revision mới mang tên theo hiến chương và nối vào head hiện hành (BE-00 §6.1)."""
     head_before = single_head(versions)
-    rev = f"r{fake_clock.now():%Y%m%d}_b2_01"
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"], clock=fake_clock) == 0
+    rev = f"r{fake_clock.now():%Y%m%d}_{CODE_LOWER}"
+    assert new_revision.main(["--code", CODE, "--slug", "add_projects"], clock=fake_clock) == 0
     created = list(versions.glob(f"{rev}_*.py"))
     assert [path.name for path in created] == [f"{rev}_add_projects.py"]
     body = created[0].read_text(encoding="utf-8")
@@ -77,39 +85,39 @@ def test_revision_date_read_from_clock_at_call_time(versions: Path, fake_clock: 
     fake_clock.set(datetime(2026, 1, 1, 23, 59, 59, tzinfo=UTC))
     day_before = f"{fake_clock.now():%Y%m%d}"
     fake_clock.advance(timedelta(seconds=2))
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"], clock=fake_clock) == 0
-    assert [path.name for path in versions.glob("r*_b2_01_*.py")] == ["r20260102_b2_01_add_projects.py"]
-    assert not list(versions.glob(f"r{day_before}_b2_01_*.py"))
+    assert new_revision.main(["--code", CODE, "--slug", "add_projects"], clock=fake_clock) == 0
+    assert [path.name for path in versions.glob(f"r*_{CODE_LOWER}_*.py")] == [f"r20260102_{CODE_LOWER}_add_projects.py"]
+    assert not list(versions.glob(f"r{day_before}_{CODE_LOWER}_*.py"))
 
 
 def test_second_revision_for_same_prompt_is_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"]) == 0
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_more"]) == 2
+    assert new_revision.main(["--code", CODE, "--slug", "add_projects"]) == 0
+    assert new_revision.main(["--code", CODE, "--slug", "add_more"]) == 2
     assert "đã có revision" in capsys.readouterr().out
     assert not list(versions.glob("*add_more*"))
 
 
 def test_fix_revision_allowed_once(versions: Path, fake_clock: FakeClock) -> None:
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"], clock=fake_clock) == 0
-    assert new_revision.main(["--code", "B2-01", "--slug", "fix_index", "--fix", "001"], clock=fake_clock) == 0
-    assert list(versions.glob(f"r{fake_clock.now():%Y%m%d}_b2_01_fix001_fix_index.py"))
-    assert new_revision.main(["--code", "B2-01", "--slug", "again", "--fix", "001"], clock=fake_clock) == 2
+    assert new_revision.main(["--code", CODE, "--slug", "add_projects"], clock=fake_clock) == 0
+    assert new_revision.main(["--code", CODE, "--slug", "fix_index", "--fix", "001"], clock=fake_clock) == 0
+    assert list(versions.glob(f"r{fake_clock.now():%Y%m%d}_{CODE_LOWER}_fix001_fix_index.py"))
+    assert new_revision.main(["--code", CODE, "--slug", "again", "--fix", "001"], clock=fake_clock) == 2
     assert lint_migrations(versions).violations == []
 
 
 @pytest.mark.parametrize("slug", ["AddProjects", "add projects", "2_projects", "add-projects", ""])
 def test_bad_slug_rejected(versions: Path, slug: str, capsys: pytest.CaptureFixture[str]) -> None:
-    assert new_revision.main(["--code", "B2-01", "--slug", slug]) == 2
+    assert new_revision.main(["--code", CODE, "--slug", slug]) == 2
     assert "snake_case" in capsys.readouterr().out
 
 
 def test_bad_fix_number_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert new_revision.main(["--code", "B2-01", "--slug", "x", "--fix", "1"]) == 2
+    assert new_revision.main(["--code", CODE, "--slug", "x", "--fix", "1"]) == 2
     assert "ba chữ số" in capsys.readouterr().out
 
 
 def test_too_long_revision_id_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    code = "b2_01_" + "x" * 20  # r<8> + _ + 26 = 36 ký tự
+    code = f"{CODE_LOWER}_" + "x" * 20  # r<8> + _ + 26 = 36 ký tự
     assert new_revision.main(["--code", code, "--slug", "x"]) == 2
     out = capsys.readouterr().out
     assert "32 ký tự" in out
@@ -118,7 +126,7 @@ def test_too_long_revision_id_rejected(versions: Path, capsys: pytest.CaptureFix
 
 def test_two_heads_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (versions / "r20260920_b9_99_second_head.py").write_text(SECOND_HEAD, encoding="utf-8")
-    assert new_revision.main(["--code", "B2-01", "--slug", "add_projects"]) == 2
+    assert new_revision.main(["--code", CODE, "--slug", "add_projects"]) == 2
     assert "2 head" in capsys.readouterr().out
 
 

@@ -6,10 +6,17 @@ Prompt sau thêm route là các case dưới đây tự áp cho nó, không ai p
 
 Máy móc của từng case được chứng minh bằng app thử ở `test_routing.py`,
 `test_idempotency.py` và `test_middleware.py`.
+
+C10 mồi sẵn một dòng `completed` (như C22 mồi `in_progress`) thay vì gửi `json={}`
+thật rồi đợi lượt lặp phát lại: thân/đường mẫu (`PATH_VALUES`) không khớp schema
+thật của route ghi, nên lượt đầu luôn lỗi (422 thân sai hoặc 404 dependency quyền),
+và BE-00 §7 xoá dòng idempotency khi handler lỗi — không còn gì để phát lại
+(NO-127). Mồi sẵn chứng minh đúng máy móc route↔idempotency mà không phụ thuộc
+thân có hợp lệ với route thật.
 """
 
 import re
-from typing import Final
+from typing import Final, Literal
 from uuid import uuid4
 
 import httpx
@@ -25,11 +32,17 @@ from apps.api.core.permissions import registered
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, SESSION_REVOKED
 from packages.core.settings import get_core_settings
 from packages.db.errors import translate_db_error
-from packages.db.models.idempotency import STATE_IN_PROGRESS, IdempotencyRecord
+from packages.db.models.idempotency import STATE_COMPLETED, STATE_IN_PROGRESS, IdempotencyRecord
 from packages.testing.fixtures.api import auth_headers, make_api_client
 from packages.testing.fixtures.clock import FakeClock
+from packages.testing.golden.recorder import SAMPLES_ENV
 
 IDEMPOTENCY_KEY: Final = "khoa-chung-cho-case"
+SEEDED_STATUS: Final = 201
+SEEDED_CONTENT_TYPE: Final = "application/json"
+SEEDED_BODY: Final = b'{"mau":"c10"}'
+"""Response mẫu mồi sẵn cho dòng `completed` của C10 (NO-127)."""
+
 ULID: Final = "01JABCDEFGHJKMNPQRSTVWXYZ0"
 """Thân ULID hợp lệ (Crockford base32 HOA, 26 ký tự) cho mọi id mẫu (W4)."""
 
@@ -127,11 +140,16 @@ async def test_common__C04(operation: Operation, api_client: httpx.AsyncClient) 
 
 @pytest.mark.case("C05")
 @pytest.mark.parametrize("operation", _protected(), ids=lambda item: item.op)
-@pytest.mark.parametrize("token", BAD_TOKENS)
-async def test_common__C05(operation: Operation, token: str, api_client: httpx.AsyncClient) -> None:
-    """Token rác, chữ ký lạ, vai lạ, rỗng → 401 `UNAUTHENTICATED`."""
-    response = await _send(api_client, operation, headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 401
+async def test_common__C05(operation: Operation, api_client: httpx.AsyncClient) -> None:
+    """Token rác, chữ ký lạ, vai lạ, rỗng → 401 `UNAUTHENTICATED`.
+
+    `BAD_TOKENS` lặp trong thân thay vì tham số hoá riêng (NO-129): tham số hoá hai
+    chiều đổi id thành `test_common__C05[<token>-<op>]`, và `_TEST_COMMON_RE`
+    (`tools/case_gate.py`) chỉ tách đúng op khi id là `test_common__C05[<op>]`.
+    """
+    for token in BAD_TOKENS:
+        response = await _send(api_client, operation, headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401, f"token={token!r}"
 
 
 @pytest.mark.case("C12")
@@ -192,14 +210,32 @@ async def test_common__C22(
 @pytest.mark.case("C10")
 @pytest.mark.parametrize("operation", _idempotent(), ids=lambda item: item.op)
 async def test_common__C10(
-    operation: Operation, api_app: FastAPI, api_client: httpx.AsyncClient, fake_principal: Principal
+    operation: Operation,
+    api_app: FastAPI,
+    api_client: httpx.AsyncClient,
+    fake_principal: Principal,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Lượt lặp cùng thân trả lại response cũ; thân khác → 422 `IDEMPOTENCY_KEY_REUSED`."""
+    """Lượt lặp cùng thân trả lại response đã mồi (handler không chạy); thân khác → 422.
+
+    Mồi sẵn một dòng `completed` thay vì gửi `json={}` thật rồi đợi phát lại: thân/đường
+    mẫu không khớp schema route ghi thật, lượt đầu luôn lỗi, và BE-00 §7 xoá dòng
+    idempotency khi handler lỗi — không còn gì để phát lại (NO-127).
+
+    Tắt bộ ghi golden (`CONTRACT_SAMPLES_DIR`, B0-07) trong phạm vi test: response đã mồi
+    (`SEEDED_BODY`) không theo schema thật của operation (`{"mau": "c10"}` không phải một
+    `Project`), nên nếu lọt vào `contract-samples` sẽ làm H1 (bước 7) hỏng ở mọi op ghi được —
+    C01 mới là nguồn mẫu 2xx thật cho H1/case_gate, không phải case chung này.
+    """
+    monkeypatch.delenv(SAMPLES_ENV, raising=False)
     _grant_everything(api_app)
     headers = {**auth_headers(fake_principal), "Idempotency-Key": IDEMPOTENCY_KEY}
-    first = await _send(api_client, operation, headers=headers, json={})
+    await _seed(api_app, operation, fake_principal, state=STATE_COMPLETED)
+
     replay = await _send(api_client, operation, headers=headers, json={})
-    assert (replay.status_code, replay.content) == (first.status_code, first.content)
+    assert replay.status_code == SEEDED_STATUS
+    assert replay.headers["content-type"] == SEEDED_CONTENT_TYPE
+    assert replay.content == SEEDED_BODY
 
     reused = await _send(api_client, operation, headers=headers, json={"khac": True})
     assert reused.status_code == 422
@@ -208,7 +244,23 @@ async def test_common__C10(
 
 async def _seed_in_progress(app: FastAPI, operation: Operation, principal: Principal) -> None:
     """Dựng sẵn một dòng `in_progress` còn hạn cho đúng request mà C22 sắp gửi."""
+    await _seed(app, operation, principal, state=STATE_IN_PROGRESS)
+
+
+async def _seed(
+    app: FastAPI,
+    operation: Operation,
+    principal: Principal,
+    *,
+    state: Literal["in_progress", "completed"],
+) -> None:
+    """Dựng sẵn một dòng idempotency `in_progress` hoặc `completed` cho đúng request C10/C22 sắp gửi.
+
+    `state` gõ kiểu `Literal` (không phải `str`) để một state lạ bị mypy chặn ngay, thay vì âm thầm
+    mồi một dòng `completed` thiếu `status_code`/`response_body` và làm C10 hỏng bằng assert khó đọc.
+    """
     now = app.state.clock.now()
+    completed = state == STATE_COMPLETED
     async with app.state.sessionmaker() as session:
         session.add(
             IdempotencyRecord(
@@ -217,10 +269,13 @@ async def _seed_in_progress(app: FastAPI, operation: Operation, principal: Princ
                 route_template=operation.path,
                 key=IDEMPOTENCY_KEY,
                 request_hash=request_digest(operation.method, _url(operation), "", b"{}"),
-                state=STATE_IN_PROGRESS,
+                state=state,
                 claim_token=uuid4(),
                 lease_until=now + LEASE,
                 expires_at=now + TTL,
+                status_code=SEEDED_STATUS if completed else None,
+                content_type=SEEDED_CONTENT_TYPE if completed else None,
+                response_body=SEEDED_BODY if completed else None,
             )
         )
         await session.commit()

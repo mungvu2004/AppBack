@@ -36,6 +36,7 @@ from schemathesis.core.failures import FailureGroup
 from schemathesis.core.result import Err
 from schemathesis.python import asgi as asgi_client
 from schemathesis.specs.openapi.checks import response_schema_conformance
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # testcontainers 4.13 không có py.typed / gói stub (giống packages/testing/fixtures/services.py).
 from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
@@ -48,9 +49,11 @@ from apps.api.core.openapi import operations
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.settings import reset_settings_cache
+from packages.core.text import nfc, normalize_email
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_sessionmaker, session_scope
 from packages.db.migrate_check import alembic_config
 from packages.db.models import load_all_models
+from packages.db.models.auth import User
 from packages.db.seeds import apply_seeds
 from packages.db.settings import get_database_settings, reset_database_settings_cache
 from packages.messaging.settings import reset_messaging_settings_cache
@@ -304,21 +307,44 @@ def _set_env(infra: _Infra) -> None:
     reset_messaging_settings_cache()
 
 
-async def _seed(env: str) -> None:
-    """Seed `env` một lượt trong session riêng; seed thật (nếu có) phải idempotent (BE-00 §6.1, R-14)."""
+async def _seed_admin_user(session: AsyncSession, admin_id: str) -> None:
+    """Chèn dòng `users` vai `admin`, `active`, cho đúng id mà `_admin_header` sẽ dùng (NO-132).
+
+    `FakeTokenVerifier` không tra DB nên id giả qua được xác thực, nhưng route ghi có FK tới `users`
+    (vd `project_memberships.user_id`) — thiếu dòng thật là 500 lúc handler chạm FK, không phải lỗi
+    của app đang kiểm.
+    """
+    email = f"h2-admin-{admin_id}@example.com"
+    session.add(
+        User(
+            id=admin_id,
+            email=nfc(email),
+            email_normalized=normalize_email(email),
+            name="H2 admin",
+            password_hash=None,
+            role="admin",
+            status="active",
+        )
+    )
+
+
+async def _seed(env: str, admin_id: str) -> None:
+    """Seed `env` rồi chèn dòng admin, một lượt trong session riêng; seed thật (nếu có) phải idempotent
+    (BE-00 §6.1, R-14) — admin giả chỉ chạy một lần mỗi tiến trình H2 nên không cần idempotent."""
     engine = create_engine(get_database_settings())
     try:
         async with session_scope(create_sessionmaker(engine)) as session:
             await apply_seeds(session, env)
+            await _seed_admin_user(session, admin_id)
     finally:
         await engine.dispose()
 
 
-def _migrate_and_seed() -> None:
-    """`upgrade head` rồi seed `APP_ENV`, dùng đúng cấu hình Alembic của B0-03 (`alembic_config()`)."""
+def _migrate_and_seed(admin_id: str) -> None:
+    """`upgrade head` rồi seed `APP_ENV` + dòng admin, dùng đúng cấu hình Alembic của B0-03 (`alembic_config()`)."""
     load_all_models()
     command.upgrade(alembic_config(), "head")
-    asyncio.run(_seed(os.environ["APP_ENV"]))
+    asyncio.run(_seed(os.environ["APP_ENV"], admin_id))
 
 
 def _max_examples() -> int:
@@ -333,10 +359,10 @@ def _max_examples() -> int:
     return value
 
 
-def _admin_header() -> dict[str, str]:
-    """Header `Authorization` của một admin `usr_<ULID>` hợp lệ; `FakeTokenVerifier` không tra DB
-    (BE-00 §2.2) nên id không cần tồn tại thật — chỉ cần đúng mẫu để qua được xác thực."""
-    admin_id = new_id("usr", SystemClock())
+def _admin_header(admin_id: str) -> dict[str, str]:
+    """Header `Authorization` của admin `admin_id`. `FakeTokenVerifier` không tra DB (BE-00 §2.2) nên
+    id qua được xác thực mà không cần tồn tại thật — nhưng route ghi có FK tới `users` (NO-132), nên
+    `_migrate_and_seed` phải chèn đúng dòng này trước khi H2 gọi route."""
     return {"Authorization": f"Bearer fake:{admin_id}:h2-session:admin"}
 
 
@@ -364,11 +390,12 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         sys.stderr.write(f"h2: {exc}\n")
         return 1
+    admin_id = new_id("usr", SystemClock())
     with _provision() as infra:
         _set_env(infra)
-        _migrate_and_seed()
+        _migrate_and_seed(admin_id)
         app = create_app(token_verifier=FakeTokenVerifier())
-        outcomes = run_h2(app, max_examples=max_examples, auth_header=_admin_header())
+        outcomes = run_h2(app, max_examples=max_examples, auth_header=_admin_header(admin_id))
     return 0 if _report(outcomes) else 1
 
 

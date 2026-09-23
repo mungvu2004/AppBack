@@ -5,15 +5,16 @@ FROM node:26-bookworm-slim AS node
 
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# Node 20 (ảnh uv gốc không có Node — ENV §2)
+# Node 26 (ảnh uv gốc không có Node — ENV §2)
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
-# curl, shellcheck (ảnh gốc không có — ENV §2; apt của bookworm-slim đã ghim theo tag ảnh)
+# curl, shellcheck, libatomic1 (ảnh gốc không có — ENV §2; apt của bookworm-slim đã ghim theo tag ảnh;
+# libatomic1 vì Node 26 chép sang nền Python thiếu nó, NO-126)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates shellcheck git \
+ && apt-get install -y --no-install-recommends curl ca-certificates shellcheck git libatomic1 \
  && rm -rf /var/lib/apt/lists/*
 
 # gitleaks — phiên bản ghim, kiểm checksum (ENV §2, K không tải mạng lúc verify;
