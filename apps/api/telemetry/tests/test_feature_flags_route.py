@@ -130,4 +130,4 @@ async def test_role_change_applies_within_the_session_cache_ttl(
         response = await auth_client.get(PATH, headers=me.headers)
         return response.json()["scene.instanced-walls"] is False
 
-    await wait_until(demoted, timeout_s=3.0)
+    await wait_until(demoted, timeout_s=1.5)

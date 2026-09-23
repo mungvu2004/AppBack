@@ -37,6 +37,7 @@ class RoleFlag(BaseModel):
     @field_validator("roles")
     @classmethod
     def _valid_roles(cls, value: tuple[Role, ...]) -> tuple[Role, ...]:
+        """1-3 vai, không trùng — sai lúc nạp cấu hình (K01/K02), không lúc trả response."""
         if not _MIN_ROLES <= len(value) <= _MAX_ROLES:
             raise ValueError(f"roles phải có {_MIN_ROLES}-{_MAX_ROLES} phần tử, nhận {len(value)}")
         if len(set(value)) != len(value):

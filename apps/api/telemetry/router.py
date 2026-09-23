@@ -12,7 +12,7 @@ from fastapi import Depends
 from starlette.requests import Request
 from starlette.responses import Response
 
-from apps.api.core.deps import CurrentPrincipal
+from apps.api.core.deps import ClockDep, CurrentPrincipal
 from apps.api.core.origin import reject_foreign_origin
 from apps.api.core.ratelimit import key_ip, rate_limit
 from apps.api.core.routing import protected_router, public_router, route_options
@@ -56,8 +56,8 @@ async def telemetry_read_feature_flags(principal: CurrentPrincipal) -> FeatureFl
     ],
 )
 @route_options(body_limit=_settings.telemetry_body_max_bytes, idempotency="off")
-async def telemetry_ingest_batch(request: Request) -> Response:
+async def telemetry_ingest_batch(request: Request, clock: ClockDep) -> Response:
     """#37 — đọc thân thô rồi gọi lõi `ingest`; không khai model thân (BE-00 §11)."""
     body = await request.body()
-    ingest(body, request.headers.get("content-type"))
+    ingest(body, request.headers.get("content-type"), clock=clock)
     return Response(status_code=204)

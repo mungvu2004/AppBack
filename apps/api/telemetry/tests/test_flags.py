@@ -1,6 +1,5 @@
 """Cấu hình cờ tính năng: `TelemetrySettings.feature_flags`, `resolve_feature_flags` (B7-01 [8])."""
 
-import re
 from pathlib import Path
 
 import pytest
@@ -13,20 +12,7 @@ from apps.api.telemetry.flags import (
     resolve_feature_flags,
 )
 from apps.api.telemetry.settings import TelemetrySettings, get_telemetry_settings, reset_telemetry_settings_cache
-
-_TS_ARRAY_RE = re.compile(r"export const (\w+) = \[(.*?)\] as const", re.DOTALL)
-
-
-def _string_literals(block: str) -> list[str]:
-    return re.findall(r"'([^']*)'", block)
-
-
-def _read_ts_array(path: Path, name: str) -> list[str]:
-    text = path.read_text(encoding="utf-8")
-    for match_name, block in _TS_ARRAY_RE.findall(text):
-        if match_name == name:
-            return _string_literals(block)
-    pytest.fail(f"không tìm thấy khối 'export const {name} = [...] as const' trong {path}")
+from apps.api.telemetry.tests.mirror import read_ts_array
 
 
 def test_feature_flag_keys_has_five_valid_keys() -> None:
@@ -39,7 +25,7 @@ def test_feature_flag_keys_has_five_valid_keys() -> None:
 
 def test_feature_flag_keys_mirror_appfront(appfront_dir: Path) -> None:
     """`FEATURE_FLAG_KEYS` == `FEATURE_FLAG_KEYS` của `src/lib/telemetry/flags.ts:86-92`, so như tập hợp."""
-    fe_keys = _read_ts_array(appfront_dir / "src/lib/telemetry/flags.ts", "FEATURE_FLAG_KEYS")
+    fe_keys = read_ts_array(appfront_dir / "src/lib/telemetry/flags.ts", "FEATURE_FLAG_KEYS")
     assert set(fe_keys) == set(FEATURE_FLAG_KEYS)
 
 

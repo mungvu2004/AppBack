@@ -178,6 +178,24 @@ def test_metrics_max_series_drops_extra_samples(monkeypatch: pytest.MonkeyPatch)
     assert 'appback_metrics_series_dropped_total{metric="appback_test_capped_total"} 1.0' in text
 
 
+def test_series_dropped_counter_is_exempt_from_its_own_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LOG-02: `appback_metrics_series_dropped_total` không tự đếm mình — nếu không sẽ đệ quy vô hạn.
+
+    `METRICS_MAX_SERIES=1`: mỗi metric dưới đây tự vượt trần ngay ở mẫu thứ hai, nên
+    `series_dropped_total` cần 5 tổ hợp nhãn `metric=...` khác nhau — quá trần 1 của
+    chính nó nếu nó không được miễn, và `_bump_dropped` sẽ gọi lại chính mình vô hạn.
+    """
+    monkeypatch.setenv("METRICS_MAX_SERIES", "1")
+    reset_observability_settings_cache()
+    for i in range(5):
+        hits = counter(f"appback_test_selfcap_{i}_total", help="trần tự đệ quy", labels=("x",))
+        hits.inc(x="a")
+        hits.inc(x="b")
+    text = render()
+    for i in range(5):
+        assert f'appback_metrics_series_dropped_total{{metric="appback_test_selfcap_{i}_total"}} 1.0' in text
+
+
 def test_eight_threads_ten_thousand_increments_each_land_exactly() -> None:
     """`threading.Lock` quanh registry: 8 luồng x 10.000 `inc` → đúng 80.000."""
     hits = counter("appback_test_threaded_total", help="đua luồng")

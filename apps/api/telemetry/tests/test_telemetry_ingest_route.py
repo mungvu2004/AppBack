@@ -16,9 +16,11 @@ from sqlalchemy.engine import Engine
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier
 from apps.api.telemetry import router as telemetry_router
+from apps.api.telemetry.ingest import ingest as _ingest_core
 from apps.api.telemetry.settings import get_telemetry_settings
 from packages.core.settings import get_core_settings
 from packages.observability.exporter import CONTENT_TYPE
+from packages.observability.metrics import render, reset_registry
 from packages.observability.settings import reset_observability_settings_cache
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
@@ -54,6 +56,8 @@ def _count_sql() -> Iterator[list[str]]:
 
 
 async def test_telemetry_ingest_batch__C01(api_client: httpx.AsyncClient) -> None:
+    """Lô FE thật (khối [8]): 3 sự kiện hợp lệ, `droppedCount: 2` → 204 rỗng + `render()` đúng."""
+    reset_registry()
     body = _body(
         events=[
             {"sequence": 0, "atMs": 1, "event": {"name": "ai.started"}},
@@ -65,11 +69,22 @@ async def test_telemetry_ingest_batch__C01(api_client: httpx.AsyncClient) -> Non
     response = await api_client.post(PATH, json=body)
     assert response.status_code == 204
     assert response.content == b""
+    text = render()
+    assert 'appback_telemetry_events_total{name="ai.started"} 1.0' in text
+    assert "appback_telemetry_client_dropped_total 2.0" in text
 
 
-async def test_telemetry_ingest_batch__C11(api_client: httpx.AsyncClient) -> None:
-    """`rate_limit` khai lúc nạp route; gửi đúng hạn mức rồi thêm một lượt → 429."""
+async def test_telemetry_ingest_batch__C11(api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`rate_limit` khai lúc nạp route; gửi đúng hạn mức rồi thêm một lượt → 429, thân chưa đọc."""
     limit = telemetry_router._settings.telemetry_rate_limit
+    calls = 0
+
+    def counting_ingest(*args: Any, **kwargs: Any) -> None:
+        nonlocal calls
+        calls += 1
+        _ingest_core(*args, **kwargs)
+
+    monkeypatch.setattr(telemetry_router, "ingest", counting_ingest)
     body = _body()
     for _ in range(limit):
         response = await api_client.post(PATH, json=body)
@@ -77,6 +92,7 @@ async def test_telemetry_ingest_batch__C11(api_client: httpx.AsyncClient) -> Non
     over = await api_client.post(PATH, json=body)
     assert over.status_code == 429
     assert 1 <= int(over.headers["retry-after"]) <= 10
+    assert calls == limit, "lượt 429 không được gọi lõi ingest() (thân chưa đọc)"
 
 
 async def test_telemetry_ingest_batch__C12_content_length(api_client: httpx.AsyncClient) -> None:

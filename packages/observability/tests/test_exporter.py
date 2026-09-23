@@ -1,5 +1,6 @@
 """Exporter `/metrics`: đếm tham chiếu, 404 ngoài route, cổng bận (B7-01 [6], [8])."""
 
+import logging
 import socket
 from collections.abc import Iterator
 
@@ -77,8 +78,10 @@ async def test_two_starts_share_one_server_and_stop_is_reference_counted() -> No
         await alive()
 
 
-async def test_busy_port_does_not_crash_lifespan(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cổng đang bận (`OSError`) → `metrics_lifespan` không ném, chỉ log."""
+async def test_busy_port_does_not_crash_lifespan(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Cổng đang bận (`OSError`) → `metrics_lifespan` không ném, chỉ log `metrics_exporter_unavailable`."""
     busy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     busy.bind(("127.0.0.1", 0))
     busy.listen(1)
@@ -87,11 +90,13 @@ async def test_busy_port_does_not_crash_lifespan(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("METRICS_PORT", str(port))
     reset_observability_settings_cache()
     try:
-        async with metrics_lifespan(object()):
-            pass
+        with caplog.at_level(logging.WARNING, logger="packages.observability.exporter"):
+            async with metrics_lifespan(object()):
+                pass
     finally:
         busy.close()
         reset_observability_settings_cache()
+    assert any(record.getMessage() == "metrics_exporter_unavailable" for record in caplog.records)
 
 
 async def test_lifespan_is_noop_when_metrics_port_is_zero(monkeypatch: pytest.MonkeyPatch) -> None:

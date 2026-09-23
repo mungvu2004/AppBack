@@ -28,6 +28,7 @@ class TelemetrySettings(BaseSettings):
     @field_validator("feature_flags")
     @classmethod
     def _known_keys(cls, value: dict[str, FeatureFlagValue]) -> dict[str, FeatureFlagValue]:
+        """Mọi khoá `FEATURE_FLAGS` phải nằm trong 5 khoá của `flags.FEATURE_FLAG_KEYS`."""
         unknown = sorted(set(value) - set(FEATURE_FLAG_KEYS))
         if unknown:
             raise ValueError(f"khoá cờ tính năng lạ: {unknown!r}")

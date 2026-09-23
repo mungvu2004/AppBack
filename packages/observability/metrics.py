@@ -8,13 +8,12 @@ từ luồng nền của `ThreadingHTTPServer` trong khi request ghi metric từ
 """
 
 import math
-import os
 import re
 import threading
 from dataclasses import dataclass, field
 from typing import Final
 
-from packages.observability.settings import get_observability_settings
+from packages.observability.settings import get_observability_settings, require_test_env
 
 NAME_RE: Final = re.compile(r"^appback_[a-z][a-z0-9_]*$")
 LABEL_RE: Final = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -70,20 +69,26 @@ class _Registry:
             self.hist_series[name] = {}
 
     def _require(self, name: str, kind: str) -> _Def:
+        """Định nghĩa đã khai của `name`/`kind`, hay `ValueError` (chưa khai/sai loại)."""
         definition = self.defs.get(name)
         if definition is None or definition.kind != kind:
             raise ValueError(f"metric {kind} chưa khai: {name!r}")
         return definition
 
     def record_counter(self, name: str, amount: float, labels: dict[str, str]) -> None:
-        """`Counter.inc`: cộng `amount` vào đúng tổ hợp nhãn, hoặc bỏ mẫu nếu vượt hạn mức."""
+        """`Counter.inc`: cộng `amount` vào đúng tổ hợp nhãn, hoặc bỏ mẫu nếu vượt hạn mức.
+
+        `_SERIES_DROPPED_NAME` (nhãn `metric` là tên metric) được **miễn** trần: tập nhãn
+        của nó là tập tên metric đã khai — hữu hạn, cố định lúc nhập — nên không cần đếm,
+        và miễn trừ đó cũng cắt đường đệ quy vô hạn nếu chính nó từng chạm trần (LOG-02).
+        """
         definition = self._require(name, "counter")
         _validate_amount(amount)
         key = _label_key(definition.labels, labels)
         with self.lock:
             series = self.counter_series[name]
             if key not in series:
-                if not self._admit(len(series)):
+                if name != _SERIES_DROPPED_NAME and not self._admit(len(series)):
                     self._bump_dropped(name)
                     return
                 series[key] = 0.0
@@ -111,9 +116,11 @@ class _Registry:
             state.count += 1.0
 
     def _admit(self, series_len: int) -> bool:
+        """Còn chỗ cho một tổ hợp nhãn mới của một metric (dưới `METRICS_MAX_SERIES`)?"""
         return series_len < get_observability_settings().metrics_max_series
 
     def _bump_dropped(self, metric: str) -> None:
+        """Tăng `appback_metrics_series_dropped_total{metric=...}` — chính nó miễn trần."""
         self.record_counter(_SERIES_DROPPED_NAME, 1.0, {"metric": metric})
 
     def reset(self) -> None:
@@ -130,6 +137,7 @@ class _Registry:
                     state.count = 0.0
 
     def render(self) -> str:
+        """Toàn bộ registry ở định dạng Prometheus text 0.0.4, sắp theo tên metric rồi nhãn."""
         lines: list[str] = []
         with self.lock:
             for name in sorted(self.defs):
@@ -143,12 +151,14 @@ class _Registry:
         return "\n".join(lines) + "\n"
 
     def _render_counter(self, name: str, definition: _Def) -> list[str]:
+        """Một dòng `name{nhãn} giá trị` mỗi tổ hợp nhãn đã thấy, sắp theo nhãn."""
         return [
             f"{name}{_labels(definition.labels, key)} {value!r}"
             for key, value in sorted(self.counter_series[name].items())
         ]
 
     def _render_histogram(self, name: str, definition: _Def) -> list[str]:
+        """`_bucket{le}` tích luỹ (kèm `+Inf`), rồi `_sum`, `_count` — mỗi tổ hợp nhãn."""
         lines: list[str] = []
         for key, state in sorted(self.hist_series[name].items()):
             for bound, count in zip(definition.buckets, state.bucket_counts[:-1], strict=True):
@@ -162,6 +172,7 @@ class _Registry:
 
 
 def _validate_name(name: str, kind: str) -> None:
+    """Tên khớp `NAME_RE`; counter phải kết thúc `_total` (BE-00 §11)."""
     if not NAME_RE.fullmatch(name):
         raise ValueError(f"tên metric sai mẫu {NAME_RE.pattern}: {name!r}")
     if kind == "counter" and not name.endswith("_total"):
@@ -169,6 +180,7 @@ def _validate_name(name: str, kind: str) -> None:
 
 
 def _validate_label(label: str) -> None:
+    """Tên nhãn khớp `LABEL_RE` và không phải `le` (dành riêng cho bucket histogram)."""
     if not LABEL_RE.fullmatch(label):
         raise ValueError(f"nhãn sai mẫu {LABEL_RE.pattern}: {label!r}")
     if label == RESERVED_LABEL:
@@ -176,6 +188,7 @@ def _validate_label(label: str) -> None:
 
 
 def _validate_amount(value: float) -> None:
+    """`inc`/`observe` chỉ nhận số hữu hạn ≥ 0 (không `bool`, không NaN, không âm)."""
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"giá trị phải là số: {value!r}")
     if math.isnan(value):
@@ -185,6 +198,7 @@ def _validate_amount(value: float) -> None:
 
 
 def _label_key(names: tuple[str, ...], given: dict[str, str]) -> tuple[str, ...]:
+    """Khoá mẫu theo đúng thứ tự `names`; nhãn thiếu/thừa hay giá trị quá dài → `ValueError`."""
     if set(given) != set(names):
         raise ValueError(f"nhãn không khớp: cần {names}, nhận {tuple(given)}")
     for value in given.values():
@@ -194,11 +208,13 @@ def _label_key(names: tuple[str, ...], given: dict[str, str]) -> tuple[str, ...]
 
 
 def _escape(value: str, *, quote: bool) -> str:
+    """Thoát `\\` và `\\n` luôn; thêm `"` khi `quote=True` (giá trị nhãn, không phải `HELP`)."""
     out = value.replace("\\", "\\\\").replace("\n", "\\n")
     return out.replace('"', '\\"') if quote else out
 
 
 def _labels(names: tuple[str, ...], values: tuple[str, ...], extra: tuple[tuple[str, str], ...] = ()) -> str:
+    """`{n1="v1",n2="v2"}` cho một tổ hợp nhãn (`extra` nối thêm, vd `le`); rỗng thì bỏ `{}`."""
     pairs = [*zip(names, values, strict=True), *extra]
     if not pairs:
         return ""
@@ -224,6 +240,7 @@ class Counter:
     _registry: _Registry = field(default=_REGISTRY, repr=False, compare=False)
 
     def inc(self, amount: float = 1, **labels: str) -> None:
+        """Cộng `amount` (mặc định 1) vào tổ hợp nhãn cho trước."""
         self._registry.record_counter(self.name, amount, labels)
 
 
@@ -235,6 +252,7 @@ class Histogram:
     _registry: _Registry = field(default=_REGISTRY, repr=False, compare=False)
 
     def observe(self, value: float, **labels: str) -> None:
+        """Ghi một quan sát vào tổ hợp nhãn cho trước (cộng vào bucket, `_sum`, `_count`)."""
         self._registry.record_histogram(self.name, value, labels)
 
 
@@ -263,6 +281,5 @@ def render() -> str:
 
 def reset_registry() -> None:
     """Đặt mọi mẫu về 0 (giữ định nghĩa); chỉ dùng được khi `APP_ENV=test`."""
-    if os.environ.get("APP_ENV") != "test":
-        raise RuntimeError("reset_registry() chỉ dùng khi APP_ENV=test")
+    require_test_env("reset_registry()")
     _REGISTRY.reset()
