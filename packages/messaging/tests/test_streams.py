@@ -15,6 +15,7 @@ from packages.messaging.streams import (
     FIRST_ID,
     EventBus,
     SyncEventBus,
+    _stream_entries,
     is_event_id,
     upload_stream,
     user_stream,
@@ -64,6 +65,23 @@ def test_upload_stream_rejects_a_user_id(fake_clock: FakeClock) -> None:
 )
 def test_is_event_id(value: str, expected: bool) -> None:
     assert is_event_id(value) is expected
+
+
+def test_stream_entries_accepts_the_resp2_list_form() -> None:
+    """RESP2 thật: `xread` trả `list[(stream, entries)]` với `entries` cũng là list."""
+    entries = [("1-0", {"d": "{}"})]
+    assert _stream_entries([("events:x", entries)]) == entries
+
+
+def test_stream_entries_rejects_the_resp3_dict_form() -> None:
+    """Client này không đặt `protocol=3`, nên dạng `dict` của RESP3 là lỗi lập trình."""
+    with pytest.raises(TypeError, match="XREAD kỳ vọng list"):
+        _stream_entries({"events:x": [["1-0", {"d": "{}"}]]})
+
+
+def test_stream_entries_rejects_entries_that_are_not_a_list() -> None:
+    with pytest.raises(TypeError, match="XREAD kỳ vọng entries"):
+        _stream_entries([("events:x", {"1-0": {"d": "{}"}})])
 
 
 async def test_read_after_returns_new_events_in_order_without_repeats(event_bus: EventBus, stream: str) -> None:

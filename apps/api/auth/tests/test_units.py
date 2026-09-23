@@ -2,9 +2,7 @@
 
 import time
 import unicodedata
-from collections.abc import Awaitable
 from contextlib import AsyncExitStack
-from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -177,7 +175,7 @@ async def test_check_session_rejects_a_malformed_sid(auth_env: None) -> None:
 
 async def test_soft_redis_raises_command_errors(cache_client: AsyncRedis) -> None:
     """Lỗi lệnh (sai kiểu khoá) là lỗi của mã: nổi lên, không bị nuốt như lỗi phụ thuộc."""
-    await cast("Awaitable[int]", cache_client.rpush("khoa-danh-sach", "x"))
+    await cache_client.rpush("khoa-danh-sach", "x")
     with pytest.raises(ResponseError, match="WRONGTYPE"):
         await soft_redis(cache_client.get("khoa-danh-sach"), "khong-duoc-log")
 

@@ -63,7 +63,9 @@ async def test_the_second_holder_gets_a_larger_fence_token(safe_client: AsyncRed
     assert first is not None
     assert second is not None
     assert second > first
-    assert int(await safe_client.get(f"{KEY}{FENCE_SUFFIX}")) == second
+    fence_value = await safe_client.get(f"{KEY}{FENCE_SUFFIX}")
+    assert fence_value is not None
+    assert int(fence_value) == second
 
 
 async def test_an_expired_owner_cannot_renew_or_release_the_new_owner(safe_client: AsyncRedis) -> None:

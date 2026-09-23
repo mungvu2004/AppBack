@@ -8,9 +8,8 @@ Redis bị xếp nhầm thành 503 là che mất bug của chính mình (R-16).
 import hashlib
 import hmac
 import json
-from collections.abc import Awaitable
 from datetime import datetime, timedelta
-from typing import Any, Final, cast
+from typing import Any, Final
 from uuid import uuid4
 
 import httpx
@@ -246,9 +245,7 @@ async def test_redis_command_error_is_not_masked_as_503(
     sample_client: httpx.AsyncClient, cache_client: AsyncRedis, fake_principal: Principal
 ) -> None:
     """Lỗi **lệnh** Redis là bug của ta: phải nổi lên thành 500, không hoá thành 503 (R-16)."""
-    # `redis-py` khai kiểu trả của mọi lệnh là `Awaitable | Any` (một lớp lệnh dùng chung
-    # cho bản sync và bản async), nên nơi gọi phải tự nói mình chờ kiểu gì.
-    await cast("Awaitable[int]", cache_client.hset("rl:sample_ip:127.0.0.1", "x", "1"))
+    await cache_client.hset("rl:sample_ip:127.0.0.1", "x", "1")
     response = await sample_client.get("/api/sample/limited", headers=auth_headers(fake_principal))
     assert response.status_code == 500
     assert response.json()["code"] == "INTERNAL"
