@@ -13,7 +13,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
 from packages.core.ids import is_id
 from packages.messaging.redis import MAX_BLOCK_MS, AsyncRedis, SyncRedis, redis_errors
@@ -72,6 +72,22 @@ def _encode(data: Mapping[str, object]) -> str:
 
 def _decode(entries: Sequence[tuple[str, Mapping[str, str]]]) -> list[Event]:
     return [Event(id=entry_id, data=json.loads(fields[FIELD])) for entry_id, fields in entries]
+
+
+def _stream_entries(streams: object) -> Sequence[tuple[str, Mapping[str, str]]]:
+    """Entries của stream đầu (và duy nhất) trong kết quả `XREAD`.
+
+    Stub redis-py 8 khai kiểu trả của `xread` gộp cả dạng RESP2 (list các tuple) và
+    RESP3 (dict) vì dùng chung cho hai giao thức; client Streams (`packages.messaging.redis`)
+    không đặt `protocol=3` nên luôn nhận RESP2. Dạng khác là lỗi lập trình, ném rõ thay vì
+    nuốt (R-16).
+    """
+    if not isinstance(streams, list):
+        raise TypeError(f"XREAD kỳ vọng list (RESP2), nhận {type(streams).__name__}")
+    entries = streams[0][1]
+    if not isinstance(entries, list):
+        raise TypeError(f"XREAD kỳ vọng entries dạng list (RESP2), nhận {type(entries).__name__}")
+    return cast(list[tuple[str, Mapping[str, str]]], entries)
 
 
 def _id_key(event_id: str) -> tuple[int, int]:
@@ -140,7 +156,7 @@ class EventBus(_Bus):
         with redis_errors():
             # `block=0` với Redis nghĩa là chặn vô hạn; `None` mới là "không chặn".
             streams = await self._client.xread({stream: last_id}, count=count, block=block_ms or None)
-        return [] if not streams else _decode(streams[0][1])
+        return [] if not streams else _decode(_stream_entries(streams))
 
     async def tail_id(self, stream: str) -> str | None:
         """Id mục cuối, hoặc `None` khi stream rỗng — điểm bắt đầu của một luồng mở mới (S08)."""
