@@ -127,4 +127,4 @@ def test_gc_lowercases_and_normalizes_worktree_names(worktree: Path, tmp_path: P
     args = calls.read_text(encoding="utf-8").splitlines()
     valid_names_arg = next(a for a in args if a.startswith("VERIFY_VALID_NAMES="))
     names = valid_names_arg.removeprefix("VERIFY_VALID_NAMES=").split(",")
-    assert "b7-01-extra" in names
+    assert "b7-01_extra" in names
