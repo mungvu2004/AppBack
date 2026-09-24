@@ -78,9 +78,9 @@
 | FIX-069 | 2026-09-22 | B0-05 | NO-093 | Test FIX-067 không chốt phần `captureWarnings` của fixture worker | `47efe53` |
 | FIX-070 | 2026-09-22 | B0-08 | NO-102, NO-112 | Ảnh `web` dính CVE OpenSSL CRITICAL và CVE nginx rewrite/map | `b232603` (nhánh `fix/b0-08-web-openssl-cve`) |
 | FIX-082 | 2026-09-24 | B2-01 | — | Hai test fallback của cổng `view_parts` giả định "chưa module nào cài", đỏ khi B2-03 cài thật | nhánh `feature/b2-03-floors` |
-| FIX-083 | 2026-09-24 | B0-01 | NO-101, NO-164, NO-103, NO-106, NO-108, NO-130 | Nợ cổng verify: `tr` của `gc`, marker `ci_integration`, hằng ảnh ghim trong test, ảnh/volume verify theo worktree, `concurrency` coverage | nhánh `fix/debt-01-tooling` |
-| FIX-084 | 2026-09-24 | B0-09 | NO-051, NO-106, NO-110, NO-111, NO-113, NO-153 | Nợ CI: `VERIFY_OUT_DIR`, ảnh ghim chép tay ở `h2.py`, `types` của `pull_request`, test `job.sh`, `nginx -v` của ảnh `web`, dependabot major | nhánh `fix/debt-01-tooling` |
-| FIX-085 | 2026-09-24 | B0-05 | NO-153 | `redis` khai không ràng buộc phiên bản | nhánh `fix/debt-01-tooling` |
+| FIX-083 | 2026-09-24 | B0-01 | NO-101, NO-164, NO-103, NO-106, NO-108, NO-130 | Nợ cổng verify: `tr` của `gc`, marker `ci_integration`, hằng ảnh ghim trong test, ảnh/volume verify theo worktree, `concurrency` coverage | `531c690`, `7eaa0f9`, `ebe32cc`, `7ff240a` (nhánh `fix/debt-01-tooling`) |
+| FIX-084 | 2026-09-24 | B0-09 | NO-051, NO-106, NO-110, NO-111, NO-113, NO-153 | Nợ CI: `VERIFY_OUT_DIR`, ảnh ghim chép tay ở `h2.py`, `types` của `pull_request`, test `job.sh`, `nginx -v` của ảnh `web`, dependabot major | `844fea3`, `a99fabb`, `86b31b9` (nhánh `fix/debt-01-tooling`) |
+| FIX-085 | 2026-09-24 | B0-05 | NO-153 | `redis` khai không ràng buộc phiên bản | `5579b09` (nhánh `fix/debt-01-tooling`) |
 | FIX-086 | 2026-09-24 | B0-08 | NO-094, NO-095, NO-096, NO-141, NO-162, NO-118, NO-117, NO-083, NO-084, NO-085, NO-104 | Nợ triển khai: log token, `minio/init.sh`, biến thư, scrape `9464`, cổng host `ci.yml`, upstream nginx khi đổi phiên bản, biến thừa của `ml` | nhánh `fix/debt-01-deploy` |
 | FIX-087 | 2026-09-24 | B0-10 | NO-120, NO-117 | Hai nguồn `APPBACK_API_SWAP_SETTLE_S`; phản hồi hỏng khi `deploy.sh` đổi phiên bản | nhánh `fix/debt-01-deploy` |
 | FIX-088 | 2026-09-24 | B0-03 | NO-140 | `on_after_commit` chạy callback khi savepoint nhả dù transaction ngoài rollback | nhánh `fix/debt-01-core` |
@@ -96,8 +96,8 @@
 | FIX-098 | 2026-09-24 | F-02 | NO-099 | 26 `kind` hoạt động thiếu nhãn tiếng Việt | AppFront nhánh `fix/debt-01-fe` |
 | FIX-099 | 2026-09-24 | (tra chủ) | NO-086 | SSE thông báo mở `/api/notifications/stream` thay vì `/api/streams/notifications` | AppFront nhánh `fix/debt-01-fe` |
 | FIX-100 | 2026-09-24 | B0-08 | NO-174 | Ảnh `web` không build vì ảnh node ghim bỏ `corepack` | `792e98b` (nhánh `fix/b0-08-web-openssl-cve`) |
-| FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | nhánh `fix/debt-01-tooling` |
-| FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | nhánh `fix/debt-01-tooling` |
+| FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | `ad9ecab` (nhánh `fix/debt-01-tooling`) |
+| FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | `17774f7` (nhánh `fix/debt-01-tooling`) |
 | FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | nhánh `fix/debt-01-core` |
 | FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | nhánh `fix/debt-01-deploy` |
 
@@ -718,3 +718,53 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** `RUN npm install -g pnpm@9.4.0` (AppFront @ `9cf0b0bf` không khai `packageManager`; giữ đúng bản pnpm cũ).
 - **[6]** `test_dockerfile_web_installs_pnpm_without_corepack`: đỏ trên `main` (AssertionError "tầng node #0 còn dùng corepack"), xanh sau sửa (36 passed); build web thoát 1 → 0.
 - **[7]** `fix(deploy): install pnpm with npm instead of corepack` (`792e98b`, `Prompt: B0-08`, `Fix: FIX-100`); review lượt 2 APPROVE.
+
+## FIX-102 cho B0-01 — uv base image không ghim làm `uv.lock` trôi định dạng (NO-175)
+
+- **[1]** `bash tools/verify/run.sh lock` sau khi thêm ràng buộc `redis` (FIX-085) sinh diff 316 dòng thay đổi ngoài dòng ràng buộc `redis` trong `uv.lock` — mọi entry `{ name = ... }` thêm `marker = "platform_machine == 'x86_64' and sys_platform == 'linux'"`.
+- **[2]** Trên `fc32836` (chưa ghim): `bash tools/verify/run.sh lock` → so `uv.lock` trước/sau, 632 dòng đổi (316 `-`/316 `+`).
+- **[3]** `deploy/docker/verify.Dockerfile:6` `FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (tag trần, không digest): uv trong ảnh verify là `0.9.30`, đổi cách hiển thị marker so với bản đã sinh `uv.lock` hiện có trên `main`.
+- **[4]** Sửa: `deploy/docker/verify.Dockerfile` (B0-01). Cấm: mọi file khác.
+- **[5]** Ghim cả hai `FROM` (uv, node) theo tag+digest hiện tại (không đổi bản uv/node đang chạy — chỉ ngăn trôi tiếp).
+- **[6]** `tools/tests/test_verify_dockerfile.py::test_every_from_line_pins_tag_and_digest` — đỏ trên `main` (`FROM` không có `@sha256:`), xanh sau sửa.
+- **[7]** `run.sh lock` hai lượt sau khi ghim → diff rỗng (ổn định). Commit `17774f7` (`Prompt: B0-01`, `Fix: FIX-102`); review APPROVE 4,50/5, cổng đầy đủ thoát 0.
+
+## FIX-083 cho B0-01 — NO-101, NO-164, NO-103, NO-106 (phần), NO-108, NO-130
+
+- **[1]** Năm nợ cổng verify: `tr` sai dải ký tự chặn `gc` an toàn (NO-101/NO-164); test Testcontainers thật bị `--ci-split` xếp nhầm nhóm `unit` (NO-103); hằng ảnh ghim Postgres/Redis/MinIO chép tay giữa `services.py` và `h2.py` (NO-106 phần); mỗi worktree một ảnh/volume verify riêng (NO-108); coverage thiếu `greenlet` nên bỏ sót dòng/nhánh sau `await` async (NO-130).
+- **[2]** Trên `main` (`fc32836`): `run.sh gc` thoát 1 ngay (lỗi `tr`); ghi đè 9 file sản xuất về `fc32836` rồi chạy đúng test của nhánh → 12 failed + 1 error (đo được ở review, xem §4.1 của `docs/reviews/2026-09-24-fix-debt-01-tooling.md`).
+- **[3]** `tools/verify/run.sh:150`, `deploy/compose/verify.yml:40-41`, `packages/testing/fixtures/services.py:29-32` ↔ `tools/ci/h2.py:73-75`, `pyproject.toml:102-108` (gốc).
+- **[4]** Sửa: `tools/verify/run.sh`, `tools/tests/test_run_sh.py`, `tools/tests/test_services.py`, `packages/testing/fixtures/services.py`, `tools/pinned_images.py` (mới), `tools/tests/test_pinned_images.py` (mới), `deploy/compose/verify.yml`, `tools/tests/test_verify_yml.py` (mới), `pyproject.toml` (gốc).
+- **[5]** `tr -c 'a-z0-9_\n-' '-'` (đưa `-` về cuối tập); marker `@pytest.mark.ci_integration` tường minh; hằng ảnh dời sang `tools/pinned_images.py` (nguồn chung cho `services.py`/`h2.py`); `deploy/compose/verify.yml` ghim `image: appback-verify:local` + `volumes.appback-work.name: appback-work`; `pyproject.toml` thêm `concurrency = ["thread", "greenlet"]`.
+- **[6]** `test_gc_lowercases_and_normalizes_worktree_names`, marker `ci_integration` trên test ephemeral, `tools/tests/test_pinned_images.py` (100% dòng+nhánh), `tools/tests/test_verify_yml.py` — đỏ trên `main`, xanh trên nhánh (114 passed, mục 3 của báo cáo tác giả).
+- **[7]** Commit `531c690`, `7eaa0f9`, `ebe32cc`, `7ff240a` (`Prompt: B0-01`, `Fix: FIX-083`); review APPROVE 4,50/5, cổng đầy đủ thoát 0.
+
+## FIX-101 cho B0-01 — NO-105 (phần `tools/verify/steps.py`)
+
+- **[1]** CI chạy bước 8 (OpenAPI) ở chế độ xuất, không so với bản tham chiếu vì `openapi.json` gốc bị `.gitignore`.
+- **[2]** `git show main:tools/verify/steps.py` dòng 220 vẫn `["--compare", "openapi.json"]`.
+- **[3]** `tools/verify/steps.py::step_openapi`.
+- **[4]** Sửa: `tools/verify/steps.py`, `tools/tests/test_steps_commands.py`.
+- **[5]** `--compare docs/contracts/openapi.json` thay `openapi.json` (bản tham chiếu đã commit trên `main @ 280a22d`).
+- **[6]** `test_bước_8_integration_so_với_bản_commit` — đỏ trên `main`, xanh trên nhánh; reviewer chạy lại `VERIFY_BRANCH=integration bash tools/verify/run.sh verify --steps 8` độc lập, mã thoát 0.
+- **[7]** Commit `ad9ecab` (`Prompt: B0-01`, `Fix: FIX-101`); review APPROVE 4,50/5, cổng đầy đủ thoát 0.
+
+## FIX-085 cho B0-05 — NO-153 (phần mã)
+
+- **[1]** Dependabot có thể gộp thẳng bản major của `redis` vào `main` không qua cổng (gốc NO-148): `packages/messaging/pyproject.toml` khai `redis` không ràng buộc phiên bản.
+- **[2]** Nguyên nhân gốc NO-148: bump `redis` 6.4.0 → 8.1.0 qua PR Dependabot gộp thẳng trên GitHub, không qua `verify`.
+- **[3]** `packages/messaging/pyproject.toml:7`.
+- **[4]** Sửa: `packages/messaging/pyproject.toml`; `uv.lock` chỉ qua `run.sh lock` (không sửa tay).
+- **[5]** `redis>=8.1,<9`.
+- **[6]** Không có test unit riêng (khai báo phụ thuộc tĩnh); bằng chứng: `uv.lock` sau `lock` có `{ name = "redis", specifier = ">=8.1,<9" }`, `uv sync --locked` không hỏng, và diff `uv.lock` ngoài dòng `redis` là 0 gói đổi bản (thuần định dạng của FIX-102).
+- **[7]** Commit `5579b09` (`Prompt: B0-05`, `Fix: FIX-085`); review APPROVE 4,50/5, cổng đầy đủ thoát 0.
+
+## FIX-084 cho B0-09 — NO-051, NO-105 (phần `job.sh`), NO-106 (phần `h2.py`), NO-110, NO-111, NO-113, NO-118 (phần `job.sh`), NO-153 (phần dependabot)
+
+- **[1]** Tám nợ CI: `VERIFY_OUT_DIR` không ghi được ngoài container (NO-051); job `typecheck` không so OpenAPI với bản tham chiếu (NO-105 phần); `h2.py` chép tay hằng ảnh ghim (NO-106 phần); `pull_request` thiếu `types: [edited]` (NO-110); hai hành vi `job.sh` chưa có test (NO-111); trivy không thấy CVE nginx.org (NO-113); smoke CI dùng `API_HOST_PORT` đã bỏ (NO-118 phần); Dependabot gộp major không qua cổng (NO-153 phần dependabot).
+- **[2]** Trên `main` (`fc32836`): ghi đè `tools/ci/h2.py`, `tools/ci/job.sh`, `.github/workflows/ci.yml`, `.github/dependabot.yml` về bản cũ rồi chạy đúng test của nhánh → phần lớn 16 test mới/sửa đỏ (đo được ở review §4.1).
+- **[3]** `tools/ci/h2.py:73-75`, `tools/ci/job.sh` (nhiều hàm), `.github/workflows/ci.yml:9-10`, `.github/dependabot.yml:8-19`.
+- **[4]** Sửa: `tools/ci/h2.py`, `tools/ci/job.sh`, `tools/ci/README.md`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `tools/ci/tests/test_workflows.py`.
+- **[5]** `job_contract` tự đặt `VERIFY_OUT_DIR` ghi được cùng lúc với `CONTRACT_SAMPLES_DIR`; `job_typecheck` ép `VERIFY_BRANCH=integration`; `h2.py` nhập hằng ảnh từ `tools/pinned_images.py`; `pull_request.types` thêm `edited`; test mới chốt `job_lint_gitleaks`/`job_build_trivy`; `job_build_check_nginx_version` so `nginx -v` với `NGINX_MIN_VERSION=1.30.4`; smoke `/api/health`, `/api/ready` qua `WEB_HTTP_PORT`; `dependabot.yml` thêm `ignore` semver-major cho `uv`/`github-actions`/`docker`.
+- **[6]** `test_job_contract_exports_writable_verify_out_dir`, `test_job_sh_typecheck_compares_committed_openapi_reference`, `test_ci_yml_pull_request_types_include_edited`, `test_job_lint_gitleaks_fails_closed_on_empty_git_history`, `test_job_build_trivy_mounts_host_sarif_dir`, `test_job_build_check_nginx_version_*`, `test_job_sh_smoke_uses_web_port_for_api_paths_not_api_host_port`, `test_dependabot_yml_ignores_semver_major_for_every_ecosystem` — đỏ trên `main`, xanh trên nhánh (114 passed).
+- **[7]** Commit `844fea3`, `a99fabb`, `86b31b9` (`Prompt: B0-09`, `Fix: FIX-084`); review APPROVE 4,50/5, cổng đầy đủ thoát 0.
