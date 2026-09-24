@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 import pytest
 
@@ -18,8 +18,26 @@ from apps.api.projects.wire import (
 )
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
+from packages.storage.port import Disposition, ObjectStorage, SignedUrl
+from packages.storage.sniff import ImageKind
 
 AT: Final = datetime(2026, 9, 23, 7, 8, 9, tzinfo=UTC)
+
+
+class _FakeAvatarStorage:
+    """`ObjectStorage` giả tối thiểu: chỉ `signed_url`, đủ cho `user_out` (NO-135)."""
+
+    async def signed_url(
+        self, key: str, *, disposition: Disposition, filename: str | None = None, kind: ImageKind | None = None
+    ) -> SignedUrl:
+        """URL tất định từ `key`, không ký thật — test chỉ cần chứng minh `user_out` gọi kho."""
+        assert disposition == "inline"
+        return SignedUrl(url=f"https://storage.test/{key}?inline=1", expires_at=AT)
+
+
+def _storage() -> ObjectStorage:
+    """`_FakeAvatarStorage` ép kiểu sang `ObjectStorage` (Protocol không kiểm ở runtime)."""
+    return cast("ObjectStorage", _FakeAvatarStorage())
 
 
 def _user(name: str = "Chị Hà") -> User:
@@ -57,7 +75,7 @@ def _rollup(
     )
 
 
-def test_project_out_has_exactly_the_contract_keys() -> None:
+async def test_project_out_has_exactly_the_contract_keys() -> None:
     """`ProjectSchema` strict: không `currentVersion`, `progress`, `deletedAt`, không `null`."""
     dumped = ProjectOut(
         id=_project().id,
@@ -66,7 +84,7 @@ def test_project_out_has_exactly_the_contract_keys() -> None:
         updated_at=AT,
         status="draft",
         floors=[],
-        members=[user_out(_user())],
+        members=[await user_out(_user(), None)],
     ).model_dump(by_alias=True)
     assert set(dumped) == {"id", "name", "createdAt", "updatedAt", "status", "floors", "members"}
     assert None not in dumped.values()
@@ -88,10 +106,24 @@ def test_project_out_keeps_optional_strings_when_present() -> None:
     assert (dumped["code"], dumped["address"]) == ("NA-01", "1 Lê Lợi")
 
 
-def test_user_out_omits_avatar_url() -> None:
-    """`avatarUrl` vắng ở v1 (đường ký URL thuộc B1-04), `role` là vai hệ thống."""
-    dumped = user_out(_user()).model_dump(by_alias=True)
+async def test_user_out_omits_avatar_url_without_storage() -> None:
+    """Không có kho (test gọi thẳng service) → `avatarUrl` vắng, `role` là vai hệ thống."""
+    dumped = (await user_out(_user(), None)).model_dump(by_alias=True)
     assert dumped == {"id": _user().id, "email": "ha@example.com", "name": "Chị Hà", "role": "engineer"}
+
+
+async def test_user_out_omits_avatar_url_when_never_uploaded() -> None:
+    """`avatar_key` vắng (chưa từng tải ảnh) → `avatarUrl` vắng dù có kho (NO-135)."""
+    dumped = (await user_out(_user(), _storage())).model_dump(by_alias=True)
+    assert "avatarUrl" not in dumped
+
+
+async def test_user_out_signs_avatar_url_via_b1_04() -> None:
+    """`avatar_key` có sẵn và có kho → `avatarUrl` là URL ký qua `apps.api.me.avatar.avatar_url` (NO-135)."""
+    user = _user()
+    user.avatar_key = "usr/avatar.jpg"
+    dumped = (await user_out(user, _storage())).model_dump(by_alias=True)
+    assert dumped["avatarUrl"] == "https://storage.test/usr/avatar.jpg?inline=1"
 
 
 def test_user_out_rejects_unknown_role() -> None:
