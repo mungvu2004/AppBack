@@ -17,7 +17,7 @@ coverage.json
 /tmp-junit*.xml
 
 # Không commit theo BE-00 §13.2
-openapi.json
+/openapi.json
 contract-samples/
 
 # OS

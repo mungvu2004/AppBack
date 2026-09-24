@@ -46,7 +46,7 @@
 
 - **Mạng:** `network_mode: bridge` (không tạo mạng riêng mỗi project; bể địa chỉ mặc định chỉ khoảng 30 mạng); `extra_hosts: host.docker.internal:host-gateway`.
 - **Bước đầu của script:** `cp -r /src /tmp/w && find /tmp/w -type f -exec chmod 644 {} +`. Mount từ Windows làm mọi file mode 777, và ruff báo `EXE002` giả. Hiến chương cấm shebang trong `.py`, nên chmod 644 không sinh `EXE001`.
-- **Biến môi trường:** `UV_LINK_MODE=hardlink`; `RUFF_CACHE_DIR`, `COVERAGE_FILE` trỏ vào `/tmp`; `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal`; `APPFRONT_DIR=/appfront`; `CONTRACT_SAMPLES_DIR=/tmp/contract-samples` (mới mỗi lượt, cuối lượt chép ra `/src-out/contract-samples`).
+- **Biến môi trường:** `UV_LINK_MODE=hardlink`; `RUFF_CACHE_DIR`, `COVERAGE_FILE` trỏ vào `/tmp`; `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` và `TESTCONTAINERS_CONNECTION_MODE=bridge_ip` (bản dịch vụ dùng chung nối thẳng IP container trên mạng `bridge`, bỏ chặng `host.docker.internal` kẹt ~69 s — NO-007, FIX-009; bản `ephemeral_*` của C13 vẫn đi `host.docker.internal` + cổng map; biến override cũ còn đó, vô hại); `APPFRONT_DIR=/appfront`; `CONTRACT_SAMPLES_DIR=/tmp/contract-samples` (mới mỗi lượt, cuối lượt chép ra `/src-out/contract-samples`).
 - **Đồng bộ phụ thuộc:** `uv sync --locked --all-packages --group dev`; lock lệch pyproject thì hỏng. Mọi lệnh sau chạy bằng Python của venv.
 - **Dọn:** `bash tools/verify/run.sh gc` xoá `venv-*`/`mypy-*` của worktree không còn tồn tại (mỗi venv ~1,3 GB).
 - **Thời gian tham chiếu** (dự án mẫu chỉ có Postgres): 15–18 s một lượt; 3 lượt song song hết 21 s; 6 lượt song song hết 41 s.
