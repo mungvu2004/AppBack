@@ -147,9 +147,15 @@ async def test_create_project_ignores_status_members_progress_current_version(
 
 
 async def test_create_project_without_hook_ignores_floors(
-    api_client: httpx.AsyncClient, db_session: AsyncSession
+    api_client: httpx.AsyncClient, api_app: FastAPI, db_session: AsyncSession
 ) -> None:
-    """Chưa module nào cắm `project.create_floors` → `floors` trong thân bị bỏ qua lặng lẽ."""
+    """Chưa module nào cắm `project.create_floors` → `floors` trong thân bị bỏ qua lặng lẽ.
+
+    `extensions.override(app, SUBMODULE, [])` dựng trạng thái "chưa ai cài" tường minh
+    (FIX-082): kể từ B2-03, `apps.api.floors.view_parts` cắm thật vào `app=None` mặc định,
+    nên test không còn được giả định trạng thái toàn cục "chưa module nào cài" nữa.
+    """
+    extensions.override(api_app, SUBMODULE, [])
     creator = await make_user(db_session, role="engineer")
     body = {"name": "Không hook", "floors": [{"name": "Tầng 1", "order": 0, "elevationMm": 0, "heightMm": 3000}]}
     response = await api_client.post(PROJECTS_PATH, json=body, headers=headers_of(creator))
