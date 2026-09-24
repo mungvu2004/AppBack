@@ -83,22 +83,22 @@
 | FIX-085 | 2026-09-24 | B0-05 | NO-153 | `redis` khai không ràng buộc phiên bản | `5579b09` (nhánh `fix/debt-01-tooling`) |
 | FIX-086 | 2026-09-24 | B0-08 | NO-094, NO-095, NO-096, NO-141, NO-162, NO-118, NO-117, NO-083, NO-084, NO-085, NO-104 | Nợ triển khai: log token, `minio/init.sh`, biến thư, scrape `9464`, cổng host `ci.yml`, upstream nginx khi đổi phiên bản, biến thừa của `ml` | nhánh `fix/debt-01-deploy` |
 | FIX-087 | 2026-09-24 | B0-10 | NO-120, NO-117 | Hai nguồn `APPBACK_API_SWAP_SETTLE_S`; phản hồi hỏng khi `deploy.sh` đổi phiên bản | nhánh `fix/debt-01-deploy` |
-| FIX-088 | 2026-09-24 | B0-03 | NO-140 | `on_after_commit` chạy callback khi savepoint nhả dù transaction ngoài rollback | nhánh `fix/debt-01-core` |
-| FIX-089 | 2026-09-24 | B0-05 | NO-151, NO-152, NO-157, NO-085, NO-161 | RESP3 ngầm, `retry` không tường minh, `event_id_key` chưa phơi, `REDIS_CACHE_URL` bắt buộc, worker chưa có `/metrics` | nhánh `fix/debt-01-core` |
-| FIX-090 | 2026-09-24 | B0-06 | NO-097, NO-137, NO-159, NO-160 | `auth.py` chép `Role`, `_grant_everything` sai kiểu, `api_env` giữ cổng metric, metric RED theo đường thật | nhánh `fix/debt-01-core` |
-| FIX-091 | 2026-09-24 | B5-01 | NO-085, NO-104, NO-161 | `ml` đọc `SECRET_KEY` chỉ để lấy `APP_ENV`; tải mô hình ghim không thử lại/không nguyên tử; `ml` chưa có `/metrics` | nhánh `fix/debt-01-core` |
-| FIX-092 | 2026-09-24 | B4-01 | NO-156, NO-157 | Rò ba tài nguyên SSE khi `_finish` ném; bản sao `event_id_key` | nhánh `fix/debt-01-core` |
-| FIX-093 | 2026-09-24 | B1-03 | NO-149 | Lỗi thư vĩnh viễn bị nuốt khi token sau ném `TransientError` | nhánh `fix/debt-01-modules` |
-| FIX-094 | 2026-09-24 | B2-01 | NO-142, NO-136, NO-135 | `UPDATE` không khoá thứ tự, thiếu test hai session `_checked(None)`, `user_out()` không ký URL avatar | nhánh `fix/debt-01-modules` |
-| FIX-095 | 2026-09-24 | B2-05a | NO-125 | Thiếu ca `render` ném `PdfiumError` → `FILE_CORRUPT` | nhánh `fix/debt-01-modules` |
-| FIX-096 | 2026-09-24 | B4-01 | NO-155, NO-158 | Test hạn hết giữa hai lượt kéo không tất định; seed ít khoá hơn `BATCH` | nhánh `fix/debt-01-modules` |
+| FIX-088 | 2026-09-24 | B0-03 | NO-140 | `on_after_commit` chạy callback khi savepoint nhả dù transaction ngoài rollback | `3286027` |
+| FIX-089 | 2026-09-24 | B0-05 | NO-151, NO-152, NO-157, NO-085, NO-161 | RESP3 ngầm, `retry` không tường minh, `event_id_key` chưa phơi, `REDIS_CACHE_URL` bắt buộc, worker chưa có `/metrics` | `19648c3`, `917ce5a` |
+| FIX-090 | 2026-09-24 | B0-06 | NO-097, NO-137, NO-159, NO-160 | `auth.py` chép `Role`, `_grant_everything` sai kiểu, `api_env` giữ cổng metric, metric RED theo đường thật | `301bf67`, `b25530b` |
+| FIX-091 | 2026-09-24 | B5-01 | NO-085, NO-104, NO-161 | `ml` đọc `SECRET_KEY` chỉ để lấy `APP_ENV`; tải mô hình ghim không thử lại/không nguyên tử; `ml` chưa có `/metrics` | `f7abc9f` |
+| FIX-092 | 2026-09-24 | B4-01 | NO-156, NO-157 | Rò ba tài nguyên SSE khi `_finish` ném; bản sao `event_id_key` | `99bc366` |
+| FIX-093 | 2026-09-24 | B1-03 | NO-149 | Lỗi thư vĩnh viễn bị nuốt khi token sau ném `TransientError` | `19fbed6` |
+| FIX-094 | 2026-09-24 | B2-01 | NO-142, NO-136, NO-135 | `UPDATE` không khoá thứ tự, thiếu test hai session `_checked(None)`, `user_out()` không ký URL avatar | `672b44b` |
+| FIX-095 | 2026-09-24 | B2-05a | NO-125 | Thiếu ca `render` ném `PdfiumError` → `FILE_CORRUPT` | `c3e32b7` |
+| FIX-096 | 2026-09-24 | B4-01 | NO-155, NO-158 | Test hạn hết giữa hai lượt kéo không tất định; seed ít khoá hơn `BATCH` | `6caadb8` |
 | FIX-097 | 2026-09-24 | F-01b | NO-154 | Luồng SSE 401 lặp không refresh trước lần nối kế | AppFront nhánh `fix/debt-01-fe` |
 | FIX-098 | 2026-09-24 | F-02 | NO-099 | 26 `kind` hoạt động thiếu nhãn tiếng Việt | AppFront nhánh `fix/debt-01-fe` |
 | FIX-099 | 2026-09-24 | (tra chủ) | NO-086 | SSE thông báo mở `/api/notifications/stream` thay vì `/api/streams/notifications` | AppFront nhánh `fix/debt-01-fe` |
 | FIX-100 | 2026-09-24 | B0-08 | NO-174 | Ảnh `web` không build vì ảnh node ghim bỏ `corepack` | `792e98b` (nhánh `fix/b0-08-web-openssl-cve`) |
 | FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | `ad9ecab` (nhánh `fix/debt-01-tooling`) |
 | FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | `17774f7` (nhánh `fix/debt-01-tooling`) |
-| FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | nhánh `fix/debt-01-core` |
+| FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | `e2ebeda` |
 | FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | nhánh `fix/debt-01-deploy` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
@@ -768,3 +768,103 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** `job_contract` tự đặt `VERIFY_OUT_DIR` ghi được cùng lúc với `CONTRACT_SAMPLES_DIR`; `job_typecheck` ép `VERIFY_BRANCH=integration`; `h2.py` nhập hằng ảnh từ `tools/pinned_images.py`; `pull_request.types` thêm `edited`; test mới chốt `job_lint_gitleaks`/`job_build_trivy`; `job_build_check_nginx_version` so `nginx -v` với `NGINX_MIN_VERSION=1.30.4`; smoke `/api/health`, `/api/ready` qua `WEB_HTTP_PORT`; `dependabot.yml` thêm `ignore` semver-major cho `uv`/`github-actions`/`docker`.
 - **[6]** `test_job_contract_exports_writable_verify_out_dir`, `test_job_sh_typecheck_compares_committed_openapi_reference`, `test_ci_yml_pull_request_types_include_edited`, `test_job_lint_gitleaks_fails_closed_on_empty_git_history`, `test_job_build_trivy_mounts_host_sarif_dir`, `test_job_build_check_nginx_version_*`, `test_job_sh_smoke_uses_web_port_for_api_paths_not_api_host_port`, `test_dependabot_yml_ignores_semver_major_for_every_ecosystem` — đỏ trên `main`, xanh trên nhánh (114 passed).
 - **[7]** Commit `844fea3`, `a99fabb`, `86b31b9` (`Prompt: B0-09`, `Fix: FIX-084`); review APPROVE 4,50/5, cổng đầy đủ thoát 0.
+
+## FIX-088 cho B0-03 — savepoint nhả sớm kích `after_commit` (NO-140)
+
+- **[1]** `on_after_commit` (`packages/db/hooks.py` `_on_commit`, nghe `Session.after_commit`) chạy callback khi một SAVEPOINT (`begin_nested`) được nhả, trước khi giao dịch ngoài commit — SQLAlchemy 2.0 bắn `after_commit` cả cho `SessionTransaction` lồng, `_on_commit` không phân biệt lồng/ngoài.
+- **[2]** `packages/db/tests/test_hooks.py::test_on_after_commit__J09_savepoint_release_waits_for_the_outer_commit` trên `main`: mã thoát 1, `assert calls == ['trong']`.
+- **[3]** `packages/db/hooks.py:_on_commit`.
+- **[4]** Sửa: `packages/db/hooks.py`, `packages/db/tests/test_hooks.py`. Cấm: mọi file khác.
+- **[5]** `_on_commit` bỏ qua lượt `after_commit` khi `session.get_nested_transaction()` còn trả về bản lồng (nghĩa là đang ở lượt release của savepoint); rollback ngoài sau đó vẫn bỏ được callback qua `after_soft_rollback` có sẵn.
+- **[6]** `test_on_after_commit__J09_savepoint_release_waits_for_the_outer_commit` (Postgres thật, INSERT thật trong savepoint rồi rollback ngoài) — đỏ mã thoát 1 trên `main` → xanh trên nhánh.
+- **[7]** Commit `3286027` (`Prompt: B0-03`, `Fix: FIX-088`); review lượt 2 APPROVE `docs/reviews/2026-09-24-fix-debt-01-core-round-2.md` (4,77/5), cổng đầy đủ thoát 0 (3792 passed).
+
+## FIX-089 cho B0-05 — RESP3 ngầm, retry không tường minh, `event_id_key` chưa phơi, `REDIS_CACHE_URL` bắt buộc, worker/ml chưa có `/metrics` (NO-151, NO-152, NO-157, NO-085, NO-161)
+
+- **[1]** Năm nợ messaging: docstring nói client streams "không đặt `protocol=3` nên luôn nhận RESP2" — sai sau bump redis-py 8.1 (NO-151); mỗi vai không đặt `retry` tường minh, đường trả response có thể chờ nhiều lượt hơn tưởng (NO-152); `_id_key` khai riêng ở `apps/api/streams/sse.py` trùng bản private của `packages/messaging/streams.py` (NO-157 nửa); `MessagingSettings.redis_cache_url` bắt buộc dù tiến trình `ml` không tới được `redis-cache` (NO-085 nửa); worker Celery và `ml` chưa có exporter `/metrics` (NO-161).
+- **[2]** Trên `main`: `packages/messaging/tests/{test_redis,test_settings,test_streams,test_celery_app}.py` mới — mã thoát 2 (`ImportError` lúc thu thập: `ASYNC_RETRIES`, `event_id_key`, `start_metrics_exporter`).
+- **[3]** `packages/messaging/{redis,settings,streams,celery_app}.py`.
+- **[4]** Sửa: `packages/messaging/{redis,settings,streams,celery_app}.py` + test tương ứng. Cấm: mọi file khác.
+- **[5]** Mọi client ghim `legacy_responses=True` tường minh; mỗi vai khai ngân sách retry riêng (`ASYNC_RETRIES=2`, `STREAM_RETRIES=1`, `SYNC_RETRIES=1`, backoff 0,05–0,2 s, `retry_on_error=[ConnectionError, TimeoutError]`); `streams.py` phơi `event_id_key` công khai; `redis_cache_url: str | None = None`, `cache_redis()`/`cache_redis_sync()` ném `RuntimeError` có tên biến khi thiếu; exporter `/metrics` gắn vào `worker_process_init` ở `celery_app.py` (dùng chung cho `apps/worker` và `apps/ml` qua `create_celery`). Vòng sửa round 2 (`917ce5a`): `messaging_env` đặt `METRICS_PORT=0` + xoá cache `ObservabilitySettings` hai đầu + receiver `worker_process_shutdown`, để không còn rò exporter thật vào tiến trình pytest (finding P1 lượt 1 của review core).
+- **[6]** `test_streams_client_pins_the_legacy_list_form_of_xread`, `test_every_client_pins_the_retry_budget_of_its_role` + `test_a_dead_redis_costs_exactly_the_configured_number_of_retries` (Redis thật, `ephemeral_broker`, `admin.shutdown`), `test_event_id_key_orders_ids_by_milliseconds_then_sequence`, `test_a_process_without_the_cache_instance_loads_without_the_variable`, `test_every_celery_process_starts_the_metrics_exporter` + `test_a_test_worker_leaves_no_metrics_exporter_in_the_pytest_process` (round 2) — đỏ trên `main` → xanh.
+- **[7]** Commit `19648c3`, vòng sửa `917ce5a` (`Prompt: B0-05`, `Fix: FIX-089`); review lượt 2 APPROVE `docs/reviews/2026-09-24-fix-debt-01-core-round-2.md` (4,77/5), cổng đầy đủ thoát 0 (3792 passed, tổng dòng 99,07 % / nhánh 97,72 %).
+
+## FIX-090 cho B0-06 — `Role`/`ROLES` chép riêng, `_grant_everything` sai kiểu, `api_env` giữ cổng metric, chưa có metric RED (NO-097, NO-137, NO-159, NO-160)
+
+- **[1]** `Role`/`ROLES` khai hai nơi (`apps/api/core/auth.py` vs `packages.domain.permissions`, NO-097); `_grant_everything` trả `None` thay vì `ProjectAccess` nên route đọc `ProjectAccess` qua tham số sẽ 500 (NO-137); fixture `api_env` để `METRICS_PORT` mặc định, mọi app test mở exporter thật (NO-159); chưa có metric HTTP chung kiểu RED (NO-160).
+- **[2]** Trên `main`: `apps/api/core/tests/{test_permissions,test_common,test_fixtures,test_middleware}.py` mới — mã thoát 1 (7 failed) / `ImportError HTTP_DURATION_METRIC`.
+- **[3]** `apps/api/core/{auth,middleware}.py`, `packages/testing/fixtures/api.py`, `apps/api/core/tests/test_common.py`.
+- **[4]** Sửa: các file trên + test tương ứng. Cấm: mọi file khác (trừ FIX-103, xin phép riêng).
+- **[5]** `apps/api/core/auth.py` nhập `Role`, `ROLES` từ `packages.domain.permissions`, xuất lại qua `__all__`; `_grant_everything(app, principal)` trả `ProjectAccess` thật; `api_env` đặt `METRICS_PORT=0`; `AccessLogMiddleware` ghi histogram `appback_http_request_duration_ms{route,method,status}`, `route` là mẫu đường qua `_route_label`. Vòng sửa round 2 (`b25530b`): `_red_count` khẳng định đúng một chuỗi nhãn trọn vẹn (bỏ phụ thuộc thứ tự chạy — finding P1 lượt 1) và kẹp nhãn `method` vào 9 method RFC 9110 + `-` (finding P2 lượt 1).
+- **[6]** `test_core_auth_reuses_the_role_mirror_of_the_domain`, `test_grant_everything_overrides_with_a_typed_project_access`, `test_api_env_keeps_the_metrics_exporter_off`, `test_red_metric_labels_the_route_template_not_the_real_path` + `test_red_metric_folds_an_unknown_method_into_the_dash_label` (round 2) — đỏ trên `main` → xanh.
+- **[7]** Commit `301bf67`, vòng sửa `b25530b` (`Prompt: B0-06`, `Fix: FIX-090`); review lượt 2 APPROVE `docs/reviews/2026-09-24-fix-debt-01-core-round-2.md` (4,77/5), cổng đầy đủ thoát 0 (3792 passed).
+
+## FIX-091 cho B5-01 — `ml` đọc `SECRET_KEY` chỉ để lấy `APP_ENV`, tải mô hình ghim không thử lại (NO-085, NO-104, NO-161)
+
+- **[1]** `apps/ml/celery_main.py` gọi `get_core_settings()` chỉ để đọc `APP_ENV`, buộc tiến trình `ml` nhận `SECRET_KEY`/`PUBLIC_BASE_URL` (NO-085 nửa); `packages/ml_contracts/pinned.py` tải mô hình ghim một lượt, không thử lại khi mạng chớp hay tệp tải dở (NO-104); `ml` chưa có exporter `/metrics` (NO-161 nửa).
+- **[2]** Trên `main`: `apps/ml/runtime/tests/test_celery_main.py`, `packages/ml_contracts/tests/test_pinned.py` mới — mã thoát 1/2 (`ValidationError` / `ImportError FETCH_ATTEMPTS`).
+- **[3]** `apps/ml/celery_main.py`, `apps/ml/runtime/settings.py`, `packages/ml_contracts/pinned.py`.
+- **[4]** Sửa: các file trên + test tương ứng. Cấm: mọi file khác.
+- **[5]** `MlEnvSettings` (đúng một trường `app_env`) thay `get_core_settings()`; `pinned.py` thêm `_fetch_file` thử lại `FETCH_ATTEMPTS=3` lượt, backoff nhân đôi từ `FETCH_BACKOFF_S=1,0` s trần `FETCH_BACKOFF_CAP_S=8,0` s cho cả lỗi mạng lẫn SHA lệch, lượt cuối chạy ngoài vòng lặp (R-14); `.part` + `os.replace` giữ nguyên (nguyên tử); `apps/ml` nhập điểm vào chung `create_celery` nên thừa hưởng exporter của FIX-089.
+- **[6]** `test_celery_main_starts_without_the_signing_key[...]`, `test_fetch_retries_a_torn_download_until_the_sha_matches`, `test_fetch_gives_up_after_the_attempt_cap`, `test_fetch_backoff_grows_but_never_passes_the_cap`, `test_fetch_still_exits_2_when_the_pin_is_simply_wrong` (bộ mở giả `FlakyOpener`, không tải mạng) — đỏ trên `main` → xanh.
+- **[7]** Commit `f7abc9f` (`Prompt: B5-01`, `Fix: FIX-091`); review lượt 2 APPROVE `docs/reviews/2026-09-24-fix-debt-01-core-round-2.md` (4,77/5), cổng đầy đủ thoát 0 (3792 passed).
+
+## FIX-092 cho B4-01 — rò ba tài nguyên SSE khi `_finish` ném, bản sao `event_id_key` (NO-156, NO-157)
+
+- **[1]** `AppRoute._finish` (idempotency → `commit()` → `after_commit_idle`) chạy **sau** khi handler đã trả `StreamingResponse`; nếu nó ném, generator `stream_body` không bao giờ chạy nên `finally` của nó (chỗ ZSET, chỗ toàn cục `stream_slots`, kết nối pool SSE) không bao giờ tới (NO-156); `apps/api/streams/sse.py` khai riêng `_id_key`, trùng bản của `packages/messaging/streams.py` (NO-157 nửa).
+- **[2]** Trên `main`: `apps/api/streams/tests/test_sse.py` mới — mã thoát 1, 2 failed.
+- **[3]** `apps/api/streams/{sse,router}.py`.
+- **[4]** Sửa: hai file trên + `apps/api/streams/tests/test_sse.py`. Cấm: mọi file khác.
+- **[5]** `open_stream` ghi `StreamContext` lên `request.state` ngay trước khi trả response, phơi `release_held(request)` idempotent; `StreamRoute(PublicRoute)` (mới, `router.py`) bọc `get_route_handler()`, gọi `release_held` khi bất kỳ bước nào sau handler ném; `sse.py` xoá `_id_key`, nhập `event_id_key` từ `packages.messaging.streams` (FIX-089).
+- **[6]** `test_a_failure_after_the_handler_returns_every_held_resource` (`STREAM_MAX_GLOBAL=2`, 5 lượt mở liên tiếp, `_finish` ép ném, bắt được cả ba đường rò: 429 chỗ toàn cục, 503 pool cạn, `zcard` cuối khác 0), `test_sse_reuses_the_shared_event_id_key` — đỏ trên `main` → xanh.
+- **[7]** Commit `99bc366` (`Prompt: B4-01`, `Fix: FIX-092`); review lượt 2 APPROVE `docs/reviews/2026-09-24-fix-debt-01-core-round-2.md` (4,77/5), cổng đầy đủ thoát 0 (3792 passed). Phần `AsyncSession` không rollback/close khi `_finish` ném vẫn mở: NO-186.
+
+## FIX-103 cho B1-01 — `cast` thừa ở `apps/api/auth/sessions.py:585` (NO-097, hệ quả FIX-090)
+
+- **[1]** FIX-090 làm `ROLES` thành `tuple[Role, ...]` nên `cast(Literal[...], ...)` ở `apps/api/auth/sessions.py:585` thành `redundant-cast`, `mypy --strict` đỏ.
+- **[2]** Sau commit `301bf67` (FIX-090), trước khi sửa: `mypy --strict` mã thoát 1, `apps/api/auth/sessions.py:585 error: Redundant cast to "Literal['admin','engineer','viewer']"`.
+- **[3]** `apps/api/auth/sessions.py:585`.
+- **[4]** Sửa: `apps/api/auth/sessions.py` (1 dòng + 2 dòng comment). Cấm: mọi file khác — file thuộc B1-01, người điều phối cấp phép trước khi sửa (K27).
+- **[5]** Bỏ `cast(...)` thừa; `x in ROLES` đã tự thu hẹp kiểu nhờ `ROLES: tuple[Role, ...]`.
+- **[6]** Không test riêng (dọn kiểu tĩnh, không đổi hành vi); bằng chứng: `mypy --strict` đỏ → xanh (486 file).
+- **[7]** Commit `e2ebeda` (`Prompt: B1-01`, `Fix: FIX-103`); commit riêng, đặt sau FIX-090, theo chỉ thị người điều phối. Review lượt 2 APPROVE `docs/reviews/2026-09-24-fix-debt-01-core-round-2.md` (4,77/5), cổng đầy đủ thoát 0 (3792 passed).
+
+## FIX-093 cho B1-03 — lỗi thư vĩnh viễn bị nuốt khi token sau ném `TransientError` (NO-149)
+
+- **[1]** `run_send_token_mail`: (a) `except MailRejectedError` không giữ `smtp_code` — log không phân biệt 550 với 554; (b) mã lỗi vĩnh viễn đầu tiên bị nuốt nếu token **sau** nó ném `TransientError`: lượt thử lại không còn thấy token đã cô lập (`sent_at`/`superseded_at` đã ghi) nên task "thành công", `on_failed` không bao giờ báo.
+- **[2]** Trên `main`: `apps/api/auth_recovery/tests/test_jobs.py -k "logs_isolated_failure_before_later_transient or J03"` — mã thoát 1, 2 failed.
+- **[3]** `apps/api/auth_recovery/jobs.py:65-78,131-134,152-166`.
+- **[4]** Sửa: `apps/api/auth_recovery/jobs.py`, `apps/api/auth_recovery/tests/test_jobs.py`. Cấm: mọi file khác.
+- **[5]** Log `token_mail_failed` (id + mã lỗi + `smtp_code`) ghi ngay lúc cô lập trong `_send_one`, không đợi cuối vòng; `mailer: Mailer` thay `Any`; `SELECT` lô thêm `ORDER BY created_at`.
+- **[6]** `test_send_token_mail__logs_isolated_failure_before_later_transient`, `test_send_token_mail__J03` — đỏ mã thoát 1 trên `main` → xanh (2 passed).
+- **[7]** Commit `19fbed6` (`Prompt: B1-03`, `Fix: FIX-093`); review APPROVE `docs/reviews/2026-09-24-fix-debt-01-modules.md` (4,78/5), cổng đầy đủ thoát 0 (3764 passed). Log trùng tên hai dạng (đếm đôi) + fixture thừa: NO-195 (mới).
+
+## FIX-094 cho B2-01 — `UPDATE` không khoá thứ tự, thiếu test hai session `_checked(None)`, `user_out()` không ký URL avatar (NO-142, NO-136, NO-135)
+
+- **[1]** `touch_projects` khoá các dòng `projects` bằng một `UPDATE … WHERE id IN (...)` theo thứ tự kế hoạch của Postgres chứ không theo `id` tăng dần như vòng lặp cũ — hai giao dịch gỡ người dùng cùng lúc có ≥ 2 dự án chung có thể deadlock lý thuyết (NO-142); `_checked(None)` khi dự án bị xoá mềm giữa cổng quyền và `UPDATE … RETURNING` không có test (NO-136); `UserOut.avatarUrl` luôn vắng vì đường ký URL thuộc B1-04 chưa cắm lúc viết (NO-135).
+- **[2]** Trên `main`: `test_summaries.py -k touch_projects` mã thoát 1 (1 failed); `test_wire.py` mã thoát 1 (4/10 failed, đổi chữ ký `user_out`).
+- **[3]** `apps/api/projects/{summaries,service,wire}.py`.
+- **[4]** Sửa: ba file trên + test tương ứng. Cấm: mọi file khác (`apps/api/projects/memberships.py` ngoài whitelist T4, xem NO-193).
+- **[5]** `touch_projects` thêm `SELECT … ORDER BY id FOR UPDATE` (id đã sắp) trước `UPDATE`; test hai session xen kẽ chốt nhánh `_checked(None)`; `user_out(row, storage)` ký `avatarUrl` qua `apps.api.me.avatar.avatar_url` (B1-04) khi có kho, `None` khi gọi thẳng không qua app.
+- **[6]** `test_touch_projects_locks_then_updates_ids_in_sorted_order`, `test_write_changes_raises_not_found_when_deleted_between_gate_and_update`, `test_wire.py::test_user_out_*` — đỏ trên `main` → xanh (10/10, 2/2).
+- **[7]** Commit `672b44b` (`Prompt: B2-01`, `Fix: FIX-094`); review APPROVE `docs/reviews/2026-09-24-fix-debt-01-modules.md` (4,78/5), cổng đầy đủ thoát 0 (3764 passed). Phần còn của NO-142 (guard lô rỗng): NO-193 (mới). Dây `avatarUrl` chưa có test route: NO-194 (mới).
+
+## FIX-095 cho B2-05a — thiếu ca `render` ném `PdfiumError` → `FILE_CORRUPT` (NO-125)
+
+- **[1]** Đường thân `with _open_page(...)` (`get_size`/`render`/`to_numpy` ném `PdfiumError`) không có test riêng; 100 % coverage không bắt vì dòng `except` đã phủ sẵn bởi ca mở trang hỏng.
+- **[2]** Test coverage thuần (không sửa hành vi) — không có lượt đỏ theo nghĩa assert sai, chỉ thiếu ca gọi tới.
+- **[3]** `packages/vision/preprocess/*.py` (`_open_page`).
+- **[4]** Sửa: `packages/vision/preprocess/tests/test_pdf.py`, `packages/vision/preprocess/tests/test_geometry.py` (bọc lại dòng 132 ký tự). Cấm: mọi file khác.
+- **[5]** `monkeypatch.setattr(pdfium.PdfPage, "render", …)` ném `PdfiumError` trong thân `with`, chốt nhánh `FILE_CORRUPT` cho lỗi trong thân chứ không chỉ lỗi mở trang.
+- **[6]** `test_render_pdf_page_wraps_pdfium_error_raised_inside_open_page` — mới, xanh; `packages/vision` 100 %/100 % dòng+nhánh trong cổng.
+- **[7]** Commit `c3e32b7` (`Prompt: B2-05a`, `Fix: FIX-095`); review APPROVE `docs/reviews/2026-09-24-fix-debt-01-modules.md` (4,78/5), cổng đầy đủ thoát 0 (3764 passed).
+
+## FIX-096 cho B4-01 — test hạn hết không tất định, seed ít khoá hơn `BATCH` (NO-155, NO-158)
+
+- **[1]** Bốn nhánh `TimeoutError` riêng của `next_frames`/`raw_until`/`wait_closed` (`packages/testing/fixtures/streams.py` dòng 156, 174, 187, 211) chưa có test (NO-155); `test_expire_stale_uploads__J01` seed 3 khoá với `BATCH=3` không ép được `SCAN` quay ≥ 2 lượt một cách chắc chắn, độ phủ nhánh dao động theo dữ liệu DB dùng chung; `registry.default_providers()` không đi qua `_check` nên luật bắt buộc `policy` chưa áp cho bản mặc định (NO-158).
+- **[2]** Trên `main`: `test_registry.py -k default_providers_without_policy` mã thoát 1 (`DID NOT RAISE`).
+- **[3]** `apps/api/streams/{jobs,registry}.py`, `packages/testing/fixtures/streams.py`.
+- **[4]** Sửa: `apps/api/streams/tests/{test_fixture_streams,test_jobs,test_registry}.py`, `apps/api/streams/registry.py`. Cấm: mọi file khác (không sửa `packages/testing/fixtures/streams.py` — dòng 156 còn lại xem NO-192).
+- **[5]** Ba ca mới (`raw_until`, hai nhánh `_await_start`) tất định qua monkeypatch `_OPEN_TIMEOUT_S` (khuôn `test_disconnect_times_out_when_the_app_never_exits` có sẵn); seed thêm 40 khoá đệm không hạn ép `SCAN` quay ≥ 2 lượt tất định; `default_providers()` nay đi qua `_check`.
+- **[6]** `test_default_providers_without_policy_is_rejected_by_check` — đỏ mã thoát 1 (`DID NOT RAISE`) → xanh; ba ca `raw_until`/`_await_start` mới xanh (coverage thuần, không lượt đỏ theo nghĩa sửa lỗi).
+- **[7]** Commit `6caadb8` (`Prompt: B4-01`, `Fix: FIX-096`); review APPROVE `docs/reviews/2026-09-24-fix-debt-01-modules.md` (4,78/5), cổng đầy đủ thoát 0 (3764 passed). Dòng 156 còn `Miss`: NO-192 (mới).
