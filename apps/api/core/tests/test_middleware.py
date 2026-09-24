@@ -11,6 +11,7 @@ from apps.api.core.auth import Principal
 from apps.api.core.middleware import (
     CACHE_CONTROL,
     HTTP_DURATION_METRIC,
+    KNOWN_METHODS,
     NO_STORE,
     REQUEST_ID_RE,
     SECURITY_HEADERS,
@@ -151,10 +152,19 @@ def test_content_length_of_scope() -> None:
     assert _content_length(_scope([(b"content-length", b"12")])) == 12
 
 
-def _red_counts() -> list[str]:
-    """Dòng `_count` của histogram RED trong registry hiện tại (một dòng mỗi chuỗi nhãn)."""
-    prefix = f"{HTTP_DURATION_METRIC}_count"
-    return [line for line in render().splitlines() if line.startswith(prefix)]
+def _red_count(route: str, method: str, status: str) -> str:
+    """Dòng `_count` của **đúng** chuỗi nhãn RED đang chờ đợi.
+
+    Không đếm số dòng trong registry: registry là của cả tiến trình và `reset_registry()`
+    đưa mẫu về 0 mà **không** xoá chuỗi nhãn, nên một module chạy trước đã tạo
+    `{route="-",method="POST",status="404"}` là số dòng đổi theo thứ tự chạy — chỉ cổng đầy
+    đủ mới thấy (review DEBT-01 finding 2). Khẳng định thẳng chuỗi nhãn mong đợi thì
+    kết quả không phụ thuộc test nào chạy trước.
+    """
+    needle = f'{HTTP_DURATION_METRIC}_count{{route="{route}",method="{method}",status="{status}"}} '
+    matches = [line for line in render().splitlines() if line.startswith(needle)]
+    assert len(matches) == 1, f"{needle!r} không có đúng một dòng: {matches}"
+    return matches[0]
 
 
 async def test_red_metric_labels_the_route_template_not_the_real_path(sample_client: httpx.AsyncClient) -> None:
@@ -168,12 +178,7 @@ async def test_red_metric_labels_the_route_template_not_the_real_path(sample_cli
     assert (await sample_client.get("/api/sample/echo/mot")).status_code == 200
     assert (await sample_client.get("/api/sample/echo/hai")).status_code == 200
 
-    counts = [line for line in _red_counts() if "/api/sample/echo" in line]
-    assert len(counts) == 1, counts
-    assert 'route="/api/sample/echo/{item_id}"' in counts[0]
-    assert 'method="GET"' in counts[0]
-    assert 'status="200"' in counts[0]
-    assert counts[0].endswith(" 2.0")
+    assert _red_count("/api/sample/echo/{item_id}", "GET", "200").endswith(" 2.0")
 
 
 async def test_red_metric_counts_errors_under_their_own_status(
@@ -185,9 +190,7 @@ async def test_red_metric_counts_errors_under_their_own_status(
         await sample_client.post("/api/sample/boom", json={"name": "a"}, headers=_headers(fake_principal))
     ).status_code == 500
 
-    counts = [line for line in _red_counts() if "/api/sample/boom" in line]
-    assert len(counts) == 1, counts
-    assert 'status="500"' in counts[0]
+    assert _red_count("/api/sample/boom", "POST", "500").endswith(" 1.0")
 
 
 async def test_red_metric_keeps_an_unmatched_path_out_of_the_labels(sample_client: httpx.AsyncClient) -> None:
@@ -196,6 +199,20 @@ async def test_red_metric_keeps_an_unmatched_path_out_of_the_labels(sample_clien
     assert (await sample_client.get("/api/sample/khong-co-that")).status_code == 404
     assert (await sample_client.get("/api/sample/cung-khong-co")).status_code == 404
 
-    counts = [line for line in _red_counts() if 'route="-"' in line]
-    assert len(counts) == 1, counts
-    assert counts[0].endswith(" 2.0")
+    assert _red_count("-", "GET", "404").endswith(" 2.0")
+
+
+async def test_red_metric_folds_an_unknown_method_into_the_dash_label(sample_client: httpx.AsyncClient) -> None:
+    """Method dài 100 ký tự không được làm `observe` ném (review DEBT-01 finding 4).
+
+    `_label_key` ném `ValueError` với giá trị > `MAX_LABEL_VALUE_LEN`, và `observe` chạy
+    trong `finally` — sau khi response đã ra dây — nên một metric sẽ làm hỏng lượt phục vụ.
+    """
+    reset_registry()
+    long_method = "X" * 100
+    assert long_method not in KNOWN_METHODS
+
+    response = await sample_client.request(long_method, "/api/sample/khong-co-that")
+
+    assert response.status_code == 404
+    assert _red_count("-", "-", "404").endswith(" 1.0")

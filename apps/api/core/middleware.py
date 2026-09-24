@@ -81,6 +81,24 @@ def _route_label(template: str) -> str:
     return template[:MAX_LABEL_VALUE_LEN]
 
 
+KNOWN_METHODS: Final = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"})
+"""Method của RFC 9110 §9 — mọi token khác gộp vào `UNKNOWN_ROUTE`."""
+
+
+def _method_label(method: str) -> str:
+    """Nhãn `method` của metric RED: method lạ → `-` (R-16).
+
+    Cùng lý do như `_route_label`: `_label_key` ném `ValueError` với giá trị dài hơn
+    `MAX_LABEL_VALUE_LEN`, mà lời gọi `observe` nằm trong `finally` — tức là **sau** khi
+    response đã ra dây, nên một metric làm hỏng lượt phục vụ (review DEBT-01 finding 4).
+    Hôm nay uvicorn dùng httptools (bảng method cố định), nhưng nó tự rơi về `h11` — nhận
+    mọi token RFC 9110 — khi thiếu httptools, và bảo đảm đó phải nằm ở mã chứ không ở bộ
+    phân tích HTTP. Kẹp về một tập đóng cũng chặn luôn một trục nở chuỗi nhãn do client
+    điều khiển: cắt bớt như `route` thì 64 ký tự đầu vẫn là vô hạn giá trị.
+    """
+    return method if method in KNOWN_METHODS else UNKNOWN_ROUTE
+
+
 def new_request_id() -> str:
     """Id mới hợp mẫu W6 (`^[A-Za-z0-9-]{8,64}$`)."""
     return secrets.token_hex(REQUEST_ID_BYTES)
@@ -152,7 +170,9 @@ class AccessLogMiddleware:
                 "http_access",
                 extra={"method": method, "routeTemplate": template, "status": status, "durationMs": duration_ms},
             )
-            _http_duration.observe(duration_ms, route=_route_label(template), method=method, status=str(status))
+            _http_duration.observe(
+                duration_ms, route=_route_label(template), method=_method_label(method), status=str(status)
+            )
 
 
 class SecurityHeadersMiddleware:
