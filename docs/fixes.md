@@ -76,6 +76,7 @@
 | FIX-067 | 2026-09-22 | B0-05 | NO-087 | Worker Celery thử để dấu cấp tiến trình (env, `captureWarnings`) | `54e2e91` |
 | FIX-068 | 2026-09-22 | B0-01 | NO-092 | Dọn log cổng cũ hỏng thì `run.sh verify` thoát trước khi chạy cổng | `2debb52` |
 | FIX-069 | 2026-09-22 | B0-05 | NO-093 | Test FIX-067 không chốt phần `captureWarnings` của fixture worker | `47efe53` |
+| FIX-070 | 2026-09-22 | B0-08 | NO-102, NO-112 | Ảnh `web` dính CVE OpenSSL CRITICAL và CVE nginx rewrite/map | `b232603` (nhánh `fix/b0-08-web-openssl-cve`) |
 | FIX-082 | 2026-09-24 | B2-01 | — | Hai test fallback của cổng `view_parts` giả định "chưa module nào cài", đỏ khi B2-03 cài thật | nhánh `feature/b2-03-floors` |
 | FIX-083 | 2026-09-24 | B0-01 | NO-101, NO-164, NO-103, NO-106, NO-108, NO-130 | Nợ cổng verify: `tr` của `gc`, marker `ci_integration`, hằng ảnh ghim trong test, ảnh/volume verify theo worktree, `concurrency` coverage | nhánh `fix/debt-01-tooling` |
 | FIX-084 | 2026-09-24 | B0-09 | NO-051, NO-106, NO-110, NO-111, NO-113, NO-153 | Nợ CI: `VERIFY_OUT_DIR`, ảnh ghim chép tay ở `h2.py`, `types` của `pull_request`, test `job.sh`, `nginx -v` của ảnh `web`, dependabot major | nhánh `fix/debt-01-tooling` |
@@ -94,7 +95,7 @@
 | FIX-097 | 2026-09-24 | F-01b | NO-154 | Luồng SSE 401 lặp không refresh trước lần nối kế | AppFront nhánh `fix/debt-01-fe` |
 | FIX-098 | 2026-09-24 | F-02 | NO-099 | 26 `kind` hoạt động thiếu nhãn tiếng Việt | AppFront nhánh `fix/debt-01-fe` |
 | FIX-099 | 2026-09-24 | (tra chủ) | NO-086 | SSE thông báo mở `/api/notifications/stream` thay vì `/api/streams/notifications` | AppFront nhánh `fix/debt-01-fe` |
-| FIX-100 | 2026-09-24 | B0-08 | NO-174 | Ảnh `web` không build vì ảnh node ghim bỏ `corepack` | nhánh `fix/b0-08-web-openssl-cve` |
+| FIX-100 | 2026-09-24 | B0-08 | NO-174 | Ảnh `web` không build vì ảnh node ghim bỏ `corepack` | `792e98b` (nhánh `fix/b0-08-web-openssl-cve`) |
 | FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | nhánh `fix/debt-01-tooling` |
 | FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | nhánh `fix/debt-01-tooling` |
 | FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | nhánh `fix/debt-01-core` |
@@ -697,3 +698,22 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
   không xoá, không nới assert.
 - **[6]** Hai test xanh cả trên `main` (chưa có `apps/api/floors`) lẫn trên nhánh B2-03 (đỏ trên nhánh trước khi sửa: bước 5 lượt 1).
 
+## FIX-070 cho B0-08 — ảnh `web` dính CVE OpenSSL và CVE nginx (NO-102, NO-112)
+
+- **[1]** Job `build` (B0-09) `trivy image web`: 2 CRITICAL có bản sửa (CVE-2026-31789, `libssl3`/`libcrypto3` 3.3.5-r0); nginx 1.28.0 trong dải CVE-2026-42945 (rewrite) và CVE-2026-42533 (map regex).
+- **[2]** `docker build` ảnh `web` như `tools/ci/job.sh`, rồi `trivy … --severity CRITICAL --ignore-unfixed --exit-code 1` và `nginx -v` trên `main`.
+- **[3]** Advisory nginx.org (đọc 2026-09-24, 63 mục): 1.30.5 là sàn cao nhất của dòng 1.30.x; 1.31.5 (mainline, dependabot `44b299f`) còn dính CVE-2026-90439.
+- **[4]** Sửa: `deploy/docker/web.Dockerfile` dòng `FROM`. Cấm: mọi file khác.
+- **[5]** Nền `nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1…` (stable, digest tự tra `imagetools`); lượt 1 (1.29.8) bị REQUEST CHANGES vì 1.29 hết đời và còn trong dải CVE-2026-42945.
+- **[6]** Không có test đơn vị (chỉ đổi ảnh nền): bằng chứng là trivy CRITICAL mã thoát 0 (0 lỗ hổng mọi mức), `nginx -v` = 1.30.5; test tĩnh ghim digest có sẵn ở `deploy/tests/test_dockerfiles.py`.
+- **[7]** `fix(deploy): move web base image to nginx 1.30 stable` (`b232603`, `Prompt: B0-08`, `Fix: FIX-070`); review lượt 2 APPROVE 4,94/5, `run.sh verify` thoát 0 (3754 passed, tổng 99,06 % / 97,71 %).
+
+## FIX-100 cho B0-08 — ảnh `web` không build vì ảnh node ghim bỏ `corepack` (NO-174)
+
+- **[1]** `docker build` ảnh `web` trên `main` thoát 1: `/bin/sh: 1: corepack: not found`, mã 127 ở tầng `build`.
+- **[2]** `docker build -f deploy/docker/web.Dockerfile --build-context appfront=… .` trên `main` @ `9f11ddf`.
+- **[3]** Dependabot `3c266b8` ghim `node:26-bookworm-slim@sha256:582460f6…` (node 26.9.0, npm 11.19.1): `/usr/local/bin` không có `corepack`.
+- **[4]** Sửa: `deploy/docker/web.Dockerfile`, `deploy/tests/test_dockerfiles.py`. Cấm: mọi file khác.
+- **[5]** `RUN npm install -g pnpm@9.4.0` (AppFront @ `9cf0b0bf` không khai `packageManager`; giữ đúng bản pnpm cũ).
+- **[6]** `test_dockerfile_web_installs_pnpm_without_corepack`: đỏ trên `main` (AssertionError "tầng node #0 còn dùng corepack"), xanh sau sửa (36 passed); build web thoát 1 → 0.
+- **[7]** `fix(deploy): install pnpm with npm instead of corepack` (`792e98b`, `Prompt: B0-08`, `Fix: FIX-100`); review lượt 2 APPROVE.
