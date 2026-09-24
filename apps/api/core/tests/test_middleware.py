@@ -10,6 +10,7 @@ import pytest
 from apps.api.core.auth import Principal
 from apps.api.core.middleware import (
     CACHE_CONTROL,
+    HTTP_DURATION_METRIC,
     NO_STORE,
     REQUEST_ID_RE,
     SECURITY_HEADERS,
@@ -19,6 +20,7 @@ from apps.api.core.middleware import (
 )
 from apps.api.core.routing import DEFAULT_BODY_LIMIT
 from apps.api.core.tests.sample import sample_app, sample_client
+from packages.observability.metrics import render, reset_registry
 from packages.testing.fixtures.api import auth_headers
 
 __all__ = ["sample_app", "sample_client"]
@@ -147,3 +149,53 @@ def test_content_length_of_scope() -> None:
     assert _content_length(_scope([])) is None
     assert _content_length(_scope([(b"content-length", b"khong-phai-so")])) is None
     assert _content_length(_scope([(b"content-length", b"12")])) == 12
+
+
+def _red_counts() -> list[str]:
+    """Dòng `_count` của histogram RED trong registry hiện tại (một dòng mỗi chuỗi nhãn)."""
+    prefix = f"{HTTP_DURATION_METRIC}_count"
+    return [line for line in render().splitlines() if line.startswith(prefix)]
+
+
+async def test_red_metric_labels_the_route_template_not_the_real_path(sample_client: httpx.AsyncClient) -> None:
+    """NO-160: hai id khác nhau gộp vào **một** chuỗi nhãn.
+
+    Nhãn lấy đường thật là vừa nổ số chuỗi theo dữ liệu người dùng (chạm
+    `METRICS_MAX_SERIES` rồi mất mẫu) vừa đưa token của `/api/files/<token>` vào metric
+    ai cũng đọc được (K11).
+    """
+    reset_registry()
+    assert (await sample_client.get("/api/sample/echo/mot")).status_code == 200
+    assert (await sample_client.get("/api/sample/echo/hai")).status_code == 200
+
+    counts = [line for line in _red_counts() if "/api/sample/echo" in line]
+    assert len(counts) == 1, counts
+    assert 'route="/api/sample/echo/{item_id}"' in counts[0]
+    assert 'method="GET"' in counts[0]
+    assert 'status="200"' in counts[0]
+    assert counts[0].endswith(" 2.0")
+
+
+async def test_red_metric_counts_errors_under_their_own_status(
+    sample_client: httpx.AsyncClient, fake_principal: Principal
+) -> None:
+    """RED cần cả vế "Errors": 500 phải đếm riêng, không lẫn vào 200 của cùng route."""
+    reset_registry()
+    assert (
+        await sample_client.post("/api/sample/boom", json={"name": "a"}, headers=_headers(fake_principal))
+    ).status_code == 500
+
+    counts = [line for line in _red_counts() if "/api/sample/boom" in line]
+    assert len(counts) == 1, counts
+    assert 'status="500"' in counts[0]
+
+
+async def test_red_metric_keeps_an_unmatched_path_out_of_the_labels(sample_client: httpx.AsyncClient) -> None:
+    """Đường không khớp route nào (404 của Starlette) gộp vào nhãn `-`, không thành chuỗi riêng."""
+    reset_registry()
+    assert (await sample_client.get("/api/sample/khong-co-that")).status_code == 404
+    assert (await sample_client.get("/api/sample/cung-khong-co")).status_code == 404
+
+    counts = [line for line in _red_counts() if 'route="-"' in line]
+    assert len(counts) == 1, counts
+    assert counts[0].endswith(" 2.0")
