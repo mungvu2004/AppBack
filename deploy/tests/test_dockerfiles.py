@@ -22,7 +22,7 @@ IMAGES = ("api", "worker", "ml", "web")
 # opencv-contrib-python cũng là bản GUI (K29, review 2026-09-22 #13) — bản cũ chỉ
 # bắt "opencv-python" nên bỏ lọt "opencv-contrib-python" (không chứa chuỗi con
 # "opencv-python" liên tục).
-_UV_PYTHON_RE = re.compile(r"\buv:python(\d+\.\d+)")
+_UV_PYTHON_RE = re.compile(r"\buv:(?:\d+(?:\.\d+)*-)?python(\d+\.\d+)")
 _PYTHON_BASE_RE = re.compile(r"(?:^|/)python:(\d+\.\d+)(?:\.\d+)?-")
 _REQUIRES_PYTHON_RE = re.compile(r'^requires-python = ">=(\d+\.\d+)', re.MULTILINE)
 _OPENCV_BAD = re.compile(r"opencv(?:-contrib)?-python(?!-headless)\b")
@@ -246,7 +246,7 @@ def _root_requires_python_minor() -> str:
 def test_dockerfile_python_minor_matches_across_stages_and_workspace() -> None:
     """Mọi tầng Python trong `deploy/docker/**` phải cùng một minor với `requires-python`.
 
-    Tầng dựng (`ghcr.io/astral-sh/uv:pythonX.Y-…`) tạo venv ở
+    Tầng dựng (`ghcr.io/astral-sh/uv:[<bản uv>-]pythonX.Y-…`) tạo venv ở
     `/opt/venv/lib/pythonX.Y/site-packages` với C extension `cpython-XY-…so`; tầng
     chạy (`python:A.B-slim-…`) chỉ tìm ở `pythonA.B`. Lệch một minor là **mọi** gói
     biến mất, dù `docker build` vẫn thoát 0: dependabot `44b299f` nâng riêng tầng
@@ -276,6 +276,7 @@ def test_dockerfile_python_minor_matches_across_stages_and_workspace() -> None:
                     f"{path.name} tầng #{stage.index} ({label}) dùng Python {m.group(1)}, "
                     f"lệch requires-python {expected} của pyproject.toml gốc — venv sẽ không đọc được"
                 )
+    # 7 = api/worker/ml (uv + python mỗi ảnh) + tầng uv của verify.Dockerfile (tag có bản uv).
     assert checked >= 7, f"chỉ soi được {checked} tầng Python, quá ít — regex có thể đã hỏng"
 
 
