@@ -1,0 +1,22 @@
+# Cấu hình scrape cho metric của AppBack (NO-162, khối [11].5 của B7-01).
+#
+# Cổng exporter 9464 (`METRICS_PORT`, packages/observability/settings.py) CHỈ mở
+# trong mạng compose `appback`: không dịch vụ nào publish nó ra host, nên bộ thu
+# thập phải chạy trong cùng mạng và gọi thẳng tên dịch vụ. Test
+# `test_compose_metrics_port_is_never_published` chốt điều đó.
+#
+# Chưa khai job cho `worker` và `ml`: hai tiến trình Celery đó chưa có exporter
+# (NO-161, chủ B0-05/B5-01). Khi NO-161 xong thì thêm hai target vào đây, không
+# đổi gì khác.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: appback-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - api:9464
+        labels:
+          app: api

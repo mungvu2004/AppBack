@@ -13,23 +13,16 @@ map '' $hsts_header {
     default "max-age=63072000; includeSubDomains; preload";
 }
 
-# Token /api/files/{token} là quyền đọc file, không vào log (BE-00 §8). Đặt ở
-# mức server (snippets/app_locations.conf) để giữ đúng ngay cả khi error_page
-# chuyển hướng nội bộ sang /__errors/503 (api không tới được). Regex không phân
-# biệt hoa/thường (~*), chấp nhận nhiều dấu / liên tiếp và mỗi chữ của "files"
-# ở dạng phần trăm-mã-hoá (%66=f…): $request_uri là URI THÔ (chưa chuẩn hoá như
-# $uri), nên //api/files/, /api//files/, /api/%66iles/ vẫn tới đúng location
-# /api/files/ (nginx tự chuẩn hoá path khi định tuyến) mà lọt map cũ — review
-# 2026-09-22 #16, probe R2.
-map $request_uri $appback_access_log {
-    default 1;
-    "~*^/+api/+(?:f|%66)(?:i|%69)(?:l|%6c)(?:e|%65)(?:s|%73)(?:/|%2f)" 0;
-}
-
 resolver 127.0.0.11 valid=10s;
 
+# Server 301 này không include app_locations.conf nên không chịu luật log của
+# location /api/files/: client gọi http://…/api/files/<token> (hoặc URL ký S3
+# bằng http) để lại token trong access log mặc định của ảnh nền trước khi được
+# chuyển sang https (NO-094). Không có gì đáng ghi ở đây — mọi yêu cầu đều trả
+# đúng một 301, log thật nằm ở server 8443.
 server {
     listen 8080 default_server;
+    access_log off;
     return 301 https://$host$request_uri;
 }
 

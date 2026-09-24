@@ -23,7 +23,14 @@ _REQUIRED_VARS = (
     "S3_REGION",
     "S3_ML_ACCESS_KEY",
     "S3_ML_SECRET_KEY",
-    "SMTP_URL",
+    "MAIL_BACKEND",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_STARTTLS",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
+    "MAIL_FROM",
+    "SMTP_TIMEOUT_S",
     "FORWARDED_ALLOW_IPS",
     "ML_DEVICE",
     "IMAGE_REGISTRY",
@@ -134,3 +141,65 @@ def test_env_example_worker_and_ml_default_sizes() -> None:
     assert values["WORKER_CONCURRENCY"].strip("\"'") == "2"
     assert values["WORKER_MEM_LIMIT"].strip("\"'") == "3g"
     assert values["ML_MEM_LIMIT"].strip("\"'") == "6g"
+
+
+_MAIL_SETTINGS_PY = "packages/mail/settings.py"
+# Tên biến → tên trường của `MailSettings` có mặc định trong lớp. Ba trường này có
+# KIỂU (int/bool/float) nên compose không được truyền chuỗi rỗng; mặc định phải
+# trùng lớp cấu hình, nếu không dev/ci chạy bằng một giá trị khác test đơn vị.
+_MAIL_TYPED_DEFAULTS = {
+    "SMTP_PORT": "smtp_port",
+    "SMTP_TIMEOUT_S": "smtp_timeout_s",
+}
+
+
+def _compose_default(var: str) -> str:
+    """Giá trị mặc định trong `${VAR:-…}` của `base.yml`; `fail` nếu không có."""
+    raw = require_path("deploy/compose/base.yml").read_text(encoding="utf-8")
+    m = re.search(rf"\$\{{{var}:-([^}}]*)\}}", raw)
+    assert m, f"base.yml: {var} không khai dạng ${{{var}:-…}}"
+    return m.group(1)
+
+
+def test_env_example_mail_vars_point_at_mailpit_for_dev_and_ci() -> None:
+    """NO-141: `SMTP_URL` (không mã nào đọc) được thay bằng tám biến của
+    `packages/mail/settings.py`. `env.example` là mẫu dev/ci nên trỏ Mailpit trong
+    mạng compose, không TLS, không xác thực — `MailSettings` cấm đặt lệch một bên
+    của cặp `SMTP_USERNAME`/`SMTP_PASSWORD`."""
+    raw = require_path("deploy/compose/env.example").read_text(encoding="utf-8")
+    assert "SMTP_URL" not in raw, "env.example: SMTP_URL đã bị thay bằng tám biến của B1-03"
+    values = _load_env_lines()
+    assert values["MAIL_BACKEND"] == "smtp"
+    assert values["SMTP_HOST"] == "mailpit"
+    assert values["SMTP_PORT"] == "1025"
+    assert values["SMTP_STARTTLS"] == "false"
+    assert values["SMTP_USERNAME"] == "", "dev/ci: Mailpit không xác thực"
+    assert values["SMTP_PASSWORD"] == "", "dev/ci: Mailpit không xác thực"
+    assert "@" in values["MAIL_FROM"], "MAIL_FROM phải là một địa chỉ thư"
+
+
+def test_compose_mail_typed_defaults_match_mail_settings() -> None:
+    """Mặc định `${SMTP_PORT:-…}`/`${SMTP_TIMEOUT_S:-…}` của `base.yml` phải bằng
+    mặc định của `MailSettings` — bài học NO-120: một hằng số có hai bản thì bản
+    nào đó sẽ lặng lẽ trôi. Trích thẳng từ `packages/mail/settings.py`, không chép
+    tay số nào ở phía test."""
+    source = require_path(_MAIL_SETTINGS_PY).read_text(encoding="utf-8")
+    for var, field in _MAIL_TYPED_DEFAULTS.items():
+        # `.*` tham: khai báo có thể chứa dấu `=` bên trong (smtp_port dùng
+        # Annotated[int, Field(ge=1, le=65535)]), nên phải lấy dấu `=` CUỐI cùng.
+        m = re.search(rf"^    {field}:.*= *([0-9.]+)$", source, re.MULTILINE)
+        assert m, f"{_MAIL_SETTINGS_PY}: không đọc được mặc định của {field}"
+        expected = m.group(1)
+        actual = _compose_default(var)
+        assert float(actual) == float(expected), (
+            f"base.yml ${{{var}:-{actual}}} lệch mặc định {field}={expected} của MailSettings"
+        )
+
+
+def test_compose_mail_required_vars_have_no_silent_default() -> None:
+    """`SMTP_HOST` và `MAIL_FROM` là bắt buộc khi `MAIL_BACKEND=smtp` (validator của
+    `MailSettings`). Compose phải dùng `${…:?…}` để thiếu là hỏng NGAY lúc `up`, thay
+    vì truyền chuỗi rỗng rồi container chết ở lượt gửi thư đầu tiên (NO-141)."""
+    raw = require_path("deploy/compose/base.yml").read_text(encoding="utf-8")
+    for var in ("SMTP_HOST", "MAIL_FROM"):
+        assert re.search(rf"\$\{{{var}:\?", raw), f"base.yml: {var} phải khai dạng ${{{var}:?…}}"

@@ -354,3 +354,46 @@ def test_compose_appback_network_has_fixed_subnet(env: str) -> None:
     configs = (appback_net.get("ipam") or {}).get("config") or []
     assert configs, f"{env}: mạng appback thiếu ipam.config[]"
     assert configs[0].get("subnet"), f"{env}: mạng appback thiếu ipam.config[].subnet"
+
+
+_METRICS_PORT = "9464"
+_SCRAPE_CONFIG = "deploy/observability/prometheus.yml"
+
+
+def test_compose_metrics_port_is_never_published() -> None:
+    """NO-162: cổng exporter 9464 chỉ dùng trong mạng compose. `METRICS_HOST` mặc
+    định `0.0.0.0` (B7-01 [2], có `# noqa: S104` vì "compose không công bố nó") —
+    khẳng định đó phải có test, nếu không một dòng `ports` lỡ tay là mở thẳng số
+    liệu nội bộ ra host."""
+    for env in ENVS:
+        for name, service in _resolved_services(env).items():
+            for published in service.get("ports") or []:
+                assert _METRICS_PORT not in str(published), (
+                    f"{env}/{name}: publish cổng metric {published!r} — 9464 phải ở trong mạng compose"
+                )
+
+
+def test_compose_scrape_job_targets_api_metrics_port() -> None:
+    """NO-162: có cấu hình scrape nội bộ trỏ `api:9464` — cổng exporter mà không ai
+    thu thập thì số liệu của B7-01 không tới được đâu cả. Target dùng TÊN DỊCH VỤ
+    (không `127.0.0.1`) vì bộ thu thập phải chạy trong mạng `appback`."""
+    raw = require_path(_SCRAPE_CONFIG).read_text(encoding="utf-8")
+    config = load_yaml(require_path(_SCRAPE_CONFIG))
+    targets = [
+        target for job in config["scrape_configs"] for static in job["static_configs"] for target in static["targets"]
+    ]
+    assert f"api:{_METRICS_PORT}" in targets, f"{_SCRAPE_CONFIG}: thiếu target api:{_METRICS_PORT}, có {targets}"
+    for loopback in ("127.0.0.1", "localhost"):
+        assert loopback not in raw, f"{_SCRAPE_CONFIG}: target phải là tên dịch vụ trong mạng compose, không {loopback}"
+
+
+def test_compose_ci_api_publishes_no_host_port() -> None:
+    """NO-118: `api` của `ci.yml` không publish cổng host. Cổng cố định
+    (`127.0.0.1:${API_HOST_PORT}:8000`) làm `docker compose up --scale api=2` hỏng
+    vì trùng cổng, mà scale 2 là cách `deploy.sh` đổi phiên bản không gián đoạn
+    (B0-10 [8]); trước đây B0-10 phải sinh override `ports: !reset []` ngoài repo.
+    smoke/e2e gọi `/api/*` qua `web`, đúng đường đi thật của trình duyệt."""
+    api = _resolved_services("ci")["api"]
+    assert not api.get("ports"), f"ci: api không được publish cổng host, đang có {api.get('ports')}"
+    web = _resolved_services("ci")["web"]
+    assert web.get("ports"), "ci: web phải publish cổng host để smoke/e2e đi qua nó"
