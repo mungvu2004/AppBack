@@ -5,10 +5,8 @@ from collections.abc import Iterator
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from packages.core.settings import reset_settings_cache
 from packages.storage.settings import StorageSettings, get_storage_settings, reset_storage_settings_cache
 
-APP_URL = "https://appback.test"
 S3_FIELDS = {
     "s3_endpoint": "http://minio:9000",
     "s3_public_endpoint": "https://files.appback.test",
@@ -20,17 +18,12 @@ _ENV_NAMES = ("STORAGE_BACKEND", "STORAGE_LOCAL_ROOT", *(name.upper() for name i
 
 
 @pytest.fixture(autouse=True)
-def core_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Cấu hình lõi tối thiểu, môi trường kho sạch; test tự đổi `APP_ENV` khi cần."""
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("PUBLIC_BASE_URL", APP_URL)
-    monkeypatch.setenv("SECRET_KEY", "secret-du-dai-cho-cau-hinh-b0-04")
+def storage_env_clean(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Môi trường kho sạch; test tự đặt biến khi cần."""
     for name in _ENV_NAMES:
         monkeypatch.delenv(name, raising=False)
-    reset_settings_cache()
     reset_storage_settings_cache()
     yield
-    reset_settings_cache()
     reset_storage_settings_cache()
 
 
@@ -45,12 +38,6 @@ def s3_settings(**overrides: str) -> StorageSettings:
         s3_access_key=fields["s3_access_key"],
         s3_secret_key=SecretStr(fields["s3_secret_key"]),
     )
-
-
-def production(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Chuyển sang `APP_ENV=production` (PUBLIC_BASE_URL đã là https)."""
-    monkeypatch.setenv("APP_ENV", "production")
-    reset_settings_cache()
 
 
 def test_local_backend_needs_a_root() -> None:
@@ -81,23 +68,13 @@ def test_s3_endpoints_must_be_absolute_urls(endpoint: str) -> None:
         s3_settings(s3_endpoint=endpoint)
 
 
-def test_production_rejects_s3_on_the_app_origin(monkeypatch: pytest.MonkeyPatch) -> None:
-    """BE-00 §8, K15: S3 không đặt được `nosniff`, nên phải khác origin với app."""
-    production(monkeypatch)
-
-    with pytest.raises(ValidationError, match="khác origin"):
-        s3_settings(s3_public_endpoint=APP_URL)
-
-
-def test_production_accepts_s3_on_another_origin(monkeypatch: pytest.MonkeyPatch) -> None:
-    production(monkeypatch)
+def test_production_s3_loads_without_the_api_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dịch vụ `ml` không có `SECRET_KEY`/`PUBLIC_BASE_URL` vẫn nạp được cấu hình kho (FIX-105)."""
+    monkeypatch.setenv("APP_ENV", "production")
+    for name in ("SECRET_KEY", "SECRET_KEY_PREVIOUS", "PUBLIC_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
 
     assert s3_settings().s3_public_endpoint == "https://files.appback.test"
-
-
-def test_dev_may_share_the_origin() -> None:
-    """Ở dev/test cùng origin vẫn chạy được: rủi ro chỉ có thật khi ra ngoài."""
-    assert s3_settings(s3_public_endpoint=APP_URL).s3_public_endpoint == APP_URL
 
 
 def test_get_storage_settings_reads_env_and_caches(monkeypatch: pytest.MonkeyPatch) -> None:

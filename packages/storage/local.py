@@ -60,11 +60,14 @@ class LocalDiskStorage:
         self,
         root: Path,
         clock: Clock,
-        public_base_url: str,
+        public_base_url: str | None,
         *,
         _open: Callable[[Path], BinaryIO] = _open_write,
     ) -> None:
-        """`_open` chỉ để test tiêm lỗi ghi (`OSError(ENOSPC)`); mã nghiệp vụ không truyền."""
+        """`public_base_url=None`: tiến trình không ký URL (`ml`), `signed_url` ném `RuntimeError`.
+
+        `_open` chỉ để test tiêm lỗi ghi (`OSError(ENOSPC)`); mã nghiệp vụ không truyền.
+        """
         self._root = root
         self._clock = clock
         self._public_base_url = public_base_url
@@ -163,7 +166,13 @@ class LocalDiskStorage:
         filename: str | None = None,
         kind: ImageKind | None = None,
     ) -> SignedUrl:
-        """Dựng token `{k,e,d,n}` + MAC cho `GET /api/files/{token}` (BE-00 §8)."""
+        """Dựng token `{k,e,d,n}` + MAC cho `GET /api/files/{token}` (BE-00 §8).
+
+        Kho dựng không có `public_base_url` (tiến trình `ml`) → `RuntimeError`: thà hỏng to
+        còn hơn phát URL tương đối mà trình duyệt không mở được.
+        """
+        if self._public_base_url is None:
+            raise RuntimeError("kho này không ký URL: tiến trình không có PUBLIC_BASE_URL")
         check_key(key)
         # Chỉ để chặn `inline` sai luật lúc ký; `kind` không vào token (xem `FileGrant`).
         await resolve_kind(self, key, disposition, kind)
