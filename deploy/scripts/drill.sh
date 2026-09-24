@@ -8,7 +8,7 @@
 # Biến môi trường:
 #   DRILL_COMPOSE_FILE   file compose dùng cho diễn tập (mặc định deploy/compose/ci.yml)
 #   IMAGE_TAG             tag ảnh (mặc định ci)
-#   WEB_HTTP_PORT, API_HOST_PORT, POSTGRES_HOST_PORT  cổng host (hop-dong.md §6)
+#   WEB_HTTP_PORT, POSTGRES_HOST_PORT  cổng host (hop-dong.md §6)
 #   BACKUP_AGE_RECIPIENT/BACKUP_AGE_IDENTITY  do script tự đặt nếu máy có age/age-keygen
 #
 # Mã thoát: 0 hai pha khớp; 1 lệch hoặc một bước hỏng; 2 tham số dòng lệnh sai
@@ -27,7 +27,6 @@ export COMPOSE_PROJECT_NAME="appback-drill"
 export IMAGE_TAG="${IMAGE_TAG:-ci}"
 export IMAGE_REGISTRY=""
 export WEB_HTTP_PORT="${WEB_HTTP_PORT:-18080}"
-export API_HOST_PORT="${API_HOST_PORT:-18000}"
 export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-15432}"
 export PUBLIC_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"
 export APPBACK_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"

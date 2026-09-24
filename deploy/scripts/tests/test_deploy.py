@@ -300,9 +300,19 @@ def test_deploy_default_swap_settle_s_covers_nginx_resolver_ttl() -> None:
     chiếu với mặc định `${APPBACK_API_SWAP_SETTLE_S:-N}` trích thẳng từ `lib.sh`, không chép
     tay hằng số nào ở hai phía."""
     lib_sh = (REPO_ROOT / "deploy" / "scripts" / "lib.sh").read_text(encoding="utf-8")
-    m = re.search(r"APPBACK_API_SWAP_SETTLE_S:-(\d+)", lib_sh)
-    assert m, "không tìm thấy mặc định APPBACK_API_SWAP_SETTLE_S trong lib.sh"
+    m = re.search(r'^: "\$\{APPBACK_API_SWAP_SETTLE_S=(\d+)\}"$', lib_sh, re.MULTILINE)
+    assert m, 'không tìm thấy dòng khai báo : "${APPBACK_API_SWAP_SETTLE_S=N}" trong lib.sh'
     default_settle_s = int(m.group(1))
+    assert "APPBACK_API_SWAP_SETTLE_S:-" not in lib_sh, (
+        "lib.sh: còn bản sao mặc định dạng ${APPBACK_API_SWAP_SETTLE_S:-N} — phải dùng biến trần (NO-120)"
+    )
+
+    # README là bản thứ ba của cùng hằng số (NO-120): đọc từ bảng biến môi trường,
+    # không chép tay, để tài liệu không trôi khỏi lib.sh.
+    readme = (REPO_ROOT / "deploy" / "scripts" / "README.md").read_text(encoding="utf-8")
+    rm = re.search(r"\| `APPBACK_API_SWAP_SETTLE_S` \| `(\d+)` \|", readme)
+    assert rm, "README.md: không tìm thấy dòng bảng của APPBACK_API_SWAP_SETTLE_S"
+    assert int(rm.group(1)) == default_settle_s, f"README.md ghi mặc định {rm.group(1)}, lib.sh khai {default_settle_s}"
 
     ttls: list[int] = []
     for template in _NGINX_TEMPLATES:
