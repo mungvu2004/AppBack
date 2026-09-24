@@ -5,14 +5,21 @@
 FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS build
 WORKDIR /src
 COPY --from=appfront . .
-RUN corepack enable \
-    && corepack prepare pnpm@9.4.0 --activate \
+# Ảnh node không còn kèm corepack (đo: node:26-bookworm-slim = v26.9.0, npm
+# 11.19.1, /usr/local/bin chỉ có node/npm/npx) — `corepack enable` thoát 127
+# nên cả ảnh web không build được (NO-174, FIX-100). npm có sẵn trong mọi ảnh
+# node; ghim đủ ba số để hai lần build dùng cùng một bản pnpm.
+RUN npm install -g pnpm@9.4.0 \
     && pnpm install --frozen-lockfile \
     && pnpm draco \
     && pnpm build \
     && test -f dist/draco/draco_decoder.wasm
 
-FROM nginxinc/nginx-unprivileged:1.31.5-alpine@sha256:19c132c9ab02d3b783f478743dafc7a7f42e27aa7d2bdcbec1bb1128ca8f2a07
+# Dòng stable. Sàn theo advisory nginx.org (2026-09-24): 1.30.5 là bản stable
+# đầu tiên "not vulnerable" ở MỌI dòng advisory, kể cả CVE-2026-90439
+# (ngx_http_v3_module, vá 1.30.5+/1.31.6+) mà mainline 1.31.5 còn dính.
+# Nâng: chỉ lên tag stable 1.30.x mới hơn; sang mainline phải ≥ 1.31.6.
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
 
 # Ảnh nền giữ server mặc định (server_name localhost, listen 8080) tại
 # /etc/nginx/conf.d/default.conf: mọi yêu cầu Host: localhost khớp nó TRƯỚC

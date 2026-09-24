@@ -24,6 +24,8 @@ IMAGES = ("api", "worker", "ml", "web")
 # "opencv-python" liên tục).
 _OPENCV_BAD = re.compile(r"opencv(?:-contrib)?-python(?!-headless)\b")
 _USER_RE = re.compile(r"^10001(:\d+)?$")
+_NODE_IMAGE_RE = re.compile(r"(?:^|/)node:")
+_PNPM_NPM_PIN_RE = re.compile(r"npm\s+(?:install|i)\s+(?:-g|--global)\s+pnpm@\d+\.\d+\.\d+")
 _TORCH_PIN_RE = re.compile(r'"torch==([0-9.]+)\+')
 _TORCHVISION_PIN_RE = re.compile(r'"torchvision==([0-9.]+)\+')
 _TORCH_LOCK_RE = re.compile(r'name = "torch"\nversion = "([0-9.]+)\+cpu"')
@@ -202,6 +204,32 @@ def test_dockerfile_ml_cuda_torch_versions_match_uv_lock() -> None:
     assert torchvision_pin.group(1) == torchvision_lock.group(1), (
         f"ml.Dockerfile ghim torchvision=={torchvision_pin.group(1)}, uv.lock khoá {torchvision_lock.group(1)}+cpu"
     )
+
+
+def test_dockerfile_web_installs_pnpm_without_corepack() -> None:
+    """Tầng build của `web` cài pnpm bằng `npm install -g pnpm@<bản ghim đầy đủ>`, không corepack.
+
+    Ảnh node của Docker Hub không còn kèm corepack (đo thật trên bản đang ghim,
+    `node:26-bookworm-slim` = node v26.9.0, npm 11.19.1: `/usr/local/bin` chỉ có
+    `node`, `npm`, `npx`). `RUN corepack enable` vì thế thoát 127 và ảnh `web`
+    không build được — CI job `build` đỏ (NO-174, FIX-100; dependabot `3c266b8`
+    nâng dòng node mà không đụng lệnh cài pnpm). npm luôn có sẵn trong mọi ảnh
+    node, nên không có lý do quay lại corepack: test cấm hẳn chuỗi đó.
+    Bản pnpm phải ghim đủ ba số — `pnpm@9` để npm tự chọn bản vá mới nhất thì
+    `pnpm install --frozen-lockfile` mất tính lặp lại giữa hai lần build.
+    """
+    stages, instructions = _load("web")
+    node_stages = [s.index for s in stages if _NODE_IMAGE_RE.search(s.base)]
+    assert node_stages, "web: không thấy tầng nào FROM node:<bản>"
+    for index in node_stages:
+        run_text = " ".join(i.args for i in instructions if i.name == "RUN" and i.stage == index)
+        assert "corepack" not in run_text, (
+            f"web: tầng node #{index} còn dùng corepack — ảnh node đang ghim không có lệnh này "
+            "(thoát 127); cài bằng `npm install -g pnpm@<bản>`"
+        )
+        assert _PNPM_NPM_PIN_RE.search(run_text), (
+            f"web: tầng node #{index} thiếu `npm install -g pnpm@<x.y.z>` với bản ghim đủ ba số"
+        )
 
 
 def test_dockerfile_web_has_draco_build_and_wasm_check() -> None:
