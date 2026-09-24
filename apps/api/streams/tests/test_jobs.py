@@ -11,6 +11,7 @@ from apps.api.streams.jobs import (
     expire_stale_uploads,
     run_expire_stale_uploads,
 )
+from packages.core.ids import new_id
 from packages.messaging.redis import AsyncRedis, streams_redis_sync, sync_result
 from packages.messaging.schedules import schedule_entries
 from packages.messaging.streams import FIELD, upload_stream
@@ -22,6 +23,11 @@ CLOSED_ID: Final = "upl_01CQ4Y6MZKACTAV9WEVGEMMVS0"
 KEPT_TTL_S: Final = 500
 BATCH: Final = 3
 """Lô nhỏ hơn số khoá của test, để vòng `SCAN` chạy nhiều lượt thật."""
+FILLER_COUNT: Final = 40
+"""NO-158: seed nhiều khoá **hơn hẳn** `BATCH` — 3 khoá đúng bằng `BATCH` không ép được `SCAN`
+quay lại (`apps/api/streams/jobs.py:91->85`) một cách tất định, phụ thuộc may rủi bảng băm
+Redis (và khoá còn sót của DB streams dùng chung). Khoá đệm là stream **mới, không hạn** nên
+không đổi số đếm `== 1` của test — chỉ ép cursor `SCAN` khác 0 giữa các lượt."""
 
 
 def _ms(clock: FakeClock, ago: timedelta) -> int:
@@ -30,12 +36,15 @@ def _ms(clock: FakeClock, ago: timedelta) -> int:
 
 
 async def _seed(client: AsyncRedis, fake_clock: FakeClock) -> None:
-    """Ba stream: cũ không hạn, mới không hạn, cũ đã có hạn (đường `finalize_upload_stream`)."""
+    """Ba stream có ý nghĩa (cũ không hạn, mới không hạn, cũ đã có hạn) + đệm ép `SCAN` quay lại."""
     stale_ms = _ms(fake_clock, STALE_AFTER + timedelta(days=1))
     await client.xadd(upload_stream(STALE_ID), {FIELD: "{}"}, id=f"{stale_ms}-0")
     await client.xadd(upload_stream(FRESH_ID), {FIELD: "{}"}, id=f"{_ms(fake_clock, timedelta())}-0")
     await client.xadd(upload_stream(CLOSED_ID), {FIELD: "{}"}, id=f"{stale_ms}-0")
     await client.expire(upload_stream(CLOSED_ID), KEPT_TTL_S)
+    fresh_ms = _ms(fake_clock, timedelta())
+    for _ in range(FILLER_COUNT):
+        await client.xadd(upload_stream(new_id("upl", fake_clock)), {FIELD: "{}"}, id=f"{fresh_ms}-0")
 
 
 async def test_expire_stale_uploads__J01(streams_client: AsyncRedis, fake_clock: FakeClock) -> None:

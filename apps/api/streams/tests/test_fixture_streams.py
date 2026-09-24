@@ -7,6 +7,7 @@ thuần, độc lập với bản hiện thực thật của route SSE.
 import asyncio
 import contextlib
 import json
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -218,6 +219,13 @@ async def test_raw_until_returns_all_received_bytes(sse_open: SseOpen, stream_ap
         assert raw.startswith(b": ping\n\n")
 
 
+async def test_raw_until_times_out_with_received_bytes_in_message(sse_open: SseOpen, stream_app: StreamApp) -> None:
+    """Predicate không bao giờ đúng → `TimeoutError` kèm byte đã nhận (NO-155: nhánh riêng của `raw_until`)."""
+    async with sse_open(stream_app, "/stream/hang/1") as stream:
+        with pytest.raises(TimeoutError, match="id: 1"):
+            await stream.raw_until(lambda _raw: False, timeout_s=0.2)
+
+
 async def test_disconnect_reaches_the_app_and_ends_its_task(sse_open: SseOpen, stream_app: StreamApp) -> None:
     """`disconnect()` làm app nhận `http.disconnect` (generator huỷ) và task app kết thúc."""
     async with sse_open(stream_app, "/stream/hang/2") as stream:
@@ -333,6 +341,45 @@ async def test_await_start_rejects_a_message_before_http_response_start(sse_open
     broken = BrokenStartApp()
     with pytest.raises(RuntimeError, match="message lạ"):
         async with sse_open(broken, "/bat-ky"):
+            pass
+
+
+class _SilentApp(Starlette):
+    """Không gửi message ASGI nào — `_await_start` phải quá hạn chờ `http.response.start` (NO-155)."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Treo vô hạn, không gửi gì; chỉ trần `_OPEN_TIMEOUT_S` (đã hạ ở test) mới cắt được."""
+        await asyncio.sleep(3600)
+
+
+class _SlowErrorApp(Starlette):
+    """Gửi `http.response.start` lỗi (không phải luồng) rồi treo — thân không bao giờ đọc xong."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """`content-type` không phải `text/event-stream` nên `_await_start` chuyển sang đọc thân."""
+        await send({"type": "http.response.start", "status": 500, "headers": [(b"content-type", b"application/json")]})
+        await asyncio.sleep(3600)
+
+
+async def test_await_start_times_out_waiting_for_http_response_start(
+    sse_open: SseOpen, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """App không gửi gì → quá hạn `_OPEN_TIMEOUT_S` chờ `http.response.start` (NO-155, nhánh 1/2 của `_await_start`).
+
+    Hạ `_OPEN_TIMEOUT_S` xuống 0,1 s (khuôn `test_disconnect_times_out_when_the_app_never_exits`)
+    để test nhanh và tất định, không đoán bằng `sleep` dài.
+    """
+    monkeypatch.setattr(streams_fixture, "_OPEN_TIMEOUT_S", 0.1)
+    with pytest.raises(TimeoutError, match=re.escape("http.response.start")):
+        async with sse_open(_SilentApp(), "/bat-ky"):
+            pass
+
+
+async def test_await_start_times_out_reading_an_error_body(sse_open: SseOpen, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Thân lỗi (không phải luồng) không bao giờ đọc xong → quá hạn (NO-155, nhánh 2/2 của `_await_start`)."""
+    monkeypatch.setattr(streams_fixture, "_OPEN_TIMEOUT_S", 0.1)
+    with pytest.raises(TimeoutError, match="đọc thân lỗi"):
+        async with sse_open(_SlowErrorApp(), "/bat-ky"):
             pass
 
 
