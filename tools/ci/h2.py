@@ -59,6 +59,9 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.s3 import http_client
 from packages.storage.settings import reset_storage_settings_cache
+from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAX_EXAMPLES_ENV: Final = "H2_MAX_EXAMPLES"
 DEFAULT_MAX_EXAMPLES: Final = 25
@@ -70,12 +73,6 @@ UNAUTHORIZED: Final = 401
 PUBLIC_BASE_URL: Final = "https://h2.appback.test"
 SECRET_KEY: Final = "h2-fake-secret-" * 3
 S3_REGION: Final = "us-east-1"
-
-# Ảnh ghim (K29) khớp packages/testing/fixtures/services.py; h2.py không được nhập packages.testing
-# (R-28) nên giữ bản ghim riêng — nâng ảnh ở services.py thì nâng cả ở đây (Nợ nếu lệch).
-POSTGRES_IMAGE: Final = "postgres:16-alpine"
-REDIS_IMAGE: Final = "redis:7-alpine"
-MINIO_IMAGE: Final = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
 
 _CHECKS: Final[list[CheckFunction]] = [
     cast(CheckFunction, not_a_server_error),

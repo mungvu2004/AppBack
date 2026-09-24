@@ -155,6 +155,7 @@ def test_container_verify_nối_thẳng_ip_container_dịch_vụ() -> None:
     assert "TESTCONTAINERS_CONNECTION_MODE=bridge_ip" in service["environment"]
 
 
+@pytest.mark.ci_integration
 @pytest.mark.parametrize(
     ("factory", "port"),
     [(lambda: ephemeral_redis("noeviction"), 6379), (ephemeral_postgres, 5432), (ephemeral_minio, 9000)],

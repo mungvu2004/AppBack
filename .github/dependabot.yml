@@ -6,6 +6,10 @@ version: 2
 # PR của Dependabot đổi `uv.lock` đi qua CI và người điều phối duyệt như PR
 # thường (BE-00 §13.1) — nhánh `dependabot/**` được miễn luật tên nhánh (job
 # `commits`, hop-dong.md §2).
+# NO-153: `ignore` chặn Dependabot tự gộp bản **major** — bản `redis` 6→8 (`d0bb175`, PR #5) gộp
+# thẳng vào `main` không qua cổng gây NO-148 (mypy đỏ 6 lỗi). Ràng buộc phiên bản của gói riêng
+# (vd `packages/messaging/pyproject.toml` cho `redis`) là lớp phòng thủ thứ hai, không thay cho lớp
+# này — `ignore` áp dụng cho mọi gói của hệ, kể cả gói chưa kịp ràng buộc version.
 updates:
   - package-ecosystem: "uv"
     directory: "/"
@@ -15,6 +19,9 @@ updates:
       uv-patches:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "build"
       include: "scope"
@@ -27,6 +34,9 @@ updates:
       actions-patches:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "ci"
       include: "scope"
@@ -39,6 +49,9 @@ updates:
       docker-patches:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "build"
       include: "scope"

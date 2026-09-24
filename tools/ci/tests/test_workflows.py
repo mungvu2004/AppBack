@@ -115,6 +115,13 @@ def test_ci_yml_no_pull_request_target() -> None:
     assert "pull_request_target" not in _triggers(doc)
 
 
+def test_ci_yml_pull_request_types_include_edited() -> None:
+    """NO-110: mặc định (`opened`, `synchronize`, `reopened`) không chạy lại khi tiêu đề PR đổi."""
+    doc = _load_yaml(CI_YML)
+    types = _triggers(doc)["pull_request"]["types"]
+    assert set(types) >= {"opened", "synchronize", "reopened", "edited"}
+
+
 def test_ci_yml_every_job_calls_job_sh() -> None:
     doc = _load_yaml(CI_YML)
     for name in EXPECTED_JOBS:
@@ -167,6 +174,23 @@ def test_job_sh_verify_steps_cover_1_to_8_and_5b() -> None:
     # Bước 5 không đi qua `tools.verify.steps` (unit/integration/ml gọi coverage
     # run -m pytest --ci-split=<nhóm> trực tiếp) — xác nhận bằng chứng riêng.
     assert "coverage run -m pytest" in text
+
+
+def test_job_sh_typecheck_compares_committed_openapi_reference() -> None:
+    """NO-105: `docs/contracts/openapi.json` (bản tham chiếu đã commit) thay cho `openapi.json` gốc
+    (bị `.gitignore`) — job `typecheck` phải ép chế độ so sánh, không còn `env -u VERIFY_BRANCH`."""
+    text = JOB_SH.read_text(encoding="utf-8")
+    assert "docs/contracts/openapi.json" in text
+    assert "env -u VERIFY_BRANCH" not in text
+
+
+def test_job_sh_smoke_uses_web_port_for_api_paths_not_api_host_port() -> None:
+    """NO-118: `api` không còn cổng host riêng (`deploy/compose/ci.yml`, việc của T2) — mọi kiểm
+    smoke `/api/...` phải đi qua cổng `web` (nginx proxy `/api/` sang `api:8000`)."""
+    text = JOB_SH.read_text(encoding="utf-8")
+    assert "API_HOST_PORT" not in text
+    assert 'curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/health"' in text
+    assert 'curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/ready"' in text
 
 
 def test_job_sh_pins_docker_images_by_digest() -> None:
@@ -293,6 +317,151 @@ def test_job_sh_unknown_job_exits_2() -> None:
     assert result.returncode == 2
 
 
+def test_job_contract_exports_writable_verify_out_dir(tmp_path: Path) -> None:
+    """NO-051: `export_contract_samples()` (`tools/verify/steps.py`) ghi vào `VERIFY_OUT_DIR`
+    (mặc định `/src-out`, chỉ ghi được TRONG container verify) mỗi khi `CONTRACT_SAMPLES_DIR` được
+    đặt — job `contract` đặt `CONTRACT_SAMPLES_DIR` mà chạy `tools.verify.steps` NGOÀI container
+    (CI thật), nên phải tự trỏ `VERIFY_OUT_DIR` vào một thư mục ghi được cùng lúc."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    env_dump = tmp_path / "env-dump.txt"
+    fake_python = bin_dir / "python"
+    fake_python.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$VERIFY_OUT_DIR" >> "{env_dump}"\n',
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    script = tmp_path / "run.sh"
+    script.write_text(f'source "{JOB_SH}"\njob_contract\n', encoding="utf-8")
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    for key in ("VERIFY_OUT_DIR", "CONTRACT_SAMPLES_DIR", "RUNNER_TEMP"):
+        env.pop(key, None)
+    result = subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path
+        ["bash", str(script)],  # noqa: S607
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    values = {line for line in env_dump.read_text(encoding="utf-8").splitlines() if line}
+    assert values, "python giả không được gọi với VERIFY_OUT_DIR đã đặt"
+    assert len(values) == 1, f"VERIFY_OUT_DIR đổi giữa các lệnh trong cùng job: {values}"
+    out_dir = next(iter(values))
+    assert out_dir != "/src-out"
+    assert Path(out_dir).is_dir()
+
+
+def _fake_command(bin_dir: Path, name: str, body: str) -> None:
+    bin_dir.mkdir(exist_ok=True)
+    command = bin_dir / name
+    command.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
+    command.chmod(0o755)
+
+
+def test_job_lint_gitleaks_fails_closed_on_empty_git_history(tmp_path: Path) -> None:
+    """NO-111: `git rev-list --count --all` = 0 (worktree Orca: `.git` hỏng/không đọc được lịch sử)
+    → hỏng ngay, không để gitleaks tự thoát 0 kiểu "0 commits scanned" (xanh giả, /merge-review lượt
+    1 #8). `docker`/`gitleaks` giả không được gọi tới — lỗi phải chặn TRƯỚC khi quét."""
+    bin_dir = tmp_path / "bin"
+    _fake_command(bin_dir, "git", "echo 0")
+    docker_calls = tmp_path / "docker-calls"
+    _fake_command(bin_dir, "docker", f'echo called >> "{docker_calls}"')
+    script = tmp_path / "run.sh"
+    script.write_text(
+        f'source "{JOB_SH}"\njob_lint_gitleaks\necho "FAILED=$FAILED"\n[ "$FAILED" -eq 1 ]\n',
+        encoding="utf-8",
+    )
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    result = subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path, không nhận input người dùng
+        ["bash", str(script)],  # noqa: S607
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "FAILED=1" in result.stdout
+    assert "git rev-list --count --all = 0" in result.stderr
+    assert not docker_calls.exists(), "gitleaks không được quét khi chưa xác nhận có lịch sử git thật"
+
+
+def test_job_build_trivy_mounts_host_sarif_dir(tmp_path: Path) -> None:
+    """NO-111: SARIF ghi trong container `--rm` không mount thì mất khi container xoá
+    (/merge-review lượt 1 #3) — `job_build_trivy` phải tạo và mount một thư mục host thật.
+
+    `job.sh` tự `cd "$REPO_ROOT"` khi được nguồn (dòng 16) — luôn chạy relative tới gốc repo thật,
+    không tới `cwd` của tiến trình gọi nó — nên kiểm nhánh CI thật (`RUNNER_TEMP` luôn được đặt bởi
+    GitHub Actions), không kiểm nhánh máy cục bộ (`.cache/trivy` tương đối tới `$REPO_ROOT`).
+    """
+    bin_dir = tmp_path / "bin"
+    calls = tmp_path / "docker-args"
+    _fake_command(bin_dir, "docker", f'printf "%s\\n" "$@" > "{calls}"')
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    script = tmp_path / "run.sh"
+    script.write_text(f'source "{JOB_SH}"\njob_build_trivy demo\n', encoding="utf-8")
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["RUNNER_TEMP"] = str(runner_temp)
+    result = subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path
+        ["bash", str(script)],  # noqa: S607
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (runner_temp / "trivy").is_dir()
+    args = calls.read_text(encoding="utf-8").splitlines()
+    assert any(a == f"{runner_temp}/trivy:/out" for a in args), args
+
+
+def _run_check_nginx_version(tmp_path: Path, version_line: str) -> subprocess.CompletedProcess[str]:
+    bin_dir = tmp_path / "bin"
+    _fake_command(bin_dir, "docker", f'echo "{version_line}"')
+    script = tmp_path / "run.sh"
+    script.write_text(f'source "{JOB_SH}"\njob_build_check_nginx_version\n', encoding="utf-8")
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    return subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path
+        ["bash", str(script)],  # noqa: S607
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def test_job_build_check_nginx_version_passes_at_minimum(tmp_path: Path) -> None:
+    """NO-113: trivy không ánh xạ CVE của gói nginx.org — bù bằng so `nginx -v` với bản vá tối
+    thiểu (đúng bản vá: 1.30.4)."""
+    result = _run_check_nginx_version(tmp_path, "nginx version: nginx/1.30.4")
+    assert result.returncode == 0, result.stderr
+
+
+def test_job_build_check_nginx_version_passes_above_minimum(tmp_path: Path) -> None:
+    result = _run_check_nginx_version(tmp_path, "nginx version: nginx/1.31.2")
+    assert result.returncode == 0, result.stderr
+
+
+def test_job_build_check_nginx_version_fails_below_minimum(tmp_path: Path) -> None:
+    result = _run_check_nginx_version(tmp_path, "nginx version: nginx/1.29.8")
+    assert result.returncode != 0
+
+
+def test_job_build_calls_nginx_version_check() -> None:
+    text = JOB_SH.read_text(encoding="utf-8")
+    assert "job_build_check_nginx_version" in text
+    assert 'NGINX_MIN_VERSION="1.30.4"' in text
+
+
 def test_job_sh_has_branch_for_every_ci_job() -> None:
     doc = _load_yaml(CI_YML)
     text = JOB_SH.read_text(encoding="utf-8")
@@ -343,6 +512,18 @@ def test_dependabot_yml_has_three_ecosystems() -> None:
     assert by_eco["uv"]["directory"] == "/"
     assert by_eco["github-actions"]["directory"] == "/"
     assert by_eco["docker"]["directory"] == "/deploy/docker"
+
+
+def test_dependabot_yml_ignores_semver_major_for_every_ecosystem() -> None:
+    """NO-153: bản major (vd `redis` 6→8, PR #5) không được gộp thẳng — mỗi hệ phải có `ignore`
+    chặn `version-update:semver-major` cho mọi gói (`dependency-name: "*"`)."""
+    doc = _load_yaml(DEPENDABOT_YML)
+    for update in doc["updates"]:
+        ignores = update.get("ignore", [])
+        assert any(
+            i.get("dependency-name") == "*" and "version-update:semver-major" in i.get("update-types", [])
+            for i in ignores
+        ), update["package-ecosystem"]
 
 
 def test_dependabot_commit_prefixes_pass_commit_msg_hook(tmp_path: Path) -> None:

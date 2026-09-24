@@ -1,9 +1,15 @@
 # Ảnh cổng verify — ENV §2, B0-01 [6]B. Chạy bằng root (mặc định ảnh gốc).
 # Không dùng uv/Python/Node của máy Windows: mọi thứ nằm trong ảnh này.
 
-FROM node:26-bookworm-slim AS node
+# Ghim tag + digest (NO-175, K29): tag trần trôi theo bản phát hành mới nhất — uv 0.9.30 mới hơn
+# đổi cách hiển thị marker trong `uv.lock` một-môi-trường (mọi dòng `{ name = ... }` thêm
+# `marker = "platform_machine == 'x86_64' and sys_platform == 'linux'"`), làm `run.sh lock` sinh
+# diff hàng trăm dòng dù không gói nào đổi bản — FIX-102. Digest tra bằng
+# `docker buildx imagetools inspect <tag>` (không đoán, K7 — haiku hay bịa digest).
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS node
+# ^ v26.10.0
 
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
 
 # Node 26 (ảnh uv gốc không có Node — ENV §2)
 COPY --from=node /usr/local/bin/node /usr/local/bin/node

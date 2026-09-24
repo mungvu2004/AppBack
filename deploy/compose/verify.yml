@@ -2,6 +2,10 @@
 # tiếp (project name, biến môi trường, mount đường Windows do run.sh dựng).
 services:
   verify:
+    # Tên cố định (NO-108): mọi worktree dùng chung một ảnh thay vì tự sinh
+    # `appback-verify-<worktree>-verify` theo project compose (`-p` của run.sh)
+    # — đo 2026-09-24: 52 ảnh, 42 volume 76,6 GB do mỗi worktree một bản riêng.
+    image: appback-verify:local
     build:
       context: ../..
       dockerfile: deploy/docker/verify.Dockerfile
@@ -38,4 +42,12 @@ services:
       - PYTHONUNBUFFERED=1
 
 volumes:
+  # Tên cố định (NO-108): compose nếu không có `name:` tự gắn tiền tố project
+  # (`appback-verify-<VERIFY_NAME>_appback-work`) — một volume riêng mỗi worktree
+  # thay vì một volume `/work` dùng chung, làm UV_LINK_MODE=hardlink mất tác dụng
+  # (uv-cache không còn chung để hardlink). Cache `contract-node/<băm lock>` bên
+  # trong volume này đã tự tách theo băm nội dung + đổi tên nguyên tử
+  # (tools/contract/runner_client.py `publish`), nên nhiều lượt verify song song
+  # (khác worktree) cùng làm ấm volume chung này không giẫm nhau.
   appback-work:
+    name: appback-work

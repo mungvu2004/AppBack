@@ -97,3 +97,34 @@ def test_verify_vẫn_chạy_cổng_khi_dọn_log_cũ_hỏng(worktree: Path, tmp
     assert "Device or resource busy" in stderr
     assert "dọn log cổng cũ hỏng" in stderr
     assert sorted(p.name for p in log_dir.iterdir()) == sorted(names)
+
+
+def test_gc_lowercases_and_normalizes_worktree_names(worktree: Path, tmp_path: Path) -> None:
+    """NO-101/NO-164: `tr -c 'a-z0-9_-\\n' '-'` cũ thoát 1 ("range-endpoints … reverse collating
+    sequence order") ngay khi tên worktree có cả `_` lẫn `-`, chặn `gc` trước khi gọi `docker`.
+
+    Thêm một worktree tên `B7-01_Extra` (chữ hoa + gạch dưới, mẫu gây lỗi thật đã gặp khi dọn B7-01)
+    rồi kiểm `VERIFY_VALID_NAMES` truyền cho container `gc` có đúng tên đã chuẩn hoá.
+    """
+    extra = tmp_path / "B7-01_Extra"
+    subprocess.run(  # noqa: S603 — git của repo tạm, không nhận input người dùng
+        [GIT, "-C", str(worktree), "worktree", "add", "-q", "--detach", str(extra)],
+        check=True,
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = bin_dir / "docker-args"
+    _fake_command(bin_dir, "docker", f'printf "%s\\n" "$@" > "{calls}"')
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(worktree / "tools" / "verify" / "run.sh"), "gc"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    args = calls.read_text(encoding="utf-8").splitlines()
+    valid_names_arg = next(a for a in args if a.startswith("VERIFY_VALID_NAMES="))
+    names = valid_names_arg.removeprefix("VERIFY_VALID_NAMES=").split(",")
+    assert "b7-01_extra" in names

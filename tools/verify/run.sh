@@ -147,7 +147,7 @@ case "$VERIFY_TASK" in
       git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
         | awk '/^worktree /{print $2}' \
         | xargs -n1 -r basename \
-        | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-\n' '-' \
+        | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_\n-' '-' \
         | paste -sd, -
     )"
     VERIFY_VALID_NAMES="$valid_names" "${COMPOSE[@]}" run --rm --build \

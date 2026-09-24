@@ -4,7 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "celery[redis]",
-    "redis",
+    # NO-153: ràng buộc major — bản 6 -> 8 (Dependabot, PR #5) gộp thẳng vào main không qua cổng,
+    # đổi kiểu trả `xread` của stub, gây NO-148 (mypy đỏ 6 lỗi ở B0-05/B0-06/B1-01).
+    "redis>=8.1,<9",
     "appback-core",
 ]
 

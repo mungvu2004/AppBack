@@ -232,11 +232,13 @@ def test_bước_7_hỏng_theo_mã_thoát(repo: Path, monkeypatch: pytest.Monkey
 
 
 def test_bước_8_integration_so_với_bản_commit(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-105: bản tham chiếu đã commit là `docs/contracts/openapi.json` — `openapi.json` ở gốc bị
+    `.gitignore`, không có trên nhánh tích hợp/CI."""
     _touch(repo, "apps/api/core/openapi.py")
     monkeypatch.setenv("VERIFY_BRANCH", "integration")
     fake = _fake(monkeypatch)
     steps.step_openapi()
-    assert fake.calls[0][-2:] == ["--compare", "openapi.json"]
+    assert fake.calls[0][-2:] == ["--compare", "docs/contracts/openapi.json"]
 
 
 def test_bước_8_worker_không_so(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
