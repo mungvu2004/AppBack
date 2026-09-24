@@ -103,6 +103,9 @@ addopts = "-m \"not gpu and not perf\" --junitxml=/tmp/junit.xml"
 branch = true
 parallel = true
 relative_files = true
+# greenlet: sqlalchemy[asyncio] chạy hậu-`await` trên greenlet riêng (NO-130) — thiếu khai này,
+# coverage không ghi dòng/nhánh chạy sau `await` của SQLAlchemy async, tính khuyết.
+concurrency = ["thread", "greenlet"]
 patch = ["subprocess"]
 source = ["packages", "apps", "tools"]
 omit = ["*/tests/*", "packages/db/migrations/*"]

@@ -26,10 +26,8 @@ from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
 
-POSTGRES_IMAGE = "postgres:16-alpine"
-REDIS_IMAGE = "redis:7-alpine"
-# Docker Hub minio/minio không còn phát hành bản cộng đồng; quay.io là nguồn chính thức.
-MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+from tools.pinned_images import MINIO_IMAGE, POSTGRES_IMAGE, REDIS_IMAGE
+
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
 
 
