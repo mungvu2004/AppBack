@@ -331,6 +331,22 @@ def test_compose_ml_env_has_celery_task_stream_vars(env: str) -> None:
             assert env_vars.get(key) == expected, f"{env}/{service_name}: thiếu {key}={expected}"
 
 
+_ML_FORBIDDEN_ENV = ("SECRET_KEY", "PUBLIC_BASE_URL", "REDIS_CACHE_URL")
+
+
+@pytest.mark.parametrize("env", ENVS)
+def test_compose_ml_env_has_no_signing_or_cache_vars(env: str) -> None:
+    """`ml`/`ml-gpu` không nhận `SECRET_KEY`/`PUBLIC_BASE_URL`/`REDIS_CACHE_URL`
+    (NO-085): tiến trình nạp trọng số ngoài không được cầm khoá gốc ký JWT (BE-00
+    §2.1/§9) và không tới được `redis-cache`. `celery_main` đọc `APP_ENV` qua
+    `MlEnvSettings` (FIX-089), `redis_cache_url` tuỳ chọn (FIX-091)."""
+    services = _resolved_services(env)
+    for service_name in _ML_SERVICES_BY_ENV[env]:
+        env_vars = services[service_name].get("environment") or {}
+        leaked = [key for key in _ML_FORBIDDEN_ENV if key in env_vars]
+        assert not leaked, f"{env}/{service_name}: không được truyền {leaked}"
+
+
 def test_compose_web_healthcheck_single_source() -> None:
     """`web`: một nguồn healthcheck (review 2026-09-22 #3) — `base.yml` không khai
     (dev/ci thừa kế `HEALTHCHECK` của ảnh, cổng 8080 http); `prod` đè bằng cổng
