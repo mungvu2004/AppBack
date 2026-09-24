@@ -7,28 +7,31 @@ import urllib.request
 
 import pytest
 from celery import _state as celery_state
-from celery.signals import worker_process_init
+from celery.signals import worker_process_init, worker_process_shutdown
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
+from packages.messaging import celery_app as celery_app_module
 from packages.messaging.celery_app import (
     AFTER_COMMIT_INLINE_ENV,
     DEFAULT_QUEUE,
     QUEUES,
     create_celery,
+    metrics_port_for_process,
     producer_app,
     queue_for,
     reset_producer_app,
     route_task,
     send_task,
     start_metrics_exporter,
+    stop_metrics_exporter,
 )
 from packages.messaging.redis import broker_redis_sync
 from packages.messaging.settings import MessagingSettings, get_messaging_settings, reset_messaging_settings_cache
 from packages.messaging.tasks import TaskPayload
 from packages.observability import exporter as exporter_module
 from packages.observability.settings import reset_observability_settings_cache
-from packages.testing.fixtures.messaging import queued_payloads
+from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 from packages.testing.fixtures.services import refused_url
 
 
@@ -41,6 +44,7 @@ def _free_port() -> int:
 
 def _stop_exporters() -> None:
     """Đóng hẳn exporter của tiến trình test, kể cả khi nhiều lượt gọi đã tăng đếm tham chiếu."""
+    stop_metrics_exporter()
     while exporter_module._instance is not None:
         exporter_module._instance.stop()
 
@@ -205,6 +209,57 @@ def test_every_celery_process_starts_the_metrics_exporter(monkeypatch: pytest.Mo
         reset_observability_settings_cache()
 
     assert "appback_metrics_series_dropped_total" in body
+
+
+def test_a_celery_process_shutdown_closes_the_metrics_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tín hiệu tắt tiến trình con phải trả tham chiếu exporter (review DEBT-01 finding 1).
+
+    Không có receiver `worker_process_shutdown` thì mọi tiến trình đã nhận
+    `worker_process_init` giữ cổng mở tới hết đời tiến trình.
+    """
+    port = _free_port()
+    monkeypatch.setenv("METRICS_PORT", str(port))
+    monkeypatch.setenv("METRICS_HOST", "127.0.0.1")
+    reset_observability_settings_cache()
+    try:
+        assert worker_process_shutdown.has_listeners()
+        worker_process_init.send(sender=None)
+        assert exporter_module._instance is not None
+        worker_process_shutdown.send(sender=None)
+        assert exporter_module._instance is None
+    finally:
+        _stop_exporters()
+        reset_observability_settings_cache()
+
+
+def test_a_test_worker_leaves_no_metrics_exporter_in_the_pytest_process(
+    celery_worker_factory: WorkerFactory,
+) -> None:
+    """Pool `solo` bắn `worker_process_init` trong **tiến trình gọi** và không bắn tín hiệu tắt.
+
+    Nên `messaging_env` phải để `METRICS_PORT=0` (NO-159): không thế thì từ test này trở đi
+    tiến trình pytest giữ một exporter thật sống, làm đỏ teardown của
+    `packages/observability/tests/test_exporter.py` (review DEBT-01 finding 1).
+    """
+    with celery_worker_factory([DEFAULT_QUEUE]):
+        pass
+
+    assert exporter_module._instance is None
+
+
+@pytest.mark.parametrize(("index", "expected"), [(None, 9464), (0, 9464), (1, 9465), (3, 9467)])
+def test_metrics_port_for_process_gives_each_prefork_child_its_own_port(
+    index: int | None, expected: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mỗi con prefork một cổng, con đầu và tiến trình chính giữ cổng gốc (finding 3).
+
+    Hai con bind cùng cổng thì con sau chỉ log `metrics_exporter_unavailable`, nên
+    `/metrics` của container `worker` báo số của một con ngẫu nhiên. `None` là tiến trình
+    chính (pool `solo`, beat): billiard không gắn `index` ở đó.
+    """
+    monkeypatch.setattr(celery_app_module, "current_process_index", lambda **_: index)
+
+    assert metrics_port_for_process(9464) == expected
 
 
 def test_the_metrics_exporter_stays_off_when_the_port_is_zero(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -40,6 +40,7 @@ from packages.messaging.redis import (
 from packages.messaging.settings import get_messaging_settings, reset_messaging_settings_cache
 from packages.messaging.streams import EventBus
 from packages.messaging.tasks import reset_delivery_client
+from packages.observability.settings import reset_observability_settings_cache
 from packages.testing.fixtures.services import ephemeral_redis
 
 WORKER_SHUTDOWN_TIMEOUT_S = 20.0
@@ -81,13 +82,25 @@ def _forget_process_clients() -> None:
 
 @pytest.fixture
 def messaging_env(redis_broker_url: str, redis_cache_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Trỏ cấu hình vào hai Redis thật; `TASK_RETRY_BACKOFF_S=0,0,0` để test không phải chờ."""
+    """Trỏ cấu hình vào hai Redis thật; `TASK_RETRY_BACKOFF_S=0,0,0` để test không phải chờ.
+
+    `METRICS_PORT=0` như `api_env` (NO-159): pool `solo` của `celery_worker_factory` bắn
+    `worker_process_init` **trong tiến trình pytest** (`celery/concurrency/solo.py`) và không
+    bắn tín hiệu tắt nào, nên không đặt cổng về 0 là tiến trình test giữ một exporter thật
+    sống trên 9464 tới hết lượt chạy — làm đỏ teardown của `packages/observability/tests`
+    (review DEBT-01 finding 1). Test nào cần exporter thật tự đặt cổng của nó.
+    """
+    monkeypatch.setenv("METRICS_PORT", "0")
     monkeypatch.setenv("REDIS_BROKER_URL", redis_broker_url)
     monkeypatch.setenv("REDIS_CACHE_URL", redis_cache_url)
     monkeypatch.setenv("TASK_RETRY_BACKOFF_S", "0,0,0")
     reset_messaging_settings_cache()
+    # `ObservabilitySettings` là `@cache` theo tiến trình: một test chạy trước đã đọc 9464
+    # thì `setenv` ở trên không tới được exporter nếu không xoá cache hai đầu.
+    reset_observability_settings_cache()
     yield
     reset_messaging_settings_cache()
+    reset_observability_settings_cache()
 
 
 @asynccontextmanager
