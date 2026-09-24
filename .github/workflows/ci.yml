@@ -8,6 +8,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # NO-110: mặc định của `pull_request` (opened, synchronize, reopened) không chạy lại khi tiêu
+    # đề PR đổi (`edited`) — sửa tiêu đề (vd rút gọn PR Dependabot hệ docker về ≤ 72 ký tự trước
+    # squash) không tự chạy lại job `commits`, bấm re-run vẫn dùng payload cũ.
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch: {}
 
 concurrency:
@@ -62,10 +66,9 @@ jobs:
           cache-dependency-glob: "uv.lock"
       - run: uv sync --locked --all-packages --group dev
       - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      # Bước 8 chạy Ở CHẾ ĐỘ XUẤT (không --compare openapi.json): openapi.json
-      # bị .gitignore và cấm commit (BE-00 §13.2), nên chế độ so sánh luôn đỏ
-      # trên `main`. Quyết định đã duyệt 2026-09-22 (hop-dong.md §4), nêu ở
-      # changes/B0-09.md — Nợ NO ghi bởi người điều phối khi hợp nhất.
+      # NO-105: bước 8 so với `docs/contracts/openapi.json` (bản tham chiếu ĐÃ COMMIT) — quyết
+      # định "chế độ xuất" cũ (2026-09-22, hop-dong.md §4, changes/B0-09.md) hết hiệu lực từ khi có
+      # bản tham chiếu commit này; `tools/ci/job.sh job_typecheck` tự ép chế độ so sánh.
       - run: bash tools/ci/job.sh typecheck
 
   unit:

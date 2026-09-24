@@ -32,6 +32,11 @@ _host_pwd() {
 # `git ls-remote` / `imagetools inspect`, đè bản sai của khảo sát haiku).
 GITLEAKS_IMAGE="zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 TRIVY_IMAGE="aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
+# NO-113: trivy 0.74.0 không ánh xạ CVE của gói `nginx` cài từ kho nginx.org (ảnh `web`, B0-08) —
+# CSDL của nó không biết gói này, nên `job_build_trivy web` xanh không chứng minh nginx sạch CVE.
+# Bù bằng kiểm `nginx -v` so với bản vá tối thiểu đã tra advisory nginx.org (CVE-2026-42533 vá ở
+# 1.30.4; CVE-2026-42945 vá 1.30.1+) — ghim một nơi, cả hai commit FIX-070 và FIX-084 đọc từ đây.
+NGINX_MIN_VERSION="1.30.4"
 PIP_AUDIT_VERSION="2.10.1"
 NET_TIMEOUT_S=300
 BUILD_TIMEOUT_S=1800
@@ -190,12 +195,12 @@ job_lint() {
 # ---------------------------------------------------------------------------
 
 job_typecheck() {
-  # openapi.json bị .gitignore, cấm commit (BE-00 §13.2) → chế độ so sánh luôn đỏ
-  # trên `main`. Không đặt VERIFY_BRANCH=integration ở đây: bước 8 chạy chế độ
-  # xuất (không --compare). Lệch khỏi prompt đã ghi ở changes/B0-09.md, người
-  # điều phối ghi NO trên main.
-  run_step "verify --steps 3,8 (chế độ xuất)" \
-    env -u VERIFY_BRANCH python -m tools.verify.steps verify --steps 3,8
+  # NO-105: `docs/contracts/openapi.json` là bản tham chiếu ĐÃ COMMIT (khác `openapi.json` gốc,
+  # bị `.gitignore`) — bước 8 luôn ở chế độ so sánh trong CI, ép VERIFY_BRANCH=integration bất kể
+  # lượt chạy thật là push hay pull_request (quyết định "chế độ xuất" cũ, changes/B0-09.md, đã hết
+  # hiệu lực từ khi có bản tham chiếu commit).
+  run_step "verify --steps 3,8 (so docs/contracts/openapi.json)" \
+    env VERIFY_BRANCH=integration python -m tools.verify.steps verify --steps 3,8
 }
 
 # ---------------------------------------------------------------------------
@@ -233,6 +238,12 @@ job_contract() {
   # dưới RUNNER_TEMP khi chạy tự kiểm ngoài workflow (workflow luôn đặt biến này).
   export CONTRACT_SAMPLES_DIR="${CONTRACT_SAMPLES_DIR:-${RUNNER_TEMP:-/tmp}/contract-samples}"
   mkdir -p "$CONTRACT_SAMPLES_DIR"
+  # VERIFY_OUT_DIR (NO-051): `export_contract_samples()` ghi vào đây mỗi khi
+  # CONTRACT_SAMPLES_DIR được đặt (vừa xong ở trên) — mặc định của nó `/src-out`
+  # chỉ ghi được TRONG container verify; job này chạy `tools.verify.steps` ngoài
+  # container (CI thật), nên phải tự trỏ vào một thư mục ghi được.
+  export VERIFY_OUT_DIR="${VERIFY_OUT_DIR:-${RUNNER_TEMP:-/tmp}/verify-out}"
+  mkdir -p "$VERIFY_OUT_DIR"
   # Làm ấm TRƯỚC pytest — gọi riêng "--steps 0" (không dựa vào "--steps 7" tự
   # thêm bước 0): bước pytest sinh mẫu chạy TRƯỚC "--steps 7" trong hàm này,
   # nên bước 0 tự thêm ở đó vẫn tới sau khi pytest đã tải mạng giữa test rồi
@@ -342,6 +353,15 @@ job_build_trivy() {
     --format sarif --output "/out/trivy-${img}.sarif" "appback-${img}:ci"
 }
 
+job_build_check_nginx_version() {
+  # `nginx -v` in ra stderr ("nginx version: nginx/1.30.4"); không build ảnh thật ở test — test
+  # nguồn hàm này với `docker` giả trên PATH (kiểu test pip-audit ở job_lint_pip_audit).
+  local actual
+  actual="$(docker run --rm --entrypoint nginx appback-web:ci -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+  [ -n "$actual" ] || return 1
+  printf '%s\n%s\n' "$NGINX_MIN_VERSION" "$actual" | sort -C -V
+}
+
 job_build_smoke() {
   local project="appback-ci-job"
   # Chỉ ci.yml (không base.yml): mỗi service trong ci.yml tự `extends: file:
@@ -355,14 +375,15 @@ job_build_smoke() {
   }
   trap cleanup EXIT
   export IMAGE_TAG="ci"
-  export API_HOST_PORT="${API_HOST_PORT:-18000}"
   export WEB_HTTP_PORT="${WEB_HTTP_PORT:-18080}"
   export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-15432}"
   export PUBLIC_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"
   run_step "compose up --wait" timeout "${NET_TIMEOUT_S}s" \
     docker compose -p "$project" "${compose_files[@]}" up -d --wait
-  run_step "smoke /api/health" curl -fsS --max-time 5 "http://127.0.0.1:${API_HOST_PORT}/api/health"
-  run_step "smoke /api/ready" curl -fsS --max-time 5 "http://127.0.0.1:${API_HOST_PORT}/api/ready"
+  # NO-118: `api` không còn cổng host riêng (`deploy/compose/ci.yml`) — qua nginx của `web`, proxy
+  # `/api/` sang `api:8000` (đúng đường request thật, không tắt qua sau lưng nginx).
+  run_step "smoke /api/health" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/health"
+  run_step "smoke /api/ready" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/ready"
   run_step "smoke /" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/"
   # -o vào file tạm thật, không /dev/null: đo được trên Git Bash (Windows) — ghi
   # thân nhị phân (~14 KB) vào /dev/null làm curl thoát 23 "client returned ERROR
@@ -389,6 +410,7 @@ job_build() {
   sha="$(tr -d '[:space:]' <tools/contract/APPFRONT_SHA)"
   run_step "web-context.sh (AppFront @ ${sha})" bash deploy/docker/web-context.sh "$sha" "$web_ctx"
   job_build_one_image web --build-context "appfront=${web_ctx}" --build-arg "APPFRONT_SHA=${sha}"
+  run_step "nginx -v >= ${NGINX_MIN_VERSION} (NO-113)" job_build_check_nginx_version
 
   job_build_import_all api
   job_build_import_all worker
