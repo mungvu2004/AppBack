@@ -1,9 +1,13 @@
 """App Celery: định tuyến theo tiền tố, cấu hình theo hiến chương, và đường gửi task."""
 
+import logging
 import os
+import socket
+import urllib.request
 
 import pytest
 from celery import _state as celery_state
+from celery.signals import worker_process_init
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
@@ -17,12 +21,28 @@ from packages.messaging.celery_app import (
     reset_producer_app,
     route_task,
     send_task,
+    start_metrics_exporter,
 )
 from packages.messaging.redis import broker_redis_sync
 from packages.messaging.settings import MessagingSettings, get_messaging_settings, reset_messaging_settings_cache
 from packages.messaging.tasks import TaskPayload
+from packages.observability import exporter as exporter_module
+from packages.observability.settings import reset_observability_settings_cache
 from packages.testing.fixtures.messaging import queued_payloads
 from packages.testing.fixtures.services import refused_url
+
+
+def _free_port() -> int:
+    """Một cổng localhost còn rỗi — exporter phải nghe cổng cấu hình, không cổng ngẫu nhiên."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _stop_exporters() -> None:
+    """Đóng hẳn exporter của tiến trình test, kể cả khi nhiều lượt gọi đã tăng đếm tham chiếu."""
+    while exporter_module._instance is not None:
+        exporter_module._instance.stop()
 
 
 class Ping(TaskPayload):
@@ -161,3 +181,59 @@ def test_send_task_reports_an_unreachable_broker_as_dependency_unavailable(
     assert caught.value.code is DEPENDENCY_UNAVAILABLE
     assert caught.value.retry_after == 5
     reset_messaging_settings_cache()
+
+
+def test_every_celery_process_starts_the_metrics_exporter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-161: `worker` và `ml` đều mở `/metrics` vì cả hai dựng app bằng `create_celery`.
+
+    Gắn vào `worker_process_init` ở đây chứ không ở từng điểm vào: một cài đặt cho cả hai
+    ảnh, không bản chép (R-07). `METRICS_PORT=0` là "tắt", như `metrics_lifespan` của API.
+    """
+    port = _free_port()
+    monkeypatch.setenv("METRICS_PORT", str(port))
+    monkeypatch.setenv("METRICS_HOST", "127.0.0.1")
+    reset_observability_settings_cache()
+    try:
+        # Bắn chính tín hiệu Celery gửi ở mỗi tiến trình con: chứng minh cả **dây nối** lẫn
+        # hành vi, thay vì soi sổ receiver riêng của `celery.utils.dispatch.Signal`.
+        assert worker_process_init.has_listeners()
+        worker_process_init.send(sender=None)
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=5) as response:
+            body = response.read().decode("utf-8")
+    finally:
+        _stop_exporters()
+        reset_observability_settings_cache()
+
+    assert "appback_metrics_series_dropped_total" in body
+
+
+def test_the_metrics_exporter_stays_off_when_the_port_is_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`METRICS_PORT=0` (mặc định của test, NO-159) không được mở cổng nào."""
+    monkeypatch.setenv("METRICS_PORT", "0")
+    reset_observability_settings_cache()
+    try:
+        start_metrics_exporter()
+        assert exporter_module._instance is None
+    finally:
+        reset_observability_settings_cache()
+
+
+def test_a_busy_metrics_port_is_only_a_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Cổng đã có người nghe không được làm hỏng tiến trình worker: không có metric vẫn chạy việc."""
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen(1)
+        monkeypatch.setenv("METRICS_PORT", str(taken.getsockname()[1]))
+        monkeypatch.setenv("METRICS_HOST", "127.0.0.1")
+        reset_observability_settings_cache()
+        try:
+            with caplog.at_level(logging.WARNING):
+                start_metrics_exporter()
+        finally:
+            _stop_exporters()
+            reset_observability_settings_cache()
+
+    assert "metrics_exporter_unavailable" in caplog.text
+    assert exporter_module._instance is None

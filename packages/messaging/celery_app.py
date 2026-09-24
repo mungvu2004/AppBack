@@ -8,17 +8,23 @@ không thử lại kết nối — broker treo thì lỗi ngay chứ không gi�
 Tiến trình chạy (worker) dùng `create_celery()`.
 """
 
+import logging
 import os
 from collections.abc import Mapping
 from typing import Any, Final
 
 import kombu.exceptions
 from celery import Celery
+from celery.signals import worker_process_init
 from pydantic import BaseModel
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.messaging.redis import DEPENDENCY_ERRORS, DEPENDENCY_RETRY_AFTER, ProcessLocal
 from packages.messaging.settings import MessagingSettings, get_messaging_settings
+from packages.observability.exporter import start_exporter
+from packages.observability.settings import get_observability_settings
+
+_log: Final = logging.getLogger(__name__)
 
 DEFAULT_QUEUE: Final = "default"
 QUEUES: Final = (DEFAULT_QUEUE, "pipeline.cpu", "ml.infer", "ml.training")
@@ -92,6 +98,27 @@ def create_celery(name: str, settings: MessagingSettings | None = None) -> Celer
     )
     os.environ[AFTER_COMMIT_INLINE_ENV] = "1"
     return app
+
+
+@worker_process_init.connect
+def start_metrics_exporter(**_: object) -> None:
+    """Mở exporter `/metrics` của **tiến trình con Celery** (BE-00 §11, NO-161).
+
+    Gắn ở đây chứ không ở từng điểm vào: `apps/worker` và `apps/ml` đều dựng app bằng
+    `create_celery`, nên nhập module này là cả hai ảnh có exporter — một cài đặt, không
+    bản chép (R-07). `worker_process_init` chứ không `worker_init`: pool prefork fork sau
+    khi tiến trình chính đã lên, mà một socket mở trước `fork` không dùng chung được.
+
+    `METRICS_PORT <= 0` là tắt (mặc định của test, NO-159); cổng bận chỉ là một `WARNING`
+    — không có metric thì vẫn phải chạy được việc.
+    """
+    settings = get_observability_settings()
+    if settings.metrics_port <= 0:
+        return
+    try:
+        start_exporter(host=settings.metrics_host, port=settings.metrics_port)
+    except OSError as exc:
+        _log.warning("metrics_exporter_unavailable", extra={"error": repr(exc)})
 
 
 def _build_producer() -> Celery:

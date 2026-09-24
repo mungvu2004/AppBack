@@ -3,6 +3,9 @@
 Hai instance Redis tách nhau vì `maxmemory-policy` tính cho cả instance (BE-00 §1):
 `redis-broker` phải `noeviction` (mất thông điệp là mất việc), `redis-cache` được
 `allkeys-lru`. Số hiệu DB của từng vai nằm ở `packages.messaging.redis`.
+
+`REDIS_CACHE_URL` **tuỳ chọn**: worker `ml` không tới được `redis-cache` (BE-00 §2.1), nên
+bắt buộc nó chỉ làm compose phải bịa một DSN chết (NO-085).
 """
 
 from functools import cache
@@ -28,7 +31,12 @@ class MessagingSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
     redis_broker_url: str
-    redis_cache_url: str
+    redis_cache_url: str | None = None
+    """`None` = tiến trình này không tới được `redis-cache` (worker `ml`, NO-085).
+
+    Tuỳ chọn chứ không bắt buộc: bắt buộc là buộc compose khai một DSN mà `ml` không bao
+    giờ dùng. Tiến trình thật sự cần cache mà thiếu biến sẽ hỏng ở `cache_redis()`, có tên
+    biến trong thông báo (fail-closed tại chỗ dùng, R-17)."""
     celery_visibility_timeout_s: int = 7200
     task_time_limit_s: int = 3600
     task_soft_time_limit_s: int = 3300
@@ -43,8 +51,9 @@ class MessagingSettings(BaseSettings):
 
     @field_validator("redis_cache_url")
     @classmethod
-    def _cache_url(cls, value: str) -> str:
-        return _check_redis_url("REDIS_CACHE_URL", value)
+    def _cache_url(cls, value: str | None) -> str | None:
+        """URL cache phải hợp lệ **khi có**; vắng mặt là hợp lệ (NO-085)."""
+        return value if value is None else _check_redis_url("REDIS_CACHE_URL", value)
 
     @field_validator("task_retry_backoff_s", mode="before")
     @classmethod

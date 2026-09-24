@@ -5,10 +5,10 @@ kiện (1), trạng thái an toàn như khoá đăng nhập và khoá GPU (2) �
 `redis-cache` mang cache/rate-limit (0). Tách bằng số hiệu DB chứ không bằng tiền
 tố khoá để `FLUSHDB` của một vai không xoá vai khác.
 
-Mọi client đặt **trần kết nối và trần đọc tường minh** (R-24): mặc định của
-`redis-py` là chờ vô hạn, đủ để một Redis treo giữ luôn worker hay tiến trình API.
-Bản đồng bộ dùng trần 0,5 s vì nó chạy trong callback sau commit, ngay trên đường
-trả response.
+Mọi client đặt **trần kết nối, trần đọc và ngân sách thử lại tường minh** (R-24): mặc
+định của `redis-py` là chờ vô hạn, đủ để một Redis treo giữ luôn worker hay tiến trình
+API, còn số lượt thử lại mặc định đổi theo từng bản thư viện (NO-152). Bản đồng bộ dùng
+trần 0,5 s vì nó chạy trong callback sau commit, ngay trên đường trả response.
 """
 
 import os
@@ -20,9 +20,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 import redis
 import redis.asyncio
+from redis.backoff import ExponentialBackoff
 from redis.exceptions import ClusterDownError, OutOfMemoryError, ReadOnlyError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
@@ -40,6 +42,21 @@ READ_TIMEOUT_S: Final = 5.0
 STREAM_READ_TIMEOUT_S: Final = 30.0
 MAX_BLOCK_MS: Final = 25_000
 SYNC_TIMEOUT_S: Final = 0.5
+
+# Ngân sách thử lại khai **tường minh** theo vai (R-24, NO-152). Mặc định của `redis-py`
+# đổi theo từng bản (8.1 dựng `Retry(NoBackoff(), 0)` cho client không khai `retry`, còn
+# một bản trước đó thử tới 10 lượt), nên trần thời gian của một vai chỉ có nghĩa khi chính
+# ta đặt số lượt. Chỉ thử lại lỗi **kết nối/timeout**: lỗi lệnh và `OutOfMemoryError` thử
+# lại chỉ tốn thêm trần thời gian mà kết quả không đổi.
+RETRY_BASE_S: Final = 0.05
+RETRY_CAP_S: Final = 0.2
+ASYNC_RETRIES: Final = 2
+"""Hai lượt lại cho vai có trần đọc 5 s — chờ thêm tối đa ~0,25 s, vẫn xa trần."""
+STREAM_RETRIES: Final = 1
+"""Một lượt: `XREAD BLOCK` hỏng chỉ đóng một luồng SSE, và FE tự nối lại (S05)."""
+SYNC_RETRIES: Final = 1
+"""Một lượt: đường đồng bộ nằm ngay trên đường trả response, trần cả thảy 0,5 s."""
+RETRYABLE_ERRORS: Final = (RedisConnectionError, RedisTimeoutError)
 
 BROKER_POLICY: Final = "noeviction"
 DEPENDENCY_RETRY_AFTER: Final = 5
@@ -110,12 +127,24 @@ def sync_result[ResultT](result: Any, kind: Callable[[Any], ResultT]) -> ResultT
     return kind(result)
 
 
-def _async_client(url: str, db: int, read_timeout_s: float) -> AsyncRedis:
+def _retry(retries: int) -> Retry:
+    """Chính sách thử lại của một vai: backoff nhân đôi từ `RETRY_BASE_S`, trần `RETRY_CAP_S`."""
+    return Retry(ExponentialBackoff(base=RETRY_BASE_S, cap=RETRY_CAP_S), retries)
+
+
+# Ghim `legacy_responses=True` (NO-151): redis-py 8.1 nói RESP3 trên dây dù ta không đặt
+# `protocol=3`, và dạng list của `xread` mà `packages.messaging.streams` đọc chỉ còn nhờ cờ
+# này. Upstream ghi `legacy_responses=False` là đích di trú, nên dựa mặc định là để một
+# lượt bump thư viện đổi hình dạng dữ liệu của mọi luồng SSE mà không ai thấy.
+def _async_client(url: str, db: int, read_timeout_s: float, retries: int) -> AsyncRedis:
     client: AsyncRedis = redis.asyncio.Redis.from_url(
         with_db(url, db),
-        decode_responses=True,
         socket_connect_timeout=CONNECT_TIMEOUT_S,
         socket_timeout=read_timeout_s,
+        retry=_retry(retries),
+        retry_on_error=list(RETRYABLE_ERRORS),
+        decode_responses=True,
+        legacy_responses=True,
     )
     return client
 
@@ -123,27 +152,48 @@ def _async_client(url: str, db: int, read_timeout_s: float) -> AsyncRedis:
 def _sync_client(url: str, db: int) -> SyncRedis:
     return redis.Redis.from_url(
         with_db(url, db),
-        decode_responses=True,
         socket_connect_timeout=SYNC_TIMEOUT_S,
         socket_timeout=SYNC_TIMEOUT_S,
+        retry=_retry(SYNC_RETRIES),
+        retry_on_error=list(RETRYABLE_ERRORS),
+        decode_responses=True,
+        legacy_responses=True,
     )
+
+
+def _cache_url(settings: MessagingSettings) -> str:
+    """DSN `redis-cache`, hay `RuntimeError` nếu tiến trình này không được cấu hình cho nó.
+
+    `REDIS_CACHE_URL` tuỳ chọn để worker `ml` nạp được cấu hình (NO-085); tiến trình nào
+    thật sự chạm cache mà thiếu biến phải hỏng ngay ở đây, với tên biến trong thông báo.
+    """
+    url = settings.redis_cache_url
+    if url is None:
+        raise RuntimeError("REDIS_CACHE_URL chưa đặt: tiến trình này không được cấu hình để dùng redis-cache")
+    return url
 
 
 def broker_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
     """Client tới DB broker — chỉ để quan sát hàng đợi; Celery tự mở kết nối của nó."""
-    return _async_client((settings or get_messaging_settings()).redis_broker_url, BROKER_DB, READ_TIMEOUT_S)
+    return _async_client(
+        (settings or get_messaging_settings()).redis_broker_url, BROKER_DB, READ_TIMEOUT_S, ASYNC_RETRIES
+    )
 
 
 def streams_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
-    return _async_client((settings or get_messaging_settings()).redis_broker_url, STREAM_DB, STREAM_READ_TIMEOUT_S)
+    return _async_client(
+        (settings or get_messaging_settings()).redis_broker_url, STREAM_DB, STREAM_READ_TIMEOUT_S, STREAM_RETRIES
+    )
 
 
 def safe_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
-    return _async_client((settings or get_messaging_settings()).redis_broker_url, SAFE_DB, READ_TIMEOUT_S)
+    return _async_client(
+        (settings or get_messaging_settings()).redis_broker_url, SAFE_DB, READ_TIMEOUT_S, ASYNC_RETRIES
+    )
 
 
 def cache_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
-    return _async_client((settings or get_messaging_settings()).redis_cache_url, CACHE_DB, READ_TIMEOUT_S)
+    return _async_client(_cache_url(settings or get_messaging_settings()), CACHE_DB, READ_TIMEOUT_S, ASYNC_RETRIES)
 
 
 def broker_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
@@ -159,7 +209,7 @@ def safe_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
 
 
 def cache_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
-    return _sync_client((settings or get_messaging_settings()).redis_cache_url, CACHE_DB)
+    return _sync_client(_cache_url(settings or get_messaging_settings()), CACHE_DB)
 
 
 def assert_broker_policy(client: SyncRedis) -> None:
