@@ -2,6 +2,9 @@
 
 `ML_BACKEND=fake` thay ba bộ chạy ONNX bằng bộ giả (`packages.ml_contracts.fakes`) cho
 dev/test; `apps/ml/celery_main.py` từ chối nó ở `staging`/`production`.
+
+`MlEnvSettings` là ngoại lệ hẹp của "chỉ đọc `ML_*`": nó đọc đúng một biến nền (`APP_ENV`)
+để `ml` không phải cầm `SECRET_KEY` chỉ vì muốn biết mình đang chạy ở đâu (NO-085).
 """
 
 from functools import cache
@@ -9,6 +12,20 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class MlEnvSettings(BaseSettings):
+    """`APP_ENV` và **chỉ** `APP_ENV` — thứ duy nhất `ml` cần từ cấu hình nền (NO-085).
+
+    Không đọc qua `CoreSettings`: nó đòi kèm `SECRET_KEY` (khoá gốc ký JWT) và
+    `PUBLIC_BASE_URL`, nên lấy `APP_ENV` bằng nó là buộc compose đưa khoá ký vào một tiến
+    trình chỉ nạp trọng số ngoài — trái tách quyền của BE-00 §2.1/§9. Đọc một lần lúc
+    `worker_init`, nên không cần cache.
+    """
+
+    model_config = SettingsConfigDict(extra="ignore", env_file=None)
+
+    app_env: Literal["dev", "test", "ci", "staging", "production"]
 
 
 class MlSettings(BaseSettings):

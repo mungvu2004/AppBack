@@ -6,8 +6,10 @@ import io
 import subprocess
 import sys
 import textwrap
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 
@@ -17,6 +19,9 @@ from packages.ml_contracts import pinned
 from packages.ml_contracts.families import BASE_MODELS, MODEL_FAMILIES
 from packages.ml_contracts.pinned import (
     BASELINE,
+    FETCH_ATTEMPTS,
+    FETCH_BACKOFF_CAP_S,
+    FETCH_BACKOFF_S,
     PINNED,
     UNPINNED,
     FetchError,
@@ -66,6 +71,44 @@ class Opener:
 
 
 BODIES = {"https://x.test/v1/model.bin": SOURCE, "https://x.test/v1/config.json": EXTRA}
+
+
+class FlakyOpener:
+    """Bộ mở giả chạy theo kịch bản: mỗi bước là ngoại lệ để ném, hay thân để trả.
+
+    Dựng đúng cảnh NO-104 (lượt 1 `TimeoutError`, lượt 2 tệp tải dở, lượt 3 đủ) mà không
+    mở mạng; bước cuối lặp lại cho mọi lượt sau, để dựng cả cảnh "hỏng mãi".
+    """
+
+    def __init__(self, plan: Sequence[Exception | bytes]) -> None:
+        """`plan` phải có ít nhất một bước; `opened` đếm số lượt mở thật."""
+        self.plan = list(plan)
+        self.opened: list[str] = []
+
+    def __call__(self, url: str) -> AbstractContextManager[Readable]:
+        """Bước thứ `n` của kịch bản cho lượt mở thứ `n`, bước cuối dùng lại mãi."""
+        self.opened.append(url)
+        step = self.plan[min(len(self.opened) - 1, len(self.plan) - 1)]
+        if isinstance(step, Exception):
+            raise step
+        return io.BytesIO(step)
+
+
+def one_file() -> PinnedWeights:
+    """Bản ghim một tệp — đếm lượt mở là đếm lượt thử của **một** tệp."""
+    return PinnedWeights("demo", "wallSegmentation", "https://x.test/v1/model.bin", sha(SOURCE), None, "MIT")
+
+
+@pytest.fixture(autouse=True)
+def slept(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Ghi lại từng lượt chờ giữa hai lần thử và **không** chờ thật.
+
+    Test đo **số lượt** và **hình dạng backoff**, không đo đồng hồ: chờ thật ở đây chỉ làm
+    bộ test dài thêm vài giây mà không chứng minh gì.
+    """
+    waits: list[float] = []
+    monkeypatch.setattr(time, "sleep", waits.append)
+    return waits
 
 
 def test_pinned_table_rules() -> None:
@@ -205,3 +248,59 @@ def test_cli_runs_as_module() -> None:
     )
     assert result.returncode == 0
     assert "--dest" in result.stdout
+
+
+def test_fetch_retries_a_torn_download_until_the_sha_matches(tmp_path: Path, slept: list[float]) -> None:
+    """NO-104: mạng chớp và tệp tải dở đều được thử lại, có backoff, rồi mới tới trần.
+
+    Build ảnh `ml` hỏng chập chờn đúng ở đây (lượt 1 `TimeoutError`, lượt 3 `SHA-256 lệch`
+    vì tệp dở): một lượt tải duy nhất không chừa đường nào về, còn `job.sh build` đã
+    `docker builder prune -f` nên không có cache lớp mô hình để cứu.
+    """
+    opener = FlakyOpener([TimeoutError("chậm"), SOURCE[:3], SOURCE])
+
+    fetch(tmp_path, opener=opener, pinned={"demo": one_file()})
+
+    assert len(opener.opened) == FETCH_ATTEMPTS
+    assert (tmp_path / "demo" / "model.bin").read_bytes() == SOURCE
+    assert slept == [FETCH_BACKOFF_S, FETCH_BACKOFF_S * 2]
+    assert not list(tmp_path.rglob("*.part")), "tệp dở phải bị xoá giữa hai lượt"
+
+
+def test_fetch_gives_up_after_the_attempt_cap(tmp_path: Path, slept: list[float]) -> None:
+    """Trần lần thử là bắt buộc: một nguồn chết hẳn phải thành mã thoát 3, không thử mãi (R-24)."""
+    opener = FlakyOpener([TimeoutError("chậm")])
+
+    with pytest.raises(FetchError, match="không tải được") as caught:
+        fetch(tmp_path, opener=opener, pinned={"demo": one_file()})
+
+    assert caught.value.exit_code == 3
+    assert len(opener.opened) == FETCH_ATTEMPTS
+    assert len(slept) == FETCH_ATTEMPTS - 1
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_fetch_backoff_grows_but_never_passes_the_cap(
+    tmp_path: Path, slept: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Backoff nhân đôi nhưng có trần — một nguồn chậm không kéo bước build dài vô hạn."""
+    monkeypatch.setattr(pinned, "FETCH_ATTEMPTS", 6)
+
+    with pytest.raises(FetchError):
+        fetch(tmp_path, opener=FlakyOpener([TimeoutError("chậm")]), pinned={"demo": one_file()})
+
+    assert slept == sorted(slept)
+    assert max(slept) == FETCH_BACKOFF_CAP_S
+    assert slept[0] == FETCH_BACKOFF_S
+
+
+def test_fetch_still_exits_2_when_the_pin_is_simply_wrong(tmp_path: Path) -> None:
+    """Thử lại **không** được che một bản ghim sai: hết trần vẫn là mã thoát 2, tệp bị xoá."""
+    opener = FlakyOpener([b"bi thay"])
+
+    with pytest.raises(FetchError, match="lệch") as caught:
+        fetch(tmp_path, opener=opener, pinned={"demo": one_file()})
+
+    assert caught.value.exit_code == 2
+    assert len(opener.opened) == FETCH_ATTEMPTS
+    assert not list(tmp_path.rglob("model.bin*"))

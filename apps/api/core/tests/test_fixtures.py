@@ -5,6 +5,7 @@ tên vẫn không được tính, hoặc tệ hơn — được tính cho sai th
 """
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Final
@@ -90,3 +91,13 @@ def test_api_env_flushes_both_redis_roles(request: pytest.FixtureRequest, api_en
     """Mọi lượt ASGI đến từ `127.0.0.1`: bộ đếm `store="safe"` và khoá đăng nhập ở DB an toàn cũng phải được
     `FLUSHDB` sau mỗi test như DB cache, không thì test sau bị test trước làm 429 (NO-055)."""
     assert {"cache_client", "safe_client"} <= set(request.fixturenames)
+
+
+def test_api_env_keeps_the_metrics_exporter_off(api_env: None) -> None:
+    """NO-159: app của test không được mở exporter thật.
+
+    `metrics_lifespan` gắn vào router công khai nên **mọi** app test sẽ nghe cổng 9464
+    (mặc định của `ObservabilitySettings`) và trả tới `POLL_INTERVAL_S` lúc tắt: đo được
+    ~1,8 s trên 215 test của module khác. Test lifespan của B7-01 tự đặt cổng riêng.
+    """
+    assert os.environ["METRICS_PORT"] == "0"

@@ -140,6 +140,12 @@ async def sample_public_read() -> ItemOut:
     return ItemOut(name="public")
 
 
+@public.get("/echo/{item_id}", response_model=ItemOut)
+async def sample_echo_item(item_id: str) -> ItemOut:
+    """Route công khai **có tham số đường** — để đo metric RED gắn mẫu đường, không đường thật."""
+    return ItemOut(name=item_id)
+
+
 @router.post("/items", response_model=ItemOut)
 async def sample_create_item(body: ItemBody) -> ItemOut:
     """Route được bảo vệ, có idempotency — trục của mọi test C10/C22."""

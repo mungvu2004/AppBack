@@ -3,6 +3,7 @@
 import asyncio
 from contextlib import suppress
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -16,6 +17,7 @@ from packages.messaging.streams import (
     EventBus,
     SyncEventBus,
     _stream_entries,
+    event_id_key,
     is_event_id,
     upload_stream,
     user_stream,
@@ -82,6 +84,24 @@ def test_stream_entries_rejects_the_resp3_dict_form() -> None:
 def test_stream_entries_rejects_entries_that_are_not_a_list() -> None:
     with pytest.raises(TypeError, match="XREAD kỳ vọng entries"):
         _stream_entries([("events:x", {"1-0": {"d": "{}"}})])
+
+
+def test_event_id_key_orders_ids_by_milliseconds_then_sequence() -> None:
+    """NO-157: `event_id_key` là hàm **công khai** — B4-01 nhập lại thay vì chép (R-07)."""
+    assert event_id_key("5-2") == (5, 2)
+    assert event_id_key("5-2") < event_id_key("5-10") < event_id_key("6-0")
+
+
+async def test_streams_client_pins_the_legacy_list_form_of_xread(streams_client: AsyncRedis) -> None:
+    """NO-151: dây là RESP3 từ redis-py 8.1; dạng list của `xread` chỉ còn nhờ `legacy_responses`.
+
+    Ghim tường minh chứ không dựa mặc định: upstream ghi `legacy_responses=False` là đích
+    di trú, và ngày nó đổi thì `_stream_entries` ném `TypeError` trên mọi luồng SSE.
+    """
+    assert streams_client.connection_pool.connection_kwargs["legacy_responses"] is True
+    # `ConnectionPool.make_connection` chưa có kiểu trong stub redis-py 8 (`no-untyped-call`).
+    pool: Any = streams_client.connection_pool
+    assert pool.make_connection().protocol == 3
 
 
 async def test_read_after_returns_new_events_in_order_without_repeats(event_bus: EventBus, stream: str) -> None:

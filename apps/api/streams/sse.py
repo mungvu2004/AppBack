@@ -10,7 +10,11 @@ Ba điều quyết định toàn bộ hình dạng file này:
   `check_session` và nhà cung cấp với `app.state.sessionmaker` — phiên ngắn, đóng ngay (K36);
 - **dọn phải chống huỷ.** Starlette huỷ task group khi client rớt và AnyIO huỷ lại mọi
   `await` còn trong scope bị huỷ; không `CancelScope(shield=True)` thì `ZREM` không bao
-  giờ chạy và chỗ giữ rò cho tới khi TTL khoá hết (S05).
+  giờ chạy và chỗ giữ rò cho tới khi TTL khoá hết (S05);
+- **generator chưa chắc được chạy.** Giữa lúc handler trả `StreamingResponse` và lúc byte
+  đầu ra dây còn `AppRoute._finish`; nó ném là response bị bỏ và `finally` của generator
+  không bao giờ tới. Vì vậy `open_stream` ghi tài nguyên đã giữ lên `request.state` và
+  `StreamRoute` (`router.py`) trả chúng bằng `release_held` (NO-156).
 
 Mỗi luồng giữ **một** kết nối của pool SSE riêng (`XREAD BLOCK` chiếm socket suốt lượt
 chặn). Trần toàn cục lấy bằng một semaphore cùng cỡ pool: hết chỗ phải là 429 ngay,
@@ -48,7 +52,7 @@ from packages.core.errors import AppError
 from packages.core.ids import new_id
 from packages.core.logging import bind_log_context
 from packages.messaging.redis import AsyncRedis
-from packages.messaging.streams import FIRST_ID, Event, EventBus, is_event_id
+from packages.messaging.streams import FIRST_ID, Event, EventBus, event_id_key, is_event_id
 
 _log: Final = logging.getLogger(__name__)
 _jitter: Final = random.SystemRandom()
@@ -60,6 +64,9 @@ PING: Final = ": ping\n\n"
 
 RETRY_AFTER_S: Final = 5
 CLEANUP_TIMEOUT_S: Final = 1.0
+
+HELD_ATTR: Final = "stream_held"
+"""Tên thuộc tính trên `request.state` giữ `StreamContext` cho tới khi response chắc chắn ra dây."""
 
 CLIENT_GONE: Final = "client_gone"
 REVOKED: Final = "revoked"
@@ -77,12 +84,6 @@ def frame(event_id: str, data: Mapping[str, object]) -> str:
     """
     body = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
     return f"id: {event_id}\ndata: {body}\n\n"
-
-
-def _id_key(event_id: str) -> tuple[int, int]:
-    """(mili giây, thứ tự) của một id stream, để so thứ tự hai id."""
-    milliseconds, _, sequence = event_id.partition("-")
-    return int(milliseconds), int(sequence)
 
 
 def _slot_ttl_ms(settings: StreamSettings) -> int:
@@ -252,7 +253,27 @@ async def open_stream(request: Request, spec: StreamRequest) -> StreamingRespons
     except BaseException:
         await _close(ctx, SETUP_FAILED)
         raise
+    # Từ đây tới byte đầu tiên, chủ sở hữu vẫn chưa phải generator: `AppRoute._finish`
+    # (idempotency → commit → chờ callback) còn chạy **sau** handler, và nó ném là response
+    # bị bỏ, `stream_body` không bao giờ chạy. `StreamRoute` của router gọi `release_held`
+    # trên chính `request` này để trả cả ba thứ (NO-156).
+    setattr(request.state, HELD_ATTR, ctx)
     return StreamingResponse(stream_body(ctx, start), media_type=SSE_MEDIA_TYPE, headers=SSE_HEADERS)
+
+
+async def release_held(request: Request) -> None:
+    """Trả tài nguyên của một luồng mà response của nó không bao giờ ra dây (NO-156).
+
+    Idempotent và an toàn khi không có gì để trả: `StreamRoute` gọi nó trên **mọi** ngoại lệ
+    của route luồng, kể cả những lượt hỏng trước khi `open_stream` giữ được gì. Không đụng
+    với `stream_body`: hai đường loại trừ nhau — generator chỉ chạy khi response đã ra dây,
+    còn hàm này chỉ chạy khi nó không bao giờ ra.
+    """
+    ctx = getattr(request.state, HELD_ATTR, None)
+    if not isinstance(ctx, StreamContext):
+        return
+    setattr(request.state, HELD_ATTR, None)
+    await _close(ctx, SETUP_FAILED)
 
 
 async def resolve_start(ctx: StreamContext, last_event_id: str | None) -> StartPosition:
@@ -265,7 +286,7 @@ async def resolve_start(ctx: StreamContext, last_event_id: str | None) -> StartP
     if (
         last_event_id is not None
         and is_event_id(last_event_id)
-        and _id_key(last_event_id) <= _id_key(tail)
+        and event_id_key(last_event_id) <= event_id_key(tail)
         and not await ctx.bus.is_trimmed(ctx.spec.stream, last_event_id)
     ):
         return StartPosition(cursor=last_event_id)

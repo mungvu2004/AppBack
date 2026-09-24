@@ -77,10 +77,12 @@ def _decode(entries: Sequence[tuple[str, Mapping[str, str]]]) -> list[Event]:
 def _stream_entries(streams: object) -> Sequence[tuple[str, Mapping[str, str]]]:
     """Entries của stream đầu (và duy nhất) trong kết quả `XREAD`.
 
-    Stub redis-py 8 khai kiểu trả của `xread` gộp cả dạng RESP2 (list các tuple) và
-    RESP3 (dict) vì dùng chung cho hai giao thức; client Streams (`packages.messaging.redis`)
-    không đặt `protocol=3` nên luôn nhận RESP2. Dạng khác là lỗi lập trình, ném rõ thay vì
-    nuốt (R-16).
+    Stub redis-py 8 khai kiểu trả của `xread` gộp cả dạng RESP2 (list các tuple) và RESP3
+    (dict) vì dùng chung cho hai giao thức. Từ redis-py 8.1, **dây là RESP3** kể cả khi ta
+    không đặt `protocol=3`; dạng list ở đây còn được là nhờ `legacy_responses=True`, mà
+    `packages.messaging.redis` ghim tường minh chứ không mượn mặc định (NO-151). Ngày
+    `legacy_responses=False` — upstream ghi đó là đích di trú — `xread` trả dict và hàm này
+    ném `TypeError` trên mọi luồng SSE thay vì nuốt lỗi (R-16).
     """
     if not isinstance(streams, list):
         raise TypeError(f"XREAD kỳ vọng list (RESP2), nhận {type(streams).__name__}")
@@ -90,7 +92,12 @@ def _stream_entries(streams: object) -> Sequence[tuple[str, Mapping[str, str]]]:
     return cast(list[tuple[str, Mapping[str, str]]], entries)
 
 
-def _id_key(event_id: str) -> tuple[int, int]:
+def event_id_key(event_id: str) -> tuple[int, int]:
+    """(mili giây, thứ tự) của một id stream — khoá so thứ tự hai id.
+
+    Công khai vì trung tâm SSE (B4-01) cần đúng phép so này để quyết định `lastEventId` có
+    nằm sau đuôi stream hay không; hai bản chép sẽ lệch nhau âm thầm (R-07, NO-157).
+    """
     milliseconds, _, sequence = event_id.partition("-")
     return int(milliseconds), int(sequence)
 
@@ -169,7 +176,7 @@ class EventBus(_Bus):
         _check_event_id(last_id)
         with redis_errors():
             entries = await self._client.xrange(stream, count=1)
-        return True if not entries else _id_key(last_id) < _id_key(str(entries[0][0]))
+        return True if not entries else event_id_key(last_id) < event_id_key(str(entries[0][0]))
 
     async def expire(self, stream: str, seconds: int) -> None:
         """Hẹn giờ xoá cả stream (stream upload hết hạn 24 giờ sau trạng thái cuối)."""

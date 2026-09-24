@@ -29,6 +29,7 @@ from apps.api.core.auth import Principal, TokenVerifier
 from apps.api.core.idempotency import LEASE, TTL, request_digest
 from apps.api.core.openapi import Operation, operations
 from apps.api.core.permissions import registered
+from apps.api.projects.access import ProjectAccess
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, SESSION_REVOKED
 from packages.core.settings import get_core_settings
 from packages.db.errors import translate_db_error
@@ -101,10 +102,23 @@ async def _send(client: httpx.AsyncClient, operation: Operation, **kwargs: objec
     return await client.request(operation.method, _url(operation), **kwargs)  # type: ignore[arg-type]  # kwargs của httpx
 
 
-def _grant_everything(app: FastAPI) -> None:
-    """Mọi dependency quyền chạy **trước** bước nhận việc, nên C10/C22 phải qua được chúng."""
+GRANTED_PROJECT_NAME: Final = "Dự án giả của case chung"
+
+
+def _grant_everything(app: FastAPI, principal: Principal) -> None:
+    """Mọi dependency quyền chạy **trước** bước nhận việc, nên C10/C22 phải qua được chúng.
+
+    Bản ghi đè trả một `ProjectAccess` **đúng kiểu** thay vì `None`: route đọc kết quả cổng
+    quyền qua tham số (B2-02 là người dùng đầu tiên của `project_name`) sẽ 500 ngay trong
+    case chung nếu nhận `None` — một lỗi của giàn test đội lốt lỗi của route (NO-137).
+    Cổng quyền cấp hệ thống không trả gì, nên giá trị này chỉ bị bỏ qua: một bản ghi đè đủ
+    cho cả hai loại cổng.
+    """
+    granted = ProjectAccess(
+        project_id=PATH_VALUES["project_id"], project_name=GRANTED_PROJECT_NAME, principal=principal
+    )
     for dependency in registered():
-        app.dependency_overrides[dependency] = lambda: None
+        app.dependency_overrides[dependency] = lambda: granted
 
 
 class _BrokenVerifier:
@@ -198,7 +212,7 @@ async def test_common__C22(
     operation: Operation, api_app: FastAPI, api_client: httpx.AsyncClient, fake_principal: Principal
 ) -> None:
     """Lượt trước còn hạn thuê → 503 `IDEMPOTENCY_IN_PROGRESS` + `Retry-After: 1`."""
-    _grant_everything(api_app)
+    _grant_everything(api_app, fake_principal)
     headers = {**auth_headers(fake_principal), "Idempotency-Key": IDEMPOTENCY_KEY}
     await _seed_in_progress(api_app, operation, fake_principal)
     response = await _send(api_client, operation, headers=headers, json={})
@@ -228,7 +242,7 @@ async def test_common__C10(
     C01 mới là nguồn mẫu 2xx thật cho H1/case_gate, không phải case chung này.
     """
     monkeypatch.delenv(SAMPLES_ENV, raising=False)
-    _grant_everything(api_app)
+    _grant_everything(api_app, fake_principal)
     headers = {**auth_headers(fake_principal), "Idempotency-Key": IDEMPOTENCY_KEY}
     await _seed(api_app, operation, fake_principal, state=STATE_COMPLETED)
 
@@ -279,3 +293,21 @@ async def _seed(
             )
         )
         await session.commit()
+
+
+def test_grant_everything_overrides_with_a_typed_project_access(api_app: FastAPI, fake_principal: Principal) -> None:
+    """NO-137: cổng quyền giả phải trả đúng kiểu, không `None`.
+
+    Handler đọc `ProjectAccess` qua tham số (B2-02 là người dùng đầu tiên của
+    `project_name`) sẽ 500 ngay trong case chung nếu bản ghi đè trả `None` — một lỗi của
+    giàn test đội lốt lỗi của route.
+    """
+    _grant_everything(api_app, fake_principal)
+
+    overrides = [api_app.dependency_overrides[dependency] for dependency in registered()]
+    assert overrides
+    for override in overrides:
+        granted = override()
+        assert isinstance(granted, ProjectAccess)
+        assert granted.principal is fake_principal
+        assert granted.project_name

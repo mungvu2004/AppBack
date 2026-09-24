@@ -8,17 +8,24 @@ không thử lại kết nối — broker treo thì lỗi ngay chứ không gi�
 Tiến trình chạy (worker) dùng `create_celery()`.
 """
 
+import logging
 import os
 from collections.abc import Mapping
 from typing import Any, Final
 
 import kombu.exceptions
 from celery import Celery
+from celery.signals import worker_process_init, worker_process_shutdown
+from celery.utils.log import current_process_index  # type: ignore[attr-defined]  # celery-types 0.26 thiếu hàm này
 from pydantic import BaseModel
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.messaging.redis import DEPENDENCY_ERRORS, DEPENDENCY_RETRY_AFTER, ProcessLocal
 from packages.messaging.settings import MessagingSettings, get_messaging_settings
+from packages.observability.exporter import MetricsExporter, start_exporter
+from packages.observability.settings import get_observability_settings
+
+_log: Final = logging.getLogger(__name__)
 
 DEFAULT_QUEUE: Final = "default"
 QUEUES: Final = (DEFAULT_QUEUE, "pipeline.cpu", "ml.infer", "ml.training")
@@ -92,6 +99,62 @@ def create_celery(name: str, settings: MessagingSettings | None = None) -> Celer
     )
     os.environ[AFTER_COMMIT_INLINE_ENV] = "1"
     return app
+
+
+_exporter: MetricsExporter | None = None
+"""Exporter của **tiến trình này**; giữ tham chiếu để `worker_process_shutdown` trả lại được."""
+
+
+def metrics_port_for_process(base_port: int) -> int:
+    """Cổng `/metrics` của tiến trình đang chạy: `base_port + chỉ số con` (review DEBT-01 finding 3).
+
+    Pool prefork bắn `worker_process_init` ở **mỗi** con và registry là của riêng từng
+    tiến trình, nên nếu cả hai con bind cùng một cổng thì con đầu thắng và con sau chỉ log
+    `metrics_exporter_unavailable` — `/metrics` của container báo số của một con ngẫu nhiên.
+    `current_process_index(base=0)` là chỉ số 0-based mà billiard gán cho con (`pool._avail_index`
+    lấy từ `range(concurrency)`), và `None` ở tiến trình chính (pool `solo`, beat) → con đầu và
+    tiến trình chính giữ đúng cổng gốc. Dải cổng của một worker `--concurrency N` vì vậy là
+    `base_port … base_port + N - 1`; T2 khai đủ target scrape khi làm NO-162.
+    """
+    index: int | None = current_process_index(base=0)
+    return base_port + (index or 0)
+
+
+@worker_process_init.connect
+def start_metrics_exporter(**_: object) -> None:
+    """Mở exporter `/metrics` của **tiến trình con Celery** (BE-00 §11, NO-161).
+
+    Gắn ở đây chứ không ở từng điểm vào: `apps/worker` và `apps/ml` đều dựng app bằng
+    `create_celery`, nên nhập module này là cả hai ảnh có exporter — một cài đặt, không
+    bản chép (R-07). `worker_process_init` chứ không `worker_init`: pool prefork fork sau
+    khi tiến trình chính đã lên, mà một socket mở trước `fork` không dùng chung được.
+
+    `METRICS_PORT <= 0` là tắt (mặc định của test, NO-159); cổng bận chỉ là một `WARNING`
+    — không có metric thì vẫn phải chạy được việc.
+    """
+    global _exporter
+    settings = get_observability_settings()
+    if settings.metrics_port <= 0:
+        return
+    try:
+        _exporter = start_exporter(host=settings.metrics_host, port=metrics_port_for_process(settings.metrics_port))
+    except OSError as exc:
+        _log.warning("metrics_exporter_unavailable", extra={"error": repr(exc)})
+
+
+@worker_process_shutdown.connect
+def stop_metrics_exporter(**_: object) -> None:
+    """Trả tham chiếu exporter khi tiến trình con tắt (review DEBT-01 finding 1).
+
+    Không có receiver này thì mọi tiến trình nhận `worker_process_init` giữ cổng mở đến
+    hết đời tiến trình. Pool `solo` bắn `worker_process_init` **trong tiến trình gọi** và
+    không bắn tín hiệu tắt nào, nên tiến trình pytest còn dựa thêm vào `METRICS_PORT=0`
+    của `messaging_env`; hai chỗ chắn hai đường khác nhau.
+    """
+    global _exporter
+    if _exporter is not None:
+        _exporter.stop()
+        _exporter = None
 
 
 def _build_producer() -> Celery:

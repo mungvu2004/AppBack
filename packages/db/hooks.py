@@ -2,7 +2,8 @@
 
 `on_after_commit(session, fn)` chạy `fn` **sau** khi giao dịch ngoài cùng commit
 thành công, đúng một lần, theo thứ tự đăng ký. Rollback (kể cả rollback SAVEPOINT
-mà callback đăng ký bên trong) bỏ callback đang chờ.
+mà callback đăng ký bên trong) bỏ callback đang chờ. Nhả một SAVEPOINT **không** phải
+commit: callback đăng ký bên trong nó vẫn chờ tới lượt commit ngoài cùng (NO-140).
 
 Nơi chạy:
 
@@ -152,6 +153,16 @@ async def _run_scheduled(callbacks: list[Callable[[], None]]) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _on_commit(session: Session) -> None:
+    """Chạy callback đang chờ, nhưng **chỉ** khi giao dịch ngoài cùng vừa commit.
+
+    SQLAlchemy 2.0 bắn `after_commit` cả khi một SAVEPOINT được release
+    (`SessionTransaction.commit()` của bản lồng), lúc giao dịch ngoài còn mở. Chạy callback
+    ở đó là gửi task hay thư trước khi thay đổi bền vững, và một rollback ngoài sau đó
+    không thu hồi lại được (K17, J09, NO-140). `get_nested_transaction()` trả bản lồng đang
+    commit vì `after_commit` bắn **trước** `close()` của nó.
+    """
+    if session.get_nested_transaction() is not None:
+        return
     state = _state(session)
     if state is None or not state.entries:
         return

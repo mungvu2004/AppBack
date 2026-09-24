@@ -13,21 +13,21 @@ hỏng là hỏng lúc khởi động, không phải lúc người dùng đầu 
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
 
 from fastapi import Depends, FastAPI, Query
 from redis.asyncio import ConnectionPool
 from starlette.requests import Request
-from starlette.responses import StreamingResponse
+from starlette.responses import Response, StreamingResponse
 
 from apps.api.core.origin import reject_foreign_origin
 from apps.api.core.permissions import ANY_MEMBER, permission_dependency
-from apps.api.core.routing import public_router
+from apps.api.core.routing import PublicRoute, public_router
 from apps.api.streams.registry import NOTIFICATIONS, UPLOAD_PROGRESS, build_registry
 from apps.api.streams.settings import StreamSettings, get_stream_settings
-from apps.api.streams.sse import StreamRequest, authenticate_stream, open_stream
+from apps.api.streams.sse import StreamRequest, authenticate_stream, open_stream, release_held
 from packages.core.error_codes import NOT_FOUND
 from packages.core.ids import is_id
 from packages.messaging.redis import CONNECT_TIMEOUT_S, STREAM_DB, STREAM_READ_TIMEOUT_S, with_db
@@ -71,7 +71,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await pool.aclose()
 
 
+class StreamRoute(PublicRoute):
+    """Route công khai của luồng, thêm một lưới dọn cho bước **sau** handler (NO-156).
+
+    `AppRoute._finish` (idempotency → commit → chờ callback sau commit) chạy sau khi handler
+    đã trả `StreamingResponse`. Nó ném là response bị bỏ, `stream_body` không bao giờ chạy,
+    và ba thứ `open_stream` đã giữ — chỗ ZSET của người dùng, chỗ toàn cục, kết nối pool SSE
+    — rò cho tới khi TTL dọn hộ. Chỉ chủ của route luồng vá được chỗ này: khung không biết
+    handler đã giữ gì.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        """Bọc handler của khung: ngoại lệ nào lọt ra cũng trả lại tài nguyên đã giữ trước."""
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            """Đường thường không đổi; hỏng thì dọn rồi mới để lỗi đi tiếp."""
+            try:
+                return await original(request)
+            except BaseException:
+                await release_held(request)
+                raise
+
+        return handler
+
+
 router = public_router(prefix="/streams", tags=["streams"], lifespan=lifespan)
+# Đặt sau khi dựng router: `public_router` đã truyền `route_class=PublicRoute`, nên không
+# thêm được qua `**kwargs`. Route được thêm bởi các decorator **dưới** dòng này, và
+# `add_api_route` đọc `self.route_class` lúc đó, nên cả hai route luồng đều là `StreamRoute`.
+router.route_class = StreamRoute
 ROUTERS: Final = (router,)
 
 

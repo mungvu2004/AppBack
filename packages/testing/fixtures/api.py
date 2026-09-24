@@ -149,6 +149,10 @@ def api_env(
     # nối Postgres qua chặng `host.docker.internal` hay kẹt tới ~68 s (NO-002, NO-007).
     # Mỗi test một engine mới, nên để 10 s là cổng đỏ giả theo số lượng test.
     monkeypatch.setenv("DB_CONNECT_TIMEOUT_S", str(int(GATE_CONNECT_TIMEOUT_S)))
+    # Tắt exporter `/metrics`: `metrics_lifespan` gắn vào router công khai, nên để mặc định
+    # 9464 là **mọi** app test mở một cổng thật rồi chờ tới `POLL_INTERVAL_S` lúc tắt — đo
+    # được ~1,8 s trên 215 test của module khác (NO-159). Test lifespan tự đặt cổng riêng.
+    monkeypatch.setenv("METRICS_PORT", "0")
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     # Cùng gốc với fixture `local_storage`: test ghi object bằng nó, app đọc lại được.
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))

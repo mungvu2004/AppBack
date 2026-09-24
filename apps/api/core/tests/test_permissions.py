@@ -5,6 +5,7 @@ from typing import Final
 import httpx
 import pytest
 
+from apps.api.core import auth as core_auth
 from apps.api.core.auth import (
     DenyAllTokenVerifier,
     FakeTokenVerifier,
@@ -16,6 +17,7 @@ from apps.api.core.permissions import ANY_ROLE, permission_dependency, permissio
 from apps.api.core.tests.sample import deny_sample, sample_app, sample_client
 from packages.core.errors import AppError
 from packages.core.ids import new_id
+from packages.domain import permissions as domain_permissions
 from packages.testing.fixtures.api import auth_headers
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL
@@ -161,3 +163,13 @@ async def test_malformed_origin_is_403_not_500(
     read = await sample_client.get("/api/sample/origin", headers=headers)
     assert (write.status_code, read.status_code) == (403, 403)
     assert write.json()["code"] == read.json()["code"] == "ORIGIN_MISMATCH"
+
+
+def test_core_auth_reuses_the_role_mirror_of_the_domain() -> None:
+    """NO-097: `Role`/`ROLES` chỉ khai **một** nơi — gương quyền của `packages.domain` (R-07).
+
+    Khai lại ở `apps/api/core/auth.py` là hai nguồn sự thật cho cùng một danh sách vai: H3
+    canh gương với FE, còn bản chép này không ai canh.
+    """
+    assert core_auth.ROLES is domain_permissions.ROLES
+    assert core_auth.Role is domain_permissions.Role

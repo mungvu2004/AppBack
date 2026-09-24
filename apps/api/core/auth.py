@@ -9,15 +9,30 @@ bao giờ là nguồn của `user_id`.
 """
 
 from dataclasses import dataclass
-from typing import Final, Literal, Protocol, cast, get_args
+from typing import Final, Protocol
 
 from starlette.requests import Request
 
 from packages.core.error_codes import UNAUTHENTICATED
 from packages.core.ids import is_id
 
-Role = Literal["admin", "engineer", "viewer"]
-ROLES: Final = frozenset(get_args(Role))
+# `Role`, `ROLES` lấy thẳng từ gương ma trận quyền (B0-07 H3) chứ không khai lại ở đây:
+# khai lại là hai nguồn sự thật cho cùng một danh sách vai, mà H3 chỉ canh một bên với FE
+# (R-07, NO-097). Cạnh `apps/api → packages.domain` hợp lệ theo BE-00 §13.1. Module nhập
+# lại `Role`/`ROLES` **qua** file này (`apps/api/auth/sessions.py`) vẫn chạy như cũ.
+from packages.domain.permissions import ROLES, Role
+
+__all__ = [
+    "FAKE_PREFIX",
+    "ROLES",
+    "DenyAllTokenVerifier",
+    "FakeTokenVerifier",
+    "Principal",
+    "Role",
+    "TokenVerifier",
+    "current_principal",
+    "fake_token",
+]
 
 FAKE_PREFIX: Final = "fake:"
 _FAKE_PARTS: Final = 4
@@ -79,7 +94,7 @@ def _role(value: str) -> Role:
     """Ép chuỗi về `Role`; `Principal.__post_init__` từ chối giá trị lạ."""
     if value not in ROLES:
         raise ValueError(f"vai lạ: {value!r}")
-    return cast("Role", value)
+    return value
 
 
 def fake_token(principal: Principal) -> str:

@@ -5,13 +5,16 @@ from collections.abc import Callable
 
 import pytest
 import redis
+from redis.backoff import AbstractBackoff
 from redis.exceptions import ClusterDownError, OutOfMemoryError, ReadOnlyError, ResponseError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
 
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
 from packages.messaging.redis import (
+    ASYNC_RETRIES,
     BROKER_DB,
     CACHE_DB,
     CONNECT_TIMEOUT_S,
@@ -19,12 +22,15 @@ from packages.messaging.redis import (
     SAFE_DB,
     STREAM_DB,
     STREAM_READ_TIMEOUT_S,
+    STREAM_RETRIES,
+    SYNC_RETRIES,
     SYNC_TIMEOUT_S,
     AsyncRedis,
     ProcessLocal,
     SyncRedis,
     assert_broker_policy,
     broker_redis,
+    broker_redis_sync,
     cache_redis,
     cache_redis_sync,
     redis_errors,
@@ -36,6 +42,7 @@ from packages.messaging.redis import (
     with_db,
 )
 from packages.messaging.settings import MessagingSettings
+from packages.testing.fixtures.messaging import ephemeral_broker
 
 
 @pytest.mark.parametrize(
@@ -93,6 +100,85 @@ def test_sync_clients_use_the_half_second_budget(
     assert (kwargs["host"], kwargs["db"]) == (host, db)
     assert kwargs["socket_timeout"] == SYNC_TIMEOUT_S
     assert kwargs["socket_connect_timeout"] == SYNC_TIMEOUT_S
+
+
+@pytest.mark.parametrize(
+    ("factory", "retries"),
+    [
+        (broker_redis, ASYNC_RETRIES),
+        (streams_redis, STREAM_RETRIES),
+        (safe_redis, ASYNC_RETRIES),
+        (cache_redis, ASYNC_RETRIES),
+        (broker_redis_sync, SYNC_RETRIES),
+        (streams_redis_sync, SYNC_RETRIES),
+        (safe_redis_sync, SYNC_RETRIES),
+        (cache_redis_sync, SYNC_RETRIES),
+    ],
+)
+def test_every_client_pins_the_retry_budget_of_its_role(
+    factory: Callable[[MessagingSettings], AsyncRedis | SyncRedis], retries: int
+) -> None:
+    """NO-152: số lượt thử lại khai tường minh theo vai, không mượn mặc định của thư viện.
+
+    Mặc định đổi theo từng bản `redis-py` (bump 6.4 → 8.1 đổi cả số lượt lẫn backoff), nên
+    trần thời gian của một vai chỉ có nghĩa khi chính ta đặt số lượt (R-24).
+    """
+    retry = factory(conf()).connection_pool.connection_kwargs["retry"]
+
+    assert retry.get_retries() == retries
+
+
+class _CountingBackoff(AbstractBackoff):
+    """Backoff không chờ, đếm mỗi lượt lùi — `Retry` gọi nó đúng một lần mỗi lượt thử lại."""
+
+    def __init__(self) -> None:
+        """Chưa có lượt thử lại nào."""
+        self.calls = 0
+
+    def reset(self) -> None:
+        """Không giữ trạng thái giữa hai lượt gọi."""
+
+    def compute(self, failures: int) -> float:
+        """Đếm lượt rồi trả 0 giây: test đo **số lượt**, không đo thời gian chờ."""
+        self.calls += 1
+        return 0.0
+
+
+def test_a_dead_redis_costs_exactly_the_configured_number_of_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redis **thật** bị giết giữa chừng: client bỏ cuộc sau đúng `SYNC_RETRIES` lượt lại (NO-152).
+
+    Giữ nguyên số lượt đã cấu hình, chỉ thay backoff bằng bản đếm: thứ đo được là ngân sách
+    thật của vai, không phải một con số test tự đặt.
+    """
+    with ephemeral_broker(monkeypatch) as admin:
+        client = safe_redis_sync()
+        backoff = _CountingBackoff()
+        try:
+            client.ping()
+            configured = client.get_retry()
+            assert configured is not None
+            client.set_retry(Retry(backoff, configured.get_retries()))
+            admin.shutdown(nosave=True)
+            with pytest.raises(RedisConnectionError):
+                client.ping()
+        finally:
+            client.close()
+
+    assert backoff.calls == SYNC_RETRIES
+
+
+def test_cache_clients_refuse_a_process_without_the_cache_instance() -> None:
+    """NO-085: `ml` không tới được `redis-cache`, nên `REDIS_CACHE_URL` là tuỳ chọn.
+
+    Tiến trình nào thật sự cần cache mà thiếu biến phải hỏng **ở chỗ gọi**, với tên biến
+    trong thông báo — chứ không hỏng lúc nạp cấu hình của mọi tiến trình (fail-closed, R-17).
+    """
+    without_cache = MessagingSettings(redis_broker_url="redis://broker:6379/0", redis_cache_url=None)
+
+    with pytest.raises(RuntimeError, match="REDIS_CACHE_URL"):
+        cache_redis(without_cache)
+    with pytest.raises(RuntimeError, match="REDIS_CACHE_URL"):
+        cache_redis_sync(without_cache)
 
 
 def counting_local() -> ProcessLocal[int]:

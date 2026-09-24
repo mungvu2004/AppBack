@@ -33,6 +33,7 @@ from apps.api.core.errors import REQUEST_ID_HEADER, error_response, request_id, 
 from apps.api.core.routing import DEFAULT_BODY_LIMIT, AppRoute, route_of
 from packages.core.error_codes import PAYLOAD_TOO_LARGE
 from packages.core.logging import request_id_var
+from packages.observability.metrics import MAX_LABEL_VALUE_LEN, histogram
 
 _log: Final = logging.getLogger(__name__)
 
@@ -52,8 +53,50 @@ SECURITY_HEADERS: Final = (
 NO_STORE: Final = "no-store"
 
 UNKNOWN_ROUTE: Final = "-"
+
+HTTP_DURATION_METRIC: Final = "appback_http_request_duration_ms"
+HTTP_DURATION_BUCKETS: Final = (5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0)
+"""Bucket tính bằng **mili giây** (bucket mặc định của registry tính bằng giây, W6 đo ms)."""
+
+_http_duration: Final = histogram(
+    HTTP_DURATION_METRIC,
+    help="Thời lượng request HTTP theo mẫu đường, method và status (ms)",
+    labels=("route", "method", "status"),
+    buckets=HTTP_DURATION_BUCKETS,
+)
+"""Metric RED chung của mọi route (NO-160): `_count` là Rate, nhãn `status` là Errors, bucket là Duration."""
 ROUTE_SCOPE_KEY: Final = "appback.route"
 """`BodyLimitMiddleware` khớp route **một lần** rồi để kết quả ở đây cho lớp log đọc lại."""
+
+
+def _route_label(template: str) -> str:
+    """Nhãn `route` của metric RED: **mẫu** đường, cắt về trần nhãn của registry.
+
+    Mẫu đường, không đường thật: đường thật gắn id do người dùng đặt vào nhãn, vừa nổ số
+    chuỗi tới `METRICS_MAX_SERIES` vừa đưa token của `/api/files/<token>` vào một metric ai
+    cũng đọc được (K11, NO-160). Cắt bớt vì mẫu dài hơn `MAX_LABEL_VALUE_LEN` sẽ làm
+    `observe` ném **giữa** request, mà một metric không bao giờ được làm hỏng lượt phục vụ
+    (R-16); tiền tố còn lại vẫn đủ nhận ra route.
+    """
+    return template[:MAX_LABEL_VALUE_LEN]
+
+
+KNOWN_METHODS: Final = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"})
+"""Method của RFC 9110 §9 — mọi token khác gộp vào `UNKNOWN_ROUTE`."""
+
+
+def _method_label(method: str) -> str:
+    """Nhãn `method` của metric RED: method lạ → `-` (R-16).
+
+    Cùng lý do như `_route_label`: `_label_key` ném `ValueError` với giá trị dài hơn
+    `MAX_LABEL_VALUE_LEN`, mà lời gọi `observe` nằm trong `finally` — tức là **sau** khi
+    response đã ra dây, nên một metric làm hỏng lượt phục vụ (review DEBT-01 finding 4).
+    Hôm nay uvicorn dùng httptools (bảng method cố định), nhưng nó tự rơi về `h11` — nhận
+    mọi token RFC 9110 — khi thiếu httptools, và bảo đảm đó phải nằm ở mã chứ không ở bộ
+    phân tích HTTP. Kẹp về một tập đóng cũng chặn luôn một trục nở chuỗi nhãn do client
+    điều khiển: cắt bớt như `route` thì 64 ký tự đầu vẫn là vô hạn giá trị.
+    """
+    return method if method in KNOWN_METHODS else UNKNOWN_ROUTE
 
 
 def new_request_id() -> str:
@@ -120,14 +163,15 @@ class AccessLogMiddleware:
             await self.app(scope, receive, send_recording)
         finally:
             route = scope.get(ROUTE_SCOPE_KEY)
+            template = route.path_format if isinstance(route, AppRoute) else UNKNOWN_ROUTE
+            method = str(scope.get("method", ""))
+            duration_ms = round((time.perf_counter() - started) * 1000, 1)
             _log.info(
                 "http_access",
-                extra={
-                    "method": scope.get("method", ""),
-                    "routeTemplate": route.path_format if isinstance(route, AppRoute) else UNKNOWN_ROUTE,
-                    "status": status,
-                    "durationMs": round((time.perf_counter() - started) * 1000, 1),
-                },
+                extra={"method": method, "routeTemplate": template, "status": status, "durationMs": duration_ms},
+            )
+            _http_duration.observe(
+                duration_ms, route=_route_label(template), method=_method_label(method), status=str(status)
             )
 
 

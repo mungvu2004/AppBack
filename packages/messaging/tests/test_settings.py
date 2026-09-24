@@ -45,6 +45,18 @@ def test_cache_url_is_checked_too() -> None:
         MessagingSettings(redis_broker_url=BROKER, redis_cache_url="postgres://x")
 
 
+def test_a_process_without_the_cache_instance_loads_without_the_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-085: `ml` không tới được `redis-cache`, nên `REDIS_CACHE_URL` là tuỳ chọn.
+
+    Bắt buộc nó là buộc mọi tiến trình khai một DSN nó không bao giờ dùng — và ở `ml` đi
+    kèm cả `SECRET_KEY`, trái mục đích tách quyền của BE-00 §2.1/§9.
+    """
+    monkeypatch.setenv("REDIS_BROKER_URL", BROKER)
+    monkeypatch.delenv("REDIS_CACHE_URL", raising=False)
+
+    assert MessagingSettings().redis_cache_url is None
+
+
 def test_rediss_scheme_is_accepted() -> None:
     assert settings().redis_broker_url == BROKER
     assert MessagingSettings(redis_broker_url="rediss://b:6379/0", redis_cache_url=CACHE).redis_broker_url
