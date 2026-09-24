@@ -5,6 +5,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
 import pytest
 from PIL import Image
 
@@ -175,6 +176,25 @@ def test_pdf_u07_broken_page() -> None:
         with pytest.raises(VisionError) as excinfo:
             call(data, 2)
         assert str(excinfo.value) == "FILE_CORRUPT"
+
+
+def test_render_pdf_page_wraps_pdfium_error_raised_inside_open_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`PdfiumError` ném **trong thân** `with _open_page(...)` (không phải lúc mở trang) → `FILE_CORRUPT` (NO-125).
+
+    Khác `test_pdf_u07_broken_page`: ở đó lỗi nổ ngay lúc `pdf[page_index]` (mở trang thất
+    bại). Ở đây trang mở bình thường, `page.render()` mới ném — nhánh còn lại của cùng một
+    `except pdfium.PdfiumError` ở `_open_page` (`get_size`/`render`/`to_numpy` cùng lớp rủi ro).
+    """
+    data = synthetic.make_pdf(1, rects=_RED_SQUARE)
+
+    def _broken_render(self: object, **kwargs: object) -> object:
+        raise pdfium.PdfiumError("giả lập lỗi giải mã trong thân")
+
+    monkeypatch.setattr(pdfium.PdfPage, "render", _broken_render)
+
+    with pytest.raises(VisionError) as excinfo:
+        render_pdf_page(data, 0)
+    assert str(excinfo.value) == "FILE_CORRUPT"
 
 
 def test_pdf_u07_broken_page_leaves_other_pages_usable() -> None:

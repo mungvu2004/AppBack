@@ -45,6 +45,7 @@ from packages.core.error_codes import NOT_FOUND
 from packages.core.ids import new_id
 from packages.db.models.auth import User
 from packages.db.models.projects import Project, ProjectMembership
+from packages.storage.port import ObjectStorage
 
 LIST_SUMMARIES_OP: Final = "projects_list_summaries"
 """`operationId` của N1 — cursor mang theo tên này, nên cursor của danh sách khác không dùng lại được."""
@@ -96,29 +97,44 @@ async def _floor_parts(
     return await part.load(db, project_ids) if part is not None else {}
 
 
-def _project_outs(
+def _storage_of(app: object | None) -> ObjectStorage | None:
+    """Kho object của app hiện tại, hay `None` khi gọi thẳng service không qua app (NO-135).
+
+    Cùng nguồn `app.state.storage` mà `apps.api.core.deps.storage` đọc (`lifespan` dựng một
+    lần) — không tự đọc `STORAGE_BACKEND` ở đây (BE-00 §2.1: module nghiệp vụ không đọc biến
+    môi trường kho trực tiếp).
+    """
+    storage = getattr(getattr(app, "state", None), "storage", None)
+    return cast("ObjectStorage", storage) if storage is not None else None
+
+
+async def _project_outs(
     projects: Sequence[Project],
     members: Mapping[str, list[User]],
     rollups: Mapping[str, ProjectRollup],
     floors: Mapping[str, Sequence[WireModel]],
+    storage: ObjectStorage | None,
 ) -> list[ProjectOut]:
     """Ba mảnh đã tải theo lô → `ProjectOut`; dự án vắng khoá trong `floors` nghĩa là `[]` (B2-01 [6])."""
-    return [
-        ProjectOut(
-            id=project.id,
-            name=project.name,
-            code=project.code,
-            address=project.address,
-            created_at=project.created_at,
-            updated_at=project.updated_at,
-            status=rollups[project.id].legacy_status,
-            # `ViewPart.load` khai `Sequence[WireModel]` cho mọi cổng; cổng `project.floors`
-            # khai `FloorOut` (`parts.py`), khai sai kiểu thì hỏng ngay ở test của B2-03.
-            floors=cast("list[FloorOut]", list(floors.get(project.id, ()))),
-            members=[user_out(row) for row in members[project.id]],
+    outs = []
+    for project in projects:
+        member_outs = [await user_out(row, storage) for row in members[project.id]]
+        outs.append(
+            ProjectOut(
+                id=project.id,
+                name=project.name,
+                code=project.code,
+                address=project.address,
+                created_at=project.created_at,
+                updated_at=project.updated_at,
+                status=rollups[project.id].legacy_status,
+                # `ViewPart.load` khai `Sequence[WireModel]` cho mọi cổng; cổng `project.floors`
+                # khai `FloorOut` (`parts.py`), khai sai kiểu thì hỏng ngay ở test của B2-03.
+                floors=cast("list[FloorOut]", list(floors.get(project.id, ()))),
+                members=member_outs,
+            )
         )
-        for project in projects
-    ]
+    return outs
 
 
 async def build_projects(db: AsyncSession, projects: Sequence[Project], *, app: object | None) -> list[ProjectOut]:
@@ -127,7 +143,7 @@ async def build_projects(db: AsyncSession, projects: Sequence[Project], *, app: 
     members = await member_users(db, ids)
     rollups = await project_rollups(db, ids)
     floors = await _floor_parts(db, ids, app=app)
-    return _project_outs(projects, members, rollups, floors)
+    return await _project_outs(projects, members, rollups, floors, _storage_of(app))
 
 
 async def build_project(db: AsyncSession, project: Project, *, app: object | None) -> ProjectOut:

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.core import extensions
 from apps.api.core.auth import Principal
+from apps.api.streams import registry as registry_module
 from apps.api.streams.providers import StreamProvider
 from apps.api.streams.registry import (
     NOTIFICATIONS,
@@ -160,6 +161,21 @@ def test_progress_provider_with_snapshot_is_accepted(core_test_env: None) -> Non
     good = StreamProvider(kind=UPLOAD_PROGRESS, event_model=FakeEvent, policy=FakePolicy(), snapshot=FakeSnapshot())
     registry = build_registry(_app_with(("apps.api.a.stream_providers", (good,))))
     assert registry[UPLOAD_PROGRESS] is good
+
+
+def test_default_providers_without_policy_is_rejected_by_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-158 Nit 2: `default_providers()` cũng đi qua `_check` — sổ mặc định hỏng không lọt qua lặng lẽ.
+
+    Trên mã cũ, `build_registry` gộp thẳng `default_providers()` mà không kiểm, nên nếu ai
+    sửa nó mà quên `policy` của `upload_progress`, sổ vẫn "đầy đủ" tới lúc request đầu mới lộ.
+    """
+    broken = {
+        UPLOAD_PROGRESS: StreamProvider(kind=UPLOAD_PROGRESS, event_model=AnyEvent, snapshot=DenyUploads()),
+        NOTIFICATIONS: StreamProvider(kind=NOTIFICATIONS, event_model=AnyEvent),
+    }
+    monkeypatch.setattr(registry_module, "default_providers", lambda: broken)
+    with pytest.raises(RuntimeError, match="policy"):
+        build_registry(None)
 
 
 @pytest.mark.parametrize("value", ["khong-phai-tuple", (object(),), 42])

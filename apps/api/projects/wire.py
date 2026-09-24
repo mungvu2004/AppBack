@@ -19,9 +19,11 @@ from typing import Annotated, Literal, cast
 from pydantic import Field
 
 from apps.api.core.wire import WireDatetime, WireModel
+from apps.api.me.avatar import avatar_url as sign_avatar_url
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
 from packages.domain.permissions import Role
+from packages.storage.port import ObjectStorage
 
 type ProjectStatus = Literal["draft", "processing", "approved", "error"]
 """`ProjectSchema.status` của #23-#27 (`wireProjectStatusSchema`) — `legacy_status` của rollup."""
@@ -35,7 +37,8 @@ _AREA_QUANTUM = Decimal("0.01")
 class UserOut(WireModel):
     """`UserSchema`: vai **hệ thống** của người dùng, không phải vai trong dự án.
 
-    `avatarUrl` luôn vắng ở v1 — `users.avatar_key` có sẵn nhưng đường ký URL thuộc B1-04.
+    `avatarUrl` ký qua `apps.api.me.avatar.avatar_url` (B1-04, NO-135); vắng khi người dùng
+    chưa có `avatar_key` hoặc lúc gọi không có kho (test gọi thẳng service, không qua app).
     """
 
     id: str
@@ -128,9 +131,14 @@ class ProjectRollup:
     default_floor_id: str | None
 
 
-def user_out(row: User) -> UserOut:
-    """Một dòng `users` → `UserSchema`; `avatarUrl` bỏ trống cho tới B1-04."""
-    return UserOut(id=row.id, email=row.email, name=row.name, role=cast("Role", row.role))
+async def user_out(row: User, storage: ObjectStorage | None) -> UserOut:
+    """Một dòng `users` → `UserSchema`; `avatarUrl` ký qua kho khi có (NO-135).
+
+    `storage=None` (test gọi thẳng service, không qua app) → `avatarUrl` vắng, không ném lỗi:
+    chữ ký URL không phải luật nghiệp vụ, chỉ là trình bày.
+    """
+    avatar = await sign_avatar_url(storage, row.avatar_key) if storage is not None else None
+    return UserOut(id=row.id, email=row.email, name=row.name, role=cast("Role", row.role), avatar_url=avatar)
 
 
 def summary_member_out(row: User) -> SummaryMemberOut:

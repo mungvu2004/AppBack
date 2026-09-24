@@ -101,10 +101,18 @@ def build_registry(app: object | None) -> Mapping[StreamKind, StreamProvider]:
 
     `app` cho phép test thay sổ bằng `extensions.override` (chỉ `APP_ENV=test`), nên
     chính sách quyền thật không thay được ở môi trường thật.
+
+    Bản mặc định (`default_providers()`) cũng đi qua `_check` (NO-158 Nit 2): luật "luồng
+    tiến độ bắt buộc có `policy` và `snapshot`" trước đây chỉ áp cho khai báo dò được, nên
+    nếu ai sửa `default_providers()` mà quên một trong hai, sổ vẫn "đầy đủ" lặng lẽ thay vì
+    hỏng ngay lúc `lifespan` (R-17).
     """
     found: dict[StreamKind, StreamProvider] = {}
     for name, value in extensions.resolve(app, PROVIDERS_SUBMODULE, PROVIDERS_ATTR):
         for provider in _declared(name, value):
             _check(name, provider, found)
             found[provider.kind] = provider
-    return {**default_providers(), **found}
+    defaults = default_providers()
+    for provider in defaults.values():
+        _check("default_providers", provider, {})
+    return {**defaults, **found}

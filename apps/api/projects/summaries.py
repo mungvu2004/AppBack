@@ -161,10 +161,17 @@ async def touch_projects(db: AsyncSession, *, project_ids: Sequence[str], clock:
 
     Người gỡ một người khỏi mọi dự án của họ chạm hàng chục dự án một lúc; một `UPDATE` cho
     mỗi dự án là N vòng DB cho một việc mà `IN (...)` làm trọn trong một vòng.
+
+    `UPDATE … WHERE id IN (...)` khoá theo thứ tự kế hoạch của Postgres, không theo `id` tăng
+    dần — hai giao dịch gỡ người dùng cùng lúc, có ≥ 2 dự án chung, có thể khoá chéo (NO-142).
+    `SELECT … ORDER BY id FOR UPDATE` trước, với danh sách id đã sắp, ép mọi giao dịch xin
+    khoá theo cùng một thứ tự nên không thể khoá chéo.
     """
     if not project_ids:
         return
-    await db.execute(update(Project).where(Project.id.in_(list(project_ids))).values(updated_at=clock.now()))
+    ids = sorted(set(project_ids))
+    await db.execute(select(Project.id).where(Project.id.in_(ids)).order_by(Project.id).with_for_update())
+    await db.execute(update(Project).where(Project.id.in_(ids)).values(updated_at=clock.now()))
 
 
 async def touch_project(db: AsyncSession, *, project_id: str, clock: Clock) -> None:

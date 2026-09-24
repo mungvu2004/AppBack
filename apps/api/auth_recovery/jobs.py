@@ -24,7 +24,7 @@ from packages.core.keys import verification_keys
 from packages.db.engine import worker_sessionmaker
 from packages.db.models.auth import User
 from packages.db.models.auth_recovery import OneTimeToken, TokenPurpose
-from packages.mail.sender import MailRejectedError, MailTransientError, create_mailer
+from packages.mail.sender import Mailer, MailRejectedError, MailTransientError, create_mailer
 from packages.mail.settings import get_mail_settings
 from packages.messaging import periodic
 from packages.messaging.celery_app import send_task
@@ -67,6 +67,17 @@ def _on_send_token_mail_failed(payload: SendTokenMailPayload, code: str) -> None
     _log.error("token_mail_failed", extra={"token_ids": payload.token_ids, "code": code})
 
 
+def _log_isolated_failure(*, token_id: str, code: str, smtp_code: int | None) -> None:
+    """Ghi `token_mail_failed` **ngay** khi một token bị cô lập, không đợi cuối vòng (NO-149b).
+
+    Nếu đợi tới `PermanentError` cuối `run_send_token_mail`, một token **sau** ném
+    `TransientError` khiến ngoại lệ đó nổi lên trước, làm mã lỗi vĩnh viễn đã cô lập không
+    bao giờ tới `on_failed` — token này bị "nuốt": lượt thử lại không còn thấy nó
+    (`sent_at`/`superseded_at` đã ghi) nên có thể không ai biết nó từng hỏng.
+    """
+    _log.error("token_mail_failed", extra={"token_id": token_id, "code": code, "smtp_code": smtp_code})
+
+
 async def _mark_permanent_failure(
     sessionmaker: async_sessionmaker[AsyncSession], *, token_id: str, now: datetime, code: str
 ) -> None:
@@ -96,16 +107,20 @@ async def _mark_sent(sessionmaker: async_sessionmaker[AsyncSession], *, token_id
 
 
 async def _send_one(
-    sessionmaker: async_sessionmaker[AsyncSession], mailer: Any, row: Any, *, keys: tuple[bytes, ...], now: datetime
+    sessionmaker: async_sessionmaker[AsyncSession], mailer: Mailer, row: Any, *, keys: tuple[bytes, ...], now: datetime
 ) -> str | None:
     """Gửi một token; trả mã lỗi vĩnh viễn (đã cô lập token đó), hay `None` khi gửi xong.
 
     `MailTransientError` ném thẳng `TransientError` — không cô lập, thử lại **cả lô** an toàn vì
-    token đã gửi ở lượt trước đã có `sent_at` (J06 idempotent theo đó).
+    token đã gửi ở lượt trước đã có `sent_at` (J06 idempotent theo đó). Cô lập ghi log
+    `token_mail_failed` **ngay tại đây** (NO-149b) kèm `smtp_code` (NO-149a) — không đợi
+    `PermanentError` cuối `run_send_token_mail`, vốn có thể không bao giờ được ném nếu một
+    token sau trong lô ném `TransientError` trước.
     """
     plain = _resolve_plain_token(row, keys)
     if plain is None:
         await _mark_permanent_failure(sessionmaker, token_id=row.id, now=now, code=TOKEN_KEY_ROTATED)
+        _log_isolated_failure(token_id=row.id, code=TOKEN_KEY_ROTATED, smtp_code=None)
         return TOKEN_KEY_ROTATED
     message = build_token_mail(
         purpose=cast("TokenPurpose", row.purpose), to=row.email, name=row.name, token=plain, expires_at=row.expires_at
@@ -114,8 +129,9 @@ async def _send_one(
         mailer.send(message)
     except MailTransientError as exc:
         raise TransientError from exc
-    except MailRejectedError:
+    except MailRejectedError as exc:
         await _mark_permanent_failure(sessionmaker, token_id=row.id, now=now, code=MAIL_REJECTED)
+        _log_isolated_failure(token_id=row.id, code=MAIL_REJECTED, smtp_code=exc.smtp_code)
         return MAIL_REJECTED
     await _mark_sent(sessionmaker, token_id=row.id, now=now)
     return None
@@ -146,6 +162,7 @@ async def run_send_token_mail(
             )
             .join(User, User.id == OneTimeToken.user_id)
             .where(OneTimeToken.id.in_(token_ids), OneTimeToken.sent_at.is_(None), active_clause(now))
+            .order_by(OneTimeToken.created_at)
         )
         rows = (await db.execute(stmt)).all()
     mailer = create_mailer(get_mail_settings())

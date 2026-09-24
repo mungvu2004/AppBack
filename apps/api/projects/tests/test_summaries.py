@@ -15,6 +15,7 @@ from apps.api.projects.summaries import (
     set_layer_counts,
     set_upload_state,
     touch_project,
+    touch_projects,
     unregister_floor,
 )
 from apps.api.projects.tests.sql_count import count_sql
@@ -233,6 +234,38 @@ async def test_touch_project_moves_updated_at(db_session: AsyncSession, fake_clo
     await db_session.commit()
     await db_session.refresh(project)
     assert project.updated_at == fake_clock.now()
+
+
+async def test_touch_projects_empty_batch_runs_no_query(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Danh sách rỗng → không câu SQL nào (NO-142: guard trước khi khoá)."""
+    with count_sql() as counter:
+        await touch_projects(db_session, project_ids=[], clock=fake_clock)
+    assert counter.count == 0
+
+
+async def test_touch_projects_locks_then_updates_ids_in_sorted_order(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """NO-142: `SELECT … ORDER BY id FOR UPDATE` chạy trước `UPDATE`, khoá theo `id` tăng dần
+    bất kể thứ tự trong danh sách truyền vào — mọi giao dịch đụng cùng tập dự án luôn xin khoá
+    theo cùng một thứ tự nên không thể khoá chéo (deadlock) với nhau."""
+    a = await _project(db_session, [])
+    b = await _project(db_session, [])
+    unsorted_ids = sorted([a.id, b.id], reverse=True)
+
+    with count_sql() as counter:
+        await touch_projects(db_session, project_ids=unsorted_ids, clock=fake_clock)
+    await db_session.commit()
+
+    assert counter.count == 2  # SELECT ... FOR UPDATE rồi UPDATE, không N+1
+    select_stmt, update_stmt = counter.statements
+    assert "FOR UPDATE" in select_stmt.upper()
+    assert "ORDER BY" in select_stmt.upper()
+    assert "UPDATE" in update_stmt.upper()
+
+    for project in (a, b):
+        await db_session.refresh(project)
+        assert project.updated_at == fake_clock.now()
 
 
 @pytest.mark.parametrize(
