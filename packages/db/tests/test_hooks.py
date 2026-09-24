@@ -126,6 +126,31 @@ async def test_on_after_commit__J09_savepoint_commit_keeps_inner(
     assert calls == ["trong"]
 
 
+async def test_on_after_commit__J09_savepoint_release_waits_for_the_outer_commit(
+    db_sessionmaker: async_sessionmaker[AsyncSession], calls: list[str]
+) -> None:
+    """NO-140: nhả savepoint **không** phải commit; rollback ngoài sau đó vẫn bỏ được callback.
+
+    SQLAlchemy 2.0 bắn `after_commit` cả cho `SessionTransaction` lồng, nên bản trước
+    chạy callback ngay lúc RELEASE SAVEPOINT — task hay thư đã đi trước khi giao dịch
+    ngoài cùng bền vững, và rollback sau đó không thu hồi được (K17, J09).
+
+    Phải có một lệnh thật trong savepoint: savepoint rỗng không giữ kết nối nào nên
+    `after_commit` của nó không mang theo gì để lộ lỗi.
+    """
+    async with db_sessionmaker() as session:
+        await session.execute(text("CREATE TEMP TABLE no140 (n integer)"))
+        nested = await session.begin_nested()
+        await session.execute(text("INSERT INTO no140 (n) VALUES (1)"))
+        on_after_commit(session, _append(calls, "trong"))
+        await nested.commit()
+        await after_commit_idle(session)
+        assert calls == []  # nhả savepoint chưa phải commit ngoài cùng
+        await session.rollback()
+    await after_commit_idle(session)
+    assert calls == []
+
+
 async def test_on_after_commit__J09_failing_callback_is_logged(
     db_sessionmaker: async_sessionmaker[AsyncSession], caplog: pytest.LogCaptureFixture
 ) -> None:
