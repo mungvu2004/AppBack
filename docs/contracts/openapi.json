@@ -1043,7 +1043,7 @@
       },
       "UserOut": {
         "additionalProperties": false,
-        "description": "`UserSchema`: vai **hệ thống** của người dùng, không phải vai trong dự án.\n\n`avatarUrl` luôn vắng ở v1 — `users.avatar_key` có sẵn nhưng đường ký URL thuộc B1-04.",
+        "description": "`UserSchema`: vai **hệ thống** của người dùng, không phải vai trong dự án.\n\n`avatarUrl` ký qua `apps.api.me.avatar.avatar_url` (B1-04, NO-135); vắng khi người dùng\nchưa có `avatar_key` hoặc lúc gọi không có kho (test gọi thẳng service, không qua app).",
         "properties": {
           "avatarUrl": {
             "anyOf": [
