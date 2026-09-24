@@ -218,7 +218,9 @@ def step_openapi() -> StepOutcome:
         return StepOutcome("8", "openapi", gated)
     cmd = [sys.executable, "-m", "apps.api.core.openapi", "--out", "/tmp/openapi.json"]
     if os.environ.get("VERIFY_BRANCH") == "integration":
-        cmd += ["--compare", "openapi.json"]
+        # NO-105: bản tham chiếu đã commit là `docs/contracts/openapi.json` (`openapi.json` ở gốc
+        # bị .gitignore, không có trên nhánh tích hợp/CI — BE-00 §12 bước 8).
+        cmd += ["--compare", "docs/contracts/openapi.json"]
     r = _run(cmd)
     return StepOutcome("8", "openapi", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
