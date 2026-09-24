@@ -392,30 +392,34 @@ def test_job_lint_gitleaks_fails_closed_on_empty_git_history(tmp_path: Path) -> 
 
 def test_job_build_trivy_mounts_host_sarif_dir(tmp_path: Path) -> None:
     """NO-111: SARIF ghi trong container `--rm` không mount thì mất khi container xoá
-    (/merge-review lượt 1 #3) — `job_build_trivy` phải tạo và mount một thư mục host thật, kể cả
-    khi không có `RUNNER_TEMP` (máy cục bộ, dùng `.cache/trivy` tương đối)."""
+    (/merge-review lượt 1 #3) — `job_build_trivy` phải tạo và mount một thư mục host thật.
+
+    `job.sh` tự `cd "$REPO_ROOT"` khi được nguồn (dòng 16) — luôn chạy relative tới gốc repo thật,
+    không tới `cwd` của tiến trình gọi nó — nên kiểm nhánh CI thật (`RUNNER_TEMP` luôn được đặt bởi
+    GitHub Actions), không kiểm nhánh máy cục bộ (`.cache/trivy` tương đối tới `$REPO_ROOT`).
+    """
     bin_dir = tmp_path / "bin"
     calls = tmp_path / "docker-args"
     _fake_command(bin_dir, "docker", f'printf "%s\\n" "$@" > "{calls}"')
-    work_dir = tmp_path / "work"
-    work_dir.mkdir()
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
     script = tmp_path / "run.sh"
     script.write_text(f'source "{JOB_SH}"\njob_build_trivy demo\n', encoding="utf-8")
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
-    env.pop("RUNNER_TEMP", None)
+    env["RUNNER_TEMP"] = str(runner_temp)
     result = subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path
         ["bash", str(script)],  # noqa: S607
-        cwd=work_dir,
+        cwd=REPO_ROOT,
         env=env,
         capture_output=True,
         text=True,
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert (work_dir / ".cache" / "trivy").is_dir()
+    assert (runner_temp / "trivy").is_dir()
     args = calls.read_text(encoding="utf-8").splitlines()
-    assert any(a.endswith("trivy:/out") for a in args), args
+    assert any(a == f"{runner_temp}/trivy:/out" for a in args), args
 
 
 def _run_check_nginx_version(tmp_path: Path, version_line: str) -> subprocess.CompletedProcess[str]:
