@@ -5,8 +5,11 @@
 FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS build
 WORKDIR /src
 COPY --from=appfront . .
-RUN corepack enable \
-    && corepack prepare pnpm@9.4.0 --activate \
+# Ảnh node không còn kèm corepack (đo: node:26-bookworm-slim = v26.9.0, npm
+# 11.19.1, /usr/local/bin chỉ có node/npm/npx) — `corepack enable` thoát 127
+# nên cả ảnh web không build được (NO-174, FIX-100). npm có sẵn trong mọi ảnh
+# node; ghim đủ ba số để hai lần build dùng cùng một bản pnpm.
+RUN npm install -g pnpm@9.4.0 \
     && pnpm install --frozen-lockfile \
     && pnpm draco \
     && pnpm build \
