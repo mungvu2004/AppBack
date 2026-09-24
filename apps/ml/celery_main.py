@@ -6,12 +6,14 @@ Nhập mọi `apps.ml.<module>.tasks` một cấp để `shared_task` vào sổ 
 bố hàng. Lúc khởi động (`worker_init`): broker phải `noeviction`, và bộ giả
 (`ML_BACKEND=fake`) không bao giờ chạy ở `staging`/`production` — ở đó nó sẽ trả đáp án
 rỗng cho mọi bản vẽ thật mà không ai hay.
+
+`APP_ENV` đọc qua `MlEnvSettings`, **không** qua `get_core_settings()`: tiến trình này chỉ
+nạp trọng số ngoài, nó không được cầm khoá gốc ký JWT (BE-00 §2.1/§9, NO-085).
 """
 
 from celery.signals import worker_init
 
-from apps.ml.runtime.settings import get_ml_settings
-from packages.core.settings import get_core_settings
+from apps.ml.runtime.settings import MlEnvSettings, get_ml_settings
 from packages.messaging.celery_app import create_celery
 from packages.messaging.redis import assert_broker_policy, broker_redis_sync
 from packages.messaging.schedules import discover_submodules
@@ -30,7 +32,7 @@ def check_backend(app_env: str, backend: str) -> None:
 @worker_init.connect
 def check_worker(**_: object) -> None:
     """Dừng worker ngay nếu broker được phép đuổi khoá hay đang bật bộ giả ở môi trường thật."""
-    check_backend(get_core_settings().app_env, get_ml_settings().ml_backend)
+    check_backend(MlEnvSettings().app_env, get_ml_settings().ml_backend)
     client = broker_redis_sync()
     try:
         assert_broker_policy(client)

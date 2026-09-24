@@ -16,6 +16,7 @@ import http.client
 import logging
 import os
 import sys
+import time
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
@@ -34,6 +35,10 @@ UNPINNED: Final = "0" * 64
 
 FETCH_MAX_BYTES: Final = 600 * 1024 * 1024
 FETCH_TIMEOUT_S: Final = 60.0
+FETCH_ATTEMPTS: Final = 3
+"""Trần lần thử mỗi tệp (NO-104). Bước build `ml` hỏng chập chờn vì tải đúng một lượt."""
+FETCH_BACKOFF_S: Final = 1.0
+FETCH_BACKOFF_CAP_S: Final = 8.0
 EXIT_MISMATCH: Final = 2
 EXIT_IO: Final = 3
 _CHUNK_BYTES: Final = 1024 * 1024
@@ -194,28 +199,56 @@ def _download(url: str, part: Path, opener: Opener) -> str:
     return digest.hexdigest()
 
 
-def _fetch_file(target: Path, pin: PinnedFile, opener: Opener) -> None:
-    """Một tệp: có sẵn đúng SHA thì không mở mạng; lệch → xoá, thoát 2; mạng/IO → thoát 3."""
-    if target.is_file() and file_sha256(target) == pin.sha256:
-        return
-    part = target.with_name(target.name + _PART_SUFFIX)
+def _fetch_once(target: Path, part: Path, pin: PinnedFile, opener: Opener) -> None:
+    """Một lượt tải: `.part` → kiểm SHA → `os.replace`. Lệch → xoá, thoát 2; mạng/IO → thoát 3.
+
+    Tệp đích chỉ xuất hiện qua `os.replace` (nguyên tử trong cùng thư mục), nên không lượt
+    nào để lại một bản dở mang tên thật — kể cả khi tiến trình bị giết giữa chừng.
+    """
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
         digest = _download(pin.url, part, opener)
     except (OSError, http.client.HTTPException) as exc:
         part.unlink(missing_ok=True)
         raise FetchError(EXIT_IO, f"không tải được {pin.url}: {type(exc).__name__}") from exc
     if digest != pin.sha256:
-        part.unlink()
+        part.unlink(missing_ok=True)
         raise FetchError(EXIT_MISMATCH, f"SHA-256 lệch bản ghim: {pin.url}")
     os.replace(part, target)
+
+
+def _fetch_file(target: Path, pin: PinnedFile, opener: Opener) -> None:
+    """Một tệp: có sẵn đúng SHA thì không mở mạng; hỏng thì thử lại tới `FETCH_ATTEMPTS`.
+
+    Mạng chớp và tệp tải dở (`_download` trả digest lệch) đều là lỗi **tạm** ở bước build,
+    và đo được cả hai trong cùng một lượt `job.sh build`: lượt 1 `TimeoutError`, lượt 3
+    `SHA-256 lệch` (NO-104). Vì vậy cả hai đi chung một vòng thử lại có backoff nhân đôi và
+    có trần (R-24) — tải lại là thao tác idempotent. Hết trần thì phân loại giữ nguyên, nên
+    một bản ghim **sai thật** vẫn là mã thoát 2 chứ không bị thử lại che mất.
+    """
+    if target.is_file() and file_sha256(target) == pin.sha256:
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = target.with_name(target.name + _PART_SUFFIX)
+    delay = FETCH_BACKOFF_S
+    for remaining in range(FETCH_ATTEMPTS - 1, 0, -1):
+        try:
+            _fetch_once(target, part, pin, opener)
+        except FetchError as exc:
+            _log.warning("pinned_fetch_retry: %s (còn %d lượt)", exc, remaining)
+            time.sleep(delay)
+            delay = min(delay * 2, FETCH_BACKOFF_CAP_S)
+        else:
+            return
+    # Lượt cuối đứng ngoài vòng: lỗi của nó đi thẳng ra người gọi, và vòng lặp không còn
+    # nhánh thoát nào không bao giờ chạy tới (R-14).
+    _fetch_once(target, part, pin, opener)
 
 
 def fetch(dest: Path, *, opener: Opener = open_https, pinned: Mapping[str, PinnedWeights] = PINNED) -> None:
     """Tải mọi tệp ghim vào `dest/<name>/`; bản nào còn `UNPINNED` thì dừng trước khi tải gì.
 
-    Ném `FetchError`; tệp dở `.part` luôn bị xoá. Chạy lại an toàn: tệp đã đúng SHA
-    không tải lại.
+    Ném `FetchError` sau khi đã thử lại hết trần; tệp dở `.part` luôn bị xoá. Chạy lại an
+    toàn: tệp đã đúng SHA không tải lại.
     """
     unpinned = sorted(weights.name for weights in pinned.values() if any(f.sha256 == UNPINNED for f in weights.files))
     if unpinned:
