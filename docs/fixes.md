@@ -81,12 +81,12 @@
 | FIX-083 | 2026-09-24 | B0-01 | NO-101, NO-164, NO-103, NO-106, NO-108, NO-130 | Nợ cổng verify: `tr` của `gc`, marker `ci_integration`, hằng ảnh ghim trong test, ảnh/volume verify theo worktree, `concurrency` coverage | `531c690`, `7eaa0f9`, `ebe32cc`, `7ff240a` (nhánh `fix/debt-01-tooling`) |
 | FIX-084 | 2026-09-24 | B0-09 | NO-051, NO-106, NO-110, NO-111, NO-113, NO-153 | Nợ CI: `VERIFY_OUT_DIR`, ảnh ghim chép tay ở `h2.py`, `types` của `pull_request`, test `job.sh`, `nginx -v` của ảnh `web`, dependabot major | `844fea3`, `a99fabb`, `86b31b9` (nhánh `fix/debt-01-tooling`) |
 | FIX-085 | 2026-09-24 | B0-05 | NO-153 | `redis` khai không ràng buộc phiên bản | `5579b09` (nhánh `fix/debt-01-tooling`) |
-| FIX-086 | 2026-09-24 | B0-08 | NO-094, NO-095, NO-096, NO-141, NO-162, NO-118, NO-117, NO-083, NO-084, NO-085, NO-104 | Nợ triển khai: log token, `minio/init.sh`, biến thư, scrape `9464`, cổng host `ci.yml`, upstream nginx khi đổi phiên bản, biến thừa của `ml` | `e4a9700` |
-| FIX-087 | 2026-09-24 | B0-10 | NO-120, NO-117 | Hai nguồn `APPBACK_API_SWAP_SETTLE_S`; phản hồi hỏng khi `deploy.sh` đổi phiên bản | `75a67da` |
+| FIX-086 | 2026-09-24 | B0-08 | NO-094, NO-095, NO-096, NO-141, NO-162, NO-118, NO-117, NO-083, NO-084, NO-085, NO-104 | Nợ triển khai: log token, `minio/init.sh`, biến thư, scrape `9464`, cổng host `ci.yml`, upstream nginx khi đổi phiên bản, biến thừa của `ml` | `47cdab2`, `0e1e709`, `b77af7c` |
+| FIX-087 | 2026-09-24 | B0-10 | NO-120, NO-117 | Hai nguồn `APPBACK_API_SWAP_SETTLE_S`; phản hồi hỏng khi `deploy.sh` đổi phiên bản | `f363377`, `f672677` |
 | FIX-088 | 2026-09-24 | B0-03 | NO-140 | `on_after_commit` chạy callback khi savepoint nhả dù transaction ngoài rollback | `3286027` |
 | FIX-089 | 2026-09-24 | B0-05 | NO-151, NO-152, NO-157, NO-085, NO-161 | RESP3 ngầm, `retry` không tường minh, `event_id_key` chưa phơi, `REDIS_CACHE_URL` bắt buộc, worker chưa có `/metrics` | `19648c3`, `917ce5a` |
 | FIX-090 | 2026-09-24 | B0-06 | NO-097, NO-137, NO-159, NO-160 | `auth.py` chép `Role`, `_grant_everything` sai kiểu, `api_env` giữ cổng metric, metric RED theo đường thật | `301bf67`, `b25530b` |
-| FIX-091 | 2026-09-24 | B5-01 | NO-085, NO-104, NO-161 | `ml` đọc `SECRET_KEY` chỉ để lấy `APP_ENV`; tải mô hình ghim không thử lại/không nguyên tử; `ml` chưa có `/metrics` | `f7abc9f` |
+| FIX-091 | 2026-09-24 | B5-01 | NO-085, NO-104, NO-161 | `ml` đọc `SECRET_KEY` chỉ để lấy `APP_ENV`; tải mô hình ghim không thử lại/không nguyên tử; `ml` chưa có `/metrics` | `f7abc9f`, `c2f3c72` |
 | FIX-092 | 2026-09-24 | B4-01 | NO-156, NO-157 | Rò ba tài nguyên SSE khi `_finish` ném; bản sao `event_id_key` | `99bc366` |
 | FIX-093 | 2026-09-24 | B1-03 | NO-149 | Lỗi thư vĩnh viễn bị nuốt khi token sau ném `TransientError` | `19fbed6` |
 | FIX-094 | 2026-09-24 | B2-01 | NO-142, NO-136, NO-135 | `UPDATE` không khoá thứ tự, thiếu test hai session `_checked(None)`, `user_out()` không ký URL avatar | `672b44b` |
@@ -99,8 +99,8 @@
 | FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | `ad9ecab` (nhánh `fix/debt-01-tooling`) |
 | FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | `17774f7` (nhánh `fix/debt-01-tooling`) |
 | FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | `e2ebeda` |
-| FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | `66ce4d7` |
-| FIX-105 | 2026-09-24 | B0-04 | NO-085 | `StorageSettings` đọc `CoreSettings` (cần `SECRET_KEY`, `PUBLIC_BASE_URL`) nên `ml` không dựng được kho S3 khi đã bỏ hai biến đó | nhánh `fix/debt-01-deploy` |
+| FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | `3f2e14d`, `777f895` |
+| FIX-105 | 2026-09-24 | B0-04 | NO-085 | `StorageSettings` đọc `CoreSettings` (cần `SECRET_KEY`, `PUBLIC_BASE_URL`) nên `ml` không dựng được kho S3 khi đã bỏ hai biến đó | `2739918` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -878,7 +878,7 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[4]** Sửa: `deploy/nginx/**`, `deploy/compose/{base,ci}.yml`, `deploy/compose/env.example`, `deploy/minio/init.sh`, `deploy/observability/prometheus.yml` (mới), `deploy/tests/**`. Cấm: `deploy/scripts/**`, `deploy/backup/**` (B0-10 — FIX-087), `tools/ci/job.sh` (B0-09 — FIX-084), ba biến `ml` trong `base.yml` (NO-085 chờ nhánh core).
 - **[5]** `access_log off` chuyển từ mức server sang `location /api/files/` (trên `$uri` đã chuẩn hoá) + `error_page` riêng cũng tắt log; `access_log off` cho server 301 prod; `init.sh` thêm `revoke_stale_users()`; tám biến `MailSettings` thay `SMTP_URL` (`SMTP_HOST`/`MAIL_FROM` là `${…:?…}`); `prometheus.yml` mới khai job `api:9464`; `ci.yml` bỏ `ports:` của `api`; `proxy_common.conf` hạ `proxy_connect_timeout` xuống 1s + `proxy_next_upstream` (không dùng `upstream{}` — lý do nêu ra sai, xem nợ mới NO-198).
 - **[6]** `test_nginx_files_location_disables_access_log`, `test_nginx_prod_redirect_server_disables_access_log`, `test_nginx_proxy_common_survives_api_container_swap`, `test_minio_init_revokes_identities_left_over_from_key_rotation`, `test_env_example_mail_vars_point_at_mailpit_for_dev_and_ci`, `test_compose_mail_required_vars_have_no_silent_default`, `test_compose_scrape_job_targets_api_metrics_port`, `test_compose_metrics_port_is_never_published`, `test_compose_ci_api_publishes_no_host_port` — đỏ trên `main`, xanh trên nhánh (241 qua, 0 hỏng; độ phủ `deploy/` 100 %/100 %). Probe thật: 7 URI méo × (dev 8080, prod 8443, prod 8080) → `grep -c <token>` = 0; `init.sh` ba lượt trên MinIO thật; `compose up --scale api=2` → 0; hai lượt `deploy.sh` đổi phiên bản, poll 100 ms qua `web` → 0 phản hồi hỏng (reviewer tự đo độc lập 517 mẫu, 0 phản hồi hỏng).
-- **[7]** Commit `e4a9700` (`fix(deploy): scope file-token log rules to the normalized location`, `Prompt: B0-08`, `Fix: FIX-086`); review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
+- **[7]** Commit `47cdab2` (`fix(deploy): scope file-token log rules to the normalized location`, `Prompt: B0-08`, `Fix: FIX-086`); review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
 
 ## FIX-087 cho B0-10 — một nguồn cho `APPBACK_API_SWAP_SETTLE_S`, R3, R4 (NO-120, NO-117)
 
@@ -888,7 +888,7 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[4]** Sửa: `deploy/scripts/lib.sh`, `deploy/scripts/drill.sh`, `deploy/scripts/tests/{test_deploy,test_drill}.py`, `deploy/backup/tests/test_restore.py`. Cấm: `deploy/nginx/**`, `deploy/compose/**`, `deploy/minio/**` (B0-08 — FIX-086).
 - **[5]** `: "${APPBACK_API_SWAP_SETTLE_S=11}"` khai đúng một lần đầu `lib.sh` (dùng `=`, không `:=` — bài học NO-114), hai chỗ dùng biến trần, test đọc đúng dòng khai và đối chiếu `README.md`; NO-118 phần B0-10: `drill.sh` bỏ `export API_HOST_PORT`. R3: `test_drill.py` đặt `FAKE_LOG` + khẳng định dương `compose down -v`. R4: annotation `monkeypatch: pytest.MonkeyPatch`.
 - **[6]** `test_deploy_default_swap_settle_s_covers_nginx_resolver_ttl` (siết), `_assert_cleanup_used_fake_docker` (hai test `test_drill.py`) — đỏ trên `main`, xanh trên nhánh (241 qua, 0 hỏng).
-- **[7]** Commit `75a67da` (`fix(deploy): single source for the api swap settle default`, `Prompt: B0-10`, `Fix: FIX-087`); review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
+- **[7]** Commit `f363377` (`fix(deploy): single source for the api swap settle default`, `Prompt: B0-10`, `Fix: FIX-087`); review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
 
 ## FIX-104 cho B0-08 — tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng (NO-177)
 
@@ -898,7 +898,7 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[4]** Sửa: `deploy/docker/{api,worker,ml}.Dockerfile` (dòng `FROM` tầng chạy + comment), `deploy/tests/test_dockerfiles.py`. Cấm: tầng dựng, `uv.lock`, `pyproject.toml`, `.github/dependabot.yml` (NO-178, chủ B0-09), mọi file ngoài `deploy/`.
 - **[5]** Ba dòng `FROM` tầng chạy về `python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e` — digest tự tra bằng `imagetools`, đúng bằng digest có trước `44b299f`; kèm comment ràng buộc "minor phải khớp tầng dựng và `requires-python`".
 - **[6]** `test_dockerfile_python_minor_matches_across_stages_and_workspace` — quét mọi `deploy/docker/*.Dockerfile`, đòi minor của tầng chạy/tầng dựng bằng `requires-python` gốc, chốt số tầng soi được ≥ 7; đỏ trên `main` (AssertionError venv không đọc được), xanh sau sửa (`pytest deploy/tests` 153 passed).
-- **[7]** Commit `66ce4d7` (`fix(deploy): pin python runtime stage back to the workspace minor`, `Prompt: B0-08`, `Fix: FIX-104`); reviewer đo độc lập: `python -V` = 3.12.14, `import alembic` đạt, `compose run --rm migrate` thoát 0; review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
+- **[7]** Commit `3f2e14d` (`fix(deploy): pin python runtime stage back to the workspace minor`, `Prompt: B0-08`, `Fix: FIX-104`); reviewer đo độc lập: `python -V` = 3.12.14, `import alembic` đạt, `compose run --rm migrate` thoát 0; review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
 
 ## FIX-098 cho F-02 — nhãn tiếng Việt thiếu cho 26 `kind` hoạt động (NO-099)
 
@@ -919,3 +919,13 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Đổi đường luồng thông báo sang `/streams/notifications`.
 - **[6]** `notifications.test.ts` khẳng định đường mới: đỏ trên `master` → xanh.
 - **[7]** `fix(api): point notifications SSE at BE-BIND S2 /api/streams/notifications` (AppFront `885556d`, `Prompt: F-01b`, `Fix: FIX-099`); review lượt 1 ĐẠT. F-01b 4.8 sẽ thay dòng này bằng nhóm `streams`.
+
+## FIX-105 cho B0-04 — `StorageSettings` đọc `CoreSettings` nên `ml` không dựng được kho S3 (NO-085)
+
+- **[1]** Bỏ `SECRET_KEY`, `PUBLIC_BASE_URL` khỏi `ml` (NO-085) thì lượt suy luận đầu hỏng: `ValidationError ... StorageSettings: public_base_url, secret_key Field required`.
+- **[2]** `StorageSettings()` với `APP_ENV=production`, `STORAGE_BACKEND=s3`, không `SECRET_KEY` (tiến trình mới).
+- **[3]** `packages/storage/settings.py:59` `_backend_fields` gọi `get_core_settings()` để kiểm luật khác origin; `apps/ml/runtime/tasks_util.py:74` truyền `get_core_settings()` vào `create_storage`.
+- **[4]** Sửa: `packages/storage/{settings,factory,local}.py` + test. Cấm: nơi gọi của chủ khác (không phải đổi).
+- **[5]** Luật khác origin chuyển vào `create_storage` (`_check_public_origin`) khi được truyền `CoreSettings` — mọi nơi gọi của API (`apps/api/core/app.py`, `apps/api/{floors,me,projects}/jobs.py`) vẫn truyền; `core_settings=None` cho tiến trình không ký URL, `LocalDiskStorage` khi đó từ chối `signed_url`.
+- **[6]** `apps/ml/runtime/tests/test_tasks_util.py::test_infer_context_builds_without_the_api_secrets` đỏ → xanh; ba test luật origin dời sang `packages/storage/tests/test_factory.py`, không nới assert.
+- **[7]** `fix(storage): check the cross-origin rule where core settings exist` (`2739918`, `Prompt: B0-04`, `Fix: FIX-105`); cùng FIX-091 `c2f3c72` (B5-01). Review lượt 2 APPROVE 4,75/5, cổng đầy đủ thoát 0 (3840 passed).
