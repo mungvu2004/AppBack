@@ -99,6 +99,7 @@
 | FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | nhánh `fix/debt-01-tooling` |
 | FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | nhánh `fix/debt-01-tooling` |
 | FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | nhánh `fix/debt-01-core` |
+| FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | nhánh `fix/debt-01-deploy` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
