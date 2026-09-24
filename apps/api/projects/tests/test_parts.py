@@ -83,7 +83,8 @@ def test_wrong_part_type_raises() -> None:
 
 
 def test_default_app_falls_back_to_discover() -> None:
-    """`app=None` → `discover`: hôm nay chưa module nào có `view_parts.py` (B2-03, B2-04 sẽ có)."""
-    assert [name for name, _ in extensions.resolve(None, SUBMODULE, "PARTS")] == []
-    assert view_part(PROJECT_FLOORS) is None
-    assert create_hook(PROJECT_CREATE_FLOORS) is None
+    """`app=None` → `discover` (FIX-082: không giả định module nào đã/chưa cài `view_parts.py`,
+    K27 — từ B2-03, `apps.api.floors.view_parts` cắm thật vào lượt `discover` toàn cục)."""
+    assert extensions.resolve(None, SUBMODULE, "PARTS") == extensions.discover(SUBMODULE, "PARTS")
+    assert view_part(PROJECT_FLOORS) == view_part(PROJECT_FLOORS, app=None)
+    assert create_hook(PROJECT_CREATE_FLOORS) == create_hook(PROJECT_CREATE_FLOORS, app=None)
