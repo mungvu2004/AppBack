@@ -28,8 +28,15 @@ from packages.db.models.floors import FloorRow
 
 
 async def _locked_rows(db: AsyncSession, project_id: str, level_id: str) -> list[FloorRow]:
-    """Mọi dòng (kể cả đã xoá) của `(project_id, level_id)`, khoá `FOR UPDATE` (bước 1 của #10)."""
-    stmt = select(FloorRow).where(FloorRow.project_id == project_id, FloorRow.level_id == level_id).with_for_update()
+    """Mọi dòng (kể cả đã xoá) của `(project_id, level_id)`, khoá `FOR UPDATE` theo `pk` (bước 1 của
+    #10) — thứ tự khoá ổn định (BE-00 §7), như `_active_rows_locked` của #13. `_restorable` tự chọn
+    dòng xoá **gần nhất** trong Python, không dựa vào thứ tự khoá này (LOG-02)."""
+    stmt = (
+        select(FloorRow)
+        .where(FloorRow.project_id == project_id, FloorRow.level_id == level_id)
+        .order_by(FloorRow.pk)
+        .with_for_update()
+    )
     return list((await db.execute(stmt)).scalars().all())
 
 
@@ -44,8 +51,13 @@ async def _active_count(db: AsyncSession, project_id: str) -> int:
 
 
 def _restorable(rows: Sequence[FloorRow], cutoff: datetime) -> FloorRow | None:
-    """Dòng xoá mềm gần nhất còn trong cửa sổ khôi phục, nếu có (bước 4 của #10)."""
-    return next((row for row in rows if row.deleted_at is not None and row.deleted_at >= cutoff), None)
+    """Dòng xoá mềm **gần nhất** (`deleted_at` lớn nhất) còn trong cửa sổ khôi phục, nếu có (bước 4
+    của #10, LOG-02) — `rows` tới từ `_locked_rows` khoá theo `pk`, không theo `deleted_at`, nên
+    chọn ở đây thay vì tin thứ tự của `rows`."""
+    candidates = [(row.deleted_at, row) for row in rows if row.deleted_at is not None and row.deleted_at >= cutoff]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 def _apply_restore(row: FloorRow, body: FloorCreateIn) -> None:

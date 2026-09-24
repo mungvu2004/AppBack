@@ -72,6 +72,9 @@ def upgrade() -> None:
     op.create_index(
         f"ix_{FLOORS}_deleted_at", FLOORS, ["deleted_at"], postgresql_where=sa.text("deleted_at IS NOT NULL")
     )
+    # PERF-03: lịch dọn tra (project_id, level_id) bất kể deleted_at (jobs.py _sibling_flag,
+    # _has_sibling) — ba index trên đều một phần nên seq scan; thêm đầy đủ, giữ nguyên [5].
+    op.create_index(f"ix_{FLOORS}_project_id_level_id", FLOORS, ["project_id", "level_id"])
 
 
 def downgrade() -> None:

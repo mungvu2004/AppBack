@@ -110,7 +110,8 @@ async def get_floor(db: AsyncSession, *, project_id: str, level_id: str, for_upd
 def new_level_id(clock: Clock) -> str:
     """`level_id` mới, `is_spatial_id("level", …)` đúng (dinh-chinh §7): `L-` + thân ULID của `new_id`.
 
-    `packages/core/ids.py` (B0-02) không có hàm sinh ULID trần và không được sửa (K27);
-    đường nâng cấp là thêm `new_ulid` vào B0-02 (ghi nợ).
+    `packages/core/ids.py` (B0-02) không có hàm sinh ULID trần và không được sửa (K27); nợ đã
+    ghi ở `DEBT.md` `NO-168` (đường nâng cấp: thêm `new_ulid(clock)` công khai vào B0-02, đổi
+    chỗ này gọi nó — cùng nợ với `apps/api/me/router.py`).
     """
     return "L-" + new_id("job", clock).split("_", 1)[1]

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -130,3 +130,30 @@ async def test_hard_delete_project_cascades_floors(db_session: AsyncSession) -> 
         select(func.count()).select_from(FloorRow).where(FloorRow.project_id == project.id)
     )
     assert remaining.scalar_one() == 0
+
+
+async def test_project_id_level_id_index_exists_and_is_used_by_planner(db_session: AsyncSession) -> None:
+    """PERF-03: index đầy đủ `(project_id, level_id)` tồn tại và planner có thể dùng nó cho câu
+    tra không lọc `deleted_at` của lịch dọn (`jobs.py` `_sibling_flag`, `_has_sibling`) — ba
+    index khác của bảng đều một phần nên trước đây luôn seq scan."""
+    found = (
+        await db_session.execute(
+            text("SELECT indexname FROM pg_indexes WHERE tablename = 'floors' AND indexname = :name"),
+            {"name": "ix_floors_project_id_level_id"},
+        )
+    ).scalar_one_or_none()
+    assert found == "ix_floors_project_id_level_id"
+
+    await db_session.execute(text("SET LOCAL enable_seqscan = off"))
+    plan_rows = (
+        (
+            await db_session.execute(
+                text("EXPLAIN SELECT 1 FROM floors WHERE project_id = 'prj_x' AND level_id = 'L-0000000001'")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    plan = "\n".join(plan_rows)
+    assert "ix_floors_project_id_level_id" in plan
+    assert "Seq Scan" not in plan

@@ -53,4 +53,8 @@ class FloorRow(Base, TimestampMixin, SoftDeleteMixin):
         Index(f"ix_{FLOORS}_level_id", "level_id", postgresql_where=text("deleted_at IS NULL")),
         # Lịch dọn quét tầng đã xoá mềm quá hạn.
         Index(f"ix_{FLOORS}_deleted_at", "deleted_at", postgresql_where=text("deleted_at IS NOT NULL")),
+        # PERF-03: lịch dọn tra cờ "còn dòng anh em cùng (project_id, level_id)" bất kể đã xoá
+        # hay chưa (jobs.py `_sibling_flag`, `_has_sibling`) — ba index trên đều một phần nên
+        # không dòng nào phủ được câu này; thêm đầy đủ, không xoá ba index đã chốt ở [5].
+        Index(f"ix_{FLOORS}_project_id_level_id", "project_id", "level_id"),
     )

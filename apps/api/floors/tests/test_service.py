@@ -6,7 +6,10 @@ thẳng `service.create_floor`/`_insert_floor` **tuần tự** (không đua) đ�
 mà không phụ thuộc thời điểm hệ điều hành lập lịch coroutine.
 """
 
+from datetime import timedelta
+
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +19,7 @@ from apps.api.floors.schemas import FloorCreateIn, FloorPatchIn
 from apps.api.floors.settings import get_floors_settings, reset_floors_settings_cache
 from apps.api.floors.tests._bodies import floor_body, new_level_id, seed_project
 from packages.core.errors import AppError
+from packages.db.models.floors import FloorRow
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.clock import FakeClock
@@ -38,6 +42,61 @@ async def test_create_floor_rejects_duplicate_id_sequentially(db_session: AsyncS
         await service.create_floor(db_session, project.id, body, principal, fake_clock, app=None)
 
     assert caught.value.code.code == "FLOOR_ID_TAKEN"
+
+
+async def test_create_floor_restores_the_most_recently_deleted_row(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Hai dòng xoá mềm cùng `id` trong cửa sổ khôi phục → khôi phục dòng `deleted_at` mới hơn (LOG-02).
+
+    Chèn thẳng qua DB (không qua factory): `_locked_rows` khoá theo `pk`, không theo `deleted_at`,
+    nên `_restorable` phải tự chọn dòng mới hơn thay vì tin thứ tự trả về.
+    """
+    user = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=user)
+    principal = _principal(user.id)
+    level_id = new_level_id()
+    older = FloorRow(
+        project_id=project.id,
+        level_id=level_id,
+        name="Xoá trước",
+        floor_order=0,
+        elevation_mm=0,
+        height_mm=3000,
+        created_by=user.id,
+        deleted_at=fake_clock.now() - timedelta(minutes=5),
+    )
+    newer = FloorRow(
+        project_id=project.id,
+        level_id=level_id,
+        name="Xoá sau",
+        floor_order=1,
+        elevation_mm=0,
+        height_mm=3000,
+        created_by=user.id,
+        deleted_at=fake_clock.now() - timedelta(minutes=1),
+    )
+    db_session.add_all([older, newer])
+    await db_session.flush()
+
+    result = await service.create_floor(
+        db_session,
+        project.id,
+        FloorCreateIn.model_validate(floor_body(id=level_id)),
+        principal,
+        fake_clock,
+        app=None,
+    )
+
+    assert result.id == level_id
+    restored = (
+        await db_session.execute(
+            select(FloorRow).where(
+                FloorRow.project_id == project.id, FloorRow.level_id == level_id, FloorRow.deleted_at.is_(None)
+            )
+        )
+    ).scalar_one()
+    assert restored.pk == newer.pk
 
 
 async def test_insert_floor_translates_unique_violation_to_floor_id_taken(db_session: AsyncSession) -> None:

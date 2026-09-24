@@ -121,6 +121,7 @@ async def test_floor_outs_calls_floor_drawings_view_part_once_for_whole_batch(
     calls: list[Sequence[str]] = []
 
     async def _load(db: AsyncSession, keys: Sequence[str]) -> Mapping[str, Sequence[DrawingOut]]:
+        """`ViewPart.load` giả: ghi lại các khoá được hỏi, chỉ trả bản vẽ cho `with_drawing`."""
         calls.append(list(keys))
         return {str(with_drawing.pk): [DRAWING]}
 

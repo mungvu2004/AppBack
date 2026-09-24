@@ -1,10 +1,10 @@
 """Thân FE thật, đường và tiện ích dùng chung cho `test_routes_*.py` của tầng (B2-03 việc T).
 
 Route, model, factory của B2-03 (`router.py`, `service.py`, `lookup.py`,
-`packages/db/models/floors.py`, `packages/testing/factories/floors.py`) chưa tồn tại trên
-nhánh này — việc R/D chạy song song trên nhánh khác. Mọi hàm ở đây chỉ dựng dữ liệu, thân
-request và đường theo hợp đồng `prompts/B2-03.md` [2], [6], [8]; import tên của R/D chỉ để
-đúng chữ ký đã chốt (`dinh-chinh.md` #9), không chạy được cho tới khi hợp nhất.
+`packages/db/models/floors.py`, `packages/testing/factories/floors.py`) viết mù theo hợp đồng
+`prompts/B2-03.md` [2], [6], [8] trên `feature/b2-03-route-tests`, song song với việc R/D trên
+nhánh khác; import tên của R/D chỉ để đúng chữ ký đã chốt (`dinh-chinh.md` #9). Đã gộp vào
+`feature/b2-03-floors` (`0ec2393`): mọi hàm ở đây chạy thật trên 5 `op` đã mount.
 
 `principal_of`, `headers_of`, `FORBIDDEN_ROLE`, `project_path`, `seed_project` nhập lại từ
 B2-01 (`apps.api.projects.tests.test_routes_common`) thay vì chép, theo R-06/R-07.

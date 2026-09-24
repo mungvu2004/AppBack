@@ -143,6 +143,8 @@ async def test_floors_create_floor__C14(
         )
     statuses = {first.status_code, second.status_code}
     assert statuses == {201, 409}
+    loser = first if first.status_code == 409 else second
+    assert (loser.json()["code"], loser.json()["field"]) == ("FLOOR_ID_TAKEN", "id")
     row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=level_id)
     assert row is not None
 

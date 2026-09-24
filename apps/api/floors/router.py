@@ -16,7 +16,7 @@ from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession
 from apps.api.core.routing import protected_router
 from apps.api.floors import service
 from apps.api.floors.resolvers import project_of_floor, project_of_floor_list
-from apps.api.floors.schemas import FloorCreateIn, FloorPatchIn
+from apps.api.floors.schemas import FloorCreateIn, FloorPatchIn, FloorReorderIn
 from apps.api.projects.access import ProjectAccess, require_project
 from apps.api.projects.wire import FloorOut
 
@@ -51,12 +51,16 @@ async def floors_list_floors(project_id: str, request: Request, db: DbSession) -
 
 @router.patch("/floors/reorder")
 async def floors_reorder_floors(
-    request: Request, db: DbSession, principal: CurrentPrincipal, clock: ClockDep, access: ListAccess
+    body: FloorReorderIn,
+    request: Request,
+    db: DbSession,
+    principal: CurrentPrincipal,
+    clock: ClockDep,
+    access: ListAccess,
 ) -> list[FloorOut]:
-    """#13 — sắp xếp lại theo `floorIds`; resolver đã kiểm hình dạng, service khoá lại và kiểm tập."""
-    body = await request.json()
+    """#13 — sắp xếp lại theo `floorIds`; resolver đã kiểm hình dạng (một nguồn luật), service khoá lại và kiểm tập."""
     return await service.reorder_floors(
-        db, access.project_id, access.project_name, body["floorIds"], principal, clock, app=request.app
+        db, access.project_id, access.project_name, body.floor_ids, principal, clock, app=request.app
     )
 
 

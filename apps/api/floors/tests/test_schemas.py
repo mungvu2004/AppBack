@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from apps.api.core.openapi import operations, real_app
 from apps.api.floors.schemas import FloorCreateIn, FloorPatchIn, FloorReorderIn, clean_level_id, clean_mm, clean_name
 
 
@@ -19,6 +20,7 @@ def _body(**overrides: Any) -> dict[str, Any]:
 
 
 def _field_of(exc: ValidationError) -> str:
+    """Tên trường của lỗi Pydantic đầu tiên — khớp `field` mà `errors.validation_error` đem ra dây."""
     return str(exc.errors()[0]["loc"][0])
 
 
@@ -205,6 +207,20 @@ def test_clean_level_id_passes_through_non_string_for_pydantic_type_error() -> N
 
 
 def test_floor_reorder_in_declares_floor_ids_field() -> None:
-    """`FloorReorderIn` chỉ khai cho OpenAPI (resolver đọc thân thô, B2-03 [2])."""
+    """`FloorReorderIn` là thân thật của handler #13 (API-04): field `floorIds`."""
     body = FloorReorderIn.model_validate({"floorIds": ["L-1", "L-2"]})
     assert body.floor_ids == ["L-1", "L-2"]
+
+
+def test_reorder_floors_has_request_body_in_openapi() -> None:
+    """API-04 · R-11: `PATCH /api/floors/reorder` phải có `requestBody` trỏ `FloorReorderIn`
+    trong `openapi.json`, không còn là lớp không route nào tham chiếu."""
+    op = next(item for item in operations() if item.op == "floors_reorder_floors")
+    assert op.has_body
+
+    schema = real_app().openapi()
+    request_body = schema["paths"]["/api/floors/reorder"]["patch"]["requestBody"]
+    ref = request_body["content"]["application/json"]["schema"]["$ref"]
+    component_name = ref.rsplit("/", 1)[-1]
+    assert "FloorReorderIn" in component_name
+    assert "floorIds" in schema["components"]["schemas"][component_name]["properties"]

@@ -24,7 +24,11 @@ HEIGHT_MAX: Final = 10_000
 _ROUND_TOLERANCE: Final = 0.01
 
 _BIDI: Final = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
-"""U+202A-202E, U+2066-2069 (B2-03 [2]) - hẹp hơn `_BIDI` của `apps/api/projects/schemas.py`."""
+"""U+202A-202E, U+2066-2069 (B2-03 [2]) - hẹp hơn `_BIDI` của `apps/api/projects/schemas.py`.
+
+Bản sao thứ ba của luật Cc/bidi (nợ `DEBT.md` `NO-169`, cùng `apps/api/auth_recovery/router.py`
+và `apps/api/me/schemas.py`): đường nâng cấp là gom về một hàm dùng chung ở `packages/core/text.py`
+(B0-02), ba module gọi lại — không tự gộp ở đây vì `packages/core` ngoài whitelist B2-03."""
 
 
 def clean_name(value: Any) -> Any:
@@ -112,6 +116,13 @@ class FloorPatchIn(WireRequest):
 
 
 class FloorReorderIn(WireRequest):
-    """Thân #13 (`{floorIds}`) — chỉ khai cho OpenAPI; resolver đọc thân thô, không qua đây."""
+    """Thân #13 (`{floorIds}`) — khai để `openapi.json` có `requestBody` (API-04, R-11).
+
+    Luật thật (1-`FLOORS_MAX` phần tử, không trùng, khoá lạ → 422 `field:"floorIds"`) chỉ sống
+    ở `resolvers._parsed_floor_ids` (một nguồn, R-07): resolver đọc thân thô **trước** khi
+    FastAPI ràng buộc `body` này, nên lỗi resolver luôn thắng và `floor_ids` ở đây luôn đã
+    hợp lệ khi tới tay handler — lớp này chỉ còn nhiệm vụ tài liệu hoá hợp đồng, không kiểm gì
+    thêm ngoài kiểu (`list[str]`, `extra="forbid"` của `WireRequest`).
+    """
 
     floor_ids: list[str]

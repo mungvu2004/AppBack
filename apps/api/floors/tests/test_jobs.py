@@ -50,6 +50,7 @@ def _marker_key(project_id: str, level_id: str) -> str:
 
 
 async def _put_marker(storage: LocalDiskStorage, project_id: str, level_id: str) -> None:
+    """Ghi một object đánh dấu dưới tiền tố tầng, để test khẳng định `delete_prefix` đã chạy."""
     await storage.put(_marker_key(project_id, level_id), b"x", content_type="application/octet-stream", max_bytes=10)
 
 
@@ -67,6 +68,7 @@ async def _row_exists(sessionmaker: async_sessionmaker[AsyncSession], pk: int) -
 
 
 async def _summary_exists(sessionmaker: async_sessionmaker[AsyncSession], project_id: str, level_id: str) -> bool:
+    """Dòng `project_floor_summaries` của tầng còn tồn tại, đọc trên session mới (K22)."""
     async with sessionmaker() as session:
         count = await session.scalar(
             select(func.count())
@@ -77,6 +79,7 @@ async def _summary_exists(sessionmaker: async_sessionmaker[AsyncSession], projec
 
 
 def _cutoff(clock: FakeClock) -> datetime:
+    """Mốc `deleted_at` quá hạn của lịch dọn: cửa sổ khôi phục cộng thêm số ngày giữ lại."""
     settings = get_floors_settings()
     return clock.now() - timedelta(seconds=settings.floor_restore_window_s, days=settings.floor_purge_after_d)
 
@@ -278,6 +281,7 @@ def test_purge_deleted_floors_smoke(
     maker = create_sessionmaker(engine)
 
     async def _seed() -> int:
+        """Mồi một tầng xoá mềm quá hạn 31 ngày, trả `pk` để kiểm sau khi lịch chạy."""
         async with maker() as session:
             owner = await make_user(session, password=None)
             project = await make_project(session, owner=owner)
@@ -305,6 +309,7 @@ def test_purge_deleted_floors_smoke(
 
 
 def _fake_metadata(*, ondelete: str | None) -> MetaData:
+    """`MetaData` rời (không kế thừa `Base`) với một FK trỏ `floors.pk`, `ondelete` tuỳ ý."""
     metadata = MetaData()
     Table("floors", metadata, Column("pk", BigInteger, primary_key=True))
     Table(
