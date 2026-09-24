@@ -83,8 +83,17 @@ def test_wrong_part_type_raises() -> None:
 
 
 def test_default_app_falls_back_to_discover() -> None:
-    """`app=None` → `discover` (FIX-082: không giả định module nào đã/chưa cài `view_parts.py`,
-    K27 — từ B2-03, `apps.api.floors.view_parts` cắm thật vào lượt `discover` toàn cục)."""
+    """`app=None` → `discover` (FIX-082 vòng 2, Nit #7): không giả định module nào đã/chưa cài
+    `view_parts.py` (K27), và neo bằng một app có `override` tường minh để chứng minh nhánh
+    fallback **thật sự chạy** — không chỉ trùng hợp vì cả hai phía đều rỗng.
+    """
+    overridden = _app_with(ViewPart(kind=PROJECT_FLOORS, load=_load))
     assert extensions.resolve(None, SUBMODULE, "PARTS") == extensions.discover(SUBMODULE, "PARTS")
+    assert extensions.resolve(None, SUBMODULE, "PARTS") != extensions.resolve(overridden, SUBMODULE, "PARTS")
     assert view_part(PROJECT_FLOORS) == view_part(PROJECT_FLOORS, app=None)
     assert create_hook(PROJECT_CREATE_FLOORS) == create_hook(PROJECT_CREATE_FLOORS, app=None)
+    # Từ B2-03, `apps.api.floors.view_parts` cắm thật `PROJECT_FLOORS` vào `discover()` toàn cục:
+    # khẳng định cụ thể thay vì chỉ so `resolve`/`discover` (tránh "rỗng nghĩa" nếu sau này rỗng).
+    real_floors = view_part(PROJECT_FLOORS)
+    assert real_floors is not None
+    assert real_floors.kind == PROJECT_FLOORS
