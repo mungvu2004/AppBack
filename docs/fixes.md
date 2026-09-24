@@ -76,6 +76,7 @@
 | FIX-067 | 2026-09-22 | B0-05 | NO-087 | Worker Celery thử để dấu cấp tiến trình (env, `captureWarnings`) | `54e2e91` |
 | FIX-068 | 2026-09-22 | B0-01 | NO-092 | Dọn log cổng cũ hỏng thì `run.sh verify` thoát trước khi chạy cổng | `2debb52` |
 | FIX-069 | 2026-09-22 | B0-05 | NO-093 | Test FIX-067 không chốt phần `captureWarnings` của fixture worker | `47efe53` |
+| FIX-082 | 2026-09-24 | B2-01 | — | Hai test fallback của cổng `view_parts` giả định "chưa module nào cài", đỏ khi B2-03 cài thật | nhánh `feature/b2-03-floors` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -658,3 +659,20 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Kiểm hành vi: sau worker, ca clean — `captureWarnings(True)` phải còn đổi `warnings.showwarning` (tức logging không tự nhớ
   là đang bắt); ca preset — `captureWarnings(False)` phải trả đúng hàm gốc lưu trước khi bật.
 - **[6]** Test mới đỏ dưới cả hai đột biến M1, M2 (bản đột biến chỉ trong `.cache/`), xanh trên mã hiện tại.
+
+---
+
+> **Giao việc FIX-082.** 2026-09-24, cổng đầy đủ bước 5 của B2-03 (`feature/b2-03-floors`) đỏ đúng hai test của B2-01. Người dùng
+> chọn FIX ngay trên nhánh B2-03 (ngoại lệ K27 như FIX-003..005): commit riêng chỉ chạm hai file test của B2-01, trailer
+> `Prompt: B2-01` + `Fix: FIX-082`; nhánh vào `main` bằng `--no-ff` để giữ trailer của cả hai prompt.
+
+## FIX-082 cho B2-01 — test fallback phụ thuộc việc "chưa module nào cài" (không mã nợ)
+
+- **[1–3]** `apps/api/projects/tests/test_parts.py::test_default_app_falls_back_to_discover` khẳng định `resolve(None, …) == []`, giờ thấy
+  `['apps.api.floors.view_parts']`; `apps/api/projects/tests/test_routes_write.py::test_create_project_without_hook_ignores_floors` khẳng
+  định `floors == []`, giờ hook `project.create_floors` của B2-03 tạo 1 tầng. Cả hai docstring tự ghi "hôm nay chưa module nào…".
+- **[4]** Sửa: đúng hai file test trên. Cấm: mọi mã sản phẩm của B2-01.
+- **[5]** Test tự dựng trạng thái "không ai cài" (`extensions.override(app, "view_parts", [])`) hoặc so với `discover` thay vì hằng rỗng;
+  không xoá, không nới assert.
+- **[6]** Hai test xanh cả trên `main` (chưa có `apps/api/floors`) lẫn trên nhánh B2-03 (đỏ trên nhánh trước khi sửa: bước 5 lượt 1).
+
