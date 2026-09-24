@@ -94,6 +94,7 @@
 | FIX-097 | 2026-09-24 | F-01b | NO-154 | Luồng SSE 401 lặp không refresh trước lần nối kế | AppFront nhánh `fix/debt-01-fe` |
 | FIX-098 | 2026-09-24 | F-02 | NO-099 | 26 `kind` hoạt động thiếu nhãn tiếng Việt | AppFront nhánh `fix/debt-01-fe` |
 | FIX-099 | 2026-09-24 | (tra chủ) | NO-086 | SSE thông báo mở `/api/notifications/stream` thay vì `/api/streams/notifications` | AppFront nhánh `fix/debt-01-fe` |
+| FIX-100 | 2026-09-24 | B0-08 | NO-174 | Ảnh `web` không build vì ảnh node ghim bỏ `corepack` | nhánh `fix/b0-08-web-openssl-cve` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
