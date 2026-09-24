@@ -1,15 +1,20 @@
 """Đọc và khoá tầng (B2-03 [2], [6] "Khoá", "Dựng `Floor`"); tên công khai chốt ở
-`dinh-chinh.md` §9. Không nhập `fastapi`/`starlette`: `jobs.py` của lịch dọn và mã
-worker gọi thẳng module này (BE-00 §7 "Hàm worker nhập").
+`dinh-chinh.md` §9.
+
+`lock_project_floors` được re-export từ `apps.api.floors.locks` (không định nghĩa lại ở
+đây): module này nhập `apps.api.projects.parts` cho cổng `floor.drawings`, mà `parts.py`
+nhập `apps.api.core.auth` (dù chỉ dưới `TYPE_CHECKING`) — `jobs.py` (worker) không được
+nhập module này vì thế, nên nhập thẳng `apps.api.floors.locks` (BE-00 §7 "Hàm worker nhập").
 """
 
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.floors.locks import lock_project_floors as lock_project_floors
 from apps.api.projects.parts import FLOOR_DRAWINGS, view_part
 from apps.api.projects.wire import DrawingOut, FloorOut
 from packages.core.clock import Clock
@@ -100,14 +105,6 @@ async def get_floor(db: AsyncSession, *, project_id: str, level_id: str, for_upd
     if for_update:
         stmt = stmt.with_for_update()
     return (await db.execute(stmt)).scalar_one_or_none()
-
-
-async def lock_project_floors(db: AsyncSession, project_id: str) -> None:
-    """Khoá tư vấn mutex theo dự án (BE-00 §7): đầu tiên trong thứ tự khoá của mọi route ghi
-    và bước xoá của lịch dọn — trước `SELECT … FOR UPDATE` trên `floors`, trước `summaries.*`,
-    trước `touch_project`. Chỉ module này dùng khoá tên `floors:<project_id>`.
-    """
-    await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": f"floors:{project_id}"})
 
 
 def new_level_id(clock: Clock) -> str:

@@ -11,7 +11,6 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
-from packages.testing.factories.floors import make_floor
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
@@ -25,6 +24,7 @@ from apps.api.floors.tests._bodies import (
     seed_project,
 )
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
@@ -262,6 +262,18 @@ async def test_floors_reorder_floors__non_json_content_type_is_validation(
     response = await api_client.patch(
         REORDER_PATH, content=b"x", headers={**headers_of(owner), "Content-Type": "text/plain"}
     )
+    assert response.status_code == 422
+    body = response.json()
+    assert (body["code"], body["field"]) == ("VALIDATION", "floorIds")
+
+
+async def test_floors_reorder_floors__top_level_array_body_is_validation(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Thân JSON hợp lệ nhưng không phải object (mảng trần) → 422 `field:"floorIds"` (vá của việc gộp)."""
+    owner = await make_user(db_session, role="engineer")
+    await seed_project(db_session, owner=owner)
+    response = await api_client.patch(REORDER_PATH, json=["not", "an", "object"], headers=headers_of(owner))
     assert response.status_code == 422
     body = response.json()
     assert (body["code"], body["field"]) == ("VALIDATION", "floorIds")

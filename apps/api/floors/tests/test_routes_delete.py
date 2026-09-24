@@ -6,7 +6,6 @@ thân, không có chuỗi người nhập"}`.
 """
 
 import httpx
-from packages.testing.factories.floors import make_floor
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
@@ -20,6 +19,7 @@ from apps.api.floors.tests._bodies import (
     summary_row,
 )
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.access import assert_one_activity
 
 # ---------------------------------------------------------------------------

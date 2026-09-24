@@ -10,20 +10,19 @@ Ma trận case (B2-03 [8]): G → C01 C02 C03 C06 C07 C08 C14 C16 C17 C18 (C14 t
 
 import asyncio
 import unicodedata
+from collections.abc import Iterator, Sequence
 from datetime import timedelta
 from typing import Any
 
 import httpx
 import pytest
-from apps.api.floors.settings import reset_floors_settings_cache
 from fastapi import FastAPI
-from packages.db.models.floors import FloorRow
-from packages.testing.factories.floors import make_floor
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
 from apps.api.core import extensions
+from apps.api.floors.settings import reset_floors_settings_cache
 from apps.api.floors.tests._bodies import (
     FLOORS_MAX_TEST,
     FORBIDDEN_ROLE,
@@ -37,8 +36,10 @@ from apps.api.floors.tests._bodies import (
 )
 from apps.api.projects.parts import FLOOR_DRAWINGS, SUBMODULE, ViewPart
 from apps.api.projects.wire import DrawingOut
+from packages.db.models.floors import FloorRow
 from packages.db.models.projects import ProjectFloorSummary
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.access import assert_one_activity
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
@@ -245,7 +246,7 @@ async def test_floors_create_floor__elevation_rounding_out_of_tolerance(
 
 
 @pytest.fixture
-def _floors_max_test(monkeypatch: pytest.MonkeyPatch) -> None:
+def _floors_max_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """`FLOORS_MAX=3` cho các test biên; dọn cache cả trước lẫn sau (dinh-chinh.md #8)."""
     monkeypatch.setenv("FLOORS_MAX", str(FLOORS_MAX_TEST))
     reset_floors_settings_cache()
@@ -260,6 +261,7 @@ async def test_floors_create_floor__limit_reached(api_client: httpx.AsyncClient,
     project = await seed_project(db_session, owner=owner)
     for index in range(FLOORS_MAX_TEST):
         await make_floor(db_session, project=project, order=index)
+    await db_session.commit()
     response = await api_client.post(floors_path(project.id), json=floor_body(), headers=headers_of(owner))
     assert response.status_code == 422
     assert response.json()["code"] == "FLOOR_LIMIT_REACHED"
@@ -296,7 +298,7 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
         uploader_id=owner.id,
     )
 
-    async def _drawings(_db: object, pks: object) -> dict[str, list[DrawingOut]]:
+    async def _drawings(_db: AsyncSession, pks: Sequence[str]) -> dict[str, list[DrawingOut]]:
         """Trả bản vẽ giả cho `pk` của tầng vừa khôi phục, `[]` cho mọi `pk` khác."""
         return {str(floor.pk): [fake_drawing] if str(floor.pk) in pks else []}
 

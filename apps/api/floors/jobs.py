@@ -2,12 +2,12 @@
 
 `apps/worker` nhập module này để chạy beat, nên nó chỉ nhập `packages.core`, `packages.db`,
 `packages.storage`, `packages.messaging` và `apps.api.projects.summaries` — không `fastapi`,
-`starlette`, `jwt`, `argon2` (BE-00 §2.1, K36). Khoá tư vấn của `lookup.lock_project_floors`
-được **chép lại** ở đây thay vì nhập `apps.api.floors.lookup`: module đó nhập
-`apps.api.projects.parts`, mà `parts.py` nhập `apps.api.core.auth` (dù chỉ dưới
-`TYPE_CHECKING`) — `lint-imports` (grimp) tính cả import có điều kiện, nên nhập `lookup`
-sẽ kéo `starlette` vào `apps.api.floors.jobs` và vỡ ranh giới worker. Cùng tên khoá
-`"floors:<project_id>"` với `lookup.py` (BE-00 §7): hai nơi phải khoá cùng một thứ.
+`starlette`, `jwt`, `argon2` (BE-00 §2.1, K36). Khoá tư vấn dùng chung với `lookup.py` qua
+`apps.api.floors.locks` (không nhập thẳng `apps.api.floors.lookup`: module đó nhập
+`apps.api.projects.parts`, mà `parts.py` nhập `apps.api.core.auth` dưới `TYPE_CHECKING` —
+`lint-imports` (grimp) tính cả import có điều kiện là cạnh thật, nên nhập `lookup` sẽ kéo
+`starlette` vào `apps.api.floors.jobs` và vỡ ranh giới worker). `locks.py` chỉ nhập
+`sqlalchemy` nên cả hai module dùng chung đúng một hàm, một chuỗi khoá (R-07).
 
 Mỗi tầng đi qua ba bước session **ngắn** (R-20: không giữ giao dịch DB lúc gọi kho qua
 mạng, và mỗi tầng một giao dịch riêng thay vì ôm cả lô): (1) chọn ứng viên quá hạn kèm cờ
@@ -22,10 +22,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final, cast
 
-from sqlalchemy import ColumnElement, CursorResult, MetaData, delete, exists, select, text
+from sqlalchemy import ColumnElement, CursorResult, MetaData, delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
+from apps.api.floors.locks import lock_project_floors
 from apps.api.floors.settings import get_floors_settings
 from apps.api.projects.summaries import purge_floor
 from packages.core.clock import Clock, SystemClock
@@ -99,13 +100,6 @@ async def _delete_objects(storage: ObjectStorage, candidate: _Candidate) -> bool
     return True
 
 
-async def _lock_project_floors(session: AsyncSession, project_id: str) -> None:
-    """Khoá tư vấn mutex theo dự án — bản chép của `lookup.lock_project_floors` (xem docstring module)."""
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": f"floors:{project_id}"}
-    )
-
-
 async def _has_sibling(session: AsyncSession, candidate: _Candidate) -> bool:
     """Cờ tính lại **trong** giao dịch xoá dòng (khác câu `_select_batch`, cùng luật)."""
     stmt = select(FloorRow.project_id).where(
@@ -123,7 +117,7 @@ async def _delete_row(sessionmaker: async_sessionmaker[AsyncSession], candidate:
     của FK `floors.pk` (`check_floor_fk_cascade`) đưa bảng con của prompt sau theo `DELETE` này.
     """
     async with sessionmaker() as session:
-        await _lock_project_floors(session, candidate.project_id)
+        await lock_project_floors(session, candidate.project_id)
         result = cast(
             "CursorResult[Any]",
             await session.execute(delete(FloorRow).where(FloorRow.pk == candidate.pk, FloorRow.deleted_at < cutoff)),

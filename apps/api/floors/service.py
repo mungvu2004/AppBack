@@ -57,6 +57,29 @@ def _apply_restore(row: FloorRow, body: FloorCreateIn) -> None:
     row.height_mm = body.height_mm
 
 
+def _check_not_taken(rows: Sequence[FloorRow]) -> None:
+    """Bước 2 của #10: có dòng chưa xoá cùng `(project_id, level_id)` → 409.
+
+    Hàm đồng bộ riêng, gọi ngay sau `await` trong `create_floor`: `coverage.py` không đo đúng
+    nhánh nằm ngay sau một `await` của SQLAlchemy async (greenlet, B2-01 `service.py`).
+    """
+    if any(row.deleted_at is None for row in rows):
+        raise FLOOR_ID_TAKEN.error(field="id")
+
+
+def _check_not_over_limit(active_count: int, floors_max: int) -> None:
+    """Bước 3 của #10: đã đạt trần `FLOORS_MAX` → 422 (tách vì lý do như `_check_not_taken`)."""
+    if active_count >= floors_max:
+        raise FLOOR_LIMIT_REACHED.error()
+
+
+def _raise_taken_if_unique_violation(exc: IntegrityError) -> None:
+    """Vi phạm `uq_floors_level` đua ngoài khoá tư vấn → 409; lỗi khác → ném lại nguyên."""
+    if unique_violation(exc) is None:
+        raise exc
+    raise FLOOR_ID_TAKEN.error(field="id") from exc
+
+
 async def _insert_floor(db: AsyncSession, project_id: str, body: FloorCreateIn, principal: Principal) -> FloorRow:
     """Chèn dòng tầng mới (bước 5 của #10); vi phạm unique đua với lượt khác → 409 `FLOOR_ID_TAKEN`."""
     row = FloorRow(
@@ -72,10 +95,24 @@ async def _insert_floor(db: AsyncSession, project_id: str, body: FloorCreateIn, 
     try:
         await db.flush()
     except IntegrityError as exc:
-        if unique_violation(exc) is None:
-            raise
-        raise FLOOR_ID_TAKEN.error(field="id") from exc
+        _raise_taken_if_unique_violation(exc)
     return row
+
+
+async def _resolved_row(
+    db: AsyncSession,
+    project_id: str,
+    rows: Sequence[FloorRow],
+    cutoff: datetime,
+    body: FloorCreateIn,
+    principal: Principal,
+) -> tuple[FloorRow, bool]:
+    """Dòng để dựng response của #10: khôi phục tại chỗ nếu có, không thì chèn mới; `(row, restored)`."""
+    restorable = _restorable(rows, cutoff)
+    if restorable is not None:
+        _apply_restore(restorable, body)
+        return restorable, True
+    return await _insert_floor(db, project_id, body, principal), False
 
 
 async def create_floor(
@@ -85,20 +122,12 @@ async def create_floor(
     settings = get_floors_settings()
     await lock_project_floors(db, project_id)
     rows = await _locked_rows(db, project_id, body.id)
-    if any(row.deleted_at is None for row in rows):
-        raise FLOOR_ID_TAKEN.error(field="id")
-    if await _active_count(db, project_id) >= settings.floors_max:
-        raise FLOOR_LIMIT_REACHED.error()
+    _check_not_taken(rows)
+    active_count = await _active_count(db, project_id)
+    _check_not_over_limit(active_count, settings.floors_max)
     cutoff = clock.now() - timedelta(seconds=settings.floor_restore_window_s)
-    restorable = _restorable(rows, cutoff)
-    if restorable is not None:
-        _apply_restore(restorable, body)
-        row = restorable
-    else:
-        row = await _insert_floor(db, project_id, body, principal)
-    await register_floor(
-        db, project_id=project_id, floor_level_id=body.id, floor_order=body.order, restored=restorable is not None
-    )
+    row, restored = await _resolved_row(db, project_id, rows, cutoff, body, principal)
+    await register_floor(db, project_id=project_id, floor_level_id=body.id, floor_order=body.order, restored=restored)
     await touch_project(db, project_id=project_id, clock=clock)
     await record_activity(
         db,
@@ -112,16 +141,30 @@ async def create_floor(
     return (await floor_outs(db, project_id=project_id, floor_pks=[row.pk], app=app))[0]
 
 
+def _checked_floor(row: FloorRow | None) -> FloorRow:
+    """`row` phải tồn tại (dò trước khi ghi của #11, #34) → 404 `resource:"floor"`.
+
+    Tách khỏi hàm gọi (đồng bộ, ngay sau `await`) cùng lý do `_check_not_taken` ở trên.
+    """
+    if row is None:
+        raise NOT_FOUND.error(resource="floor")
+    return row
+
+
+def _mark_deleted(row: FloorRow, clock: Clock) -> None:
+    """Đặt `deleted_at` — tách khỏi `delete_floor` (đồng bộ, ngay sau `await`, lý do như trên)."""
+    row.deleted_at = clock.now()
+
+
 async def delete_floor(
     db: AsyncSession, project_id: str, level_id: str, principal: Principal, clock: Clock, *, app: object | None
 ) -> FloorOut:
     """#11: xoá mềm; thân trả về là ảnh chụp **ngay trước** khi xoá (B2-03 [6])."""
     await lock_project_floors(db, project_id)
-    row = await get_floor(db, project_id=project_id, level_id=level_id, for_update=True)
-    if row is None:
-        raise NOT_FOUND.error(resource="floor")
+    found = await get_floor(db, project_id=project_id, level_id=level_id, for_update=True)
+    row = _checked_floor(found)
     snapshot = (await floor_outs(db, project_id=project_id, floor_pks=[row.pk], app=app))[0]
-    row.deleted_at = clock.now()
+    _mark_deleted(row, clock)
     await unregister_floor(db, project_id=project_id, floor_level_id=level_id)
     await touch_project(db, project_id=project_id, clock=clock)
     await record_activity(
@@ -158,6 +201,19 @@ def _changed_orders(rows: Sequence[FloorRow], floor_ids: Sequence[str]) -> dict[
     return {row.level_id: positions[row.level_id] for row in rows if row.floor_order != positions[row.level_id]}
 
 
+def _check_matches_set(rows: Sequence[FloorRow], floor_ids: Sequence[str]) -> None:
+    """Tập `level_id` phải bằng đúng tập `floor_ids` → 422 (tách vì lý do như `_check_not_taken`)."""
+    if {row.level_id for row in rows} != set(floor_ids):
+        raise FLOOR_REORDER_MISMATCH.error(field="floorIds")
+
+
+def _apply_orders(rows: Sequence[FloorRow], changed: dict[str, int]) -> None:
+    """Ghi `floor_order` mới lên các dòng ORM đã khoá (đồng bộ, gọi ngay sau `await`)."""
+    for row in rows:
+        if row.level_id in changed:
+            row.floor_order = changed[row.level_id]
+
+
 async def reorder_floors(
     db: AsyncSession,
     project_id: str,
@@ -171,13 +227,10 @@ async def reorder_floors(
     """#13: `floor_order` = vị trí trong `floor_ids`; chỉ ghi khi có dòng đổi (B2-03 [6])."""
     await lock_project_floors(db, project_id)
     rows = await _active_rows_locked(db, project_id)
-    if {row.level_id for row in rows} != set(floor_ids):
-        raise FLOOR_REORDER_MISMATCH.error(field="floorIds")
+    _check_matches_set(rows, floor_ids)
     changed = _changed_orders(rows, floor_ids)
     if changed:
-        for row in rows:
-            if row.level_id in changed:
-                row.floor_order = changed[row.level_id]
+        _apply_orders(rows, changed)
         await set_floor_orders(db, project_id=project_id, orders=changed)
         await touch_project(db, project_id=project_id, clock=clock)
         await record_activity(
@@ -234,9 +287,8 @@ async def patch_floor(
     """#34: last-write-wins; `{}` hay giá trị không đổi → 200 không ghi, không nhật ký (B2-03 [6])."""
     _check_path_body_id(level_id, body.id)
     await lock_project_floors(db, project_id)
-    row = await get_floor(db, project_id=project_id, level_id=level_id, for_update=True)
-    if row is None:
-        raise NOT_FOUND.error(resource="floor")
+    found = await get_floor(db, project_id=project_id, level_id=level_id, for_update=True)
+    row = _checked_floor(found)
     changes = _changed_fields(row, body)
     if changes:
         _apply_changes(row, changes)

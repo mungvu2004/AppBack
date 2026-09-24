@@ -37,12 +37,13 @@ async def _member_floor_projects(db: AsyncSession, level_ids: list[str], user_id
     return [(row.project_id, row.level_id) for row in (await db.execute(stmt)).all()]
 
 
-async def project_of_floor(request: Request, principal: Principal, db: AsyncSession) -> str:
-    """`{floor_id}` → dự án; sai mẫu hoặc không khớp tầng nào → 404, khớp > 1 dự án → 409 (#11, #13)."""
-    floor_id = request.path_params["floor_id"]
-    if not isinstance(floor_id, str) or not is_spatial_id("level", floor_id):
-        raise NOT_FOUND.error(resource="floor")
-    project_ids = {project_id for project_id, _ in await _member_floor_projects(db, [floor_id], principal.user_id)}
+def _single_project(rows: list[tuple[str, str]]) -> str:
+    """Đúng một dự án chứa tầng trong `rows`; 0 → 404, > 1 → 409.
+
+    Tách khỏi `project_of_floor` (hàm đồng bộ, gọi ngay sau `await`): `coverage.py` không đo
+    đúng nhánh nằm ngay sau một `await` của SQLAlchemy async (greenlet, B2-01 `service.py`).
+    """
+    project_ids = {project_id for project_id, _ in rows}
     if not project_ids:
         raise NOT_FOUND.error(resource="floor")
     if len(project_ids) > 1:
@@ -50,10 +51,25 @@ async def project_of_floor(request: Request, principal: Principal, db: AsyncSess
     return next(iter(project_ids))
 
 
+async def project_of_floor(request: Request, principal: Principal, db: AsyncSession) -> str:
+    """`{floor_id}` → dự án; sai mẫu hoặc không khớp tầng nào → 404, khớp > 1 dự án → 409 (#11, #13)."""
+    floor_id = request.path_params["floor_id"]
+    if not isinstance(floor_id, str) or not is_spatial_id("level", floor_id):
+        raise NOT_FOUND.error(resource="floor")
+    rows = await _member_floor_projects(db, [floor_id], principal.user_id)
+    return _single_project(rows)
+
+
 def _parsed_floor_ids(payload: Any, floors_max: int) -> list[str]:
-    """`payload["floorIds"]` là mảng chuỗi 1-`floors_max` phần tử, không trùng; sai → `ValueError`."""
+    """`payload["floorIds"]` là mảng chuỗi 1-`floors_max` phần tử, không trùng; sai → `ValueError`.
+
+    Khoá lạ ngoài `floorIds` → `ValueError` (C03, cùng luật `extra="forbid"` của `WireRequest`
+    mà `FloorReorderIn` khai cho OpenAPI — thân này được đọc thô nên phải tự kiểm lại).
+    """
     if not isinstance(payload, dict):
         raise ValueError("thân phải là object")
+    if set(payload) - {"floorIds"}:
+        raise ValueError(f"khoá lạ trong thân: {sorted(set(payload) - {'floorIds'})}")
     floor_ids = payload.get("floorIds")
     if (
         not isinstance(floor_ids, list)
@@ -83,10 +99,11 @@ def _complete_projects(rows: list[tuple[str, str]], floor_ids: list[str]) -> lis
     return [project_id for project_id, level_ids in by_project.items() if level_ids == wanted]
 
 
-async def project_of_floor_list(request: Request, principal: Principal, db: AsyncSession) -> str:
-    """`floorIds` của #13 → dự án chứa đủ mọi id; 0 khớp → 404, > 1 dự án → 409, tập lệch → 422."""
-    floor_ids = await _read_floor_ids(request, get_floors_settings().floors_max)
-    rows = await _member_floor_projects(db, floor_ids, principal.user_id)
+def _matching_project(rows: list[tuple[str, str]], floor_ids: list[str]) -> str:
+    """Dự án chứa đủ mọi id của `floor_ids`; 0 khớp → 404, > 1 dự án → 409, tập lệch → 422.
+
+    Tách khỏi `project_of_floor_list` cùng lý do `_single_project` ở trên (greenlet + coverage).
+    """
     if not rows:
         raise NOT_FOUND.error(resource="floor")
     complete = _complete_projects(rows, floor_ids)
@@ -95,3 +112,10 @@ async def project_of_floor_list(request: Request, principal: Principal, db: Asyn
     if not complete:
         raise FLOOR_REORDER_MISMATCH.error(field="floorIds")
     return complete[0]
+
+
+async def project_of_floor_list(request: Request, principal: Principal, db: AsyncSession) -> str:
+    """`floorIds` của #13 → dự án chứa đủ mọi id; 0 khớp → 404, > 1 dự án → 409, tập lệch → 422."""
+    floor_ids = await _read_floor_ids(request, get_floors_settings().floors_max)
+    rows = await _member_floor_projects(db, floor_ids, principal.user_id)
+    return _matching_project(rows, floor_ids)

@@ -14,7 +14,6 @@ import secrets
 from collections.abc import Sequence
 from typing import Any, Final
 
-from packages.db.models.floors import FloorRow
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -25,6 +24,7 @@ from apps.api.projects.tests.test_routes_common import (
     project_path,
     seed_project,
 )
+from packages.db.models.floors import FloorRow
 from packages.db.models.projects import ProjectFloorSummary
 
 PROJECTS_PATH: Final = "/api/projects"

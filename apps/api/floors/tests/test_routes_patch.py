@@ -9,7 +9,6 @@ from typing import Any
 
 import httpx
 import pytest
-from packages.testing.factories.floors import make_floor
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
@@ -24,6 +23,7 @@ from apps.api.floors.tests._bodies import (
     spatial_path,
 )
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
 from packages.testing.fixtures.clock import FakeClock
 

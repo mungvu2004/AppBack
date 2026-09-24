@@ -5,12 +5,13 @@ Route (`router.py`, `service.py`, `lookup.py`) chưa hợp nhất trên nhánh n
 "Dựng `Floor`") và cổng `project.floors` mà #24 của B2-01 đọc lại đúng thứ tự.
 """
 
+from collections.abc import Iterator
+
 import httpx
 import pytest
-from apps.api.floors.settings import reset_floors_settings_cache
-from packages.testing.factories.floors import make_floor
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.floors.settings import reset_floors_settings_cache
 from apps.api.floors.tests._bodies import (
     FLOORS_MAX_TEST,
     floor_body,
@@ -21,6 +22,7 @@ from apps.api.floors.tests._bodies import (
 )
 from apps.api.projects.tests.sql_count import count_sql
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -64,7 +66,7 @@ async def test_floors_list_floors__C08(
 
 
 @pytest.fixture
-def _floors_max_test(monkeypatch: pytest.MonkeyPatch) -> None:
+def _floors_max_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """`FLOORS_MAX=3` cho C15 — trần tạo **và** trần danh sách (dinh-chinh.md #8)."""
     monkeypatch.setenv("FLOORS_MAX", str(FLOORS_MAX_TEST))
     reset_floors_settings_cache()
