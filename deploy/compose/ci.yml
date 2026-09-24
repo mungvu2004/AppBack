@@ -84,8 +84,10 @@ services:
     image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-api:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
     environment:
       STORAGE_BACKEND: s3
-    ports:
-      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    # Không publish cổng host (NO-118): cổng cố định làm `docker compose up
+    # --scale api=2` hỏng vì trùng cổng, mà scale 2 chính là cách B0-10 đổi
+    # phiên bản không gián đoạn. e2e/smoke gọi /api/* qua `web` (cùng origin,
+    # đúng đường đi thật của trình duyệt) — `web` đã publish ${WEB_HTTP_PORT}.
     depends_on:
       migrate:
         condition: service_completed_successfully

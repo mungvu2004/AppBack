@@ -12,7 +12,18 @@ set -euo pipefail
 : "${APPBACK_BASE_URL:=http://127.0.0.1}"
 : "${APPBACK_HEALTH_TIMEOUT_S:=180}"
 : "${APPBACK_HEALTH_POLL_S:=2}"
-export APPBACK_DIR IMAGE_REGISTRY APPBACK_BASE_URL APPBACK_HEALTH_TIMEOUT_S
+# Chờ nginx tự dịch lại "api" trước khi xoá container cũ. Khai ĐÚNG MỘT LẦN ở đây
+# (NO-120: trước đây hằng 11 có ba bản — dòng kế hoạch dry-run, lệnh sleep thật và
+# README — nên hạ mặc định của sleep mà test vẫn xanh).
+#
+# RÀNG BUỘC (R-05): 11 = TTL cache DNS của nginx (10s, `resolver 127.0.0.11
+# valid=10s` ở deploy/nginx/templates/{dev,prod}/app.conf.template) + 1s biên an
+# toàn; test_deploy_default_swap_settle_s_covers_nginx_resolver_ttl chốt quan hệ đó.
+# Dùng `=` chứ không `:=` (bài học NO-114): test và người vận hành đặt
+# APPBACK_API_SWAP_SETTLE_S=0 để tắt hẳn lúc kiểm, `:=` coi 0 là hợp lệ nhưng coi
+# chuỗi rỗng như chưa đặt và sẽ ghi đè lại.
+: "${APPBACK_API_SWAP_SETTLE_S=11}"
+export APPBACK_DIR IMAGE_REGISTRY APPBACK_BASE_URL APPBACK_HEALTH_TIMEOUT_S APPBACK_API_SWAP_SETTLE_S
 export COMPOSE_FILE="${COMPOSE_FILE:-$APPBACK_DIR/prod.yml}"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-appback}"
 export COMPOSE_ENV_FILES="${COMPOSE_ENV_FILES:-}"
@@ -83,7 +94,7 @@ swap_api() {
   if [[ "$DRY_RUN" == "1" ]]; then
     run docker compose up -d --no-deps --no-recreate --scale api=2 api
     plan "chờ container api mới healthy (timeout ${APPBACK_HEALTH_TIMEOUT_S}s)"
-    plan "chờ nginx tự dịch lại DNS (${APPBACK_API_SWAP_SETTLE_S:-11}s)"
+    plan "chờ nginx tự dịch lại DNS (${APPBACK_API_SWAP_SETTLE_S}s)"
     plan "xoá container api cũ, trả về scale api=1"
     return 0
   fi
@@ -111,13 +122,8 @@ swap_api() {
   fi
   # Chờ nginx tự dịch lại "api" trước khi xoá container cũ — không chờ thì nginx còn giữ
   # cache DNS trỏ container cũ, dừng nó gây 502/refused thật cho request đang tới dù thiết
-  # kế 6 bước (hop-dong.md §2) đã đúng thứ tự.
-  #
-  # RÀNG BUỘC (R-05): mặc định 11 = TTL cache DNS của nginx (10s, `resolver 127.0.0.11
-  # valid=10s` ở deploy/nginx/templates/{dev,prod}/app.conf.template) + 1s biên an toàn.
-  # Đổi `valid=…` ở CẢ HAI template thì phải nâng mặc định này theo (>= TTL mới + biên);
-  # đặt `APPBACK_API_SWAP_SETTLE_S=0` để tắt hẳn khi kiểm (không cần chờ thật).
-  sleep "${APPBACK_API_SWAP_SETTLE_S:-11}"
+  # kế 6 bước (hop-dong.md §2) đã đúng thứ tự. Mặc định và ràng buộc: xem khai báo đầu file.
+  sleep "$APPBACK_API_SWAP_SETTLE_S"
   for id in $old_ids; do
     docker stop -t 30 "$id"
     docker rm "$id"

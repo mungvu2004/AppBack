@@ -14,6 +14,8 @@ import subprocess
 import tarfile
 from pathlib import Path
 
+import pytest
+
 from deploy.scripts.tests.support import REPO_ROOT, fake_bin, read_log, run_script
 
 RESTORE_SH = Path(__file__).resolve().parents[1] / "restore.sh"
@@ -251,7 +253,7 @@ def test_restore__invalid_storage_exits_1_before_any_stop(tmp_path: Path) -> Non
     assert "DROP DATABASE" not in log
 
 
-def test_restore__relative_backup_dir_is_resolved_to_absolute(tmp_path: Path, monkeypatch) -> None:
+def test_restore__relative_backup_dir_is_resolved_to_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Review round 1 P3 (SEC-03): `backup_dir` tương đối vẫn phải khôi phục đạt — Docker bind
     `-v` cần đường tuyệt đối, không tự giải theo cwd của script."""
     backup_dir = _make_plain_backup(tmp_path)

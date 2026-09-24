@@ -34,11 +34,25 @@ agent nào tự làm việc này).
    ```bash
    sudo install -o deploy -g deploy -m 600 /dev/null /etc/appback/appback.env
    ```
+6. Tạo `/etc/appback/ml.env` (chủ `deploy`, quyền **600**) — `env_file` riêng
+   của `ml`/`ml-gpu` (NO-085), chép từ `deploy/compose/ml.env.example`:
+   ```bash
+   sudo install -o deploy -g deploy -m 600 /dev/null /etc/appback/ml.env
+   ```
+   Chỉ chứa `ML_BACKEND`, `ML_MODELS_DIR`, `ML_ORT_THREADS`, `METRICS_HOST`,
+   `METRICS_PORT`, `METRICS_MAX_SERIES`. **KHÔNG** chép `SECRET_KEY`,
+   `DATABASE_URL`, `SMTP_*`/`MAIL_*`, `REDIS_CACHE_URL`, `PUBLIC_BASE_URL` hay
+   khoá MinIO gốc vào đây — `ml` nạp trọng số ngoài, không được cầm khoá ký JWT
+   hay DSN (BE-00 §2.1/§9). `APP_ENV`, `REDIS_BROKER_URL`, `S3_ML_*`, `ML_DEVICE`
+   vẫn đặt trong `appback.env`: `environment:` của `base.yml` chuyển đúng các biến
+   đó vào `ml` và đè `ml.env`.
 
 **Kiểm:**
 ```bash
-ssh deploy@<host> 'id; ls -la /opt/appback; stat -c "%a %U" /etc/appback/appback.env'
-# id có nhóm docker; /etc/appback/appback.env → "600 deploy"
+ssh deploy@<host> 'id; ls -la /opt/appback; stat -c "%a %U" /etc/appback/appback.env /etc/appback/ml.env'
+# id có nhóm docker; cả hai tệp → "600 deploy"
+ssh deploy@<host> "grep -E '^(SECRET_KEY|DATABASE_URL|SMTP_|MAIL_|REDIS_CACHE_URL|PUBLIC_BASE_URL)' /etc/appback/ml.env"
+# không in dòng nào (grep thoát 1)
 ```
 
 ## 2. Khoá SSH riêng cho CI
@@ -237,7 +251,7 @@ lưu/khôi phục vẫn đúng sau mỗi đợt đổi lớn.
 ## 12. Việc người phải làm trước M1
 
 - [ ] VPS (§1): Docker, người dùng `deploy`, tường lửa 22/80/443, cấu trúc
-      `/opt/appback/`, `appback.env` quyền 600.
+      `/opt/appback/`, `appback.env` và `ml.env` quyền 600.
 - [ ] Khoá SSH riêng cho CI + `known_hosts` (§2).
 - [ ] Secret GitHub `STAGING_*`, `ALERT_WEBHOOK_URL`, `BACKUP_TARGET`,
       `BACKUP_AGE_RECIPIENT` (§3, §4).

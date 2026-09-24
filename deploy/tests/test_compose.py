@@ -215,6 +215,15 @@ def test_compose_ml_services_are_hardened(env: str) -> None:
 _PROD_ONE_SHOT_SERVICES = {"migrate", "minio-init"}
 _APP_IMAGE_SERVICES = {"api", "worker", "beat", "ml", "ml-gpu", "web"}
 _PROD_IMAGE_TAG_RE = re.compile(r":\$\{IMAGE_TAG(:[?-][^}]*)?\}$")
+_APPBACK_ENV_FILE = "/etc/appback/appback.env"
+_ML_ENV_FILE = "/etc/appback/ml.env"
+
+
+def _env_file_paths(service: dict[str, Any]) -> list[str]:
+    """Đường của mọi entry `env_file`, nhận cả dạng ngắn (chuỗi) lẫn dạng dài `{path, required}`."""
+    raw = service.get("env_file")
+    items = [raw] if isinstance(raw, (str, dict)) else list(raw or [])
+    return [str(item["path"]) if isinstance(item, dict) else str(item) for item in items]
 
 
 def test_compose_prod_image_naming_restart_and_env_file() -> None:
@@ -222,8 +231,9 @@ def test_compose_prod_image_naming_restart_and_env_file() -> None:
     `${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-<x>:${IMAGE_TAG}` (ảnh bên thứ ba như
     `postgres`/`redis`/`minio` không theo khuôn này) — `${IMAGE_TAG}` được kèm hậu tố
     `:?…`/`:-…` cũng đạt (bắt buộc/giá trị mặc định, vẫn dùng đúng biến); mọi dịch vụ
-    có `env_file` chứa `/etc/appback/appback.env`; dịch vụ dài hạn (không phải job một
-    lần như `migrate`/`minio-init`) có thêm `restart: unless-stopped`."""
+    trừ `ml`/`ml-gpu` có `env_file` đúng `/etc/appback/appback.env` (hai dịch vụ ml dùng
+    tệp riêng — `test_compose_prod_ml_env_file_is_not_appback_env`, NO-085); dịch vụ dài
+    hạn (không phải job một lần như `migrate`/`minio-init`) có thêm `restart: unless-stopped`."""
     services = _resolved_services("prod")
     for name, service in services.items():
         image = service.get("image")
@@ -232,11 +242,10 @@ def test_compose_prod_image_naming_restart_and_env_file() -> None:
                 f"prod/{name}: image {image!r} sai khuôn registry"
             )
             assert _PROD_IMAGE_TAG_RE.search(image), f"prod/{name}: image {image!r} thiếu ${{IMAGE_TAG}}"
-        env_file = service.get("env_file")
-        env_files = [env_file] if isinstance(env_file, str) else list(env_file or [])
-        assert any("/etc/appback/appback.env" in str(f) for f in env_files), (
-            f"prod/{name}: env_file thiếu /etc/appback/appback.env"
-        )
+        if name not in _ML_SERVICES_BY_ENV["prod"]:
+            assert _env_file_paths(service) == [_APPBACK_ENV_FILE], (
+                f"prod/{name}: env_file phải đúng {_APPBACK_ENV_FILE}"
+            )
         if name not in _PROD_ONE_SHOT_SERVICES:
             assert service.get("restart") == "unless-stopped", f"prod/{name}: thiếu restart: unless-stopped"
 
@@ -331,6 +340,34 @@ def test_compose_ml_env_has_celery_task_stream_vars(env: str) -> None:
             assert env_vars.get(key) == expected, f"{env}/{service_name}: thiếu {key}={expected}"
 
 
+_ML_FORBIDDEN_ENV = ("SECRET_KEY", "PUBLIC_BASE_URL", "REDIS_CACHE_URL")
+
+
+@pytest.mark.parametrize("env", ENVS)
+def test_compose_ml_env_has_no_signing_or_cache_vars(env: str) -> None:
+    """`ml`/`ml-gpu` không nhận `SECRET_KEY`/`PUBLIC_BASE_URL`/`REDIS_CACHE_URL`
+    (NO-085): tiến trình nạp trọng số ngoài không được cầm khoá gốc ký JWT (BE-00
+    §2.1/§9) và không tới được `redis-cache`. `celery_main` đọc `APP_ENV` qua
+    `MlEnvSettings` (FIX-089), `redis_cache_url` tuỳ chọn (FIX-091)."""
+    services = _resolved_services(env)
+    for service_name in _ML_SERVICES_BY_ENV[env]:
+        env_vars = services[service_name].get("environment") or {}
+        leaked = [key for key in _ML_FORBIDDEN_ENV if key in env_vars]
+        assert not leaked, f"{env}/{service_name}: không được truyền {leaked}"
+
+
+def test_compose_prod_ml_env_file_is_not_appback_env() -> None:
+    """`prod` `ml`/`ml-gpu`: `env_file` đúng `/etc/appback/ml.env`, không bao giờ
+    `appback.env` (NO-085). Gỡ biến khỏi `environment:` chưa đủ: `env_file` nạp NGUYÊN
+    tệp vào container, trỏ tệp chung là `ml` lại cầm `SECRET_KEY`, `DATABASE_URL`, mật
+    khẩu SMTP — trái tách quyền của BE-00 §2.1/§9."""
+    services = _resolved_services("prod")
+    for service_name in _ML_SERVICES_BY_ENV["prod"]:
+        assert _env_file_paths(services[service_name]) == [_ML_ENV_FILE], (
+            f"prod/{service_name}: env_file phải đúng {_ML_ENV_FILE}, không dùng tệp chung {_APPBACK_ENV_FILE}"
+        )
+
+
 def test_compose_web_healthcheck_single_source() -> None:
     """`web`: một nguồn healthcheck (review 2026-09-22 #3) — `base.yml` không khai
     (dev/ci thừa kế `HEALTHCHECK` của ảnh, cổng 8080 http); `prod` đè bằng cổng
@@ -354,3 +391,46 @@ def test_compose_appback_network_has_fixed_subnet(env: str) -> None:
     configs = (appback_net.get("ipam") or {}).get("config") or []
     assert configs, f"{env}: mạng appback thiếu ipam.config[]"
     assert configs[0].get("subnet"), f"{env}: mạng appback thiếu ipam.config[].subnet"
+
+
+_METRICS_PORT = "9464"
+_SCRAPE_CONFIG = "deploy/observability/prometheus.yml"
+
+
+def test_compose_metrics_port_is_never_published() -> None:
+    """NO-162: cổng exporter 9464 chỉ dùng trong mạng compose. `METRICS_HOST` mặc
+    định `0.0.0.0` (B7-01 [2], có `# noqa: S104` vì "compose không công bố nó") —
+    khẳng định đó phải có test, nếu không một dòng `ports` lỡ tay là mở thẳng số
+    liệu nội bộ ra host."""
+    for env in ENVS:
+        for name, service in _resolved_services(env).items():
+            for published in service.get("ports") or []:
+                assert _METRICS_PORT not in str(published), (
+                    f"{env}/{name}: publish cổng metric {published!r} — 9464 phải ở trong mạng compose"
+                )
+
+
+def test_compose_scrape_job_targets_api_metrics_port() -> None:
+    """NO-162: có cấu hình scrape nội bộ trỏ `api:9464` — cổng exporter mà không ai
+    thu thập thì số liệu của B7-01 không tới được đâu cả. Target dùng TÊN DỊCH VỤ
+    (không `127.0.0.1`) vì bộ thu thập phải chạy trong mạng `appback`."""
+    raw = require_path(_SCRAPE_CONFIG).read_text(encoding="utf-8")
+    config = load_yaml(require_path(_SCRAPE_CONFIG))
+    targets = [
+        target for job in config["scrape_configs"] for static in job["static_configs"] for target in static["targets"]
+    ]
+    assert f"api:{_METRICS_PORT}" in targets, f"{_SCRAPE_CONFIG}: thiếu target api:{_METRICS_PORT}, có {targets}"
+    for loopback in ("127.0.0.1", "localhost"):
+        assert loopback not in raw, f"{_SCRAPE_CONFIG}: target phải là tên dịch vụ trong mạng compose, không {loopback}"
+
+
+def test_compose_ci_api_publishes_no_host_port() -> None:
+    """NO-118: `api` của `ci.yml` không publish cổng host. Cổng cố định
+    (`127.0.0.1:${API_HOST_PORT}:8000`) làm `docker compose up --scale api=2` hỏng
+    vì trùng cổng, mà scale 2 là cách `deploy.sh` đổi phiên bản không gián đoạn
+    (B0-10 [8]); trước đây B0-10 phải sinh override `ports: !reset []` ngoài repo.
+    smoke/e2e gọi `/api/*` qua `web`, đúng đường đi thật của trình duyệt."""
+    api = _resolved_services("ci")["api"]
+    assert not api.get("ports"), f"ci: api không được publish cổng host, đang có {api.get('ports')}"
+    web = _resolved_services("ci")["web"]
+    assert web.get("ports"), "ci: web phải publish cổng host để smoke/e2e đi qua nó"

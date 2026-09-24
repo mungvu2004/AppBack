@@ -76,3 +76,22 @@ def test_minio_init_attaches_app_and_ml_policies_to_their_users() -> None:
     assert 'attach_policy_if_missing ml-policy "${S3_ML_ACCESS_KEY}"' in text, (
         "init.sh: thiếu gắn ml-policy vào khoá riêng của ml"
     )
+
+
+def test_minio_init_revokes_identities_left_over_from_key_rotation() -> None:
+    """Xoay khoá phải THU HỒI danh tính cũ, không chỉ tạo danh tính mới (NO-096).
+
+    `mc admin user add` cho khoá mới không đụng gì tới user của khoá cũ: user đó
+    vẫn giữ `app-policy`/`ml-policy` và secret cũ vẫn đọc/ghi được bucket, nên đổi
+    `S3_ACCESS_KEY`/`S3_ML_ACCESS_KEY` trước đây không thu hồi được quyền nào. Mỗi
+    chính sách phải được quét đúng một lần, với khoá hiện tại của nó làm ngoại lệ.
+    """
+    text = _script_text()
+    assert "revoke_stale_users()" in text, "init.sh: thiếu hàm revoke_stale_users"
+    assert "mc admin user remove" in text, "init.sh: không có lệnh gỡ user nào"
+    code_lines = _code_lines()
+    calls = [line.strip() for line in code_lines if line.startswith("revoke_stale_users ")]
+    assert calls == [
+        'revoke_stale_users app-policy "${S3_ACCESS_KEY}"',
+        'revoke_stale_users ml-policy "${S3_ML_ACCESS_KEY}"',
+    ], f"init.sh: phải gỡ danh tính cũ của CẢ HAI chính sách, đang có {calls}"

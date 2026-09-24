@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from deploy.scripts.tests.support import REPO_ROOT, fake_bin, run_script
+from deploy.scripts.tests.support import REPO_ROOT, fake_bin, read_log, run_script
 
 SCRIPT = REPO_ROOT / "deploy" / "scripts" / "drill.sh"
 
@@ -16,7 +16,20 @@ _FAKE_DOCKER_BODY = "exit 0\n"
 
 
 def _bin_dir(tmp_path: Path) -> Path:
+    """Thư mục chứa `docker` giả, đặt đầu `PATH`."""
     return fake_bin(tmp_path / "bin", {"docker": _FAKE_DOCKER_BODY})
+
+
+def _assert_cleanup_used_fake_docker(log: Path) -> None:
+    """Khẳng định DƯƠNG rằng `cleanup()` đã gọi `docker` GIẢ (review lượt 3 R3).
+
+    Thân chuẩn của `fake_bin` mở đầu bằng `printf … >> "$FAKE_LOG"`; hai test này
+    trước đây không đặt `FAKE_LOG` nên stub in `bash: : No such file or directory`
+    rồi mất dòng log — `docker` thật bị chặn nhưng không có gì chứng minh, ai lỡ bỏ
+    `bin_dir` sau này thì test vẫn xanh và `compose down -v` THẬT lại chạy.
+    """
+    lines = list(read_log(log))
+    assert any("compose down -v" in line for line in lines), f"cleanup() không gọi docker giả — dòng đã ghi: {lines}"
 
 
 def test_drill_bad_args_khong_xoa_backup_target_thua_ke(tmp_path: Path) -> None:
@@ -28,16 +41,18 @@ def test_drill_bad_args_khong_xoa_backup_target_thua_ke(tmp_path: Path) -> None:
     marker = inherited / "bao-cap-nhat-nhat.tar"
     marker.write_text("du lieu that", encoding="utf-8")
 
+    log = tmp_path / "docker.log"
     result = run_script(
         SCRIPT,
         ["--bogus-arg"],
-        env={"BACKUP_TARGET": str(inherited)},
+        env={"BACKUP_TARGET": str(inherited), "FAKE_LOG": str(log)},
         bin_dir=_bin_dir(tmp_path),
     )
 
     assert result.returncode == 2, result.stderr
     assert inherited.is_dir()
     assert marker.read_text(encoding="utf-8") == "du lieu that"
+    _assert_cleanup_used_fake_docker(log)
 
 
 def test_drill_compare_sai_so_doi_so_khong_xoa_backup_target_thua_ke(tmp_path: Path) -> None:
@@ -47,13 +62,15 @@ def test_drill_compare_sai_so_doi_so_khong_xoa_backup_target_thua_ke(tmp_path: P
     marker = inherited / "bao.tar"
     marker.write_text("du lieu that", encoding="utf-8")
 
+    log = tmp_path / "docker.log"
     result = run_script(
         SCRIPT,
         ["--compare", "chi-mot-doi-so"],
-        env={"BACKUP_TARGET": str(inherited)},
+        env={"BACKUP_TARGET": str(inherited), "FAKE_LOG": str(log)},
         bin_dir=_bin_dir(tmp_path),
     )
 
     assert result.returncode == 2, result.stderr
     assert inherited.is_dir()
     assert marker.exists()
+    _assert_cleanup_used_fake_docker(log)

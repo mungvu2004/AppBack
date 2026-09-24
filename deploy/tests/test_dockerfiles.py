@@ -22,6 +22,9 @@ IMAGES = ("api", "worker", "ml", "web")
 # opencv-contrib-python cũng là bản GUI (K29, review 2026-09-22 #13) — bản cũ chỉ
 # bắt "opencv-python" nên bỏ lọt "opencv-contrib-python" (không chứa chuỗi con
 # "opencv-python" liên tục).
+_UV_PYTHON_RE = re.compile(r"\buv:(?:\d+(?:\.\d+)*-)?python(\d+\.\d+)")
+_PYTHON_BASE_RE = re.compile(r"(?:^|/)python:(\d+\.\d+)(?:\.\d+)?-")
+_REQUIRES_PYTHON_RE = re.compile(r'^requires-python = ">=(\d+\.\d+)', re.MULTILINE)
 _OPENCV_BAD = re.compile(r"opencv(?:-contrib)?-python(?!-headless)\b")
 _USER_RE = re.compile(r"^10001(:\d+)?$")
 _NODE_IMAGE_RE = re.compile(r"(?:^|/)node:")
@@ -230,6 +233,51 @@ def test_dockerfile_web_installs_pnpm_without_corepack() -> None:
         assert _PNPM_NPM_PIN_RE.search(run_text), (
             f"web: tầng node #{index} thiếu `npm install -g pnpm@<x.y.z>` với bản ghim đủ ba số"
         )
+
+
+def _root_requires_python_minor() -> str:
+    """Minor Python mà cả workspace ghim, đọc từ `requires-python` của `pyproject.toml` gốc."""
+    source = require_path("pyproject.toml").read_text(encoding="utf-8")
+    m = _REQUIRES_PYTHON_RE.search(source)
+    assert m, "pyproject.toml gốc: không đọc được requires-python"
+    return m.group(1)
+
+
+def test_dockerfile_python_minor_matches_across_stages_and_workspace() -> None:
+    """Mọi tầng Python trong `deploy/docker/**` phải cùng một minor với `requires-python`.
+
+    Tầng dựng (`ghcr.io/astral-sh/uv:[<bản uv>-]pythonX.Y-…`) tạo venv ở
+    `/opt/venv/lib/pythonX.Y/site-packages` với C extension `cpython-XY-…so`; tầng
+    chạy (`python:A.B-slim-…`) chỉ tìm ở `pythonA.B`. Lệch một minor là **mọi** gói
+    biến mất, dù `docker build` vẫn thoát 0: dependabot `44b299f` nâng riêng tầng
+    chạy 3.12 → 3.14 và `compose run migrate` chết với `ModuleNotFoundError: No
+    module named 'alembic'` trong khi `/opt/venv/bin/alembic` vẫn nằm đó (NO-177,
+    FIX-104). Không cổng nào bắt được vì bản thân lệnh build vẫn đạt.
+
+    `uv.lock` khoá theo đúng minor này (`requires-python = "==3.12.*"`), nên nâng
+    minor là việc có chủ đích kèm relock — không phải một bản vá gom nhóm.
+    Quét theo thư mục chứ không theo danh sách ảnh: Dockerfile mới cũng chịu luật.
+    """
+    expected = _root_requires_python_minor()
+    docker_dir = require_path("deploy/docker")
+    dockerfiles = sorted(docker_dir.glob("*.Dockerfile"))
+    assert dockerfiles, "deploy/docker: không có Dockerfile nào"
+
+    checked = 0
+    for path in dockerfiles:
+        stages, _ = parse_dockerfile(path)
+        for stage in stages:
+            for label, regex in (("tầng dựng uv", _UV_PYTHON_RE), ("tầng chạy python", _PYTHON_BASE_RE)):
+                m = regex.search(stage.base)
+                if not m:
+                    continue
+                checked += 1
+                assert m.group(1) == expected, (
+                    f"{path.name} tầng #{stage.index} ({label}) dùng Python {m.group(1)}, "
+                    f"lệch requires-python {expected} của pyproject.toml gốc — venv sẽ không đọc được"
+                )
+    # 7 = api/worker/ml (uv + python mỗi ảnh) + tầng uv của verify.Dockerfile (tag có bản uv).
+    assert checked >= 7, f"chỉ soi được {checked} tầng Python, quá ít — regex có thể đã hỏng"
 
 
 def test_dockerfile_web_has_draco_build_and_wasm_check() -> None:
