@@ -582,7 +582,9 @@ def _role(value: object) -> Role:
     """Vai hợp lệ, hay `ValueError` (dữ liệu cache hỏng không được thành `Principal`)."""
     if value not in ROLES:
         raise ValueError(f"vai lạ: {value!r}")
-    return cast("Role", value)
+    # Không `cast`: từ FIX-090, `ROLES` là `tuple[Role, ...]` của gương quyền, nên chính
+    # phép `in` đã thu hẹp kiểu — `cast` ở đây là thừa và `mypy --strict` từ chối nó.
+    return value
 
 
 async def _load_snapshot(maker: async_sessionmaker[AsyncSession], sid: str) -> _Snapshot | None:
