@@ -215,6 +215,15 @@ def test_compose_ml_services_are_hardened(env: str) -> None:
 _PROD_ONE_SHOT_SERVICES = {"migrate", "minio-init"}
 _APP_IMAGE_SERVICES = {"api", "worker", "beat", "ml", "ml-gpu", "web"}
 _PROD_IMAGE_TAG_RE = re.compile(r":\$\{IMAGE_TAG(:[?-][^}]*)?\}$")
+_APPBACK_ENV_FILE = "/etc/appback/appback.env"
+_ML_ENV_FILE = "/etc/appback/ml.env"
+
+
+def _env_file_paths(service: dict[str, Any]) -> list[str]:
+    """Đường của mọi entry `env_file`, nhận cả dạng ngắn (chuỗi) lẫn dạng dài `{path, required}`."""
+    raw = service.get("env_file")
+    items = [raw] if isinstance(raw, (str, dict)) else list(raw or [])
+    return [str(item["path"]) if isinstance(item, dict) else str(item) for item in items]
 
 
 def test_compose_prod_image_naming_restart_and_env_file() -> None:
@@ -222,8 +231,9 @@ def test_compose_prod_image_naming_restart_and_env_file() -> None:
     `${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-<x>:${IMAGE_TAG}` (ảnh bên thứ ba như
     `postgres`/`redis`/`minio` không theo khuôn này) — `${IMAGE_TAG}` được kèm hậu tố
     `:?…`/`:-…` cũng đạt (bắt buộc/giá trị mặc định, vẫn dùng đúng biến); mọi dịch vụ
-    có `env_file` chứa `/etc/appback/appback.env`; dịch vụ dài hạn (không phải job một
-    lần như `migrate`/`minio-init`) có thêm `restart: unless-stopped`."""
+    trừ `ml`/`ml-gpu` có `env_file` đúng `/etc/appback/appback.env` (hai dịch vụ ml dùng
+    tệp riêng — `test_compose_prod_ml_env_file_is_not_appback_env`, NO-085); dịch vụ dài
+    hạn (không phải job một lần như `migrate`/`minio-init`) có thêm `restart: unless-stopped`."""
     services = _resolved_services("prod")
     for name, service in services.items():
         image = service.get("image")
@@ -232,11 +242,10 @@ def test_compose_prod_image_naming_restart_and_env_file() -> None:
                 f"prod/{name}: image {image!r} sai khuôn registry"
             )
             assert _PROD_IMAGE_TAG_RE.search(image), f"prod/{name}: image {image!r} thiếu ${{IMAGE_TAG}}"
-        env_file = service.get("env_file")
-        env_files = [env_file] if isinstance(env_file, str) else list(env_file or [])
-        assert any("/etc/appback/appback.env" in str(f) for f in env_files), (
-            f"prod/{name}: env_file thiếu /etc/appback/appback.env"
-        )
+        if name not in _ML_SERVICES_BY_ENV["prod"]:
+            assert _env_file_paths(service) == [_APPBACK_ENV_FILE], (
+                f"prod/{name}: env_file phải đúng {_APPBACK_ENV_FILE}"
+            )
         if name not in _PROD_ONE_SHOT_SERVICES:
             assert service.get("restart") == "unless-stopped", f"prod/{name}: thiếu restart: unless-stopped"
 
@@ -345,6 +354,18 @@ def test_compose_ml_env_has_no_signing_or_cache_vars(env: str) -> None:
         env_vars = services[service_name].get("environment") or {}
         leaked = [key for key in _ML_FORBIDDEN_ENV if key in env_vars]
         assert not leaked, f"{env}/{service_name}: không được truyền {leaked}"
+
+
+def test_compose_prod_ml_env_file_is_not_appback_env() -> None:
+    """`prod` `ml`/`ml-gpu`: `env_file` đúng `/etc/appback/ml.env`, không bao giờ
+    `appback.env` (NO-085). Gỡ biến khỏi `environment:` chưa đủ: `env_file` nạp NGUYÊN
+    tệp vào container, trỏ tệp chung là `ml` lại cầm `SECRET_KEY`, `DATABASE_URL`, mật
+    khẩu SMTP — trái tách quyền của BE-00 §2.1/§9."""
+    services = _resolved_services("prod")
+    for service_name in _ML_SERVICES_BY_ENV["prod"]:
+        assert _env_file_paths(services[service_name]) == [_ML_ENV_FILE], (
+            f"prod/{service_name}: env_file phải đúng {_ML_ENV_FILE}, không dùng tệp chung {_APPBACK_ENV_FILE}"
+        )
 
 
 def test_compose_web_healthcheck_single_source() -> None:

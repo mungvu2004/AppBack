@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from deploy.tests.compose_reader import resolve_all_services
 from deploy.tests.support import require_path
 
 # Nguyên văn danh sách biến của prompt B0-08 [2] — nguồn đúng sai duy nhất.
@@ -45,16 +46,16 @@ _SECRET_LOOKING_RE = re.compile(r"[A-Za-z0-9+/_-]{20,}")
 _AWS_KEY_RE = re.compile(r"AKIA[0-9A-Z]{16}")
 
 
-def _load_env_lines() -> dict[str, str]:
-    """Nạp `env.example` thành `{tên: giá trị}`, bỏ dòng trống/comment (`#`)."""
-    path = require_path("deploy/compose/env.example")
+def _load_env_lines(relative: str = "deploy/compose/env.example") -> dict[str, str]:
+    """Nạp tệp mẫu `relative` thành `{tên: giá trị}`, bỏ dòng trống/comment (`#`)."""
+    path = require_path(relative)
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         key, sep, value = stripped.partition("=")
-        assert sep, f"env.example: dòng {line!r} không đúng dạng KEY=VALUE"
+        assert sep, f"{relative}: dòng {line!r} không đúng dạng KEY=VALUE"
         values[key.strip()] = value.strip()
     return values
 
@@ -203,3 +204,25 @@ def test_compose_mail_required_vars_have_no_silent_default() -> None:
     raw = require_path("deploy/compose/base.yml").read_text(encoding="utf-8")
     for var in ("SMTP_HOST", "MAIL_FROM"):
         assert re.search(rf"\$\{{{var}:\?", raw), f"base.yml: {var} phải khai dạng ${{{var}:?…}}"
+
+
+_ML_ENV_EXAMPLE = "deploy/compose/ml.env.example"
+_ML_ENV_PREFIXES = ("ML_", "METRICS_")
+_ML_ENV_FORBIDDEN = ("SECRET_KEY", "SECRET_KEY_PREVIOUS", "DATABASE_URL", "REDIS_CACHE_URL", "PUBLIC_BASE_URL")
+_ML_ENV_FORBIDDEN_PREFIXES = ("SMTP_", "MAIL_", "POSTGRES_", "MINIO_ROOT_")
+
+
+def test_ml_env_example_holds_only_ml_knobs() -> None:
+    """Mẫu `/etc/appback/ml.env` (NO-085): không khoá ký JWT, DSN Postgres, SMTP, DSN
+    cache hay `PUBLIC_BASE_URL`; chỉ `ML_*`/`METRICS_*`; không biến nào trùng
+    `environment:` của `ml`/`ml-gpu` ở prod — `environment:` đè `env_file`, đặt trùng là
+    vô tác dụng (chú thích đầu `prod.yml`)."""
+    values = _load_env_lines(_ML_ENV_EXAMPLE)
+    leaked = [n for n in values if n in _ML_ENV_FORBIDDEN or n.startswith(_ML_ENV_FORBIDDEN_PREFIXES)]
+    assert not leaked, f"{_ML_ENV_EXAMPLE}: không được chứa {leaked}"
+    foreign = [n for n in values if not n.startswith(_ML_ENV_PREFIXES)]
+    assert not foreign, f"{_ML_ENV_EXAMPLE}: chỉ nhận {_ML_ENV_PREFIXES}, có {foreign}"
+    services = resolve_all_services(require_path("deploy/compose/prod.yml"))
+    for name in ("ml", "ml-gpu"):
+        shadowed = sorted(set(values) & set(services[name].get("environment") or {}))
+        assert not shadowed, f"{_ML_ENV_EXAMPLE}: {shadowed} bị environment: của prod/{name} đè"

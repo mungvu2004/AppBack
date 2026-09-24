@@ -10,6 +10,13 @@
 # thật trong `/etc/appback/appback.env`. `env_file` để `required: false` chỉ để
 # `docker compose config` chạy được trên máy dev/CI khi file chưa tồn tại (kiểm #1 của
 # prompt) — trên VPS thật file luôn có mặt trước khi gọi compose.
+#
+# NGOẠI LỆ `ml`/`ml-gpu` (NO-085, BE-00 §2.1/§9): `env_file` là `/etc/appback/ml.env`,
+# KHÔNG phải `appback.env` — `env_file` nạp NGUYÊN tệp vào container, trỏ tệp chung là
+# tiến trình nạp trọng số ngoài cầm `SECRET_KEY`, `DATABASE_URL`, mật khẩu SMTP. Biến
+# `ml` cần từ tệp chung (APP_ENV, REDIS_BROKER_URL, S3_* khoá ml…) vẫn tới qua
+# `environment:` của base.yml, nội suy từ `--env-file appback.env` như trên; `ml.env`
+# chỉ giữ `ML_*`/`METRICS_*` mà `environment:` không đặt (mẫu: `ml.env.example`).
 services:
   postgres:
     extends:
@@ -145,7 +152,7 @@ services:
     restart: unless-stopped
     profiles: ["ml"]
     env_file:
-      - path: /etc/appback/appback.env
+      - path: /etc/appback/ml.env
         required: false
     depends_on:
       redis-broker:
@@ -159,7 +166,7 @@ services:
     restart: unless-stopped
     profiles: ["gpu"]
     env_file:
-      - path: /etc/appback/appback.env
+      - path: /etc/appback/ml.env
         required: false
     depends_on:
       redis-broker:
