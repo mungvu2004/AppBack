@@ -1,6 +1,9 @@
 """`run_step` gọi trực tiếp: mọi nhánh đọc trang, ghi artifact, báo `step_done` (không cần worker)."""
 
+import os
 import struct
+import subprocess
+import sys
 import zlib
 from collections.abc import Iterator
 from pathlib import Path
@@ -221,3 +224,40 @@ def test_infer_context_is_built_once_from_the_environment(ml_env: None) -> None:
     assert infer_context() is context
     reset_infer_context()
     assert infer_context() is not context
+
+
+# Môi trường của dịch vụ `ml` ở production (`deploy/compose/base.yml`): khoá MinIO riêng,
+# **không** `SECRET_KEY`/`PUBLIC_BASE_URL`/`REDIS_CACHE_URL` (NO-085, BE-00 §2.1/§9).
+_ML_PROD_ENV = {
+    "APP_ENV": "production",
+    "REDIS_BROKER_URL": "redis://redis-broker:6379/0",
+    "STORAGE_BACKEND": "s3",
+    "S3_ENDPOINT": "http://minio:9000",
+    "S3_PUBLIC_ENDPOINT": "https://files.appback.test",
+    "S3_BUCKET": "appback",
+    "S3_ACCESS_KEY": "ml-key",
+    "S3_SECRET_KEY": "ml-secret",
+    "ML_BACKEND": "fake",
+}
+_API_ONLY = ("SECRET_KEY", "SECRET_KEY_PREVIOUS", "PUBLIC_BASE_URL", "REDIS_CACHE_URL")
+
+
+def test_infer_context_builds_without_the_api_secrets() -> None:
+    """Tiến trình mới với môi trường `ml` production dựng được kho S3 (FIX-091, NO-085).
+
+    Tiến trình riêng vì cache cấu hình của tiến trình test đã giữ `SECRET_KEY`. Dựng kho
+    không mở kết nối nào tới MinIO, nên không cần dịch vụ thật.
+    """
+    env = {name: value for name, value in os.environ.items() if name not in _API_ONLY} | _ML_PROD_ENV
+    code = "from apps.ml.runtime.tasks_util import infer_context; print(type(infer_context().storage).__name__)"
+    result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[4],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "S3Storage"

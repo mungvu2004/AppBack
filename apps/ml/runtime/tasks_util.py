@@ -23,7 +23,6 @@ from apps.ml.runtime.settings import MlSettings, get_ml_settings, reset_ml_setti
 from packages.core.clock import SystemClock
 from packages.core.error_codes import NOT_FOUND
 from packages.core.errors import AppError
-from packages.core.settings import get_core_settings
 from packages.messaging.celery_app import send_task
 from packages.messaging.redis import ProcessLocal
 from packages.messaging.tasks import PermanentError
@@ -70,8 +69,12 @@ class InferContext:
 
 
 def _build_context() -> InferContext:
-    """Dựng từ biến môi trường của tiến trình (kho theo `STORAGE_BACKEND`)."""
-    storage = create_storage(get_storage_settings(), get_core_settings(), SystemClock())
+    """Dựng từ biến môi trường của tiến trình (kho theo `STORAGE_BACKEND`).
+
+    Không truyền `CoreSettings`: `ml` không ký URL (không gọi `signed_url`) nên không cầm
+    `SECRET_KEY`/`PUBLIC_BASE_URL` (NO-085, BE-00 §2.1/§9); luật khác origin thuộc API.
+    """
+    storage = create_storage(get_storage_settings(), None, SystemClock())
     return InferContext(storage=storage, settings=get_ml_settings())
 
 
