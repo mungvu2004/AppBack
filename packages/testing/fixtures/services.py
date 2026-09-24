@@ -26,7 +26,9 @@ from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
 
-from tools.pinned_images import MINIO_IMAGE, POSTGRES_IMAGE, REDIS_IMAGE
+from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
 

@@ -5,6 +5,7 @@ tối đa 2 `verify-run`, phép thử đó là việc của cổng đầy đủ 
 """
 
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -12,8 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 VERIFY_YML = REPO_ROOT / "deploy" / "compose" / "verify.yml"
 
 
-def _load() -> dict:  # type: ignore[type-arg]
-    return yaml.safe_load(VERIFY_YML.read_text(encoding="utf-8"))
+def _load() -> dict[str, Any]:
+    return cast(dict[str, Any], yaml.safe_load(VERIFY_YML.read_text(encoding="utf-8")))
 
 
 def test_verify_yml_volume_has_fixed_shared_name() -> None:
