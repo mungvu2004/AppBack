@@ -59,7 +59,9 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.s3 import http_client
 from packages.storage.settings import reset_storage_settings_cache
-from tools.pinned_images import MINIO_IMAGE, POSTGRES_IMAGE, REDIS_IMAGE
+from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAX_EXAMPLES_ENV: Final = "H2_MAX_EXAMPLES"
 DEFAULT_MAX_EXAMPLES: Final = 25
