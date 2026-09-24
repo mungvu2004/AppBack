@@ -118,7 +118,8 @@ def _tiny_quad() -> Quad:
 def test_validate_quad_rejects_each_rule(factory: object) -> None:
     """Mỗi luật của khối [6] có một tứ giác vi phạm riêng, tất cả → `VALIDATION`/`corners`."""
     with pytest.raises(VisionError) as caught:
-        validate_quad(factory(), _IMAGE_W, _IMAGE_H)  # type: ignore[operator]  # `factory` là `object` để bảng ca nhận mọi hàm dựng
+        # `factory` khai `object` để bảng ca nhận mọi hàm dựng (NO-125).
+        validate_quad(factory(), _IMAGE_W, _IMAGE_H)  # type: ignore[operator]
     assert (caught.value.code, caught.value.field) == ("VALIDATION", "corners")
 
 
