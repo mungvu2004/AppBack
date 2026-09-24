@@ -107,7 +107,7 @@ def test_gc_lowercases_and_normalizes_worktree_names(worktree: Path, tmp_path: P
     rồi kiểm `VERIFY_VALID_NAMES` truyền cho container `gc` có đúng tên đã chuẩn hoá.
     """
     extra = tmp_path / "B7-01_Extra"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 — git của repo tạm, không nhận input người dùng
         [GIT, "-C", str(worktree), "worktree", "add", "-q", "--detach", str(extra)],
         check=True,
     )
