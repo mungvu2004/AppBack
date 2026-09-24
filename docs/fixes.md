@@ -92,9 +92,9 @@
 | FIX-094 | 2026-09-24 | B2-01 | NO-142, NO-136, NO-135 | `UPDATE` không khoá thứ tự, thiếu test hai session `_checked(None)`, `user_out()` không ký URL avatar | `672b44b` |
 | FIX-095 | 2026-09-24 | B2-05a | NO-125 | Thiếu ca `render` ném `PdfiumError` → `FILE_CORRUPT` | `c3e32b7` |
 | FIX-096 | 2026-09-24 | B4-01 | NO-155, NO-158 | Test hạn hết giữa hai lượt kéo không tất định; seed ít khoá hơn `BATCH` | `6caadb8` |
-| FIX-097 | 2026-09-24 | F-01b | NO-154 | Luồng SSE 401 lặp không refresh trước lần nối kế | AppFront nhánh `fix/debt-01-fe` |
-| FIX-098 | 2026-09-24 | F-02 | NO-099 | 26 `kind` hoạt động thiếu nhãn tiếng Việt | AppFront nhánh `fix/debt-01-fe` |
-| FIX-099 | 2026-09-24 | (tra chủ) | NO-086 | SSE thông báo mở `/api/notifications/stream` thay vì `/api/streams/notifications` | AppFront nhánh `fix/debt-01-fe` |
+| FIX-097 | 2026-09-24 | F-01b | NO-154 | Luồng SSE 401 lặp không refresh trước lần nối kế | **không gộp** — review lượt 2 bác; bàn giao F-01b (nhánh tham khảo `fix/debt-01-fe-with-fix-097`) |
+| FIX-098 | 2026-09-24 | F-02 | NO-099 | 26 `kind` hoạt động thiếu nhãn tiếng Việt | AppFront `831be4b` |
+| FIX-099 | 2026-09-24 | F-01b | NO-086 | SSE thông báo mở `/api/notifications/stream` thay vì `/api/streams/notifications` | AppFront `885556d` |
 | FIX-100 | 2026-09-24 | B0-08 | NO-174 | Ảnh `web` không build vì ảnh node ghim bỏ `corepack` | `792e98b` (nhánh `fix/b0-08-web-openssl-cve`) |
 | FIX-101 | 2026-09-24 | B0-01 | NO-105 | Bước 8 nhánh tích hợp so với `openapi.json` không được commit; nay so với `docs/contracts/openapi.json` | `ad9ecab` (nhánh `fix/debt-01-tooling`) |
 | FIX-102 | 2026-09-24 | B0-01 | NO-175 | Ảnh verify không ghim bản uv nên `run.sh lock` đổi định dạng `uv.lock` | `17774f7` (nhánh `fix/debt-01-tooling`) |
@@ -898,3 +898,23 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Ba dòng `FROM` tầng chạy về `python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e` — digest tự tra bằng `imagetools`, đúng bằng digest có trước `44b299f`; kèm comment ràng buộc "minor phải khớp tầng dựng và `requires-python`".
 - **[6]** `test_dockerfile_python_minor_matches_across_stages_and_workspace` — quét mọi `deploy/docker/*.Dockerfile`, đòi minor của tầng chạy/tầng dựng bằng `requires-python` gốc, chốt số tầng soi được ≥ 7; đỏ trên `main` (AssertionError venv không đọc được), xanh sau sửa (`pytest deploy/tests` 153 passed).
 - **[7]** Commit `66ce4d7` (`fix(deploy): pin python runtime stage back to the workspace minor`, `Prompt: B0-08`, `Fix: FIX-104`); reviewer đo độc lập: `python -V` = 3.12.14, `import alembic` đạt, `compose run --rm migrate` thoát 0; review APPROVE WITH COMMENTS 4,45/5, cổng đầy đủ thoát 0.
+
+## FIX-098 cho F-02 — nhãn tiếng Việt thiếu cho 26 `kind` hoạt động (NO-099)
+
+- **[1]** Màn quản trị người dùng hiện câu dự phòng cho mọi `kind` trừ `floor.upload`.
+- **[2]** `src/screens/admin/UserManagement/useUserManagement.ts:174-186` trên AppFront `master` @ `9cf0b0b`.
+- **[3]** `apps/api/access/kinds.py` khai 27 `ActivityKind`; bảng nhãn FE chỉ có 1.
+- **[4]** Sửa: `useUserManagement.ts` + test mới `useUserManagement.test.ts`. Cấm: file khác.
+- **[5]** Bảng nhãn đủ 27 `kind`, chép tĩnh kèm nguồn `kinds.py:<dòng>`.
+- **[6]** Test khẳng định mọi `kind` có nhãn: đỏ trên `master` → xanh; reviewer tự đếm máy 27/27.
+- **[7]** `fix(admin): label all 27 activity kinds in user management` (AppFront `831be4b`, `Prompt: F-02`, `Fix: FIX-098`); review lượt 1 ĐẠT.
+
+## FIX-099 cho F-01b — SSE thông báo mở sai đường (NO-086)
+
+- **[1]** FE mở `/api/notifications/stream`; BE-BIND S2 là `GET /api/streams/notifications`; nginx chỉ tắt đệm cho `/api/streams/`.
+- **[2]** `src/api/endpoints.ts:10` (`NOTIFICATIONS_ROOT`) trên AppFront `master` @ `9cf0b0b`.
+- **[3]** Cookie `appback_stream` có `Path=/api/streams` nên đường cũ không bao giờ mang được cookie.
+- **[4]** Sửa: `src/api/endpoints.ts`, `src/api/__tests__/notifications.test.ts`. `endpoints.ts` không thuộc `so_huu` nào — người dùng chốt chủ F-01b.
+- **[5]** Đổi đường luồng thông báo sang `/streams/notifications`.
+- **[6]** `notifications.test.ts` khẳng định đường mới: đỏ trên `master` → xanh.
+- **[7]** `fix(api): point notifications SSE at BE-BIND S2 /api/streams/notifications` (AppFront `885556d`, `Prompt: F-01b`, `Fix: FIX-099`); review lượt 1 ĐẠT. F-01b 4.8 sẽ thay dòng này bằng nhóm `streams`.
