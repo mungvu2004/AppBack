@@ -101,6 +101,7 @@
 | FIX-103 | 2026-09-24 | B1-01 | NO-097 | `cast` thừa ở `apps/api/auth/sessions.py:585` khi `ROLES` có kiểu `tuple[Role, ...]` (hệ quả FIX-090) | `e2ebeda` |
 | FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | `3f2e14d`, `777f895` |
 | FIX-105 | 2026-09-24 | B0-04 | NO-085 | `StorageSettings` đọc `CoreSettings` (cần `SECRET_KEY`, `PUBLIC_BASE_URL`) nên `ml` không dựng được kho S3 khi đã bỏ hai biến đó | `2739918` |
+| FIX-107 | 2026-09-25 | B4-01 | — | Test mặc định của sổ luồng giả định "chưa có B2-04", đỏ khi B2-04 cài provider `upload_progress` thật | nhánh `feature/b2-04-drawing-uploads` |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -939,3 +940,14 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Tắt rDNS ở container Mailpit của test: test không còn phụ thuộc DNS của máy; cùng env đó thử tay 3/3 thư 0,03 s.
 - **[6]** 5 test trên đỏ → xanh trên máy có DNS PTR chậm; không test nào khác đổi.
 - **[7]** `fix(testing): disable mailpit rdns lookups in the test fixture` (squash của `5ac987b`, `Prompt: B0-01`, `Fix: FIX-106`); review lượt 1 APPROVE 4,9/5 (`bfe9889`), cổng đầy đủ thoát 0 (4011 passed). Nợ kèm: NO-211 (e2e phụ thuộc thứ tự, B1-03), NO-212 (compose còn rDNS, B0-08).
+
+> **Giao việc FIX-107.** 2026-09-25, cổng đầy đủ bước 5 của B2-04 (`feature/b2-04-drawing-uploads`) đỏ đúng một test của B4-01.
+> Người dùng chọn FIX ngay trên nhánh B2-04 (tiền lệ FIX-082): commit riêng chỉ chạm file test đó, trailer `Prompt: B4-01` +
+> `Fix: FIX-107`; nhánh vào `main` giữ trailer của cả hai prompt.
+
+## FIX-107 cho B4-01 — test mặc định của sổ luồng phụ thuộc việc "chưa có B2-04" (không mã nợ)
+
+- **[1–3]** `apps/api/streams/tests/test_registry.py::test_missing_progress_provider_defaults_to_closed` khẳng định `build_registry(None)[UPLOAD_PROGRESS].policy` là `DenyUploads`; docstring tự ghi "Chưa có B2-04 → …". Nay `apps/api/drawings/stream_providers.py` có thật nên `discover` trả provider của B2-04.
+- **[4]** Sửa: đúng file test trên. Cấm: mọi mã sản phẩm của B4-01 (`apps/api/streams/**` ngoài file đó).
+- **[5]** Test tự dựng trạng thái "không ai cài" bằng helper `_app_with()` có sẵn trong file (`extensions.override(app, "stream_providers", ())`) thay vì `build_registry(None)`; không xoá, không nới assert.
+- **[6]** Test xanh cả trên `main` (chưa có `apps/api/drawings`) lẫn trên nhánh B2-04 (đỏ trên nhánh trước khi sửa: bước 5 lượt 1 của việc gộp).
