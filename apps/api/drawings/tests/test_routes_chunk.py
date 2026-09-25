@@ -27,7 +27,7 @@ from apps.api.drawings.tests._upload_helpers import (
     init_body,
     init_path,
     make_stage,
-    png_bytes,
+    upload_png,
 )
 from packages.db.models.drawings import UploadChunkRow, UploadRow
 from packages.storage.port import ObjectStorage
@@ -71,7 +71,7 @@ async def test_drawings_upload_chunk__C01(
     """Một khúc hợp lệ → 200 `Progress`, một dòng `upload_chunks` và object thật trong kho."""
     stage = await make_stage(db_session)
     upload_id = await _start_upload(api_client, stage, 600)
-    piece = png_bytes(600)[:600]
+    piece = upload_png(600)[:600]
 
     response = await api_client.post(
         chunks_path(stage.project_id, upload_id), json=chunk_body(piece, 0), headers=stage.headers

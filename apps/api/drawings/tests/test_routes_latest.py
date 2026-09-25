@@ -20,11 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import FIRST_STEP
 from apps.api.drawings.runs import record_step, start_run
-from apps.api.drawings.tests._drawing_helpers import (
-    attach_floor_order,
-    make_drawing,
-    png_bytes,
-)
+from apps.api.drawings.tests._drawing_helpers import attach_floor_order
 from apps.api.drawings.tests._drawing_helpers import (
     test_signer as test_signer,
 )
@@ -34,7 +30,12 @@ from apps.api.projects.tests.test_routes_common import headers_of
 from packages.db.models.drawings import UploadRow
 from packages.db.models.floors import FloorRow
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.drawings import make_complete_upload, make_upload
+from packages.testing.factories.drawings import (
+    make_complete_upload,
+    make_drawing,
+    make_upload,
+    png_bytes,
+)
 from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock

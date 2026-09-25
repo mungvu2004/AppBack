@@ -9,8 +9,6 @@ biết viết PDF hợp lệ, R-07) thay vì có bản sao thứ hai ở đây.
 import asyncio
 import base64
 import secrets
-import struct
-import zlib
 from collections.abc import AsyncIterable, AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,9 +22,11 @@ from apps.api.drawings.tests._helpers import Scene, make_scene
 from apps.api.projects.tests.test_routes_common import headers_of as headers_of
 from packages.storage.port import CHUNK_SIZE, Disposition, ObjectInfo, ObjectStorage, SignedUrl
 from packages.storage.sniff import ImageKind
+from packages.testing.factories.drawings import png_bytes
 from packages.vision.preprocess.tests.synthetic import Encryption, make_pdf
 
-PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
+IEND_CHUNK: Final = b"IEND"
+"""Dấu kết thúc của PNG; cắt ngay trước độ dài của nó là một tệp cụt thật (U07)."""
 JPEG_SOI: Final = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
 JPEG_EOI: Final = b"\xff\xd9"
 SMALL_CHUNK_BYTES: Final = 1024
@@ -84,20 +84,17 @@ def split(data: bytes, chunk_bytes: int | None = None) -> list[bytes]:
     return [data[start : start + size] for start in range(0, len(data), size)]
 
 
-def _png_chunk(kind: bytes, payload: bytes) -> bytes:
-    """Một chunk PNG hoàn chỉnh (độ dài, tên, dữ liệu, CRC32)."""
-    return len(payload).to_bytes(4, "big") + kind + payload + zlib.crc32(kind + payload).to_bytes(4, "big")
+def upload_png(size: int = 0, *, truncated: bool = False) -> bytes:
+    """PNG tối giản đệm tới `size` byte; `truncated=True` bỏ hẳn khúc `IEND` (U07).
 
-
-def png_bytes(size: int = 0, *, truncated: bool = False) -> bytes:
-    """PNG hợp lệ tối giản, đệm tới `size` byte; `truncated=True` bỏ hẳn `IEND` (U07).
-
-    Đệm nằm **sau** `IEND` nên tệp vẫn là PNG đọc được và `sniff_kind` vẫn trả `png`; test
-    luồng đầy đủ chỉ cần một tệp đủ lớn để chia ba khúc, không cần ảnh thật.
+    Dựng trên `factories.drawings.png_bytes` chứ không tự ghép khúc PNG lần nữa (R-07);
+    ở đây chỉ thêm hai thứ mà test của lượt tải cần và test bản vẽ không: một kích thước
+    tệp đặt trước (để chia đúng số khúc) và một bản cụt. Đệm nằm **sau** `IEND` nên tệp
+    vẫn là PNG đọc được và `sniff_kind` vẫn trả `png`.
     """
-    ihdr = struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0)
-    body = PNG_SIGNATURE + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IDAT", zlib.compress(b"\x00" * 8))
-    data = body if truncated else body + _png_chunk(b"IEND", b"")
+    data = png_bytes(8, 8)
+    if truncated:
+        data = data[: data.index(IEND_CHUNK) - 4]
     return data + b"\x00" * max(0, size - len(data))
 
 

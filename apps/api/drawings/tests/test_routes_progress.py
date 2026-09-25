@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import record_step, start_run
 from apps.api.drawings.tests._helpers import sync_bus_reset as sync_bus_reset
-from apps.api.drawings.tests._upload_helpers import headers_of, make_stage, png_bytes, progress_path
+from apps.api.drawings.tests._upload_helpers import headers_of, make_stage, progress_path, upload_png
 from packages.core.pipeline import PIPELINE_STEPS
 from packages.storage.port import ObjectStorage
 from packages.testing.factories.auth import make_user
@@ -46,7 +46,7 @@ async def test_drawings_read_progress__C01_running(
     """Bước đầu đang chạy → `running`, có `startedAt`, chưa có `endedAt` (K33)."""
     stage = await make_stage(db_session)
     upload = await make_complete_upload(
-        db_session, local_storage, project=stage.scene.project, floor=stage.scene.floor, data=png_bytes(600)
+        db_session, local_storage, project=stage.scene.project, floor=stage.scene.floor, data=upload_png(600)
     )
     run = await start_run(db_session, upload_id=upload.id, clock=fake_clock)
     await record_step(db_session, run_id=run.id, step=FIRST_STEP, status="running", clock=fake_clock)
@@ -72,7 +72,7 @@ async def test_drawings_read_progress__C01_completed(
     """Mọi bước xong → `completed`, 100%, `step` là bước cuối và **có** `endedAt`."""
     stage = await make_stage(db_session)
     upload = await make_complete_upload(
-        db_session, local_storage, project=stage.scene.project, floor=stage.scene.floor, data=png_bytes(600)
+        db_session, local_storage, project=stage.scene.project, floor=stage.scene.floor, data=upload_png(600)
     )
     run = await start_run(db_session, upload_id=upload.id, clock=fake_clock)
     for step, _ in PIPELINE_STEPS:
@@ -99,7 +99,7 @@ async def test_drawings_read_progress__C01_failed(
     """Bước hỏng → `failed` kèm `error` UPPER_SNAKE và **không** `endedAt` (K33)."""
     stage = await make_stage(db_session)
     upload = await make_complete_upload(
-        db_session, local_storage, project=stage.scene.project, floor=stage.scene.floor, data=png_bytes(600)
+        db_session, local_storage, project=stage.scene.project, floor=stage.scene.floor, data=upload_png(600)
     )
     run = await start_run(db_session, upload_id=upload.id, clock=fake_clock)
     await record_step(

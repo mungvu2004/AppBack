@@ -33,9 +33,9 @@ from apps.api.drawings.tests._upload_helpers import (
     init_path,
     make_stage,
     pdf_bytes,
-    png_bytes,
     send_chunks,
     split,
+    upload_png,
     upload_through,
 )
 from packages.db.models.drawings import PipelineRunRow, UploadRow
@@ -102,7 +102,7 @@ async def test_drawings_complete_upload__C01(
 ) -> None:
     """Tệp đủ khúc → 200 `Progress` `pending`, dòng `complete` và `original.png` trong kho."""
     stage = await make_stage(db_session)
-    data = png_bytes(2500)
+    data = upload_png(2500)
 
     upload_id, response = await upload_through(api_client, stage, data)
 
@@ -123,7 +123,7 @@ async def test_drawings_complete_upload__C06(
 ) -> None:
     """Người ngoài dự án → 404 `resource:"project"`."""
     stage = await make_stage(db_session)
-    upload_id = await _start(api_client, stage, png_bytes(600))
+    upload_id = await _start(api_client, stage, upload_png(600))
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
 
@@ -159,7 +159,7 @@ async def test_drawings_complete_upload__C14(
 ) -> None:
     """Hai #7 song song → cả hai 200, **một** lượt chạy và **một** dòng nhật ký."""
     stage = await make_stage(db_session)
-    data = png_bytes(1500)
+    data = upload_png(1500)
     upload_id = await _start(api_client, stage, data)
     for response in await send_chunks(api_client, stage, upload_id, split(data)):
         assert response.status_code == 200, response.text
@@ -183,7 +183,7 @@ async def test_drawings_complete_upload__C21(
 ) -> None:
     """`uploadId` trong thân khác đường → 422 `PATH_BODY_MISMATCH`."""
     stage = await make_stage(db_session)
-    upload_id = await _start(api_client, stage, png_bytes(600))
+    upload_id = await _start(api_client, stage, upload_png(600))
 
     response = await api_client.post(
         complete_path(stage.project_id, upload_id),
@@ -204,7 +204,7 @@ async def test_drawings_complete_upload__U07(
 ) -> None:
     """PNG thiếu `IEND` → 422 `FILE_CORRUPT`, dòng `rejected` và **không còn** `original.*`."""
     stage = await make_stage(db_session)
-    data = png_bytes(1500, truncated=True)
+    data = upload_png(1500, truncated=True)
 
     upload_id, response = await upload_through(api_client, stage, data)
 
@@ -230,7 +230,7 @@ async def test_drawings_complete_upload__U10(
 ) -> None:
     """Thiếu khúc → 422 `UPLOAD_INCOMPLETE` kèm `count`, lượt tải vẫn `receiving`."""
     stage = await make_stage(db_session)
-    data = png_bytes(SMALL_CHUNK_BYTES * 3)
+    data = upload_png(SMALL_CHUNK_BYTES * 3)
     upload_id = await _start(api_client, stage, data)
     pieces = split(data)
     assert len(pieces) == 3
@@ -256,7 +256,7 @@ async def test_drawings_complete_upload__U11(
     """Tổng byte thật khác `sizeBytes` khai → 422 `UPLOAD_SIZE_MISMATCH`, giữ `receiving`."""
     stage = await make_stage(db_session)
     upload_id = await _start(api_client, stage, b"x" * 900)
-    for response in await send_chunks(api_client, stage, upload_id, [png_bytes(500)[:500]]):
+    for response in await send_chunks(api_client, stage, upload_id, [upload_png(500)[:500]]):
         assert response.status_code == 200, response.text
 
     result = await api_client.post(
@@ -277,7 +277,7 @@ async def test_drawings_complete_upload__C18(
     """Một dòng `activity_log` `floor.upload_complete`, actor lấy từ token."""
     stage = await make_stage(db_session)
 
-    _, response = await upload_through(api_client, stage, png_bytes(900))
+    _, response = await upload_through(api_client, stage, upload_png(900))
 
     assert response.status_code == 200, response.text
     rows = await activity_rows(db_sessionmaker, actor_id=stage.scene.user.id, kind=ActivityKind.FLOOR_UPLOAD_COMPLETE)
@@ -290,7 +290,7 @@ async def test_drawings_complete_upload__C10_queue_once(
 ) -> None:
     """Lặp `Idempotency-Key` → cùng response và **một** thông điệp `pipeline.cpu`."""
     stage = await make_stage(db_session)
-    data = png_bytes(900)
+    data = upload_png(900)
     upload_id = await _start(api_client, stage, data)
     for response in await send_chunks(api_client, stage, upload_id, split(data)):
         assert response.status_code == 200, response.text
@@ -310,7 +310,7 @@ async def test_drawings_complete_upload__C10_no_key_replay(
 ) -> None:
     """FE gửi lại #7 **không** `Idempotency-Key` → vẫn đúng một thông điệp (bước 1 của [6])."""
     stage = await make_stage(db_session)
-    data = png_bytes(900)
+    data = upload_png(900)
     upload_id = await _start(api_client, stage, data)
     for response in await send_chunks(api_client, stage, upload_id, split(data)):
         assert response.status_code == 200, response.text
@@ -394,7 +394,7 @@ async def test_complete_conflicts_when_a_chunk_is_replaced(
 ) -> None:
     """Khúc bị ghi đè trong lúc #7 đang nối tệp → 409 `UPLOAD_CHUNKS_CHANGED` (FE thử lại)."""
     stage = await make_stage(db_session)
-    data = png_bytes(900)
+    data = upload_png(900)
     async with make_api_client(api_app) as client:
         upload_id = await _ready_upload(client, stage, data)
         gated, task = await _gated_complete(client, api_app, stage, upload_id)
@@ -414,7 +414,7 @@ async def test_complete_404_when_floor_is_deleted_midway(
 ) -> None:
     """Tầng bị xoá mềm trong lúc #7 đang ghi kho → 404 `resource:"floor"`, không ghi gì."""
     stage = await make_stage(db_session)
-    data = png_bytes(900)
+    data = upload_png(900)
     async with make_api_client(api_app) as client:
         upload_id = await _ready_upload(client, stage, data)
         gated, task = await _gated_complete(client, api_app, stage, upload_id)
@@ -434,7 +434,7 @@ async def test_complete_404_when_upload_is_deleted_midway(
 ) -> None:
     """Lượt tải bị lịch dọn xoá trong lúc #7 đang ghi kho → 404 `resource:"upload"`."""
     stage = await make_stage(db_session)
-    data = png_bytes(900)
+    data = upload_png(900)
     async with make_api_client(api_app) as client:
         upload_id = await _ready_upload(client, stage, data)
         gated, task = await _gated_complete(client, api_app, stage, upload_id)
@@ -452,7 +452,7 @@ async def test_reject_survives_upload_deleted_midway(
 ) -> None:
     """Tệp hỏng **và** lượt tải biến mất giữa chừng → vẫn trả 422 W7, không 500."""
     stage = await make_stage(db_session)
-    data = png_bytes(900, truncated=True)
+    data = upload_png(900, truncated=True)
     async with make_api_client(api_app) as client:
         upload_id = await _ready_upload(client, stage, data)
         gated, task = await _gated_complete(client, api_app, stage, upload_id)

@@ -4,23 +4,27 @@ Ghi thẳng `uploads`/`upload_chunks` và kho object, không qua API: test của
 và của ba lịch nền cần một lượt tải ở đúng trạng thái, không cần bốn lượt HTTP để tới đó.
 Chỉ `flush` như `make_floor` — test còn ghi tiếp trong cùng giao dịch.
 
-**Không** có `make_drawing` ở đây: khoá trang đã nắn do `drawings.new_page_key` (việc B của
-B2-04) sinh, factory sẽ thêm khi hàm ấy tồn tại.
+`make_drawing` ghi thẳng dòng `drawings` chứ không qua `upsert_drawing`: hàm ấy đòi một lượt
+chạy đang khoá, thứ mà test mồi dữ liệu không có.
 """
 
 import hashlib
+import zlib
 from typing import Final
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.drawings.drawings import new_page_key
 from apps.api.drawings.settings import get_drawings_settings
+from apps.api.drawings.uploads import chunk_key as chunk_key
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.text import nfc
-from packages.db.models.drawings import UploadChunkRow, UploadRow
+from packages.db.models.drawings import DrawingRow, UploadChunkRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
-from packages.storage.keys import check_key, upload_original, upload_prefix
+from packages.storage.keys import upload_original
 from packages.storage.port import ObjectStorage
 
 DEFAULT_FILE_NAME: Final = "ban-ve.png"
@@ -29,15 +33,9 @@ DEFAULT_SIZE_BYTES: Final = 1024
 _EXT_TYPE: Final = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "pdf": "application/pdf"}
 _EXT_KIND: Final = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf"}
 
+PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
 
-def chunk_key(project_id: str, level_id: str, upload_id: str, index: int, sha256: str) -> str:
-    """Khoá object của một khúc: `<upload_prefix>chunks/{i}/{sha256}` (B2-04 [5]).
-
-    Bản sao tạm của luật khoá khúc: `packages/storage/keys.py` là chủ của bố cục khoá nhưng
-    nằm ngoài whitelist B2-04 (nợ đã nêu trong báo cáo việc D — đường nâng cấp là thêm
-    `upload_chunk()` vào `packages/storage/keys.py` rồi cả factory lẫn route #6 gọi nó).
-    """
-    return check_key(f"{upload_prefix(project_id, level_id, upload_id)}chunks/{index}/{sha256}")
+"""`chunk_key` xuất lại từ `apps.api.drawings.uploads`: một luật khoá khúc, một chủ (đính chính §15)."""
 
 
 def _extension(file_name: str) -> str:
@@ -118,3 +116,63 @@ async def make_complete_upload(
     upload.original_key = original_key
     await db.flush()
     return upload
+
+
+def _png_chunk(kind: bytes, body: bytes) -> bytes:
+    """Một khúc PNG: độ dài, loại, thân, CRC32 của (loại + thân)."""
+    return len(body).to_bytes(4, "big") + kind + body + zlib.crc32(kind + body).to_bytes(4, "big")
+
+
+def png_bytes(width: int, height: int) -> bytes:
+    """PNG hợp lệ tới mức `sniff` nhận ra và `png_size` đọc được — không có pixel nào.
+
+    Test bản vẽ chỉ cần kích thước và magic bytes; nén một ảnh thật cho mỗi test là thời
+    gian CPU không mua được gì.
+    """
+    ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
+    return PNG_SIGNATURE + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IEND", b"")
+
+
+def png_size(png: bytes) -> tuple[int, int]:
+    """`(width, height)` đọc từ IHDR; không phải PNG → `ValueError`."""
+    if len(png) < 24 or not png.startswith(PNG_SIGNATURE):
+        raise ValueError("cần một tệp PNG")
+    return int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+
+
+async def make_drawing(db: AsyncSession, storage: ObjectStorage, *, upload: UploadRow, png: bytes) -> DrawingRow:
+    """Bản vẽ đang dùng của tầng chứa `upload`, kèm object trang đã nắn thật trong kho.
+
+    Ghi thẳng dòng như `make_upload`, **không** qua `upsert_drawing`: factory không có lượt
+    chạy đang khoá, mà `upsert_drawing` đòi đúng một lượt như thế.
+    """
+    width, height = png_size(png)
+    level_id, uploaded_at = (
+        await db.execute(
+            select(FloorRow.level_id, UploadRow.updated_at)
+            .join(UploadRow, UploadRow.floor_pk == FloorRow.pk)
+            .where(UploadRow.id == upload.id)
+        )
+    ).one()
+    key = new_page_key(
+        project_id=upload.project_id,
+        level_id=level_id,
+        upload_id=upload.id,
+        page_index=upload.page_index,
+        clock=SystemClock(),
+    )
+    await storage.put(key, png, content_type="image/png", max_bytes=len(png))
+    drawing = DrawingRow(
+        id=new_id("drw", SystemClock()),
+        floor_pk=upload.floor_pk,
+        upload_id=upload.id,
+        name=upload.file_name,
+        page_key=key,
+        width_px=width,
+        height_px=height,
+        uploaded_at=uploaded_at,
+        uploader_id=upload.created_by,
+    )
+    db.add(drawing)
+    await db.flush()
+    return drawing

@@ -32,9 +32,9 @@ from apps.api.drawings.tests._upload_helpers import (
     jpeg_bytes,
     make_stage,
     pdf_bytes,
-    png_bytes,
     progress_path,
     split,
+    upload_png,
     upload_through,
 )
 from apps.api.drawings.uploads import chunk_key
@@ -74,7 +74,7 @@ async def test_full_flow_png_three_chunks_keeps_sha256(
 ) -> None:
     """PNG 12 MiB đi qua ba khúc 5 MiB và về lại **đúng từng byte** ở `original.png`."""
     stage = await make_stage(db_session)
-    data = png_bytes(BIG_FILE_BYTES)
+    data = upload_png(BIG_FILE_BYTES)
     assert len(split(data)) == 3
 
     upload_id, response = await upload_through(api_client, stage, data)
@@ -166,7 +166,7 @@ async def test_init_after_first_chunk_starts_a_new_upload(
 ) -> None:
     """Lượt cũ đã nhận khúc → init thứ hai là một lượt tải **mới**, không ghi đè."""
     stage = await make_stage(db_session)
-    data = png_bytes(3000)
+    data = upload_png(3000)
     body = init_body(stage.project_id, stage.level_id, size_bytes=len(data))
     path = init_path(stage.project_id, stage.level_id)
 
@@ -289,7 +289,7 @@ async def test_chunk_upload_does_not_hold_the_pool__K36(
 ) -> None:
     """#6 đang `put` → pool rỗng và #8 vẫn trả dưới 1 s trên app chỉ có **một** kết nối."""
     stage = await make_stage(db_session)
-    data = png_bytes(3000)
+    data = upload_png(3000)
     async with make_api_client(tiny_pool_app) as client:
         gated = GatedStorage(tiny_pool_app.state.storage)
         tiny_pool_app.state.storage = gated
@@ -341,7 +341,7 @@ async def test_complete_100_mib_on_minio_under_budget__K28(
 ) -> None:
     """#7 của một tệp 100 MiB trên MinIO thật xong dưới 15 s (quá thì phải thành job, K28)."""
     stage = await make_stage(db_session)
-    data = png_bytes(HUGE_FILE_BYTES)
+    data = upload_png(HUGE_FILE_BYTES)
     upload = await _seed_chunks(db_session, s3_storage, stage, data)
 
     async with make_api_client(api_app) as client:

@@ -17,7 +17,6 @@ from apps.api.drawings import scales
 from apps.api.drawings.drawing_pages import PAGES
 from apps.api.drawings.runs import start_run
 from apps.api.drawings.scales import load_scales
-from apps.api.drawings.tests._drawing_helpers import make_drawing, png_bytes
 from apps.api.drawings.tests._drawing_helpers import test_signer as test_signer
 from apps.api.drawings.tests._helpers import Scene, make_scene
 from apps.api.drawings.view_parts import PARTS, load
@@ -26,7 +25,7 @@ from apps.api.projects.tests.sql_count import count_sql
 from apps.api.projects.wire import DrawingOut
 from packages.db.models.drawings import DrawingRow
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.drawings import make_complete_upload
+from packages.testing.factories.drawings import make_complete_upload, make_drawing, png_bytes
 from packages.testing.fixtures.clock import FakeClock
 
 PNG = png_bytes(100, 50)

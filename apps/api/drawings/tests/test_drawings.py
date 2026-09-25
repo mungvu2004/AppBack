@@ -10,14 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.drawings import current_drawing, drawing_url, new_page_key, upsert_drawing
 from apps.api.drawings.runs import start_run
-from apps.api.drawings.tests._drawing_helpers import png_bytes
 from apps.api.drawings.tests._helpers import Scene, make_scene
 from apps.api.drawings.urls import signer, use_signer
 from packages.core.object_keys import project_prefix
 from packages.core.settings import reset_settings_cache
 from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.drawings import make_complete_upload
+from packages.testing.factories.drawings import make_complete_upload, png_bytes
 from packages.testing.fixtures.clock import FakeClock
 
 PNG = png_bytes(800, 600)

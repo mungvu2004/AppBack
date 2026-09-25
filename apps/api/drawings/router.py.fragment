@@ -1,8 +1,0 @@
-# --- B2-04 việc B (N7): dán vào `apps/api/drawings/router.py` của việc U. ---
-# Route N7 khai trong `apps/api/drawings/latest.py` (router riêng, cùng `protected_router`),
-# nên `router.py` chỉ cần nhập nó và thêm vào `ROUTERS`.
-
-from apps.api.drawings.latest import router as latest_router  # thêm vào khối import
-
-# và đổi dòng khai `ROUTERS` thành:
-ROUTERS: Final = (router, latest_router)
