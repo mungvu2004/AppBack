@@ -29,6 +29,115 @@
         "title": "AcceptInvitationBody",
         "type": "object"
       },
+      "AdminUserListOut": {
+        "additionalProperties": false,
+        "description": "#38: `total` là số người chưa xoá mềm, có thể lớn hơn `len(users)` khi chạm trần.",
+        "properties": {
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserOut"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total",
+          "users"
+        ],
+        "title": "AdminUserListOut",
+        "type": "object"
+      },
+      "AdminUserOut": {
+        "additionalProperties": false,
+        "description": "`AdminUser`: một người nhìn từ màn quản trị; ba trường tuỳ chọn vắng khoá khi không có.",
+        "properties": {
+          "avatarUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatarurl"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inviteExpiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inviteexpiresat"
+          },
+          "invitedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitedat"
+          },
+          "lastActiveAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastactiveat"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "projectCount": {
+            "title": "Projectcount",
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserStatus"
+          }
+        },
+        "required": [
+          "email",
+          "id",
+          "lastActiveAt",
+          "name",
+          "projectCount",
+          "role",
+          "status"
+        ],
+        "title": "AdminUserOut",
+        "type": "object"
+      },
       "ChangePasswordBody": {
         "additionalProperties": false,
         "description": "Thân N13: `{currentPassword, newPassword}`.",
@@ -80,6 +189,26 @@
           "items"
         ],
         "title": "CursorPage[ProjectSummaryOut]",
+        "type": "object"
+      },
+      "DeleteUserBody": {
+        "additionalProperties": false,
+        "description": "#46: thân có `userId` (W13, guard W21) và email gõ lại để xác nhận.",
+        "properties": {
+          "confirmEmail": {
+            "title": "Confirmemail",
+            "type": "string"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmEmail",
+          "userId"
+        ],
+        "title": "DeleteUserBody",
         "type": "object"
       },
       "DrawingOut": {
@@ -141,6 +270,13 @@
       },
       "ElevationField": {
         "type": "integer"
+      },
+      "EmptyBody": {
+        "additionalProperties": false,
+        "description": "Thân `{}` của #42, #43, #45: không nhận khoá nào.",
+        "properties": {},
+        "title": "EmptyBody",
+        "type": "object"
       },
       "FeatureFlagsOut": {
         "additionalProperties": false,
@@ -449,6 +585,29 @@
       },
       "HeightField": {
         "type": "integer"
+      },
+      "InviteBody": {
+        "additionalProperties": false,
+        "description": "#44: ≥ 1 email đã kiểm; trần lô và bỏ trùng theo `normalize_email` do `service.invite_users` làm.",
+        "properties": {
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Emails",
+            "type": "array"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          }
+        },
+        "required": [
+          "emails",
+          "role"
+        ],
+        "title": "InviteBody",
+        "type": "object"
       },
       "JsonValue": {},
       "MeSchema": {
@@ -931,6 +1090,25 @@
         "title": "ReplaceAvatarBody",
         "type": "object"
       },
+      "RoleChangeBody": {
+        "additionalProperties": false,
+        "description": "#41: `userId` chỉ để guard W21 so với đường (K09); người thực hiện lấy từ `Principal`.",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "userId"
+        ],
+        "title": "RoleChangeBody",
+        "type": "object"
+      },
       "SignInBody": {
         "additionalProperties": false,
         "description": "`SignInSchema` strict của FE (`src/api/schemas/index.ts:74-80`).",
@@ -1041,6 +1219,66 @@
         "title": "UpdateMeBody",
         "type": "object"
       },
+      "UserActivityOut": {
+        "additionalProperties": false,
+        "description": "#40: một dòng `activity_log` có `actor_id` là người này; `id` là chuỗi thập phân.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "objectCode": {
+            "title": "Objectcode",
+            "type": "string"
+          },
+          "objectLabel": {
+            "title": "Objectlabel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "kind",
+          "objectCode",
+          "objectLabel"
+        ],
+        "title": "UserActivityOut",
+        "type": "object"
+      },
+      "UserMembershipOut": {
+        "additionalProperties": false,
+        "description": "#39: một dự án chưa xoá mềm của người này, kèm vai hệ thống hiện tại.",
+        "properties": {
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "projectName": {
+            "title": "Projectname",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          }
+        },
+        "required": [
+          "projectId",
+          "projectName",
+          "role"
+        ],
+        "title": "UserMembershipOut",
+        "type": "object"
+      },
       "UserOut": {
         "additionalProperties": false,
         "description": "`UserSchema`: vai **hệ thống** của người dùng, không phải vai trong dự án.\n\n`avatarUrl` ký qua `apps.api.me.avatar.avatar_url` (B1-04, NO-135); vắng khi người dùng\nchưa có `avatar_key` hoặc lúc gọi không có kho (test gọi thẳng service, không qua app).",
@@ -1086,6 +1324,22 @@
         ],
         "title": "UserOut",
         "type": "object"
+      },
+      "UserRole": {
+        "enum": [
+          "admin",
+          "engineer",
+          "viewer"
+        ],
+        "type": "string"
+      },
+      "UserStatus": {
+        "enum": [
+          "active",
+          "pending",
+          "disabled"
+        ],
+        "type": "string"
       },
       "ValidationError": {
         "properties": {
@@ -2188,6 +2442,433 @@
         "summary": "Telemetry Ingest Batch",
         "tags": [
           "telemetry"
+        ]
+      }
+    },
+    "/api/users": {
+      "get": {
+        "description": "#38 — danh sách người chưa xoá mềm kèm `total`.",
+        "operationId": "users_list_users_api_users_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Users List Users",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/invitations": {
+      "post": {
+        "description": "#44 — mời một lô email vào cùng một vai (201); thư đi sau commit qua `issue_token`.",
+        "operationId": "users_invite_users_api_users_invitations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserOut"
+                  },
+                  "title": "Response Users Invite Users Api Users Invitations Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users Invite Users",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/invitations/{user_id}/resend": {
+      "post": {
+        "description": "#45 — gửi lại lời mời cho người `pending`; token cũ mất hiệu lực.",
+        "operationId": "users_resend_invitation_api_users_invitations__user_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users Resend Invitation",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}": {
+      "delete": {
+        "description": "#46 — xoá mềm, có thân xác nhận (W13); trả trạng thái ngay trước khi xoá.",
+        "operationId": "users_delete_user_api_users__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteUserBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users Delete User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/activity": {
+      "get": {
+        "description": "#40 — nhật ký hoạt động của người này, mới nhất trước.",
+        "operationId": "users_list_activity_api_users__user_id__activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserActivityOut"
+                  },
+                  "title": "Response Users List Activity Api Users  User Id  Activity Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users List Activity",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/disable": {
+      "post": {
+        "description": "#42 — vô hiệu: thu hồi phiên và lời mời đang chờ.",
+        "operationId": "users_disable_user_api_users__user_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users Disable User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/enable": {
+      "post": {
+        "description": "#43 — bật lại người bị vô hiệu.",
+        "operationId": "users_enable_user_api_users__user_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users Enable User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/memberships": {
+      "get": {
+        "description": "#39 — dự án người này là thành viên.",
+        "operationId": "users_list_memberships_api_users__user_id__memberships_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserMembershipOut"
+                  },
+                  "title": "Response Users List Memberships Api Users  User Id  Memberships Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users List Memberships",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/role": {
+      "patch": {
+        "description": "#41 — đổi vai; `userId` trong thân chỉ để guard W21.",
+        "operationId": "users_change_role_api_users__user_id__role_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleChangeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users Change Role",
+        "tags": [
+          "users"
         ]
       }
     }
