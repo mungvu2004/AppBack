@@ -178,6 +178,22 @@
       "CleanStr": {
         "type": "string"
       },
+      "CompleteUploadBody": {
+        "additionalProperties": false,
+        "description": "Thân #7; `uploadId` chỉ để guard W21 so với đường.",
+        "properties": {
+          "uploadId": {
+            "minLength": 1,
+            "title": "Uploadid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadId"
+        ],
+        "title": "CompleteUploadBody",
+        "type": "object"
+      },
       "Confidence": {
         "anyOf": [
           {
@@ -190,6 +206,34 @@
         ],
         "ge": 0,
         "le": 1
+      },
+      "CursorPage_LatestFloorUploadOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LatestFloorUploadOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[LatestFloorUploadOut]",
+        "type": "object"
       },
       "CursorPage_ProjectSummaryOut_": {
         "additionalProperties": false,
@@ -614,6 +658,52 @@
       "HeightField": {
         "type": "integer"
       },
+      "InitUploadBody": {
+        "additionalProperties": false,
+        "description": "Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7).",
+        "properties": {
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "floorId": {
+            "minLength": 1,
+            "title": "Floorid",
+            "type": "string"
+          },
+          "mimeType": {
+            "maxLength": 255,
+            "title": "Mimetype",
+            "type": "string"
+          },
+          "pageIndex": {
+            "default": 0,
+            "maximum": 19.0,
+            "minimum": 0.0,
+            "title": "Pageindex",
+            "type": "integer"
+          },
+          "projectId": {
+            "minLength": 1,
+            "title": "Projectid",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "minimum": 1.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fileName",
+          "floorId",
+          "mimeType",
+          "projectId",
+          "sizeBytes"
+        ],
+        "title": "InitUploadBody",
+        "type": "object"
+      },
       "InviteBody": {
         "additionalProperties": false,
         "description": "#44: ≥ 1 email đã kiểm; trần lô và bỏ trùng theo `normalize_email` do `service.invite_users` làm.",
@@ -638,6 +728,42 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LatestFloorUploadOut": {
+        "additionalProperties": false,
+        "description": "Mục N7 (`src/api/schemas/uploads.ts`): lượt tải mới nhất của một tầng.\n\n`sourceImageUrl` là ảnh trang **đã nắn** (HOP-DONG-MOI §4.2) và chỉ có khi bản vẽ đang\ndùng của tầng thuộc đúng lượt tải này.",
+        "properties": {
+          "floorId": {
+            "title": "Floorid",
+            "type": "string"
+          },
+          "floorName": {
+            "title": "Floorname",
+            "type": "string"
+          },
+          "sourceImageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceimageurl"
+          },
+          "uploadId": {
+            "title": "Uploadid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "floorId",
+          "floorName",
+          "uploadId"
+        ],
+        "title": "LatestFloorUploadOut",
+        "type": "object"
+      },
       "MeSchema": {
         "additionalProperties": false,
         "description": "Response N11/N12/N14 (HOP-DONG-MOI §3); trường tuỳ chọn vắng khi `None` (W2, K02).",
@@ -744,6 +870,79 @@
           "email"
         ],
         "title": "PasswordResetRequestBody",
+        "type": "object"
+      },
+      "ProgressOut": {
+        "additionalProperties": false,
+        "description": "`ProgressSchema` của FE (`src/api/schemas/index.ts:165-184`); luật giá trị ở `progress.py`.\n\n`endedAt` chỉ đi kèm `completed`, `error` là mã UPPER_SNAKE — hai bất biến ấy là việc của\n`progress_of`, ở đây chỉ khai trường tuỳ chọn để W2 bỏ chúng khi vắng.",
+        "properties": {
+          "endedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endedat"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "progressPercent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progresspercent",
+            "type": "integer"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "step",
+          "progressPercent"
+        ],
+        "title": "ProgressOut",
         "type": "object"
       },
       "ProjectAddress": {
@@ -1390,6 +1589,28 @@
           }
         },
         "title": "UpdateMeBody",
+        "type": "object"
+      },
+      "UploadChunkBody": {
+        "additionalProperties": false,
+        "description": "Thân #6: một khúc base64 và chỉ số của nó; trần độ dài thật theo `UPLOAD_CHUNK_BYTES` ở route.",
+        "properties": {
+          "chunk": {
+            "minLength": 1,
+            "title": "Chunk",
+            "type": "string"
+          },
+          "chunkIndex": {
+            "minimum": 0.0,
+            "title": "Chunkindex",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunk",
+          "chunkIndex"
+        ],
+        "title": "UploadChunkBody",
         "type": "object"
       },
       "UserActivityOut": {
@@ -2317,6 +2538,253 @@
         ]
       }
     },
+    "/api/projects/{project_id}/drawings/uploads/latest": {
+      "get": {
+        "description": "N7 — lượt tải mới nhất của từng tầng chưa xoá, sắp theo `Floor.order`.",
+        "operationId": "drawings_list_latest_uploads_api_projects__project_id__drawings_uploads_latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_LatestFloorUploadOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings List Latest Uploads",
+        "tags": [
+          "drawings"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawings/uploads/{upload_id}/chunks": {
+      "post": {
+        "description": "#6 — nhận một khúc; gửi lại cùng chỉ số là ghi đè (U10).",
+        "operationId": "drawings_upload_chunk_api_projects__project_id__drawings_uploads__upload_id__chunks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadChunkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Upload Chunk",
+        "tags": [
+          "drawings"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawings/uploads/{upload_id}/complete": {
+      "post": {
+        "description": "#7 — chốt lượt tải và mở lượt chạy; tệp hỏng trả 422 W7 **và** giữ dòng `rejected`.",
+        "operationId": "drawings_complete_upload_api_projects__project_id__drawings_uploads__upload_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteUploadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Complete Upload",
+        "tags": [
+          "drawings"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawings/uploads/{upload_id}/progress": {
+      "get": {
+        "description": "#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái (BE-BIND §4).",
+        "operationId": "drawings_read_progress_api_projects__project_id__drawings_uploads__upload_id__progress_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Read Progress",
+        "tags": [
+          "drawings"
+        ]
+      }
+    },
     "/api/projects/{project_id}/floors": {
       "get": {
         "description": "#12 — mọi tầng chưa xoá của dự án, tối đa `FLOORS_MAX`.",
@@ -2412,6 +2880,68 @@
         "summary": "Floors Create Floor",
         "tags": [
           "floors"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/drawings/uploads": {
+      "post": {
+        "description": "#5 — mở lượt tải; lượt init giống hệt trong cửa sổ khử trùng trả lại lượt cũ.",
+        "operationId": "drawings_init_upload_api_projects__project_id__floors__floor_id__drawings_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitUploadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Init Upload",
+        "tags": [
+          "drawings"
         ]
       }
     },
