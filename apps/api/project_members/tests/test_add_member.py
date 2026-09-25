@@ -241,3 +241,21 @@ async def test_members_add_member__touches_project_only_when_new(
     again = await add(api_client, actor, project, target.email)
     assert (again.status_code, again.json()["id"]) == (200, target.id)
     assert await updated_at(db_session, project.id) == touched
+
+
+async def test_members_add_member__C11_permission_before_limit(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hạn mức chạy **sau** `require_project`: viewer luôn 403, người ngoài luôn 404, dù gọi nhiều hơn hạn mức."""
+    monkeypatch.setenv("MEMBER_ADD_RATE_LIMIT", "3")
+    reset_project_members_settings_cache()
+    try:
+        owner, viewer = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
+        outsider, target = await make_user(db_session, role="admin"), await make_user(db_session)
+        project = await seed_project(db_session, owner=owner, members=[viewer])
+        viewer_codes = {(await add(api_client, viewer, project, target.email)).status_code for _ in range(5)}
+        outsider_codes = {(await add(api_client, outsider, project, target.email)).status_code for _ in range(5)}
+    finally:
+        monkeypatch.delenv("MEMBER_ADD_RATE_LIMIT")
+        reset_project_members_settings_cache()
+    assert (viewer_codes, outsider_codes) == ({403}, {404})

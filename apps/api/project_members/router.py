@@ -33,10 +33,18 @@ _add_limit: Final = rate_limit(
 )
 """Hạn mức N3 theo người thực hiện; đọc lười mỗi lượt để test C11 đặt 3 bằng biến môi trường."""
 
-EditAccess = Annotated[ProjectAccess, Depends(require_project("project.settings.edit"))]
+_edit_gate: Final = require_project("project.settings.edit")
+"""Một thể hiện dùng cho cả `dependencies=` và tham số: FastAPI chỉ chạy nó một lần mỗi request."""
+
+EditAccess = Annotated[ProjectAccess, Depends(_edit_gate)]
 
 
-@router.post("/projects/{project_id}/members", status_code=201, dependencies=[Depends(_add_limit)])
+@router.post(
+    "/projects/{project_id}/members",
+    status_code=201,
+    # Quyền trước hạn mức (BE-00 §7): viewer/người ngoài không đốt hạn mức và luôn nhận 403/404, không 429.
+    dependencies=[Depends(_edit_gate), Depends(_add_limit)],
+)
 async def members_add_member(
     body: AddMemberBody,
     access: EditAccess,
