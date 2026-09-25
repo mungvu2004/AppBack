@@ -1,0 +1,71 @@
+# --- B2-04 việc B: dán vào `packages/testing/factories/drawings.py` (chủ: việc D). ---
+# Lý do fragment: `make_drawing` cần `apps.api.drawings.drawings.new_page_key` (việc B viết),
+# nhưng file factory thuộc việc D và không được sửa giữa chừng. Bản đang chạy của hàm này
+# nằm ở `apps/api/drawings/tests/_drawing_helpers.py`; khi trộn thì **xoá bản ở đó** và đổi
+# `test_drawings.py`/`test_view_parts.py`/`test_routes_latest.py` sang nhập từ factory.
+#
+# Thêm vào khối import của factory:
+#     import zlib
+#     from sqlalchemy import select
+#     from apps.api.drawings.drawings import new_page_key
+#     from packages.db.models.drawings import DrawingRow
+#
+# Và docstring module bỏ đoạn "**Không** có `make_drawing` ở đây: …".
+
+PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_chunk(kind: bytes, body: bytes) -> bytes:
+    """Một khúc PNG: độ dài, loại, thân, CRC32 của (loại + thân)."""
+    return len(body).to_bytes(4, "big") + kind + body + zlib.crc32(kind + body).to_bytes(4, "big")
+
+
+def png_bytes(width: int, height: int) -> bytes:
+    """PNG hợp lệ tới mức `sniff` nhận ra và `png_size` đọc được — không có pixel nào."""
+    ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
+    return PNG_SIGNATURE + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IEND", b"")
+
+
+def png_size(png: bytes) -> tuple[int, int]:
+    """`(width, height)` đọc từ IHDR; không phải PNG → `ValueError`."""
+    if len(png) < 24 or not png.startswith(PNG_SIGNATURE):
+        raise ValueError("cần một tệp PNG")
+    return int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+
+
+async def make_drawing(db: AsyncSession, storage: ObjectStorage, *, upload: UploadRow, png: bytes) -> DrawingRow:
+    """Bản vẽ đang dùng của tầng chứa `upload`, kèm object trang đã nắn thật trong kho.
+
+    Ghi thẳng dòng như `make_upload`, **không** qua `upsert_drawing`: factory không có
+    lượt chạy đang khoá, mà `upsert_drawing` đòi đúng một lượt như thế.
+    """
+    width, height = png_size(png)
+    level_id, uploaded_at = (
+        await db.execute(
+            select(FloorRow.level_id, UploadRow.updated_at)
+            .join(UploadRow, UploadRow.floor_pk == FloorRow.pk)
+            .where(UploadRow.id == upload.id)
+        )
+    ).one()
+    key = new_page_key(
+        project_id=upload.project_id,
+        level_id=level_id,
+        upload_id=upload.id,
+        page_index=upload.page_index,
+        clock=SystemClock(),
+    )
+    await storage.put(key, png, content_type="image/png", max_bytes=len(png))
+    drawing = DrawingRow(
+        id=new_id("drw", SystemClock()),
+        floor_pk=upload.floor_pk,
+        upload_id=upload.id,
+        name=upload.file_name,
+        page_key=key,
+        width_px=width,
+        height_px=height,
+        uploaded_at=uploaded_at,
+        uploader_id=upload.created_by,
+    )
+    db.add(drawing)
+    await db.flush()
+    return drawing
