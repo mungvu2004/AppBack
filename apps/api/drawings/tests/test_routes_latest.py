@@ -132,6 +132,7 @@ async def test_drawings_list_latest_uploads__C15_empty(
     scene = await make_scene(db_session)
     await _tick(db_session, fake_clock)
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert response.json() == {"items": []}
 
@@ -147,6 +148,7 @@ async def test_drawings_list_latest_uploads__C15_single(
     scene = await make_scene(db_session)
     upload = await _uploaded_run(db_session, local_storage, scene, fake_clock)
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     body = response.json()
     assert [item["uploadId"] for item in body["items"]] == [upload.id]
@@ -180,6 +182,7 @@ async def test_drawings_list_latest_uploads__C15(
         headers=headers_of(scene.user),
         params={"limit": 2, "cursor": page_one["nextCursor"]},
     )
+    attach_floor_order(second, [floor.level_id for floor in floors])
     assert second.status_code == 200
     page_two = second.json()
     assert [item["uploadId"] for item in page_two["items"]] == [uploads[2].id]
@@ -210,6 +213,7 @@ async def test_drawings_list_latest_uploads__C17(
     scene = await make_scene(db_session)
     await _uploaded_run(db_session, local_storage, scene, fake_clock)
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert "sourceImageUrl" not in response.json()["items"][0]
 
@@ -228,6 +232,7 @@ async def test_drawings_list_latest_uploads__C17_other_upload_drawing(
     fresh = await _uploaded_run(db_session, local_storage, scene, fake_clock)
 
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     item = response.json()["items"][0]
     assert item["uploadId"] == fresh.id
@@ -248,6 +253,7 @@ async def test_drawings_list_latest_uploads__C01_abandoned_init_is_ignored(
     await _tick(db_session, fake_clock)
 
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert [item["uploadId"] for item in response.json()["items"]] == [running.id]
 
@@ -273,6 +279,7 @@ async def test_drawings_list_latest_uploads__C01_restart_on_older_upload(
     await _tick(db_session, fake_clock)
 
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert [item["uploadId"] for item in response.json()["items"]] == [first.id]
 
@@ -287,6 +294,7 @@ async def test_drawings_list_latest_uploads__C15_rejected_upload_without_run(
     )
     await _tick(db_session, fake_clock)
     response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert response.json()["items"] == []
 
