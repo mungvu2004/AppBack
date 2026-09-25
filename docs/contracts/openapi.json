@@ -29,6 +29,21 @@
         "title": "AcceptInvitationBody",
         "type": "object"
       },
+      "AddMemberBody": {
+        "additionalProperties": false,
+        "description": "N3: email của người được thêm; sai dạng → 422 `VALIDATION` `field:\"email\"`.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "AddMemberBody",
+        "type": "object"
+      },
       "AdminUserListOut": {
         "additionalProperties": false,
         "description": "#38: `total` là số người chưa xoá mềm, có thể lớn hơn `len(users)` khi chạm trần.",
@@ -162,6 +177,19 @@
       },
       "CleanStr": {
         "type": "string"
+      },
+      "Confidence": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "string"
+          }
+        ],
+        "ge": 0,
+        "le": 1
       },
       "CursorPage_ProjectSummaryOut_": {
         "additionalProperties": false,
@@ -672,6 +700,11 @@
         "title": "MeSchema",
         "type": "object"
       },
+      "Notes": {
+        "maxLength": 500,
+        "minLength": 1,
+        "type": "string"
+      },
       "OrderField": {
         "type": "integer"
       },
@@ -860,6 +893,133 @@
           "members"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "ProjectSettingsBodyIn": {
+        "additionalProperties": false,
+        "description": "Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế).",
+        "properties": {
+          "buildingType": {
+            "enum": [
+              "residential",
+              "commercial",
+              "industrial",
+              "mixed",
+              "other"
+            ],
+            "title": "Buildingtype",
+            "type": "string"
+          },
+          "confidenceThreshold": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "defaultScaleMmPerPx": {
+            "$ref": "#/components/schemas/ScaleMmPerPx"
+          },
+          "lengthUnit": {
+            "enum": [
+              "mm",
+              "m"
+            ],
+            "title": "Lengthunit",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Notes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapToleranceMm": {
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Snaptolerancemm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "buildingType",
+          "lengthUnit",
+          "snapToleranceMm",
+          "confidenceThreshold",
+          "defaultScaleMmPerPx"
+        ],
+        "title": "ProjectSettingsBodyIn",
+        "type": "object"
+      },
+      "ProjectSettingsOut": {
+        "additionalProperties": false,
+        "description": "Cài đặt đã lưu kèm `revision`; `notes` NULL → vắng (W2).",
+        "properties": {
+          "buildingType": {
+            "title": "Buildingtype",
+            "type": "string"
+          },
+          "confidenceThreshold": {
+            "title": "Confidencethreshold",
+            "type": "number"
+          },
+          "defaultScaleMmPerPx": {
+            "title": "Defaultscalemmperpx",
+            "type": "number"
+          },
+          "lengthUnit": {
+            "title": "Lengthunit",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "snapToleranceMm": {
+            "title": "Snaptolerancemm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "buildingType",
+          "lengthUnit",
+          "snapToleranceMm",
+          "confidenceThreshold",
+          "defaultScaleMmPerPx"
+        ],
+        "title": "ProjectSettingsOut",
+        "type": "object"
+      },
+      "ProjectSettingsWriteIn": {
+        "additionalProperties": false,
+        "description": "`{baseVersion, body}` của N6 (W20) — cùng dạng `versioned(ProjectSettingsBodyIn)` nhưng có kiểu tĩnh.\n\nThiếu `baseVersion` bị khung chặn 428 trước Pydantic; khoá lạ trong `body` → 422 `body.<khoá>` (C03).",
+        "properties": {
+          "baseVersion": {
+            "minimum": 0.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "body": {
+            "$ref": "#/components/schemas/ProjectSettingsBodyIn"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "body"
+        ],
+        "title": "ProjectSettingsWriteIn",
         "type": "object"
       },
       "ProjectStatus": {
@@ -1108,6 +1268,19 @@
         ],
         "title": "RoleChangeBody",
         "type": "object"
+      },
+      "ScaleMmPerPx": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "string"
+          }
+        ],
+        "ge": "0.01",
+        "le": 1000
       },
       "SignInBody": {
         "additionalProperties": false,
@@ -2301,6 +2474,153 @@
         "summary": "Floors Patch Spatial Floor",
         "tags": [
           "floors"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/members": {
+      "post": {
+        "description": "N3 — thêm thành viên theo email: 201 khi mới, 200 khi đã là thành viên.",
+        "operationId": "members_add_member_api_projects__project_id__members_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMemberBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Members Add Member",
+        "tags": [
+          "members"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/members/{user_id}": {
+      "delete": {
+        "description": "N4 — gỡ thành viên; thân là `UserOut` của người vừa gỡ.",
+        "operationId": "members_remove_member_api_projects__project_id__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Members Remove Member",
+        "tags": [
+          "members"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/settings": {
+      "get": {
+        "description": "N5 — cài đặt dự án; chưa ghi lần nào thì trả mặc định `revision 0`.",
+        "operationId": "settings_read_settings_api_projects__project_id__settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settings Read Settings",
+        "tags": [
+          "project_settings"
+        ]
+      },
+      "put": {
+        "description": "N6 — thay cài đặt có version; base cũ → 409 `remoteChanges: []`, lượt lặp của chính mình → 200.",
+        "operationId": "settings_replace_settings_api_projects__project_id__settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectSettingsWriteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings Replace Settings",
+        "tags": [
+          "project_settings"
         ]
       }
     },
