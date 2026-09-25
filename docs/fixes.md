@@ -938,4 +938,4 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[4]** Sửa: `packages/testing/fixtures/services.py` (thêm `.with_env("MP_SMTP_DISABLE_RDNS", "true")`). Cấm: `packages/mail/**`, `SMTP_TIMEOUT_S`, mọi test (không nới timeout, không skip).
 - **[5]** Tắt rDNS ở container Mailpit của test: test không còn phụ thuộc DNS của máy; cùng env đó thử tay 3/3 thư 0,03 s.
 - **[6]** 5 test trên đỏ → xanh trên máy có DNS PTR chậm; không test nào khác đổi.
-- **[7]** (điền khi gộp)
+- **[7]** `fix(testing): disable mailpit rdns lookups in the test fixture` (squash của `5ac987b`, `Prompt: B0-01`, `Fix: FIX-106`); review lượt 1 APPROVE 4,9/5 (`bfe9889`), cổng đầy đủ thoát 0 (4011 passed). Nợ kèm: NO-211 (e2e phụ thuộc thứ tự, B1-03), NO-212 (compose còn rDNS, B0-08).
