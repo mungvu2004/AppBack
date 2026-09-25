@@ -929,3 +929,13 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Luật khác origin chuyển vào `create_storage` (`_check_public_origin`) khi được truyền `CoreSettings` — mọi nơi gọi của API (`apps/api/core/app.py`, `apps/api/{floors,me,projects}/jobs.py`) vẫn truyền; `core_settings=None` cho tiến trình không ký URL, `LocalDiskStorage` khi đó từ chối `signed_url`.
 - **[6]** `apps/ml/runtime/tests/test_tasks_util.py::test_infer_context_builds_without_the_api_secrets` đỏ → xanh; ba test luật origin dời sang `packages/storage/tests/test_factory.py`, không nới assert.
 - **[7]** `fix(storage): check the cross-origin rule where core settings exist` (`2739918`, `Prompt: B0-04`, `Fix: FIX-105`); cùng FIX-091 `c2f3c72` (B5-01). Review lượt 2 APPROVE 4,75/5, cổng đầy đủ thoát 0 (3840 passed).
+
+## FIX-106 cho B0-01 — Mailpit tra rDNS mỗi kết nối, DNS máy chậm làm test thư hết giờ (NO-210)
+
+- **[1]** Cổng đầy đủ (B2-02 lớp gộp và `main` `4f89245`) hỏng bước 5: `packages/mail/tests/test_fixtures.py`, `test_sender.py`, `apps/api/auth_recovery/tests/test_e2e.py` ×2, `tools/tests/test_services.py::test_mailpit_nhận_thư` — `smtplib.SMTPServerDisconnected: Connection unexpectedly closed: timed out`.
+- **[2]** `docker run -p 11025:1025 axllent/mailpit:v1.20.0` rồi gửi 3 thư `smtplib` timeout 10 s: mỗi lượt ~10 s, 1/3 hỏng; `Resolve-DnsName 1.17.172.in-addr.arpa -Type PTR` trên máy chủ 11,6 s.
+- **[3]** `packages/testing/fixtures/services.py:97-110` — `DockerContainer(MAILPIT_IMAGE)` không tắt rDNS; Mailpit tra PTR máy khách trước lời chào SMTP.
+- **[4]** Sửa: `packages/testing/fixtures/services.py` (thêm `.with_env("MP_SMTP_DISABLE_RDNS", "true")`). Cấm: `packages/mail/**`, `SMTP_TIMEOUT_S`, mọi test (không nới timeout, không skip).
+- **[5]** Tắt rDNS ở container Mailpit của test: test không còn phụ thuộc DNS của máy; cùng env đó thử tay 3/3 thư 0,03 s.
+- **[6]** 5 test trên đỏ → xanh trên máy có DNS PTR chậm; không test nào khác đổi.
+- **[7]** (điền khi gộp)
