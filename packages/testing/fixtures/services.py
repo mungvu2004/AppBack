@@ -95,9 +95,15 @@ def minio_endpoint() -> Iterator[tuple[str, str, str]]:
 
 @pytest.fixture(scope="session")
 def mailpit() -> Iterator[tuple[str, int, int]]:
-    """Trả (host, cổng SMTP, cổng HTTP API `/api/v1/messages`)."""
+    """Trả (host, cổng SMTP, cổng HTTP API `/api/v1/messages`).
+
+    Tắt rDNS (`MP_SMTP_DISABLE_RDNS`): mặc định Mailpit tra PTR của client trước khi
+    nhận thư; DNS chậm của máy chạy test (~11 s) làm quá `SMTP_TIMEOUT_S`. Bỏ tra
+    cứu để test không phụ thuộc DNS của máy.
+    """
     container = (
         DockerContainer(MAILPIT_IMAGE)
+        .with_env("MP_SMTP_DISABLE_RDNS", "true")
         .with_exposed_ports(1025, 8025)
         .waiting_for(HttpWaitStrategy(8025, "/api/v1/info"))
     )
