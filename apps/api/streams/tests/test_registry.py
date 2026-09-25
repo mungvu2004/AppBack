@@ -85,9 +85,15 @@ def test_real_repo_discovery_yields_both_kinds() -> None:
     assert set(registry) == {UPLOAD_PROGRESS, NOTIFICATIONS}
 
 
-def test_missing_progress_provider_defaults_to_closed() -> None:
-    """Chưa có B2-04 → luồng tiến độ vẫn có ảnh chụp trong sổ, nhưng chính sách từ chối hết."""
-    provider = build_registry(None)[UPLOAD_PROGRESS]
+def test_missing_progress_provider_defaults_to_closed(core_test_env: None) -> None:
+    """Không module nào cắm `upload_progress` → sổ vẫn có ảnh chụp, nhưng chính sách từ chối hết.
+
+    Dựng sổ từ một bảng `extensions.override` **rỗng** chứ không từ lượt dò repo thật: từ khi
+    B2-04 cắm `apps.api.drawings.stream_providers` vào, lượt dò thật không còn dựng nổi cảnh
+    "chưa ai cắm" (FIX-107). Cảnh ấy vẫn phải kiểm — nó là mặc định fail-closed của S06, và
+    nó phải đúng cả trong một repo không có `apps/api/drawings`.
+    """
+    provider = build_registry(_app_with())[UPLOAD_PROGRESS]
     assert isinstance(provider.policy, DenyUploads)
     assert provider.snapshot is provider.policy
 
