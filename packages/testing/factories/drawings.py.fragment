@@ -1,0 +1,20 @@
+# Fragment của việc U (B2-04) cho `packages/testing/factories/drawings.py` — việc G trộn rồi xoá file này.
+
+Lý do: đính chính của điều phối viên §15 chốt `chunk_key(project_id, level_id, upload_id, index, sha256)`
+chính thức nằm ở `apps/api/drawings/uploads.py` (chủ: việc U), còn bản trong factory là bản sao tạm của
+việc D. Hai bản sao cùng một luật khoá object là đúng thứ R-07 cấm: đổi bố cục khoá ở một nơi mà quên nơi
+kia thì test vẫn xanh còn `#7` nối nhầm tệp.
+
+Việc U **không** sửa file của D nên chỉ ghi lại đây; hai đường đi, G chọn một:
+
+1. **Gọi lại hàm của U** — xoá `def chunk_key(...)` trong factory và thay bằng
+   `from apps.api.drawings.uploads import chunk_key`. Đơn giản nhất, nhưng kéo `fastapi`/`starlette` vào
+   `packages.testing.factories` (vì `uploads.py` nhập `apps.api.floors.lookup`); hiện `.importlinter`
+   **không** có contract nào chặn `packages.testing`, nên hợp lệ — G nên xác nhận lại ở bước 4 của cổng.
+2. **Đưa luật khoá xuống `packages/storage/keys.py`** (`upload_chunk(project, floor, upload, index, sha256)`)
+   rồi cả `uploads.py` lẫn factory gọi nó. Sạch hơn và đúng chủ sở hữu bố cục khoá, nhưng `packages/storage`
+   nằm ngoài whitelist B2-04 → phải là một prompt FIX riêng do điều phối viên giao.
+
+Cho tới lúc gộp, hai bản **phải** giữ đúng cùng một chuỗi: `<upload_prefix>chunks/{index}/{sha256}` qua
+`check_key`. Test `apps/api/drawings/tests/test_upload_flow.py::test_complete_100_mib_on_minio_under_budget__K28`
+mồi khúc bằng `uploads.chunk_key` rồi để `#7` đọc lại, nên nó sẽ đỏ ngay nếu hai bản lệch nhau.
