@@ -102,6 +102,7 @@
 | FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | `3f2e14d`, `777f895` |
 | FIX-105 | 2026-09-24 | B0-04 | NO-085 | `StorageSettings` đọc `CoreSettings` (cần `SECRET_KEY`, `PUBLIC_BASE_URL`) nên `ml` không dựng được kho S3 khi đã bỏ hai biến đó | `2739918` |
 | FIX-107 | 2026-09-25 | B4-01 | — | Test mặc định của sổ luồng giả định "chưa có B2-04", đỏ khi B2-04 cài provider `upload_progress` thật | `e9ef485` (gộp `9d2c95b`, nhánh `feature/b2-04-drawing-uploads`) |
+| FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | (mở — nhánh `feature/b3-02-spatial-read`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -952,3 +953,20 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Test tự dựng trạng thái "không ai cài" bằng helper `_app_with()` có sẵn trong file (`extensions.override(app, "stream_providers", ())`) thay vì `build_registry(None)`; không xoá, không nới assert.
 - **[6]** Test xanh cả trên `main` (chưa có `apps/api/drawings`) lẫn trên nhánh B2-04 (đỏ trên nhánh trước khi sửa: bước 5 lượt 1 của việc gộp).
 - **[7]** `test(streams): build the empty registry from an override` (`e9ef485`, `Prompt: B4-01`, `Fix: FIX-107`), gộp `--no-ff` trong `9d2c95b`; review B2-04 lượt 1 APPROVE 4,67/5 (`5e9b282`) soát riêng FIX-107, cổng đầy đủ thoát 0 (4395 passed).
+
+---
+
+> **Giao việc FIX-108.** 2026-09-26, khảo sát B3-02 (việc K) chỉ ra seed đầu tiên của repo (`packages/db/seeds/spatial.py`)
+> làm đỏ đúng một test của B0-03. Người dùng chọn FIX ngay trên nhánh B3-02 (tiền lệ FIX-107): commit riêng chỉ chạm
+> file test đó, trailer `Prompt: B0-03` + `Fix: FIX-108`; nhánh vào `main` bằng `--no-ff`, giữ trailer của cả hai prompt.
+
+## FIX-108 cho B0-03 — test seed chốt trạng thái "repo chưa có seed" làm bất biến (không mã nợ)
+
+- **[1–3]** `packages/db/tests/test_seeds_settings.py::test_repo_has_no_seeds_yet` khẳng định `load_seeds("ci") == ()`.
+  Nay B3-02 thêm `packages/db/seeds/spatial.py` (`ENVS = {"dev", "ci"}`) nên `load_seeds("ci")` trả một phần tử.
+- **[4]** Sửa: đúng file test trên. Cấm: mọi mã sản phẩm của B0-03 (`packages/db/**` ngoài file đó).
+- **[5]** Không khẳng định danh sách seed cụ thể của prompt khác (lại thành bất biến giòn). Test kiểm bất biến thật của
+  bộ dò trên repo: mọi seed nạp được, tên duy nhất, `ENVS` là `frozenset` con của tập môi trường hợp lệ, thứ tự theo
+  `ORDER` ổn định; `load_seeds("production")` không có seed demo nào. Không xoá test, không nới assert.
+- **[6]** Test xanh cả trên `main` (chưa có seed) lẫn trên nhánh B3-02.
+- **[7]** (điền khi gộp)
