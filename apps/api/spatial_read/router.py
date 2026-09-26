@@ -75,11 +75,12 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
     stored = await load_document(db, floor.pk)
     document = empty_document(floor.pk) if stored is None else stored
     page_key = (await load_pages(db, [floor.pk], app=request.app)).get(floor.pk)
+    source = effective_scale_source(document, page_key)
     out = await _floor_out_or_404(db, project_id, floor.pk, app=request.app)
     return FloorLayerDocumentOut(
         revision=document.revision,
-        level=level_out(out, document, page_key),
-        scale_status=scale_status(effective_scale_source(document, page_key)),
+        level=level_out(out, document, source),
+        scale_status=scale_status(source),
         layer=layer_out(document.layer),
         axes=[],
         dimensions=dimensions_out(document.dimensions),

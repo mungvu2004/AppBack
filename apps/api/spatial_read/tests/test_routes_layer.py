@@ -6,12 +6,13 @@ tầng đã duyệt hết. Ba trong bốn không thể suy ra từ nhau — `sca
 đổi theo nguồn tỉ lệ, còn tầng trống là đường `empty_document` không chạm DB.
 """
 
+import logging
 from decimal import Decimal
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.projects.tests.test_routes_common import headers_of
@@ -248,3 +249,34 @@ async def test_spatial_read_layer_without_page_gate(
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert "scaleStatus" not in body
     assert body["level"]["reviewed"] is True
+
+
+async def test_spatial_read_layer_corrupt_document_is_500(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Dòng sai lược đồ → 500 thân lỗi chuẩn, không lộ chi tiết; log mang `floor_pk` ([6]).
+
+    Chốt bất biến "mọi `DocumentCorruptError` log `floor_pk`, handler cuối trả 500": đổi nó
+    thành `AppError` (ra 4xx) hay nuốt lỗi đi sẽ làm đỏ đúng ở đây. Ghi `schema_version` bằng
+    SQL trần vì factory không dựng nổi một dòng mà chính đường đọc từ chối.
+    """
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db_session, floor_pk=floor.pk, layer=sample_floor_layer(0, level_id=floor.level_id), clock=fake_clock
+    )
+    await db_session.execute(
+        text("UPDATE floor_documents SET schema_version = 2 WHERE floor_pk = :pk"), {"pk": floor.pk}
+    )
+    await db_session.commit()
+    with caplog.at_level(logging.ERROR, logger="apps.api.spatial_read.documents"):
+        response = await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))
+    assert response.status_code == 500
+    body = response.json()
+    assert body["code"] == "INTERNAL"
+    assert "schema_version" not in response.text
+    record = next(r for r in caplog.records if r.name == "apps.api.spatial_read.documents")
+    assert record.__dict__["floor_pk"] == floor.pk

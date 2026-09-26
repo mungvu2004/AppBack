@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.floors.lookup import floor_outs
 from apps.api.projects.summaries import project_rollups
-from apps.api.spatial_read.assemble import level_out
+from apps.api.spatial_read.assemble import effective_scale_source, level_out
 from apps.api.spatial_read.documents import empty_document, load_documents
 from apps.api.spatial_read.pages import load_pages
 from apps.api.spatial_read.wire import (
@@ -80,13 +80,20 @@ async def spatial_graph(db: AsyncSession, project_id: str, *, app: object | None
     project = (await db.execute(select(Project.name, Project.address).where(Project.id == project_id))).one()
     floors = await floor_outs(db, project_id=project_id, app=app)
     pk_of = await _floor_pks(db, project_id)
-    pks = [pk_of[floor.id] for floor in floors]
+    # Tầng xoá mềm chen vào giữa hai câu lệnh trên (hai snapshot `read committed`) còn trong
+    # `floors` nhưng đã rơi khỏi `pk_of`; bỏ nó đi thay vì `KeyError` → 500. #33 và N16 trả 404
+    # cho đúng cuộc đua này, N15 thì đồ thị thiếu một tầng vừa bị xoá mới là câu trả lời đúng.
+    pairs = [(floor, pk_of[floor.id]) for floor in floors if floor.id in pk_of]
+    pks = [pk for _, pk in pairs]
     documents = await load_documents(db, pks)
     pages = await load_pages(db, pks, app=app)
     rollup = (await project_rollups(db, [project_id]))[project_id]
 
     docs = [documents[pk] if pk in documents else empty_document(pk) for pk in pks]
-    levels = [level_out(floor, doc, pages.get(pk)) for floor, doc, pk in zip(floors, docs, pks, strict=True)]
+    levels = [
+        level_out(floor, doc, effective_scale_source(doc, pages.get(pk)))
+        for (floor, pk), doc in zip(pairs, docs, strict=True)
+    ]
     layers = [layer_out(doc.layer) for doc in docs]
     graph = SpatialGraphOut(
         building=_building(project.name, project.address, float(rollup.area_m2), levels),

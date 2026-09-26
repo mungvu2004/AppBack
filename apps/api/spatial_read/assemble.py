@@ -53,8 +53,13 @@ def level_reviewed(layer: SpatialLayer, scale_source: ScaleSource) -> bool:
     )
 
 
-def level_out(floor: FloorOut, doc: FloorDocument, page_key: str | None) -> LevelOut:
-    """`Level` của một tầng cho cả N15 lẫn N16; `scaleMillimetresPerPixel` vắng khi chưa có."""
+def level_out(floor: FloorOut, doc: FloorDocument, scale_source: ScaleSource) -> LevelOut:
+    """`Level` của một tầng cho cả N15 lẫn N16; `scaleMillimetresPerPixel` vắng khi chưa có.
+
+    Nhận **nguồn đã chấm hạng** chứ không nhận `page_key`: N16 còn cần chính nguồn ấy cho
+    `scaleStatus`, nên để hàm này tự gọi `effective_scale_source` là bắt người gọi tính hai lần
+    cùng một thứ — và mở đường cho hai chỗ chấm hạng lệch nhau.
+    """
     scale = doc.scale_mm_per_px
     return LevelOut(
         id=floor.id,
@@ -66,5 +71,5 @@ def level_out(floor: FloorOut, doc: FloorDocument, page_key: str | None) -> Leve
         scale_millimetres_per_pixel=None if scale is None else float(scale),
         confidence=_HUMAN_CONFIDENCE,
         source="human",
-        reviewed=level_reviewed(doc.layer, effective_scale_source(doc, page_key)),
+        reviewed=level_reviewed(doc.layer, scale_source),
     )

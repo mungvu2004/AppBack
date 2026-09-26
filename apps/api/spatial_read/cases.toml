@@ -5,4 +5,6 @@
 # BE-BIND. C15 không áp — không route nào trả danh sách ở mức ngoài. C16 không áp — GET
 # không có thân, nên cũng không có gì để miễn.
 #
-# Việc lịch đối chiếu (`[[task]]`) do prompt B3-02 việc J khai, trộn vào file này khi gộp.
+# Lịch đối chiếu `reconcile_floor_counts` cũng không cần dòng `[[task]]`: `tools/case_gate.py:493-499`
+# tự đòi J01 và J06 cho **mọi** task trong sổ `registered_tasks()`. `[[task]] require = [...]` chỉ để
+# thêm case ngoài hai cái đó, mà lịch này không có case nào như vậy.

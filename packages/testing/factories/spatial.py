@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.spatial_read.codec import document_to_json, entity_ids
+from apps.api.spatial_read.documents import DOCUMENT_SCHEMA_VERSION, EMPTY_LAYER
 from packages.core.clock import Clock
 from packages.core.errors import MISSING
 from packages.db.models.floors import FloorRow
@@ -108,15 +109,16 @@ async def make_floor_document(
 ) -> FloorDocumentRow:
     """Một dòng `floor_documents` đã `flush`, kèm đủ dòng `floor_entity_ids` của lớp.
 
-    Ghi qua `codec.document_to_json` chứ không dựng dict tay: test do đó không thể tạo ra
-    một tài liệu mà đường đọc thật từ chối (trừ khi test cố ý ghi bằng SQL trần).
+    Ghi qua `codec.document_to_json` và `DOCUMENT_SCHEMA_VERSION` chứ không dựng dict tay hay
+    chép số lược đồ: test do đó không thể tạo ra một tài liệu mà đường đọc thật từ chối (trừ khi
+    test cố ý ghi bằng SQL trần), và nâng lược đồ theo FIX.md luật 7 chỉ phải sửa một chỗ.
     """
-    content = layer if layer is not None else SpatialLayer(walls=(), openings=(), rooms=(), furniture=())
+    content = layer if layer is not None else EMPTY_LAYER
     now = clock.now()
     row = FloorDocumentRow(
         floor_pk=floor_pk,
         revision=revision,
-        schema_version=1,
+        schema_version=DOCUMENT_SCHEMA_VERSION,
         document=document_to_json(content, (), dimensions),
         scale_mm_per_px=scale,
         scale_source=scale_source,

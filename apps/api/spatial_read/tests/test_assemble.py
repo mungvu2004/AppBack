@@ -77,7 +77,7 @@ def test_level_reviewed_ignores_dimensions() -> None:
     dimensions = sample_floor_dimensions(0, level_id=LEVEL_ID)
     assert any(not dimension.reviewed for dimension in dimensions)
     document = _doc(layer=layer, scale_source="human", scale=Decimal("12.700000"))
-    assert level_out(_floor_out(), replace(document, dimensions=dimensions), None).reviewed is True
+    assert level_out(_floor_out(), replace(document, dimensions=dimensions), "human").reviewed is True
 
 
 @pytest.mark.parametrize("source", ["none", "pipeline", "project_default"])
@@ -104,7 +104,7 @@ def test_effective_scale_source_keeps_human_without_evidence(page_key: str | Non
 
 def test_level_out_copies_floor_fields() -> None:
     """`Level` lấy `id`, `name`, `order`, mm và `areaM2` thẳng từ `FloorOut` của #12/#33."""
-    level = level_out(_floor_out(area_m2=68.0), empty_document(FLOOR_PK), None)
+    level = level_out(_floor_out(area_m2=68.0), empty_document(FLOOR_PK), "none")
     assert (level.id, level.name, level.order, level.elevation_mm, level.height_mm) == (LEVEL_ID, "Tầng 1", 0, 0, 3000)
     assert level.area_m2 == 68.0
     assert (level.source, level.confidence) == ("human", 1.0)
@@ -112,10 +112,10 @@ def test_level_out_copies_floor_fields() -> None:
 
 def test_level_out_converts_scale_to_float() -> None:
     """Tỉ lệ `numeric(12,6)` lên dây là **số** JSON, không phải chuỗi `Decimal` (K01)."""
-    level = level_out(_floor_out(), _doc(scale_source="human", scale=Decimal("12.700000")), None)
+    level = level_out(_floor_out(), _doc(scale_source="human", scale=Decimal("12.700000")), "human")
     assert level.scale_millimetres_per_pixel == 12.7
 
 
 def test_level_out_omits_scale_when_none() -> None:
     """Nguồn `none` → vắng cả tỉ lệ (CHECK của DB buộc `scale_mm_per_px` NULL)."""
-    assert level_out(_floor_out(), empty_document(FLOOR_PK), None).scale_millimetres_per_pixel is None
+    assert level_out(_floor_out(), empty_document(FLOOR_PK), "none").scale_millimetres_per_pixel is None

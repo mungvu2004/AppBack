@@ -10,12 +10,12 @@ from decimal import Decimal
 import httpx
 from fastapi import FastAPI
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.projects.tests.sql_count import count_sql
 from apps.api.projects.tests.test_routes_common import headers_of
 from apps.api.spatial_read.tests._helpers import make_scene
-from apps.api.spatial_read.tests._read_helpers import FakePages, graph_path, use_pages
+from apps.api.spatial_read.tests._read_helpers import FakePages, delete_floor_mid_request, graph_path, use_pages
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
 from packages.db.models.spatial import FloorDocumentRow
@@ -201,6 +201,28 @@ async def test_spatial_read_graph_level_reviewed_follows_page_gate(
     body = (await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))).json()
     assert body["graph"]["levels"][0]["reviewed"] is False
     assert body["graph"]["building"]["reviewed"] is False
+
+
+async def test_spatial_read_graph_when_floor_vanishes_mid_request(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    fake_clock: FakeClock,
+) -> None:
+    """Tầng xoá mềm **giữa** `floor_outs` và `_floor_pks` → 200 thiếu tầng đó, không `KeyError` 500.
+
+    Hai câu lệnh ấy ở hai snapshot khác nhau (engine để mặc định `read committed`), nên tầng
+    biến mất khỏi bảng `pk` mà vẫn còn trong danh sách `FloorOut`. #33 và N16 có
+    `_floor_out_or_404` cho đúng cuộc đua này; N15 phải tự lọc.
+    """
+    scene = await make_scene(db_session, floors=2)
+    gone, kept = scene.floors
+    with delete_floor_mid_request(db_sessionmaker, gone.pk, fake_clock):
+        response = await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))
+    assert response.status_code == 200
+    body = response.json()
+    assert [level["id"] for level in body["graph"]["levels"]] == [kept.level_id]
+    assert [item["floorId"] for item in body["floorRevisions"]] == [kept.level_id]
 
 
 async def test_spatial_read_graph_never_writes(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
