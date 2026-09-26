@@ -4,7 +4,7 @@ import importlib
 import secrets
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import pytest
 from pydantic import ValidationError
@@ -90,8 +90,38 @@ async def test_apply_seeds_runs_in_order(seed_package: Path) -> None:
     assert recorder == ["first", "second"]
 
 
-def test_repo_has_no_seeds_yet() -> None:
-    assert load_seeds("ci") == ()
+APP_ENVS: Final = ("dev", "test", "ci", "staging", "production")
+"""Tập `APP_ENV` hợp lệ của `packages/core/settings.py:25` — `ENVS` của seed phải nằm trong đây."""
+
+
+@pytest.mark.parametrize("env", APP_ENVS)
+def test_repo_seeds_load_in_every_env(env: str) -> None:
+    """Mọi seed **thật** của repo nạp được ở mọi môi trường, tên duy nhất, `ENVS` hợp lệ.
+
+    Không liệt kê tên seed: danh sách ấy đổi mỗi lần một prompt thêm seed của mình, và chốt
+    nó lại là dựng đúng cái bất biến giòn mà FIX-108 gỡ. Bất biến thật của bộ dò là "đọc
+    được và khai đủ", nên repo chưa có seed nào thì mọi vòng lặp rỗng và test vẫn xanh.
+    """
+    seeds = load_seeds(env)
+    names = [seed.name for seed in seeds]
+    assert len(names) == len(set(names))
+    for seed in seeds:
+        assert isinstance(seed.envs, frozenset)
+        assert seed.envs <= frozenset(APP_ENVS)
+        assert env in seed.envs
+
+
+def test_repo_seeds_are_sorted_by_order_then_name() -> None:
+    """Thứ tự chạy ổn định `(ORDER, tên)` trên chính cây seed của repo, bao nhiêu seed cũng đúng."""
+    seeds = load_seeds("ci")
+    assert list(seeds) == sorted(seeds, key=lambda seed: (seed.order, seed.name))
+
+
+def test_repo_demo_seeds_never_reach_production() -> None:
+    """Seed demo (không khai `production`) không bao giờ lọt vào lượt chạy `production`."""
+    production = {seed.name for seed in load_seeds("production")}
+    demo = {seed.name for seed in load_seeds("dev") if "production" not in seed.envs}
+    assert production & demo == set()
 
 
 # --- DatabaseSettings ----------------------------------------------------------
@@ -134,9 +164,14 @@ def test_seeds_main_requires_app_env(monkeypatch: pytest.MonkeyPatch, capsys: py
     assert "thiếu APP_ENV" in capsys.readouterr().out
 
 
-def test_seeds_main_runs_with_no_seeds(
+def test_seeds_main_reports_what_it_ran(
     db_url: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """CLI chạy đúng những seed `load_seeds` tìm được và nói tên chúng ra; repo rỗng → câu "không có".
+
+    Dòng in so với `load_seeds("ci")` chứ không với một danh sách chép tay: cùng lý do với
+    `test_repo_seeds_load_in_every_env` (FIX-108) — số seed của repo đổi theo từng prompt.
+    """
     monkeypatch.setenv("APP_ENV", "ci")
     monkeypatch.setenv("DATABASE_URL", db_url)
     reset_database_settings_cache()
@@ -144,7 +179,9 @@ def test_seeds_main_runs_with_no_seeds(
         assert seeds_main() == 0
     finally:
         reset_database_settings_cache()
-    assert "không có seed nào" in capsys.readouterr().out
+    names = [seed.name for seed in load_seeds("ci")]
+    expected = ", ".join(names) if names else "không có seed nào"
+    assert capsys.readouterr().out.splitlines() == [f"seed ci: {expected}"]
 
 
 def test_load_all_models_imports_every_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
