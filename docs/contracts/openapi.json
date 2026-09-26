@@ -348,6 +348,54 @@
         "ge": 0,
         "le": 1
       },
+      "CornerIn": {
+        "additionalProperties": false,
+        "description": "Một góc người dùng chọn (`DrawingCornersInputSchema`).",
+        "properties": {
+          "xRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Xratio",
+            "type": "number"
+          },
+          "yRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "xRatio",
+          "yRatio"
+        ],
+        "title": "CornerIn",
+        "type": "object"
+      },
+      "CornerOut": {
+        "additionalProperties": false,
+        "description": "Một điểm của khung bản vẽ, tỉ lệ của ảnh ở `sourceUrl`.",
+        "properties": {
+          "xRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Xratio",
+            "type": "number"
+          },
+          "yRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "xRatio",
+          "yRatio"
+        ],
+        "title": "CornerOut",
+        "type": "object"
+      },
       "CursorPage_LatestFloorUploadOut_": {
         "additionalProperties": false,
         "properties": {
@@ -635,6 +683,42 @@
         "title": "FeatureFlagsOut",
         "type": "object"
       },
+      "FindingOut": {
+        "additionalProperties": false,
+        "description": "Một phát hiện; `id` ổn định giữa các lượt đọc cùng trang ([2] \"finding.id\").",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "region": {
+            "$ref": "#/components/schemas/RegionOut"
+          },
+          "severity": {
+            "enum": [
+              "good",
+              "attention",
+              "poor"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "severity",
+          "region"
+        ],
+        "title": "FindingOut",
+        "type": "object"
+      },
       "FloorCreateIn": {
         "additionalProperties": false,
         "description": "Thân #10; `drawings`, `areaM2` nhận rồi bỏ (W18).",
@@ -882,6 +966,67 @@
         "title": "FloorPatchIn",
         "type": "object"
       },
+      "FloorQualityOut": {
+        "additionalProperties": false,
+        "description": "Kết quả của một tầng có bản vẽ; `measurement`, `frame` chỉ có khi `is_measured`.",
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "floorId": {
+            "minLength": 1,
+            "title": "Floorid",
+            "type": "string"
+          },
+          "floorName": {
+            "minLength": 1,
+            "title": "Floorname",
+            "type": "string"
+          },
+          "frame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrameOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isMeasured": {
+            "title": "Ismeasured",
+            "type": "boolean"
+          },
+          "measurement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasurementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceUrl": {
+            "minLength": 1,
+            "title": "Sourceurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "floorId",
+          "floorName",
+          "sourceUrl",
+          "isMeasured",
+          "findings"
+        ],
+        "title": "FloorQualityOut",
+        "type": "object"
+      },
       "FloorReorderIn": {
         "additionalProperties": false,
         "description": "Thân #13 (`{floorIds}`) — khai để `openapi.json` có `requestBody` (API-04, R-11).\n\nLuật thật (1-`FLOORS_MAX` phần tử, không trùng, khoá lạ → 422 `field:\"floorIds\"`) chỉ sống\nở `resolvers._parsed_floor_ids` (một nguồn, R-07): resolver đọc thân thô **trước** khi\nFastAPI ràng buộc `body` này, nên lỗi resolver luôn thắng và `floor_ids` ở đây luôn đã\nhợp lệ khi tới tay handler — lớp này chỉ còn nhiệm vụ tài liệu hoá hợp đồng, không kiểm gì\nthêm ngoài kiểu (`list[str]`, `extra=\"forbid\"` của `WireRequest`).",
@@ -919,6 +1064,37 @@
           "revision"
         ],
         "title": "FloorRevisionOut",
+        "type": "object"
+      },
+      "FrameOut": {
+        "additionalProperties": false,
+        "description": "Khung bản vẽ: `corners` chỉ khi tìm thấy và chưa được áp vào trang.",
+        "properties": {
+          "corners": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CornerOut"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corners"
+          },
+          "isFound": {
+            "title": "Isfound",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isFound"
+        ],
+        "title": "FrameOut",
         "type": "object"
       },
       "FurnitureOut": {
@@ -1281,6 +1457,47 @@
           "language"
         ],
         "title": "MeSchema",
+        "type": "object"
+      },
+      "MeasurementOut": {
+        "additionalProperties": false,
+        "description": "Bốn số đo thô (`quality.ts:115`).",
+        "properties": {
+          "contrastScore": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Contrastscore",
+            "type": "number"
+          },
+          "heightPx": {
+            "minimum": 1.0,
+            "title": "Heightpx",
+            "type": "integer"
+          },
+          "noiseScore": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Noisescore",
+            "type": "number"
+          },
+          "skewDeg": {
+            "title": "Skewdeg",
+            "type": "number"
+          },
+          "widthPx": {
+            "minimum": 1.0,
+            "title": "Widthpx",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "widthPx",
+          "heightPx",
+          "skewDeg",
+          "contrastScore",
+          "noiseScore"
+        ],
+        "title": "MeasurementOut",
         "type": "object"
       },
       "NoteOut": {
@@ -1972,6 +2189,37 @@
         "title": "ProjectUpdateIn",
         "type": "object"
       },
+      "QualityAssessmentOut": {
+        "additionalProperties": false,
+        "description": "Cả dự án một lượt: `floor_id` luôn thuộc `floors`, `floors` ≥ 1 phần tử.",
+        "properties": {
+          "floorId": {
+            "minLength": 1,
+            "title": "Floorid",
+            "type": "string"
+          },
+          "floors": {
+            "items": {
+              "$ref": "#/components/schemas/FloorQualityOut"
+            },
+            "minItems": 1,
+            "title": "Floors",
+            "type": "array"
+          },
+          "projectId": {
+            "minLength": 1,
+            "title": "Projectid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "floorId",
+          "floors"
+        ],
+        "title": "QualityAssessmentOut",
+        "type": "object"
+      },
       "RefreshBody": {
         "additionalProperties": false,
         "description": "Thân W16: `roles` đúng một vai, `expiresAt` = `exp` của access token.",
@@ -2037,6 +2285,44 @@
           "email"
         ],
         "title": "RefreshUser",
+        "type": "object"
+      },
+      "RegionOut": {
+        "additionalProperties": false,
+        "description": "Vùng một phát hiện neo vào (`quality.ts:84`).",
+        "properties": {
+          "heightRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Heightratio",
+            "type": "number"
+          },
+          "widthRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Widthratio",
+            "type": "number"
+          },
+          "xRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Xratio",
+            "type": "number"
+          },
+          "yRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "xRatio",
+          "yRatio",
+          "widthRatio",
+          "heightRatio"
+        ],
+        "title": "RegionOut",
         "type": "object"
       },
       "ReplaceAvatarBody": {
@@ -2197,6 +2483,26 @@
           "end"
         ],
         "title": "SegmentOut",
+        "type": "object"
+      },
+      "SetCornersIn": {
+        "additionalProperties": false,
+        "description": "Thân #31: đúng bốn góc; thứ tự và hình học do `geometry` kiểm.",
+        "properties": {
+          "corners": {
+            "items": {
+              "$ref": "#/components/schemas/CornerIn"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Corners",
+            "type": "array"
+          }
+        },
+        "required": [
+          "corners"
+        ],
+        "title": "SetCornersIn",
         "type": "object"
       },
       "SignInBody": {
@@ -2365,6 +2671,13 @@
           "furniture"
         ],
         "title": "SpatialLayerOut",
+        "type": "object"
+      },
+      "StraightenIn": {
+        "additionalProperties": false,
+        "description": "Thân #32: object rỗng; khoá lạ bị `extra=\"forbid\"` chặn (422).",
+        "properties": {},
+        "title": "StraightenIn",
         "type": "object"
       },
       "SummaryMemberOut": {
@@ -3875,6 +4188,182 @@
         "summary": "Drawings Init Upload",
         "tags": [
           "drawings"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/quality": {
+      "get": {
+        "description": "#30 — kết quả đo của mọi tầng có bản vẽ; tầng hỏi không có → 404 `floor`.",
+        "operationId": "quality_read_assessment_api_projects__project_id__floors__floor_id__quality_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityAssessmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Read Assessment",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/quality/corners": {
+      "post": {
+        "description": "#31 — áp bốn góc lên trang chưa nắn, đồng bộ; xong xếp hàng lại pipeline.",
+        "operationId": "quality_set_corners_api_projects__project_id__floors__floor_id__quality_corners_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCornersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityAssessmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Set Corners",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/quality/straighten": {
+      "post": {
+        "description": "#32 — nắn nghiêng trang đang dùng, đồng bộ; xong xếp hàng lại pipeline.",
+        "operationId": "quality_straighten_api_projects__project_id__floors__floor_id__quality_straighten_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StraightenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityAssessmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Straighten",
+        "tags": [
+          "quality"
         ]
       }
     },
