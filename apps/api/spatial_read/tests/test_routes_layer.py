@@ -15,8 +15,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.projects.tests.test_routes_common import headers_of
-from apps.api.spatial_read.tests._read_helpers import delete_floor_mid_request, layer_path, make_stage
-from apps.api.spatial_read.tests.test_pages import FakePages, use_pages
+from apps.api.spatial_read.tests._helpers import make_scene
+from apps.api.spatial_read.tests._read_helpers import FakePages, delete_floor_mid_request, layer_path, use_pages
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorDocumentRow
 from packages.testing.factories.auth import make_user
@@ -30,8 +30,8 @@ async def test_spatial_read_layer__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Đúng: tầng có tài liệu toà mẫu và kích thước; `level.id` là `Floor.id` (H1 `n16`)."""
-    stage = await make_stage(db_session, floors=2)
-    floor = stage.floors[0]
+    scene = await make_scene(db_session, floors=2)
+    floor = scene.floors[0]
     layer = sample_floor_layer(0, level_id=floor.level_id)
     await make_floor_document(
         db_session,
@@ -44,7 +44,7 @@ async def test_spatial_read_layer__C01(
         clock=fake_clock,
     )
     await db_session.commit()
-    response = await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))
+    response = await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))
     assert response.status_code == 200
     body = response.json()
     assert body["revision"] == 3
@@ -61,8 +61,8 @@ async def test_spatial_read_layer__C01_unresolved(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Tỉ lệ do pipeline suy → `scaleStatus: 'unresolved'`, và tầng **chưa** duyệt."""
-    stage = await make_stage(db_session)
-    floor = stage.floors[0]
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
     await make_floor_document(
         db_session,
         floor_pk=floor.pk,
@@ -72,16 +72,16 @@ async def test_spatial_read_layer__C01_unresolved(
         clock=fake_clock,
     )
     await db_session.commit()
-    body = (await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))).json()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["scaleStatus"] == "unresolved"
     assert body["level"]["reviewed"] is False
 
 
 async def test_spatial_read_layer__C01_empty(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Tầng chưa có tài liệu → `revision 0`, bốn danh sách rỗng, không tỉ lệ (`empty_document`)."""
-    stage = await make_stage(db_session)
-    floor = stage.floors[0]
-    body = (await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))).json()
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["revision"] == 0
     assert body["layer"] == {"walls": [], "openings": [], "rooms": [], "furniture": []}
     assert body["dimensions"] == []
@@ -92,8 +92,8 @@ async def test_spatial_read_layer__C01_reviewed(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Mọi mục đã duyệt và tỉ lệ `human` → `level.reviewed` đúng (HOP-DONG-MOI §4.1)."""
-    stage = await make_stage(db_session)
-    floor = stage.floors[0]
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
     await make_floor_document(
         db_session,
         floor_pk=floor.pk,
@@ -104,18 +104,18 @@ async def test_spatial_read_layer__C01_reviewed(
         clock=fake_clock,
     )
     await db_session.commit()
-    body = (await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))).json()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["level"]["reviewed"] is True
     assert body["level"]["source"] == "human"
 
 
 async def test_spatial_read_layer__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Admin hệ thống ngoài dự án → 404 `resource:"project"` (K08)."""
-    stage = await make_stage(db_session)
+    scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
     response = await api_client.get(
-        layer_path(stage.project.id, stage.floors[0].level_id), headers=headers_of(outsider)
+        layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(outsider)
     )
     assert response.status_code == 404
     assert response.json()["resource"] == "project"
@@ -126,27 +126,27 @@ async def test_spatial_read_layer__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, case: str
 ) -> None:
     """Tầng không có, đã xoá mềm, hay của dự án khác → 404 `resource:"floor"`."""
-    stage = await make_stage(db_session)
-    other = await make_stage(db_session)
+    scene = await make_scene(db_session)
+    other = await make_scene(db_session)
     floor_id = "L-NOSUCHFLOOR"
     if case == "deleted":
-        floor_id = stage.floors[0].level_id
+        floor_id = scene.floors[0].level_id
         await db_session.execute(
-            update(FloorRow).where(FloorRow.pk == stage.floors[0].pk).values(deleted_at=fake_clock.now())
+            update(FloorRow).where(FloorRow.pk == scene.floors[0].pk).values(deleted_at=fake_clock.now())
         )
         await db_session.commit()
     elif case == "other_project":
         floor_id = other.floors[0].level_id
-    response = await api_client.get(layer_path(stage.project.id, floor_id), headers=headers_of(stage.owner))
+    response = await api_client.get(layer_path(scene.project.id, floor_id), headers=headers_of(scene.owner))
     assert response.status_code == 404
     assert response.json()["resource"] == "floor"
 
 
 async def test_spatial_read_layer__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Tầng chưa có gì: vắng `areaM2`, `scaleMillimetresPerPixel`, `scaleStatus` (W2, K02)."""
-    stage = await make_stage(db_session)
+    scene = await make_scene(db_session)
     body = (
-        await api_client.get(layer_path(stage.project.id, stage.floors[0].level_id), headers=headers_of(stage.owner))
+        await api_client.get(layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(scene.owner))
     ).json()
     assert "scaleStatus" not in body
     assert "areaM2" not in body["level"]
@@ -160,10 +160,10 @@ async def test_spatial_read_layer_when_floor_vanishes_mid_request(
     fake_clock: FakeClock,
 ) -> None:
     """Tầng xoá mềm giữa `get_floor` và lần đọc sau → 404, không `IndexError` ([6] N16)."""
-    stage = await make_stage(db_session)
-    with delete_floor_mid_request(db_sessionmaker, stage.floors[0].pk, fake_clock):
+    scene = await make_scene(db_session)
+    with delete_floor_mid_request(db_sessionmaker, scene.floors[0].pk, fake_clock):
         response = await api_client.get(
-            layer_path(stage.project.id, stage.floors[0].level_id), headers=headers_of(stage.owner)
+            layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(scene.owner)
         )
     assert response.status_code == 404
     assert response.json()["resource"] == "floor"
@@ -171,9 +171,9 @@ async def test_spatial_read_layer_when_floor_vanishes_mid_request(
 
 async def test_spatial_read_layer_never_writes(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Đọc tầng chưa có tài liệu **không** sinh dòng `floor_documents` ([6]: đọc không ghi)."""
-    stage = await make_stage(db_session)
+    scene = await make_scene(db_session)
     before = (await db_session.execute(select(func.count()).select_from(FloorDocumentRow))).scalar_one()
-    await api_client.get(layer_path(stage.project.id, stage.floors[0].level_id), headers=headers_of(stage.owner))
+    await api_client.get(layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(scene.owner))
     await db_session.commit()
     after = (await db_session.execute(select(func.count()).select_from(FloorDocumentRow))).scalar_one()
     assert after == before
@@ -183,8 +183,8 @@ async def test_spatial_read_layer_demotes_scale_on_other_page(
     api_client: httpx.AsyncClient, db_session: AsyncSession, api_app: FastAPI, fake_clock: FakeClock
 ) -> None:
     """Tỉ lệ `human` gắn trang P1, cổng trả P2 → `scaleStatus` hiện, `reviewed` sai; tỉ lệ vẫn gửi."""
-    stage = await make_stage(db_session)
-    floor = stage.floors[0]
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
     await make_floor_document(
         db_session,
         floor_pk=floor.pk,
@@ -196,7 +196,7 @@ async def test_spatial_read_layer_demotes_scale_on_other_page(
     )
     await db_session.commit()
     use_pages(api_app, FakePages({floor.pk: "P2"}))
-    body = (await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))).json()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["scaleStatus"] == "unresolved"
     assert body["level"]["reviewed"] is False
     assert body["level"]["scaleMillimetresPerPixel"] == 12.7
@@ -211,8 +211,8 @@ async def test_spatial_read_layer_keeps_scale_on_same_or_unknown_page(
     page: str | None,
 ) -> None:
     """Cổng trả đúng trang, hay không biết tầng → hạng `human` giữ nguyên, vắng `scaleStatus`."""
-    stage = await make_stage(db_session)
-    floor = stage.floors[0]
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
     await make_floor_document(
         db_session,
         floor_pk=floor.pk,
@@ -224,7 +224,7 @@ async def test_spatial_read_layer_keeps_scale_on_same_or_unknown_page(
     )
     await db_session.commit()
     use_pages(api_app, FakePages({floor.pk: page} if page is not None else {}))
-    body = (await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))).json()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert "scaleStatus" not in body
     assert body["level"]["reviewed"] is True
 
@@ -233,8 +233,8 @@ async def test_spatial_read_layer_without_page_gate(
     api_client: httpx.AsyncClient, db_session: AsyncSession, api_app: FastAPI, fake_clock: FakeClock
 ) -> None:
     """Không ai cài cổng trang, hay `scale_page_key` NULL → hạng tỉ lệ như đã lưu."""
-    stage = await make_stage(db_session)
-    floor = stage.floors[0]
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
     await make_floor_document(
         db_session,
         floor_pk=floor.pk,
@@ -245,6 +245,6 @@ async def test_spatial_read_layer_without_page_gate(
     )
     await db_session.commit()
     use_pages(api_app)
-    body = (await api_client.get(layer_path(stage.project.id, floor.level_id), headers=headers_of(stage.owner))).json()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert "scaleStatus" not in body
     assert body["level"]["reviewed"] is True

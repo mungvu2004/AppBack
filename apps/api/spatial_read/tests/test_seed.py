@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.spatial_read import codec
 from apps.api.spatial_read.counts import layer_counts
 from apps.api.spatial_read.documents import DOCUMENT_SCHEMA_VERSION, document_from_row
+from apps.api.spatial_read.wire import SpatialLayerOut, layer_out
 from packages.core.ids import is_id
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project, ProjectFloorSummary
@@ -111,3 +112,18 @@ async def test_seed_matches_codec_and_counts(db_session: AsyncSession) -> None:
         )
         assert ids == codec.entity_ids(layer)
     assert sum(len(dimensions) for dimensions in (codec.document_from_json(r.document)[2] for r in rows)) == 34
+
+
+async def test_seed_layers_decode_as_wire_models(db_session: AsyncSession) -> None:
+    """Mọi lớp seed giải được bằng `SpatialLayerOut` — cột `document` đúng hình dạng N16 gửi đi.
+
+    Kiểm ở đây chứ không ở `test_wire.py`: seed dựng jsonb bằng `model_dump` của miền, không
+    qua `codec`, nên đây là chỗ duy nhất bắt được lệch giữa hai đường ghi ấy trước khi FE thấy.
+    """
+    await seed(db_session)
+    rows = (await db_session.execute(select(FloorDocumentRow).order_by(FloorDocumentRow.floor_pk))).scalars().all()
+    for row in rows:
+        layer = document_from_row(row).layer
+        out = layer_out(layer)
+        assert SpatialLayerOut.model_validate(out.model_dump(mode="json", by_alias=True)) == out
+    assert sum(len(layer_out(document_from_row(row).layer).walls) for row in rows) == 48

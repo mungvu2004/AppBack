@@ -1,16 +1,16 @@
 """Nền dựng riêng của ba route đọc (B3-02 việc R); bổ sung cho `_helpers.py`, không thay nó.
 
-Ba thứ lặp lại: đường của từng op, một dự án đã `commit` kèm người dùng để gọi HTTP, và
+Ba thứ lặp lại: đường của từng op, cổng `drawing_pages` giả mà ba file test cùng dùng, và
 bộ nghe SQL xoá mềm một tầng **giữa** hai câu lệnh của cùng một request — cách duy nhất
 dựng được cuộc đua "tầng biến mất sau `get_floor`" mà [8] đòi cho #33 và N16.
 
-`headers_of` lấy lại từ `apps/api/projects/tests/test_routes_common.py` (B2-01) chứ không
-viết bản thứ hai — cùng lệ với `sql_count`.
+Dựng dữ liệu thì dùng `make_scene` của `_helpers.py`, không có bản thứ hai ở đây;
+`headers_of` lấy lại từ `apps/api/projects/tests/test_routes_common.py` (B2-01) — cùng lệ
+với `sql_count`.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import event, update
@@ -18,22 +18,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.util import await_only
 
-from packages.db.models.auth import User
+from apps.api.core import extensions
+from apps.api.spatial_read import pages
 from packages.db.models.floors import FloorRow
-from packages.db.models.projects import Project
-from packages.testing.factories.auth import make_user
-from packages.testing.factories.floors import make_floor
-from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
-
-
-@dataclass(frozen=True)
-class Stage:
-    """Một dự án đã `commit`, người sở hữu nó, và các tầng theo thứ tự tạo."""
-
-    owner: User
-    project: Project
-    floors: tuple[FloorRow, ...]
 
 
 def floor_path(project_id: str, floor_id: str) -> str:
@@ -51,13 +39,21 @@ def graph_path(project_id: str) -> str:
     return f"/api/projects/{project_id}/spatial"
 
 
-async def make_stage(db: AsyncSession, *, floors: int = 1, **overrides: Any) -> Stage:
-    """Dự án + `floors` tầng đã **commit**: route chạy trên session khác nên phải thấy dữ liệu."""
-    owner = await make_user(db)
-    project = await make_project(db, owner=owner, **overrides)
-    rows = [await make_floor(db, project=project, order=index) for index in range(floors)]
-    await db.commit()
-    return Stage(owner=owner, project=project, floors=tuple(rows))
+class FakePages:
+    """Cổng `drawing_pages` giả: chỉ biết những tầng test đưa vào, đúng hợp đồng `Mapping[int, str]`."""
+
+    def __init__(self, known: Mapping[int, str]) -> None:
+        """Ghi nhớ bảng trang; tầng ngoài bảng vắng khoá như cổng thật của B2-04."""
+        self.known = dict(known)
+
+    async def load(self, db: object, floor_pks: Sequence[int]) -> Mapping[int, str]:
+        """Chỉ trả những tầng cổng biết — không bịa khoá cho tầng lạ."""
+        return {pk: self.known[pk] for pk in floor_pks if pk in self.known}
+
+
+def use_pages(app: object, *sources: object) -> None:
+    """Cài (hay gỡ) cổng `drawing_pages` cho **một** app test; không tham số = gỡ hẳn."""
+    extensions.override(app, pages.SUBMODULE, [("apps.api.spatial_read.tests._read_helpers", tuple(sources))])
 
 
 @contextmanager
