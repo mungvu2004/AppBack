@@ -153,6 +153,147 @@
         "title": "AdminUserOut",
         "type": "object"
       },
+      "AxisOut": {
+        "additionalProperties": false,
+        "description": "`AxisSchema` — trục định vị; v1 danh sách luôn rỗng nhưng hình dạng vẫn phải đúng.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "line": {
+            "$ref": "#/components/schemas/SegmentOut"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "label",
+          "direction",
+          "line"
+        ],
+        "title": "AxisOut",
+        "type": "object"
+      },
+      "BoundingBoxOut": {
+        "additionalProperties": false,
+        "description": "Hộp bao của một món đồ đạc.",
+        "properties": {
+          "max": {
+            "$ref": "#/components/schemas/PointOut"
+          },
+          "min": {
+            "$ref": "#/components/schemas/PointOut"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "BoundingBoxOut",
+        "type": "object"
+      },
+      "BuildingOut": {
+        "additionalProperties": false,
+        "description": "`BuildingSchema` — `datumElevationMm` **có dấu** (tầng hầm nằm dưới mốc `+0.000`).",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "datumElevationMm": {
+            "title": "Datumelevationmm",
+            "type": "integer"
+          },
+          "grossFloorAreaM2": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grossflooraream2"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "name",
+          "datumElevationMm"
+        ],
+        "title": "BuildingOut",
+        "type": "object"
+      },
       "ChangePasswordBody": {
         "additionalProperties": false,
         "description": "Thân N13: `{currentPassword, newPassword}`.",
@@ -281,6 +422,87 @@
           "userId"
         ],
         "title": "DeleteUserBody",
+        "type": "object"
+      },
+      "DimensionOut": {
+        "additionalProperties": false,
+        "description": "`DimensionSchema` — chuỗi kích thước; `referenceIds` **được rỗng**.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "linear",
+              "chain",
+              "radial",
+              "angular",
+              "elevation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "line": {
+            "$ref": "#/components/schemas/SegmentOut"
+          },
+          "overrideValueMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overridevaluemm"
+          },
+          "referenceIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Referenceids",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "valueMm": {
+            "title": "Valuemm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "kind",
+          "referenceIds",
+          "line",
+          "valueMm"
+        ],
+        "title": "DimensionOut",
         "type": "object"
       },
       "DrawingOut": {
@@ -490,6 +712,58 @@
       "FloorIdField": {
         "type": "string"
       },
+      "FloorLayerDocumentOut": {
+        "additionalProperties": false,
+        "description": "N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24).",
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/AxisOut"
+            },
+            "title": "Axes",
+            "type": "array"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionOut"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "layer": {
+            "$ref": "#/components/schemas/SpatialLayerOut"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LevelOut"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "scaleStatus": {
+            "anyOf": [
+              {
+                "const": "unresolved",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scalestatus"
+          }
+        },
+        "required": [
+          "revision",
+          "level",
+          "layer",
+          "axes",
+          "dimensions"
+        ],
+        "title": "FloorLayerDocumentOut",
+        "type": "object"
+      },
       "FloorOut": {
         "additionalProperties": false,
         "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).",
@@ -624,6 +898,109 @@
           "floorIds"
         ],
         "title": "FloorReorderIn",
+        "type": "object"
+      },
+      "FloorRevisionOut": {
+        "additionalProperties": false,
+        "description": "`FloorRevisionSchema` — đủ để mở một lượt `PUT` có version lên đúng tầng ấy (#35).",
+        "properties": {
+          "floorId": {
+            "title": "Floorid",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "floorId",
+          "revision"
+        ],
+        "title": "FloorRevisionOut",
+        "type": "object"
+      },
+      "FurnitureOut": {
+        "additionalProperties": false,
+        "description": "`FurnitureSchema` — `roomId` **vắng khoá** khi món đồ chưa gắn phòng (C17).",
+        "properties": {
+          "boundingBox": {
+            "$ref": "#/components/schemas/BoundingBoxOut"
+          },
+          "centre": {
+            "$ref": "#/components/schemas/PointOut"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "table",
+              "chair",
+              "bed",
+              "wardrobe",
+              "kitchenCabinet",
+              "sanitaryFixture",
+              "stair",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "roomId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roomid"
+          },
+          "rotationDeg": {
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Rotationdeg",
+            "type": "number"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "kind",
+          "centre",
+          "boundingBox",
+          "rotationDeg"
+        ],
+        "title": "FurnitureOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -764,6 +1141,86 @@
         "title": "LatestFloorUploadOut",
         "type": "object"
       },
+      "LevelOut": {
+        "additionalProperties": false,
+        "description": "`LevelSchema` — một tầng; `id` là `Floor.id` của #12/#33, không phải một mã thứ hai.\n\nTầng chưa hiệu chỉnh vắng `scaleMillimetresPerPixel`; tỉ lệ \"tạm\" vẫn gửi nhưng N16 kèm\n`scaleStatus: 'unresolved'` (HOP-DONG-MOI §4.2).",
+        "properties": {
+          "areaM2": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aream2"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "elevationMm": {
+            "title": "Elevationmm",
+            "type": "integer"
+          },
+          "heightMm": {
+            "title": "Heightmm",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "scaleMillimetresPerPixel": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scalemillimetresperpixel"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "name",
+          "order",
+          "elevationMm",
+          "heightMm"
+        ],
+        "title": "LevelOut",
+        "type": "object"
+      },
       "MeSchema": {
         "additionalProperties": false,
         "description": "Response N11/N12/N14 (HOP-DONG-MOI §3); trường tuỳ chọn vắng khi `None` (W2, K02).",
@@ -826,10 +1283,149 @@
         "title": "MeSchema",
         "type": "object"
       },
+      "NoteOut": {
+        "additionalProperties": false,
+        "description": "`NoteSchema` — ghi chú gắn vào một thực thể; v1 `notes` luôn rỗng ở N15.",
+        "properties": {
+          "authorId": {
+            "title": "Authorid",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "entityId": {
+            "title": "Entityid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "entityId",
+          "body",
+          "createdAt",
+          "authorId"
+        ],
+        "title": "NoteOut",
+        "type": "object"
+      },
       "Notes": {
         "maxLength": 500,
         "minLength": 1,
         "type": "string"
+      },
+      "OpeningOut": {
+        "additionalProperties": false,
+        "description": "`OpeningSchema` — cửa đi hay cửa sổ khoét trong một tường.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "heightMm": {
+            "title": "Heightmm",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "door",
+              "window"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "offsetMm": {
+            "title": "Offsetmm",
+            "type": "integer"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "sillHeightMm": {
+            "title": "Sillheightmm",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "swing": {
+            "enum": [
+              "left",
+              "right",
+              "double",
+              "sliding",
+              "fixed"
+            ],
+            "title": "Swing",
+            "type": "string"
+          },
+          "wallId": {
+            "title": "Wallid",
+            "type": "string"
+          },
+          "widthMm": {
+            "title": "Widthmm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "wallId",
+          "kind",
+          "offsetMm",
+          "widthMm",
+          "heightMm",
+          "sillHeightMm",
+          "swing"
+        ],
+        "title": "OpeningOut",
+        "type": "object"
       },
       "OrderField": {
         "type": "integer"
@@ -870,6 +1466,26 @@
           "email"
         ],
         "title": "PasswordResetRequestBody",
+        "type": "object"
+      },
+      "PointOut": {
+        "additionalProperties": false,
+        "description": "Một điểm trên mặt bằng, mm nguyên.",
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "PointOut",
         "type": "object"
       },
       "ProgressOut": {
@@ -1468,6 +2084,90 @@
         "title": "RoleChangeBody",
         "type": "object"
       },
+      "RoomOut": {
+        "additionalProperties": false,
+        "description": "`RoomSchema` — phòng khép kín; `areaM2` do server tính từ `outline` (W18).",
+        "properties": {
+          "areaM2": {
+            "minimum": 0.0,
+            "title": "Aream2",
+            "type": "number"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outline": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "minItems": 3,
+            "title": "Outline",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "usage": {
+            "enum": [
+              "livingRoom",
+              "bedroom",
+              "kitchen",
+              "bathroom",
+              "corridor",
+              "stairwell",
+              "utility",
+              "other"
+            ],
+            "title": "Usage",
+            "type": "string"
+          },
+          "wallIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Wallids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "name",
+          "usage",
+          "outline",
+          "areaM2",
+          "wallIds"
+        ],
+        "title": "RoomOut",
+        "type": "object"
+      },
       "ScaleMmPerPx": {
         "anyOf": [
           {
@@ -1480,6 +2180,24 @@
         ],
         "ge": "0.01",
         "le": 1000
+      },
+      "SegmentOut": {
+        "additionalProperties": false,
+        "description": "Đoạn thẳng hai đầu; `segmentSchema` của FE chặn đoạn dài 0 mm.",
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/PointOut"
+          },
+          "start": {
+            "$ref": "#/components/schemas/PointOut"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "SegmentOut",
+        "type": "object"
       },
       "SignInBody": {
         "additionalProperties": false,
@@ -1505,6 +2223,148 @@
           "rememberMe"
         ],
         "title": "SignInBody",
+        "type": "object"
+      },
+      "SpatialGraphDocumentOut": {
+        "additionalProperties": false,
+        "description": "N15 — đồ thị cộng bảng `revision`; zod refine hai danh sách là **song ánh**.",
+        "properties": {
+          "floorRevisions": {
+            "items": {
+              "$ref": "#/components/schemas/FloorRevisionOut"
+            },
+            "title": "Floorrevisions",
+            "type": "array"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/SpatialGraphOut"
+          }
+        },
+        "required": [
+          "graph",
+          "floorRevisions"
+        ],
+        "title": "SpatialGraphDocumentOut",
+        "type": "object"
+      },
+      "SpatialGraphOut": {
+        "additionalProperties": false,
+        "description": "`SpatialGraphSchema` — cả công trình; v1 `axes: []`, `notes: []`.",
+        "properties": {
+          "axes": {
+            "items": {
+              "$ref": "#/components/schemas/AxisOut"
+            },
+            "title": "Axes",
+            "type": "array"
+          },
+          "building": {
+            "$ref": "#/components/schemas/BuildingOut"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionOut"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "furniture": {
+            "items": {
+              "$ref": "#/components/schemas/FurnitureOut"
+            },
+            "title": "Furniture",
+            "type": "array"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelOut"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/NoteOut"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "openings": {
+            "items": {
+              "$ref": "#/components/schemas/OpeningOut"
+            },
+            "title": "Openings",
+            "type": "array"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/RoomOut"
+            },
+            "title": "Rooms",
+            "type": "array"
+          },
+          "walls": {
+            "items": {
+              "$ref": "#/components/schemas/WallOut"
+            },
+            "title": "Walls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "building",
+          "levels",
+          "walls",
+          "openings",
+          "furniture",
+          "rooms",
+          "axes",
+          "dimensions",
+          "notes"
+        ],
+        "title": "SpatialGraphOut",
+        "type": "object"
+      },
+      "SpatialLayerOut": {
+        "additionalProperties": false,
+        "description": "`SpatialLayerSchema` — bốn danh sách của **một** tầng.",
+        "properties": {
+          "furniture": {
+            "items": {
+              "$ref": "#/components/schemas/FurnitureOut"
+            },
+            "title": "Furniture",
+            "type": "array"
+          },
+          "openings": {
+            "items": {
+              "$ref": "#/components/schemas/OpeningOut"
+            },
+            "title": "Openings",
+            "type": "array"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/RoomOut"
+            },
+            "title": "Rooms",
+            "type": "array"
+          },
+          "walls": {
+            "items": {
+              "$ref": "#/components/schemas/WallOut"
+            },
+            "title": "Walls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "walls",
+          "openings",
+          "rooms",
+          "furniture"
+        ],
+        "title": "SpatialLayerOut",
         "type": "object"
       },
       "SummaryMemberOut": {
@@ -1773,6 +2633,79 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WallOut": {
+        "additionalProperties": false,
+        "description": "`WallSchema` — một đoạn tường đo theo đường tim.",
+        "properties": {
+          "centreline": {
+            "$ref": "#/components/schemas/SegmentOut"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "heightMm": {
+            "title": "Heightmm",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "loadBearing",
+              "partition",
+              "envelope"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "openingIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Openingids",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "thicknessMm": {
+            "title": "Thicknessmm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "centreline",
+          "thicknessMm",
+          "heightMm",
+          "kind",
+          "openingIds"
+        ],
+        "title": "WallOut",
         "type": "object"
       },
       "apps__api__floors__schemas__FloorName": {
@@ -2946,6 +3879,56 @@
       }
     },
     "/api/projects/{project_id}/floors/{floor_id}/spatial": {
+      "get": {
+        "description": "#33 — siêu dữ liệu một tầng, đúng `Floor` mà #12 trả (cùng đường `floor_outs`).",
+        "operationId": "spatial_read_floor_api_projects__project_id__floors__floor_id__spatial_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spatial Read Floor",
+        "tags": [
+          "spatial"
+        ]
+      },
       "patch": {
         "description": "#34 — sửa tầng (last-write-wins); `id` khác đường → 422 `PATH_BODY_MISMATCH`.",
         "operationId": "floors_patch_spatial_floor_api_projects__project_id__floors__floor_id__spatial_patch",
@@ -3004,6 +3987,58 @@
         "summary": "Floors Patch Spatial Floor",
         "tags": [
           "floors"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/spatial/layer": {
+      "get": {
+        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`, bốn danh sách, trục, kích thước.",
+        "operationId": "spatial_read_layer_api_projects__project_id__floors__floor_id__spatial_layer_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorLayerDocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spatial Read Layer",
+        "tags": [
+          "spatial"
         ]
       }
     },
@@ -3151,6 +4186,49 @@
         "summary": "Settings Replace Settings",
         "tags": [
           "project_settings"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/spatial": {
+      "get": {
+        "description": "N15 — cả đồ thị của dự án kèm `revision` từng tầng; dự án chưa có tầng → danh sách rỗng.",
+        "operationId": "spatial_read_graph_api_projects__project_id__spatial_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpatialGraphDocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spatial Read Graph",
+        "tags": [
+          "spatial"
         ]
       }
     },
