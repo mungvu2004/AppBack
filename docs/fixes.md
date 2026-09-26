@@ -102,7 +102,7 @@
 | FIX-104 | 2026-09-24 | B0-08 | NO-177 | Tầng chạy Python 3.14 không đọc được venv 3.12 của tầng dựng | `3f2e14d`, `777f895` |
 | FIX-105 | 2026-09-24 | B0-04 | NO-085 | `StorageSettings` đọc `CoreSettings` (cần `SECRET_KEY`, `PUBLIC_BASE_URL`) nên `ml` không dựng được kho S3 khi đã bỏ hai biến đó | `2739918` |
 | FIX-107 | 2026-09-25 | B4-01 | — | Test mặc định của sổ luồng giả định "chưa có B2-04", đỏ khi B2-04 cài provider `upload_progress` thật | `e9ef485` (gộp `9d2c95b`, nhánh `feature/b2-04-drawing-uploads`) |
-| FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | (mở — nhánh `feature/b3-02-spatial-read`) |
+| FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | `1ada889` (gộp `15d1f53`, nhánh `feature/b3-02-spatial-read`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -969,4 +969,4 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
   bộ dò trên repo: mọi seed nạp được, tên duy nhất, `ENVS` là `frozenset` con của tập môi trường hợp lệ, thứ tự theo
   `ORDER` ổn định; `load_seeds("production")` không có seed demo nào. Không xoá test, không nới assert.
 - **[6]** Test xanh cả trên `main` (chưa có seed) lẫn trên nhánh B3-02.
-- **[7]** (điền khi gộp)
+- **[7]** `test(db): check discovered seeds instead of an empty repo` (`1ada889`, `Prompt: B0-03`, `Fix: FIX-108`) — sửa cả `test_repo_has_no_seeds_yet` lẫn `test_seeds_main_runs_with_no_seeds` cùng file, cùng nguyên nhân (lệch #6 của việc gộp B3-02, review chấp nhận); gộp `--no-ff` trong `15d1f53`; review B3-02 lượt 1 soát riêng FIX-108 (không finding), lượt 2 APPROVE 4,94/5 (`452f59f`), cổng đầy đủ thoát 0 (4590 passed).
