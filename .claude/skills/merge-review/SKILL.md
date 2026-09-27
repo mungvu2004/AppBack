@@ -46,14 +46,19 @@ Nhánh > 400 dòng logic → ghi `P2 MNT-05` và nói rõ nếu đáng tách.
 
 ### 3. Bằng chứng cổng
 
-Yêu cầu **mã thoát thật**. Không có log thì tự chạy:
+Yêu cầu **mã thoát thật**. Trước khi chạy, **đánh giá phạm vi kiểm** theo `RULE-CODE.md` R-33b và ghi
+`Phạm vi kiểm: đầy đủ | đích — <lý do>` vào phán quyết:
 ```
-bash tools/verify/run.sh verify        # ~2-4 phút, timeout Bash >= 600000 ms
+bash tools/verify/run.sh verify        # đầy đủ: ~25 phút > trần 10 phút của lệnh Bash → chạy nền + log, đọc mã thoát từ log
+bash tools/verify/run.sh verify --steps 1,2,3,4   # đích: + pytest/coverage của file đổi qua run.sh shell
 ```
+- Review lượt 1 của một nhánh: **đầy đủ** (R-33b điều kiện 1). Lượt ≥ 2 chỉ soát diff vòng sửa: đích, trừ khi diff đó
+  chạm một điều kiện (2)–(7) của R-33b. Tác giả chọn "đích" mà diff chạm điều kiện "đầy đủ" → tự chạy đầy đủ, ghi finding.
 - Thoát khác 0 → `REQUEST CHANGES`, trích bước hỏng.
 - Bước ghi "không áp dụng" phải đúng luật BE-00 §12 (prompt chủ chưa hợp nhất), nếu
   không thì là "hỏng".
-- Độ phủ mỗi gói bị chạm và tổng đều ≥ 90% dòng **và** ≥ 90% nhánh.
+- Độ phủ mỗi gói bị chạm và tổng đều ≥ 90% dòng **và** ≥ 90% nhánh (lượt đầy đủ). Lượt đích: mỗi file đổi ≥ 90/90,
+  tổng ghi `không đo (phạm vi đích)` — không chép số của lượt trước (K25).
 
 ### 4. Review theo miền
 
@@ -93,8 +98,8 @@ Ghi phán quyết vào `docs/reviews/<YYYY-MM-DD>-<tên nhánh viết thường>
 # Review merge <nhánh> → main
 
 - Ngày: <YYYY-MM-DD> · Reviewer: phiên /merge-review · Commit đầu nhánh: <sha 12>
-- Cổng: `bash tools/verify/run.sh verify` mã thoát <n> (log: <đường dẫn hoặc "chạy tại chỗ">)
-- Độ phủ: tổng dòng x,x% · nhánh y,y%
+- Cổng: phạm vi <đầy đủ|đích — lý do>; `<lệnh>` mã thoát <n> (log: <đường dẫn hoặc "chạy tại chỗ">)
+- Độ phủ: tổng dòng x,x% · nhánh y,y% | không đo (phạm vi đích) — file đổi: <file dòng%/nhánh%>
 
 ## Finding
 | # | Mức | ID | Mô tả | Vị trí | Đề xuất |

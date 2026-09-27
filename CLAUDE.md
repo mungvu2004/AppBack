@@ -21,7 +21,7 @@ bash tools/verify/run.sh <việc>
 
 | Việc | Làm gì | Ai chạy |
 |---|---|---|
-| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux | mọi worker, trước khi báo xong |
+| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux | trước khi báo xong; đầy đủ hay chỉ bước/test đích theo đánh giá phạm vi kiểm (`RULE-CODE.md` R-33b) |
 | `lock` | `uv lock` (không `--upgrade`), chép `uv.lock` ra worktree | worker khi thêm thư viện ngoài bảng BE-00 §13.1 |
 | `shell` | bash trong container, để gỡ lỗi (`run.sh shell < lệnh.sh` chạy không tương tác) | worker |
 | `openapi` | xuất `openapi.json` hợp nhất | **chỉ người điều phối** |

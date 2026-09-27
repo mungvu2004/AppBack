@@ -18,7 +18,7 @@ FIX <mã FIX> cho <mã prompt sở hữu> — <một câu mô tả lỗi>
 [4 KHOANH VÙNG]      File được sửa (trong cột "Sở hữu" của prompt gốc) · file CẤM sửa
 [5 SỬA NHỎ NHẤT]     Hướng sửa, hoặc "worker tự tìm" kèm giới hạn: không đổi hợp đồng, không đổi schema DB trừ khi ghi rõ
 [6 TEST CHẶN TÁI PHÁT] Tên test mới theo CASE.md; phải ĐỎ trên commit hiện tại trước khi sửa
-[7 NGHIỆM THU]       just verify (hoặc pnpm verify) đạt; test ở [6] đỏ → xanh; commit "fix(<scope>): …" + trailer "Prompt: <mã prompt>", "Fix: <mã FIX>" (BE-00 §13.2); báo cáo theo REPORT.md
+[7 NGHIỆM THU]       just verify (hoặc pnpm verify) đạt — lượt đầu của nhánh FIX luôn đầy đủ, vòng sửa sau review theo phạm vi RULE-CODE.md R-33b; test ở [6] đỏ → xanh; commit "fix(<scope>): …" + trailer "Prompt: <mã prompt>", "Fix: <mã FIX>" (BE-00 §13.2); báo cáo theo REPORT.md
 ```
 
 ## Luật
