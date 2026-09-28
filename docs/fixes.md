@@ -103,6 +103,8 @@
 | FIX-105 | 2026-09-24 | B0-04 | NO-085 | `StorageSettings` đọc `CoreSettings` (cần `SECRET_KEY`, `PUBLIC_BASE_URL`) nên `ml` không dựng được kho S3 khi đã bỏ hai biến đó | `2739918` |
 | FIX-107 | 2026-09-25 | B4-01 | — | Test mặc định của sổ luồng giả định "chưa có B2-04", đỏ khi B2-04 cài provider `upload_progress` thật | `e9ef485` (gộp `9d2c95b`, nhánh `feature/b2-04-drawing-uploads`) |
 | FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | `1ada889` (gộp `15d1f53`, nhánh `feature/b3-02-spatial-read`) |
+| FIX-109 | 2026-09-28 | B2-02 | — | Test dò sink mời chốt "chưa module nào có `invite_sinks.py`", đỏ khi B4-02 cài `ProjectInviteNotifier` thật | (nhánh `feature/b4-02-notifications`) |
+| FIX-110 | 2026-09-28 | B4-01 | — | Test mặc định luồng thông báo giả định "chưa có B4-02", đỏ khi B4-02 cài provider `notifications` thật | (nhánh `feature/b4-02-notifications`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -970,3 +972,29 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
   `ORDER` ổn định; `load_seeds("production")` không có seed demo nào. Không xoá test, không nới assert.
 - **[6]** Test xanh cả trên `main` (chưa có seed) lẫn trên nhánh B3-02.
 - **[7]** `test(db): check discovered seeds instead of an empty repo` (`1ada889`, `Prompt: B0-03`, `Fix: FIX-108`) — sửa cả `test_repo_has_no_seeds_yet` lẫn `test_seeds_main_runs_with_no_seeds` cùng file, cùng nguyên nhân (lệch #6 của việc gộp B3-02, review chấp nhận); gộp `--no-ff` trong `15d1f53`; review B3-02 lượt 1 soát riêng FIX-108 (không finding), lượt 2 APPROVE 4,94/5 (`452f59f`), cổng đầy đủ thoát 0 (4590 passed).
+
+---
+
+> **Giao việc FIX-109, FIX-110.** 2026-09-28, điều phối B4-02 dự báo hai test của prompt khác đỏ khi B4-02 cắm sink mời
+> và nhà cung cấp luồng `notifications` thật. Người dùng chọn FIX ngay trên nhánh B4-02 (tiền lệ FIX-107, FIX-108): mỗi FIX
+> một commit riêng chỉ chạm đúng file test đó, trailer `Prompt: <chủ>` + `Fix: FIX-<nnn>`; commit gộp vào `main` giữ
+> trailer của cả ba prompt.
+
+## FIX-109 cho B2-02 — test dò sink mời chốt trạng thái "chưa có B4-02" (không mã nợ)
+
+- **[1–3]** `apps/api/project_members/tests/test_sinks.py::test_invite_sink__no_override_discovers_real_modules` khẳng định
+  `invite_sink()` (dò repo thật) là `_NoopSink`. Nay `apps/api/notifications/invite_sinks.py` có thật nên dò ra sink của B4-02.
+- **[4]** Sửa: đúng file test trên. Cấm: mọi mã sản phẩm của B2-02 (`apps/api/project_members/**` ngoài file đó).
+- **[5]** Không nhập module của B4-02 vào test B2-02. Test kiểm bất biến thật của lượt dò: `app=None` dò repo không lỗi và
+  trả một sink có `on_member_added` gọi được, đến từ một module `apps.api.<module>.invite_sinks` (hoặc `_NoopSink` khi
+  không ai cắm). Cảnh "không ai cắm" đã có test riêng bằng `extensions.override(..., [])`. Không xoá test, không nới assert.
+- **[6]** Test xanh cả trên `main` (chưa có B4-02) lẫn trên nhánh B4-02.
+
+## FIX-110 cho B4-01 — test mặc định luồng thông báo phụ thuộc việc "chưa có B4-02" (không mã nợ)
+
+- **[1–3]** `apps/api/streams/tests/test_registry.py::test_missing_notifications_provider_defaults_to_open_schema` khẳng định
+  `build_registry(None)[NOTIFICATIONS].event_model is AnyEvent`. Nay `apps/api/notifications/stream_providers.py` có thật.
+- **[4]** Sửa: đúng file test trên. Cấm: mọi mã sản phẩm của B4-01 (`apps/api/streams/**` ngoài file đó).
+- **[5]** Như FIX-107: dựng sổ từ `build_registry(_app_with())` (bảng override rỗng, helper có sẵn trong file) thay vì
+  lượt dò repo thật; giữ nguyên ba assert (`AnyEvent`, không `policy`, không `snapshot`).
+- **[6]** Test xanh cả trên `main` lẫn trên nhánh B4-02.
