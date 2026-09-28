@@ -1,0 +1,12 @@
+# Bảng case bắt buộc thêm/miễn của module phép đo (B2-07 [8], CASE.md §2.3).
+#
+# `measurements_list_records` (Đ) không cần khai gì: case của Loại đã đủ.
+
+[[endpoint]]
+op = "measurements_create_record"
+# C14: hai POST song song cùng id (cùng thân → {201, 200}; khác thân → {201, 409}).
+extra = ["C14"]
+
+[[endpoint]]
+op = "measurements_delete_record"
+waive = { C16 = "DELETE không có thân, không có chuỗi người nhập" }

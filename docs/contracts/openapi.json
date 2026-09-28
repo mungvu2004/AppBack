@@ -1390,6 +1390,73 @@
         "title": "Furniture",
         "type": "object"
       },
+      "FurnitureDraft": {
+        "additionalProperties": false,
+        "description": "Thân #29 nhánh nội thất.",
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/FurnitureFields"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "furniture",
+            "title": "Objectkind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectKind",
+          "name",
+          "fields"
+        ],
+        "title": "FurnitureDraft",
+        "type": "object"
+      },
+      "FurnitureFields": {
+        "additionalProperties": false,
+        "description": "`fields` của đồ nội thất; không có hộp bao vì nó gắn với một chỗ đặt cụ thể.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "table",
+                  "chair",
+                  "bed",
+                  "wardrobe",
+                  "kitchenCabinet",
+                  "sanitaryFixture",
+                  "stair",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "rotationDeg": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotationdeg"
+          }
+        },
+        "title": "FurnitureFields",
+        "type": "object"
+      },
       "FurnitureOut": {
         "additionalProperties": false,
         "description": "`FurnitureSchema` — `roomId` **vắng khoá** khi món đồ chưa gắn phòng (C17).",
@@ -1470,6 +1537,53 @@
           "rotationDeg"
         ],
         "title": "FurnitureOut",
+        "type": "object"
+      },
+      "FurnitureTemplate": {
+        "additionalProperties": false,
+        "description": "Khuôn nội thất.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/FurnitureFields"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "furniture",
+            "title": "Objectkind",
+            "type": "string"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "scope": {
+            "const": "project",
+            "default": "project",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "projectId",
+          "createdAt",
+          "objectKind",
+          "fields"
+        ],
+        "title": "FurnitureTemplate",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1854,6 +1968,15 @@
         "title": "MeSchema",
         "type": "object"
       },
+      "MeasurementMode": {
+        "enum": [
+          "pointToPoint",
+          "perpendicular",
+          "height",
+          "floorArea"
+        ],
+        "type": "string"
+      },
       "MeasurementOut": {
         "additionalProperties": false,
         "description": "Bốn số đo thô (`quality.ts:115`).",
@@ -1893,6 +2016,112 @@
           "noiseScore"
         ],
         "title": "MeasurementOut",
+        "type": "object"
+      },
+      "MeasurementPoint": {
+        "additionalProperties": false,
+        "description": "Một điểm đã chấm; `z` vắng nghĩa là điểm trên cốt nền, không phải `z: 0`.",
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "MeasurementPoint",
+        "type": "object"
+      },
+      "MeasurementRecord": {
+        "additionalProperties": false,
+        "description": "Bản ghi phép đo trả về (#16, #17).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/MeasurementMode"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "rawValueMm": {
+            "title": "Rawvaluemm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode",
+          "points",
+          "rawValueMm"
+        ],
+        "title": "MeasurementRecord",
+        "type": "object"
+      },
+      "MeasurementRecordIn": {
+        "additionalProperties": false,
+        "description": "Thân #17: nguyên bản ghi do client sinh (POST không có `Idempotency-Key`).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/MeasurementMode"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "rawValueMm": {
+            "minimum": 0.0,
+            "title": "Rawvaluemm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode",
+          "points",
+          "rawValueMm"
+        ],
+        "title": "MeasurementRecordIn",
         "type": "object"
       },
       "NoteOut": {
@@ -2049,6 +2278,93 @@
         "title": "Opening",
         "type": "object"
       },
+      "OpeningDraft": {
+        "additionalProperties": false,
+        "description": "Thân #29 nhánh ô mở.",
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/OpeningFields"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "opening",
+            "title": "Objectkind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectKind",
+          "name",
+          "fields"
+        ],
+        "title": "OpeningDraft",
+        "type": "object"
+      },
+      "OpeningFields": {
+        "additionalProperties": false,
+        "description": "`fields` của ô mở (cửa, cửa sổ).",
+        "properties": {
+          "heightMm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
+          },
+          "sillHeightMm": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sillheightmm"
+          },
+          "swing": {
+            "anyOf": [
+              {
+                "enum": [
+                  "left",
+                  "right",
+                  "double",
+                  "sliding",
+                  "fixed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swing"
+          },
+          "widthMm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widthmm"
+          }
+        },
+        "title": "OpeningFields",
+        "type": "object"
+      },
       "OpeningOut": {
         "additionalProperties": false,
         "description": "`OpeningSchema` — cửa đi hay cửa sổ khoét trong một tường.",
@@ -2129,6 +2445,53 @@
           "swing"
         ],
         "title": "OpeningOut",
+        "type": "object"
+      },
+      "OpeningTemplate": {
+        "additionalProperties": false,
+        "description": "Khuôn ô mở.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/OpeningFields"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "opening",
+            "title": "Objectkind",
+            "type": "string"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "scope": {
+            "const": "project",
+            "default": "project",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "projectId",
+          "createdAt",
+          "objectKind",
+          "fields"
+        ],
+        "title": "OpeningTemplate",
         "type": "object"
       },
       "OrderField": {
@@ -2965,6 +3328,60 @@
         "title": "Room",
         "type": "object"
       },
+      "RoomDraft": {
+        "additionalProperties": false,
+        "description": "Thân #29 nhánh phòng.",
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/RoomFields"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "room",
+            "title": "Objectkind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectKind",
+          "name",
+          "fields"
+        ],
+        "title": "RoomDraft",
+        "type": "object"
+      },
+      "RoomFields": {
+        "additionalProperties": false,
+        "description": "`fields` của phòng; không có tên vì mỗi phòng cần tên riêng.",
+        "properties": {
+          "usage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "livingRoom",
+                  "bedroom",
+                  "kitchen",
+                  "bathroom",
+                  "corridor",
+                  "stairwell",
+                  "utility",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          }
+        },
+        "title": "RoomFields",
+        "type": "object"
+      },
       "RoomOut": {
         "additionalProperties": false,
         "description": "`RoomSchema` — phòng khép kín; `areaM2` do server tính từ `outline` (W18).",
@@ -3047,6 +3464,53 @@
           "wallIds"
         ],
         "title": "RoomOut",
+        "type": "object"
+      },
+      "RoomTemplate": {
+        "additionalProperties": false,
+        "description": "Khuôn phòng.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/RoomFields"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "room",
+            "title": "Objectkind",
+            "type": "string"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "scope": {
+            "const": "project",
+            "default": "project",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "projectId",
+          "createdAt",
+          "objectKind",
+          "fields"
+        ],
+        "title": "RoomTemplate",
         "type": "object"
       },
       "ScaleMmPerPx": {
@@ -3781,6 +4245,79 @@
         "title": "Wall",
         "type": "object"
       },
+      "WallDraft": {
+        "additionalProperties": false,
+        "description": "Thân #29 nhánh tường.",
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/WallFields"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "wall",
+            "title": "Objectkind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectKind",
+          "name",
+          "fields"
+        ],
+        "title": "WallDraft",
+        "type": "object"
+      },
+      "WallFields": {
+        "additionalProperties": false,
+        "description": "`fields` của tường.",
+        "properties": {
+          "heightMm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "loadBearing",
+                  "partition",
+                  "envelope"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "thicknessMm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thicknessmm"
+          }
+        },
+        "title": "WallFields",
+        "type": "object"
+      },
       "WallOut": {
         "additionalProperties": false,
         "description": "`WallSchema` — một đoạn tường đo theo đường tim.",
@@ -3852,6 +4389,53 @@
           "openingIds"
         ],
         "title": "WallOut",
+        "type": "object"
+      },
+      "WallTemplate": {
+        "additionalProperties": false,
+        "description": "Khuôn tường.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/WallFields"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectKind": {
+            "const": "wall",
+            "title": "Objectkind",
+            "type": "string"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "scope": {
+            "const": "project",
+            "default": "project",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "projectId",
+          "createdAt",
+          "objectKind",
+          "fields"
+        ],
+        "title": "WallTemplate",
         "type": "object"
       },
       "apps__api__floors__schemas__FloorName": {
@@ -5484,6 +6068,129 @@
         ]
       }
     },
+    "/api/projects/{project_id}/measurements": {
+      "get": {
+        "description": "#16: danh sách cũ (mảng trần), thứ tự số của id.",
+        "operationId": "measurements_list_records_api_projects__project_id__measurements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MeasurementRecord"
+                  },
+                  "title": "Response Measurements List Records Api Projects  Project Id  Measurements Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Measurements List Records",
+        "tags": [
+          "measurements"
+        ]
+      },
+      "post": {
+        "description": "#17: 201 khi tạo mới, 200 khi gửi lại đúng bản đã lưu (hoàn tác xoá gửi lại nguyên bản ghi).",
+        "operationId": "measurements_create_record_api_projects__project_id__measurements_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeasurementRecordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Measurements Create Record",
+        "tags": [
+          "measurements"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/measurements/{measurement_id}": {
+      "delete": {
+        "description": "#18: xoá cứng, 204 thân rỗng.",
+        "operationId": "measurements_delete_record_api_projects__project_id__measurements__measurement_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "measurement_id",
+            "required": true,
+            "schema": {
+              "title": "Measurement Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Measurements Delete Record",
+        "tags": [
+          "measurements"
+        ]
+      }
+    },
     "/api/projects/{project_id}/members": {
       "post": {
         "description": "N3 — thêm thành viên theo email: 201 khi mới, 200 khi đã là thành viên.",
@@ -5566,6 +6273,161 @@
         "summary": "Members Remove Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/property-templates": {
+      "get": {
+        "description": "#28: danh sách cũ (mảng trần), cũ nhất trước.",
+        "operationId": "templates_list_templates_api_projects__project_id__property_templates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "furniture": "#/components/schemas/FurnitureTemplate",
+                        "opening": "#/components/schemas/OpeningTemplate",
+                        "room": "#/components/schemas/RoomTemplate",
+                        "wall": "#/components/schemas/WallTemplate"
+                      },
+                      "propertyName": "objectKind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/WallTemplate"
+                      },
+                      {
+                        "$ref": "#/components/schemas/OpeningTemplate"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RoomTemplate"
+                      },
+                      {
+                        "$ref": "#/components/schemas/FurnitureTemplate"
+                      }
+                    ]
+                  },
+                  "title": "Response Templates List Templates Api Projects  Project Id  Property Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Templates List Templates",
+        "tags": [
+          "propertyTemplates"
+        ]
+      },
+      "post": {
+        "description": "#29: 201; hai lượt bấm là hai khuôn.",
+        "operationId": "templates_create_template_api_projects__project_id__property_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "furniture": "#/components/schemas/FurnitureDraft",
+                    "opening": "#/components/schemas/OpeningDraft",
+                    "room": "#/components/schemas/RoomDraft",
+                    "wall": "#/components/schemas/WallDraft"
+                  },
+                  "propertyName": "objectKind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WallDraft"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpeningDraft"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RoomDraft"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FurnitureDraft"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "furniture": "#/components/schemas/FurnitureTemplate",
+                      "opening": "#/components/schemas/OpeningTemplate",
+                      "room": "#/components/schemas/RoomTemplate",
+                      "wall": "#/components/schemas/WallTemplate"
+                    },
+                    "propertyName": "objectKind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WallTemplate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpeningTemplate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RoomTemplate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FurnitureTemplate"
+                    }
+                  ],
+                  "title": "Response Templates Create Template Api Projects  Project Id  Property Templates Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Templates Create Template",
+        "tags": [
+          "propertyTemplates"
         ]
       }
     },
