@@ -212,6 +212,24 @@
         "title": "AxisOut",
         "type": "object"
       },
+      "BoundingBox": {
+        "additionalProperties": false,
+        "description": "Hộp bao đúng chiều: `max` không nhỏ hơn `min` trên cả hai trục.",
+        "properties": {
+          "max": {
+            "$ref": "#/components/schemas/Point"
+          },
+          "min": {
+            "$ref": "#/components/schemas/Point"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "BoundingBox",
+        "type": "object"
+      },
       "BoundingBoxOut": {
         "additionalProperties": false,
         "description": "Hộp bao của một món đồ đạc.",
@@ -848,6 +866,74 @@
         "title": "FloorLayerDocumentOut",
         "type": "object"
       },
+      "FloorLayerWriteBodySchema": {
+        "additionalProperties": false,
+        "description": "`body` của #35: lớp, tỉ lệ, hay cả hai — nhưng không được rỗng (FE `refine` ≥ 1 khoá).",
+        "properties": {
+          "layer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpatialLayer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scaleMillimetresPerPixel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayerScaleMmPerPx"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "FloorLayerWriteBodySchema",
+        "type": "object"
+      },
+      "FloorLayerWriteResultSchema": {
+        "additionalProperties": false,
+        "description": "200 của #35: bản ghi mới và lớp đã lưu — nguồn thay store của F-04b.",
+        "properties": {
+          "layer": {
+            "$ref": "#/components/schemas/SpatialLayerOut"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "layer"
+        ],
+        "title": "FloorLayerWriteResultSchema",
+        "type": "object"
+      },
+      "FloorLayerWriteSchema": {
+        "additionalProperties": false,
+        "description": "Thân đầy đủ `{baseVersion, body}` (W20); thiếu `baseVersion` bị guard 428 chặn trước Pydantic.",
+        "properties": {
+          "baseVersion": {
+            "minimum": 0.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "body": {
+            "$ref": "#/components/schemas/FloorLayerWriteBodySchema"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "body"
+        ],
+        "title": "FloorLayerWriteSchema",
+        "type": "object"
+      },
       "FloorOut": {
         "additionalProperties": false,
         "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).",
@@ -1097,6 +1183,88 @@
         "title": "FrameOut",
         "type": "object"
       },
+      "Furniture": {
+        "additionalProperties": false,
+        "description": "Đồ đạc đặt trên mặt bằng; `roomId` vắng khi chưa gắn phòng.",
+        "properties": {
+          "boundingBox": {
+            "$ref": "#/components/schemas/BoundingBox"
+          },
+          "centre": {
+            "$ref": "#/components/schemas/Point"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "table",
+              "chair",
+              "bed",
+              "wardrobe",
+              "kitchenCabinet",
+              "sanitaryFixture",
+              "stair",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "roomId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roomid"
+          },
+          "rotationDeg": {
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Rotationdeg",
+            "type": "number"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "kind",
+          "centre",
+          "boundingBox",
+          "rotationDeg"
+        ],
+        "title": "Furniture",
+        "type": "object"
+      },
       "FurnitureOut": {
         "additionalProperties": false,
         "description": "`FurnitureSchema` — `roomId` **vắng khoá** khi món đồ chưa gắn phòng (C17).",
@@ -1316,6 +1484,19 @@
         ],
         "title": "LatestFloorUploadOut",
         "type": "object"
+      },
+      "LayerScaleMmPerPx": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "string"
+          }
+        ],
+        "gt": 0,
+        "le": 999999
       },
       "LevelOut": {
         "additionalProperties": false,
@@ -1562,6 +1743,98 @@
         "minLength": 1,
         "type": "string"
       },
+      "Opening": {
+        "additionalProperties": false,
+        "description": "Ô mở (cửa đi hoặc cửa sổ) khoét trong một tường; `offsetMm` tính từ đầu đường tim.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "heightMm": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Heightmm",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "door",
+              "window"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "offsetMm": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Offsetmm",
+            "type": "integer"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "sillHeightMm": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Sillheightmm",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "swing": {
+            "enum": [
+              "left",
+              "right",
+              "double",
+              "sliding",
+              "fixed"
+            ],
+            "title": "Swing",
+            "type": "string"
+          },
+          "wallId": {
+            "title": "Wallid",
+            "type": "string"
+          },
+          "widthMm": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Widthmm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "wallId",
+          "kind",
+          "offsetMm",
+          "widthMm",
+          "heightMm",
+          "sillHeightMm",
+          "swing"
+        ],
+        "title": "Opening",
+        "type": "object"
+      },
       "OpeningOut": {
         "additionalProperties": false,
         "description": "`OpeningSchema` — cửa đi hay cửa sổ khoét trong một tường.",
@@ -1683,6 +1956,30 @@
           "email"
         ],
         "title": "PasswordResetRequestBody",
+        "type": "object"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "description": "Điểm trên mặt bằng, mm.",
+        "properties": {
+          "x": {
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "Point",
         "type": "object"
       },
       "PointOut": {
@@ -2370,6 +2667,90 @@
         "title": "RoleChangeBody",
         "type": "object"
       },
+      "Room": {
+        "additionalProperties": false,
+        "description": "Phòng khép kín; điểm đầu không lặp ở cuối nên ít nhất ba điểm.",
+        "properties": {
+          "areaM2": {
+            "minimum": 0.0,
+            "title": "Aream2",
+            "type": "number"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outline": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "minItems": 3,
+            "title": "Outline",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "usage": {
+            "enum": [
+              "livingRoom",
+              "bedroom",
+              "kitchen",
+              "bathroom",
+              "corridor",
+              "stairwell",
+              "utility",
+              "other"
+            ],
+            "title": "Usage",
+            "type": "string"
+          },
+          "wallIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Wallids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "name",
+          "usage",
+          "outline",
+          "areaM2",
+          "wallIds"
+        ],
+        "title": "Room",
+        "type": "object"
+      },
       "RoomOut": {
         "additionalProperties": false,
         "description": "`RoomSchema` — phòng khép kín; `areaM2` do server tính từ `outline` (W18).",
@@ -2466,6 +2847,24 @@
         ],
         "ge": "0.01",
         "le": 1000
+      },
+      "Segment": {
+        "additionalProperties": false,
+        "description": "Đoạn thẳng thật sự có chiều dài: `start` trùng `end` là tường không tồn tại.",
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/Point"
+          },
+          "start": {
+            "$ref": "#/components/schemas/Point"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "Segment",
+        "type": "object"
       },
       "SegmentOut": {
         "additionalProperties": false,
@@ -2629,6 +3028,48 @@
           "notes"
         ],
         "title": "SpatialGraphOut",
+        "type": "object"
+      },
+      "SpatialLayer": {
+        "additionalProperties": false,
+        "description": "Bốn danh sách của một tầng, đúng `SpatialLayerSchema` (N16, #35).",
+        "properties": {
+          "furniture": {
+            "items": {
+              "$ref": "#/components/schemas/Furniture"
+            },
+            "title": "Furniture",
+            "type": "array"
+          },
+          "openings": {
+            "items": {
+              "$ref": "#/components/schemas/Opening"
+            },
+            "title": "Openings",
+            "type": "array"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/Room"
+            },
+            "title": "Rooms",
+            "type": "array"
+          },
+          "walls": {
+            "items": {
+              "$ref": "#/components/schemas/Wall"
+            },
+            "title": "Walls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "walls",
+          "openings",
+          "rooms",
+          "furniture"
+        ],
+        "title": "SpatialLayer",
         "type": "object"
       },
       "SpatialLayerOut": {
@@ -2946,6 +3387,85 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "Wall": {
+        "additionalProperties": false,
+        "description": "Một đoạn tường trên một tầng, đo theo đường tim.",
+        "properties": {
+          "centreline": {
+            "$ref": "#/components/schemas/Segment"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "heightMm": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Heightmm",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "loadBearing",
+              "partition",
+              "envelope"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "openingIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Openingids",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "thicknessMm": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Thicknessmm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "centreline",
+          "thicknessMm",
+          "heightMm",
+          "kind",
+          "openingIds"
+        ],
+        "title": "Wall",
         "type": "object"
       },
       "WallOut": {
@@ -4526,6 +5046,57 @@
           }
         },
         "summary": "Spatial Read Layer",
+        "tags": [
+          "spatial"
+        ]
+      },
+      "put": {
+        "description": "#35 — ghi lớp và/hoặc tỉ lệ một tầng: base cũ → 409 W20, lượt lặp của chính mình → 200.",
+        "operationId": "spatial_write_layer_api_projects__project_id__floors__floor_id__spatial_layer_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FloorLayerWriteSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorLayerWriteResultSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spatial Write Layer",
         "tags": [
           "spatial"
         ]

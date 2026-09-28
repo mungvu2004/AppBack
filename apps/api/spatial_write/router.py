@@ -1,0 +1,67 @@
+"""Route ghi lớp không gian #35 (B3-03 [2], [6], [7]); router **mỏng**, việc ở `writer.py`.
+
+`require_project("layer.edit")` là tham số nên nó chạy **trước** cả guard 428 và Pydantic:
+người ngoài dự án nhận 404 `resource:"project"` mà không biết tầng nào có thật (BE-00 §4),
+viewer nhận 403. Guard 428 của khung (`route_options(versioned=True)`) gắn cuối cây dependency
+nên "thiếu `baseVersion`" ra 428 chứ không phải 422.
+
+`body_limit=8 MiB` (HOP-DONG-MOI #35) buộc `idempotency="off"`: bảng `idempotency_records`
+không nhận việc của route này, header `Idempotency-Key` FE gắn sẵn bị bỏ qua và lượt lặp đi
+qua C09b của `write_layer`. Handler **không** `commit` — `AppRoute` commit khi handler xong.
+"""
+
+from typing import Annotated, Final
+
+from fastapi import Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from apps.api.core.deps import ClockDep, DbSession
+from apps.api.core.routing import protected_router, route_options
+from apps.api.floors.lookup import get_floor
+from apps.api.projects.access import ProjectAccess, require_project
+from apps.api.spatial_read.wire import layer_out
+from apps.api.spatial_write.schemas import FloorLayerWriteResultSchema, FloorLayerWriteSchema
+from apps.api.spatial_write.writer import LayerWrite, write_layer
+from packages.core.error_codes import NOT_FOUND
+from packages.db.models.auth import User
+
+BODY_LIMIT: Final = 8 * 1024 * 1024
+"""Trần thân của #35 (HOP-DONG-MOI §4 "Ghi lớp"): tầng 3.000 tường vượt 1 MiB mặc định."""
+
+router = protected_router(tags=["spatial"])
+ROUTERS: Final = (router,)
+
+
+async def _actor_name(db: AsyncSession, user_id: str) -> str:
+    """Tên người ghi đọc **trong cùng giao dịch** với lượt ghi.
+
+    Nhật ký lưu tên **lúc ghi** (`changed_by_name`), nên đọc nó ở đây chứ không lấy từ token:
+    token chỉ mang `sub` (K05, W18), và một lần đổi tên sau đó không được sửa dòng cũ.
+    """
+    return (await db.execute(select(User.name).where(User.id == user_id))).scalar_one()
+
+
+@router.put("/projects/{project_id}/floors/{floor_id}/spatial/layer")
+@route_options(versioned=True, body_limit=BODY_LIMIT, idempotency="off")
+async def spatial_write_layer(
+    floor_id: str,
+    body: FloorLayerWriteSchema,
+    access: Annotated[ProjectAccess, Depends(require_project("layer.edit"))],
+    db: DbSession,
+    clock: ClockDep,
+) -> FloorLayerWriteResultSchema:
+    """#35 — ghi lớp và/hoặc tỉ lệ một tầng: base cũ → 409 W20, lượt lặp của chính mình → 200."""
+    floor = await get_floor(db, project_id=access.project_id, level_id=floor_id)
+    if floor is None:
+        raise NOT_FOUND.error(resource="floor")
+    result = await write_layer(
+        db,
+        floor_pk=floor.pk,
+        base_revision=body.base_version,
+        body=LayerWrite(layer=body.body.layer, scale_mm_per_px=body.body.scale_millimetres_per_pixel),
+        actor_id=access.principal.user_id,
+        actor_name=await _actor_name(db, access.principal.user_id),
+        clock=clock,
+    )
+    return FloorLayerWriteResultSchema(revision=result.revision, layer=layer_out(result.layer))
