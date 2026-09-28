@@ -414,6 +414,34 @@
         "title": "CornerOut",
         "type": "object"
       },
+      "CursorPage_FloorVersionSummaryOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FloorVersionSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[FloorVersionSummaryOut]",
+        "type": "object"
+      },
       "CursorPage_LatestFloorUploadOut_": {
         "additionalProperties": false,
         "properties": {
@@ -1150,6 +1178,103 @@
           "revision"
         ],
         "title": "FloorRevisionOut",
+        "type": "object"
+      },
+      "FloorVersionSnapshotOut": {
+        "additionalProperties": false,
+        "description": "N18: nội dung một ảnh chụp — chỉ `layer` và `dimensions` (tỉ lệ, trục giữ hiện trạng).",
+        "properties": {
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionOut"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "layer": {
+            "$ref": "#/components/schemas/SpatialLayerOut"
+          },
+          "versionId": {
+            "title": "Versionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionId",
+          "layer",
+          "dimensions"
+        ],
+        "title": "FloorVersionSnapshotOut",
+        "type": "object"
+      },
+      "FloorVersionSummaryOut": {
+        "additionalProperties": false,
+        "description": "N17/N19/N20: một dòng lịch sử phiên bản theo tầng (`FloorVersionSummarySchema`).",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "creatorId": {
+            "title": "Creatorid",
+            "type": "string"
+          },
+          "creatorName": {
+            "title": "Creatorname",
+            "type": "string"
+          },
+          "floorRevision": {
+            "minimum": 0.0,
+            "title": "Floorrevision",
+            "type": "integer"
+          },
+          "hasSnapshot": {
+            "title": "Hassnapshot",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "sequence": {
+            "exclusiveMinimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "floorRevision",
+          "createdAt",
+          "creatorId",
+          "creatorName",
+          "hasSnapshot"
+        ],
+        "title": "FloorVersionSummaryOut",
         "type": "object"
       },
       "FrameOut": {
@@ -3478,6 +3603,105 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VersionLabelIn": {
+        "additionalProperties": false,
+        "description": "Thân N20 `{label}`: chuỗi thật (không ép số); rỗng nghĩa là gỡ nhãn.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "VersionLabelIn",
+        "type": "object"
+      },
+      "VersionOut": {
+        "additionalProperties": false,
+        "description": "#36: `Version` cũ của FE — đúng sáu trường, `note` vắng khi không có.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "creatorId": {
+            "title": "Creatorid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "sequence": {
+            "exclusiveMinimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "sequence",
+          "createdAt",
+          "creatorId"
+        ],
+        "title": "VersionOut",
+        "type": "object"
+      },
+      "VersionRestoreIn": {
+        "additionalProperties": false,
+        "description": "Thân N19 `{baseVersion, body: {floorId}}`; thiếu `baseVersion` bị guard 428 chặn trước.",
+        "properties": {
+          "baseVersion": {
+            "minimum": 0.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "body": {
+            "$ref": "#/components/schemas/VersionRestoreTargetIn"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "body"
+        ],
+        "title": "VersionRestoreIn",
+        "type": "object"
+      },
+      "VersionRestoreTargetIn": {
+        "additionalProperties": false,
+        "description": "`body` của N19: tầng người dùng tin là chủ của phiên bản; lệch → `VERSION_FLOOR_MISMATCH`.",
+        "properties": {
+          "floorId": {
+            "minLength": 1,
+            "title": "Floorid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "floorId"
+        ],
+        "title": "VersionRestoreTargetIn",
+        "type": "object"
+      },
       "Wall": {
         "additionalProperties": false,
         "description": "Một đoạn tường trên một tầng, đo theo đường tim.",
@@ -5447,6 +5671,290 @@
         "summary": "Spatial Read Graph",
         "tags": [
           "spatial"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/versions": {
+      "get": {
+        "description": "N17 — lịch sử phiên bản một tầng, `sequence` giảm dần.",
+        "operationId": "versions_list_versions_api_projects__project_id__versions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "floorId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Floorid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_FloorVersionSummaryOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Versions List Versions",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}": {
+      "get": {
+        "description": "#36 — một phiên bản dưới dạng `Version` cũ của FE.",
+        "operationId": "versions_read_version_api_projects__project_id__versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Versions Read Version",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/label": {
+      "patch": {
+        "description": "N20 — đặt hoặc gỡ nhãn; không sinh phiên bản mới.",
+        "operationId": "versions_label_version_api_projects__project_id__versions__version_id__label_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionLabelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorVersionSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Versions Label Version",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/restore": {
+      "post": {
+        "description": "N19 — phục hồi tầng về một phiên bản: 201 bản \"sau\", 200 khi là lượt gửi lại (C09b).",
+        "operationId": "versions_restore_version_api_projects__project_id__versions__version_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionRestoreIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorVersionSummaryOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorVersionSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Versions Restore Version",
+        "tags": [
+          "versions"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/snapshot": {
+      "get": {
+        "description": "N18 — nội dung ảnh chụp (`layer`, `dimensions`) của một phiên bản.",
+        "operationId": "versions_read_snapshot_api_projects__project_id__versions__version_id__snapshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "floorId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Floorid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FloorVersionSnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Versions Read Snapshot",
+        "tags": [
+          "versions"
         ]
       }
     },
