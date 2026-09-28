@@ -98,9 +98,9 @@ def test_missing_progress_provider_defaults_to_closed(core_test_env: None) -> No
     assert provider.snapshot is provider.policy
 
 
-def test_missing_notifications_provider_defaults_to_open_schema() -> None:
-    """Chưa có B4-02 → luồng thông báo nhận object JSON bất kỳ, không có ảnh chụp (K32)."""
-    provider = build_registry(None)[NOTIFICATIONS]
+def test_missing_notifications_provider_defaults_to_open_schema(core_test_env: None) -> None:
+    """Sổ dựng từ bảng override rỗng (không ai cắm) → luồng thông báo nhận object JSON bất kỳ, không ảnh chụp (K32)."""
+    provider = build_registry(_app_with())[NOTIFICATIONS]
     assert provider.event_model is AnyEvent
     assert provider.policy is None
     assert provider.snapshot is None

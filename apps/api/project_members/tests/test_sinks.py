@@ -45,8 +45,18 @@ async def test_invite_sink__noop_accepts_the_call(db_session: AsyncSession) -> N
 
 
 def test_invite_sink__no_override_discovers_real_modules() -> None:
-    """`app=None` → dò thật; trên nhánh này chưa module nào có `invite_sinks.py` → no-op."""
-    assert isinstance(invite_sink(), sinks._NoopSink)
+    """`app=None` → dò repo thật không lỗi, trả một sink gọi được; sink đến từ module `invite_sinks` hoặc là no-op."""
+    sink = invite_sink()
+    assert callable(sink.on_member_added)
+    if not isinstance(sink, sinks._NoopSink):
+        owners = [
+            name
+            for name, group in extensions.discover(SINKS_SUBMODULE, sinks.ATTR)
+            if isinstance(group, list | tuple) and sink in group
+        ]
+        assert len(owners) == 1
+        assert owners[0].startswith("apps.api.")
+        assert owners[0].endswith(".invite_sinks")
 
 
 def test_invite_sink__single_is_used() -> None:

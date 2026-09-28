@@ -2186,6 +2186,125 @@
         "minLength": 1,
         "type": "string"
       },
+      "NotificationEmptyBody": {
+        "additionalProperties": false,
+        "description": "#21, #22: thân `{}`; khoá lạ → 422 (C03), mảng → 422 (C02).",
+        "properties": {},
+        "title": "NotificationEmptyBody",
+        "type": "object"
+      },
+      "NotificationMarkReadBody": {
+        "additionalProperties": false,
+        "description": "#20: `{ids}`, 1-`NOTIFICATIONS_MARK_MAX` id, mỗi id 1-64 ký tự; sai bất kỳ điểm nào → `field:\"ids\"`.",
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "NotificationMarkReadBody",
+        "type": "object"
+      },
+      "NotificationOut": {
+        "additionalProperties": false,
+        "description": "Một `Notification` của FE.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "floorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floorid"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isRead": {
+            "title": "Isread",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "aiCompleted",
+              "violationFound",
+              "projectInvite"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "objectLabel": {
+            "title": "Objectlabel",
+            "type": "string"
+          },
+          "place": {
+            "enum": [
+              "walls",
+              "objects",
+              "dimensions",
+              "grids",
+              "rooms",
+              "thickness",
+              "floors",
+              "rules",
+              "projectSettings"
+            ],
+            "title": "Place",
+            "type": "string"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "projectName": {
+            "title": "Projectname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "place",
+          "projectId",
+          "projectName",
+          "objectLabel",
+          "message",
+          "isRead",
+          "createdAt"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
       "Opening": {
         "additionalProperties": false,
         "description": "Ô mở (cửa đi hoặc cửa sổ) khoét trong một tường; `offsetMm` tính từ đầu đường tim.",
@@ -5177,6 +5296,155 @@
         "summary": "Me Change Password",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "description": "#19 — mảng trần các thông báo còn hiện của người gọi, mới nhất trước.",
+        "operationId": "notifications_list_api_notifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response Notifications List Api Notifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Notifications List",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/notifications/read": {
+      "post": {
+        "description": "#20 — đánh dấu đã đọc theo danh sách id; id lạ hoặc của người khác bị bỏ qua.",
+        "operationId": "notifications_mark_read_api_notifications_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationMarkReadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Notifications Mark Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/notifications/read-all": {
+      "post": {
+        "description": "#21 — mọi thông báo chưa đọc của người gọi thành đã đọc.",
+        "operationId": "notifications_mark_all_read_api_notifications_read_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationEmptyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Notifications Mark All Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/notifications/{notification_id}/accept-invite": {
+      "post": {
+        "description": "#22 — xác nhận lời mời (idempotent); không đổi thành viên hay vai.",
+        "operationId": "notifications_accept_invite_api_notifications__notification_id__accept_invite_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "title": "Notification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationEmptyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Notifications Accept Invite",
+        "tags": [
+          "notifications"
         ]
       }
     },
