@@ -1,7 +1,7 @@
 """measure_tpl
 
 Revision ID: r20260928_b2_07
-Revises: r20260928_b2_06
+Revises: r20260928_b3_04
 Create Date: 2026-09-28
 
 Bảng `measurements` và `property_templates` (B2-07 [5], BE-00 §6.1): expand thuần, hai bảng
@@ -20,7 +20,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "r20260928_b2_07"
-down_revision: str | None = "r20260928_b2_06"
+down_revision: str | None = "r20260928_b3_04"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
