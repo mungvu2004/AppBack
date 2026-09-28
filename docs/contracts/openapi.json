@@ -2801,6 +2801,29 @@
         "title": "ProjectOut",
         "type": "object"
       },
+      "ProjectRuleConfigOut": {
+        "additionalProperties": false,
+        "description": "`ProjectRuleConfig` = `{revision, overrides}`; chưa lưu → `{revision: 0, overrides: {}}`.",
+        "properties": {
+          "overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RuleConfigOverrideOut"
+            },
+            "title": "Overrides",
+            "type": "object"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "overrides"
+        ],
+        "title": "ProjectRuleConfigOut",
+        "type": "object"
+      },
       "ProjectSettingsBodyIn": {
         "additionalProperties": false,
         "description": "Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế).",
@@ -3513,6 +3536,149 @@
         "title": "RoomTemplate",
         "type": "object"
       },
+      "RuleCodeKey": {
+        "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*$",
+        "type": "string"
+      },
+      "RuleConfigBodyIn": {
+        "additionalProperties": false,
+        "description": "Thân của N22: toàn bộ `overrides` (PUT thay thế).",
+        "properties": {
+          "overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RuleConfigOverrideIn"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/RuleCodeKey"
+            },
+            "title": "Overrides",
+            "type": "object"
+          }
+        },
+        "required": [
+          "overrides"
+        ],
+        "title": "RuleConfigBodyIn",
+        "type": "object"
+      },
+      "RuleConfigOverrideIn": {
+        "additionalProperties": false,
+        "description": "Một `RuleOverride`: ≥ 1 khoá, không `null`; `thresholds` không rỗng (gương `RuleOverrideSchema`).",
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleSeverityName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thresholds": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ThresholdValue"
+                },
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/components/schemas/ThresholdKey"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thresholds"
+          }
+        },
+        "title": "RuleConfigOverrideIn",
+        "type": "object"
+      },
+      "RuleConfigOverrideOut": {
+        "additionalProperties": false,
+        "description": "Override trả về: khoá vắng thì vắng (W2), còn `false` và `0` luôn có mặt.",
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleSeverityName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thresholds": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thresholds"
+          }
+        },
+        "title": "RuleConfigOverrideOut",
+        "type": "object"
+      },
+      "RuleConfigWriteIn": {
+        "additionalProperties": false,
+        "description": "`{baseVersion, body}` của N22 (W20); thiếu `baseVersion` bị khung chặn 428 trước Pydantic.",
+        "properties": {
+          "baseVersion": {
+            "minimum": 0.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "body": {
+            "$ref": "#/components/schemas/RuleConfigBodyIn"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "body"
+        ],
+        "title": "RuleConfigWriteIn",
+        "type": "object"
+      },
+      "RuleSeverityName": {
+        "enum": [
+          "critical",
+          "warning",
+          "suggestion"
+        ],
+        "type": "string"
+      },
       "ScaleMmPerPx": {
         "anyOf": [
           {
@@ -3826,6 +3992,13 @@
           "done"
         ],
         "type": "string"
+      },
+      "ThresholdKey": {
+        "pattern": "^[a-zA-Z]+(\\.[a-zA-Z0-9]+)+$",
+        "type": "string"
+      },
+      "ThresholdValue": {
+        "type": "number"
       },
       "UpdateMeBody": {
         "additionalProperties": false,
@@ -6428,6 +6601,68 @@
         "summary": "Templates Create Template",
         "tags": [
           "propertyTemplates"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/rule-config": {
+      "get": {
+        "description": "N21 — cấu hình luật của dự án; chưa lưu thì `{revision: 0, overrides: {}}`.",
+        "operationId": "rules_read_config_api_projects__project_id__rule_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRuleConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rules Read Config",
+        "tags": [
+          "rules"
+        ]
+      },
+      "put": {
+        "description": "N22 — thay cấu hình luật có version; base cũ → 409 `remoteChanges: []`, lượt lặp của chính mình → 200.",
+        "operationId": "rules_replace_config_api_projects__project_id__rule_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleConfigWriteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRuleConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rules Replace Config",
+        "tags": [
+          "rules"
         ]
       }
     },

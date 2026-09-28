@@ -1,0 +1,9 @@
+# Bảng case bắt buộc thêm/miễn của module cấu hình luật (B3-05 [8], CASE.md §2.3).
+#
+# `rules_read_config` (Đ) không cần khai gì. N22 là GV: C01 C02 C03 C06 C07 C08 C09 C09b C14 C17 tự tính từ
+# metadata; C18 (Nhật ký) BE-BIND ghi `có` nên thêm tay; C16 miễn vì thân không có chuỗi người nhập.
+
+[[endpoint]]
+op = "rules_replace_config"
+extra = ["C18"]
+waive = { C16 = "thân chỉ có mã luật, khoá ngưỡng và số; không có chuỗi người nhập" }
