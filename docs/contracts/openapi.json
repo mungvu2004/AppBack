@@ -1578,6 +1578,95 @@
         "title": "LevelOut",
         "type": "object"
       },
+      "LibraryGroup": {
+        "enum": [
+          "table",
+          "chair",
+          "bed",
+          "sofa",
+          "storage",
+          "sanitary",
+          "kitchen",
+          "technical"
+        ],
+        "type": "string"
+      },
+      "LibraryItemOut": {
+        "additionalProperties": false,
+        "description": "Một mẫu nội thất đã phát hành; số đo đo từ chính tệp `.glb`.",
+        "properties": {
+          "depthMm": {
+            "title": "Depthmm",
+            "type": "integer"
+          },
+          "fileSizeBytes": {
+            "title": "Filesizebytes",
+            "type": "integer"
+          },
+          "group": {
+            "$ref": "#/components/schemas/LibraryGroup"
+          },
+          "heightMm": {
+            "title": "Heightmm",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "modelUrl": {
+            "title": "Modelurl",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "previewUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previewurl"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LibrarySource"
+          },
+          "triangleCount": {
+            "title": "Trianglecount",
+            "type": "integer"
+          },
+          "widthMm": {
+            "title": "Widthmm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "group",
+          "source",
+          "widthMm",
+          "depthMm",
+          "heightMm",
+          "triangleCount",
+          "fileSizeBytes",
+          "modelUrl"
+        ],
+        "title": "LibraryItemOut",
+        "type": "object"
+      },
+      "LibrarySource": {
+        "enum": [
+          "mine",
+          "catalogue"
+        ],
+        "type": "string"
+      },
       "MeSchema": {
         "additionalProperties": false,
         "description": "Response N11/N12/N14 (HOP-DONG-MOI §3); trường tuỳ chọn vắng khi `None` (W2, K02).",
@@ -3899,6 +3988,75 @@
         "summary": "Health Live",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/library": {
+      "get": {
+        "description": "#14: danh sách cũ (mảng trần) mọi mục người gọi thấy.",
+        "operationId": "library_list_items_api_library_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryItemOut"
+                  },
+                  "title": "Response Library List Items Api Library Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Library List Items",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/library/{item_id}": {
+      "get": {
+        "description": "#15: một mục; không thấy hay không hiển thị → 404 `libraryItem`.",
+        "operationId": "library_read_item_api_library__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Read Item",
+        "tags": [
+          "library"
         ]
       }
     },
