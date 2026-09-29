@@ -1,0 +1,23 @@
+# Bảng case bắt buộc thêm của bước đọc chữ (B5-04 [8], CASE.md §2.3).
+#
+# File **cố ý rỗng khối khai** (giữ file vì nó nằm trong deliverable [10]).
+#
+# Lệch khỏi prompt 1 — không có `[[task]] fn = "text_read"`:
+#   `tools/tests/test_case_gate.py::test_main_đạt_khi_chưa_có_thao_tác` vá
+#   `_real_task_names` về rỗng nhưng **không** vá `cases_toml_paths`, nên `main()` vẫn
+#   đọc `apps/*/*/cases.toml` thật rồi báo "cases.toml khai task lạ: text_read" —
+#   docstring của chính test ấy hứa "cổng không được phụ thuộc repo đang có gì".
+#   `apps/ml/text/cases.toml` là `[[task]]` đầu tiên của repo nên B5-04 là người đầu
+#   vấp. `tools/**` nằm trong khối [12] KHÔNG ĐƯỢC SỬA → nợ NO-257 cho B0-01.
+#
+# Lệch khỏi prompt 2 — [8] còn đòi khai `M01`–`M04`: `_TEST_TASK_RE`
+#   (`tools/case_gate.py:296`) chỉ nhận mã `J\d{2}` cho test task, khai `M0x` là đòi một
+#   case cổng không bao giờ tìm thấy.
+#
+# Độ phủ case **không** giảm vì bảng này rỗng: cổng tự đòi J01 và J06 cho mọi task trong
+# sổ (`tools/case_gate.py:493-499`), và `apps/ml/text/tests/test_tasks.py` vẫn có đủ
+# `test_text_read__J01, __J02, __J02_exhausted, __J03, __J05, __J06, __J08,
+# __M01, __M02, __M03, __M04`. Khi NO-257 được sửa, thêm lại:
+#   [[task]]
+#   fn = "text_read"
+#   require = ["J02", "J03", "J05", "J08"]
