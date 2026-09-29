@@ -1,5 +1,10 @@
 """Vẽ mặt nạ tường và hộp ô mở/đồ đạc từ `SpatialLayer` sang không gian pixel (thuần numpy + cv2, K19).
 
+**Ô mở mồ côi bị bỏ, không làm chết lượt dựng** (NO-274): `opening.wall_id` trỏ một tường không có
+trong `walls` là dữ liệu nguồn không nhất quán — có thể vì tầng bị sửa giữa hai lượt đọc, hoặc vì
+người gọi truyền một tập `walls` đã lọc. Bỏ đúng ô đó rồi vẽ tiếp cho ra một mẫu thiếu một ô mở;
+`KeyError` sẽ làm hỏng cả một lượt dựng 2.000 tầng vì một tầng lẻ.
+
 Không I/O: `mm_per_px` do người gọi tra sẵn từ `floor_documents`, không có mặc định ở đây
 (K19 — tầng không có tỉ lệ bị bỏ ở tầng gọi, không mặc định 1 mm/px). Cùng quy ước hệ toạ độ
 với `packages.ml_contracts.synthetic.render_plan`: gốc mm trùng góc trên-trái trang đã nắn, y
@@ -115,8 +120,11 @@ def wall_mask(
     for opening in openings:
         if opening.kind != "door":
             continue
-        wall = walls_by_id[opening.wall_id]
-        corners = _wall_span_corners_px(wall, opening.offset_mm, opening.width_mm, mm_per_px, raster=True)
+        # Tên khác `wall`: biến đó đã bị vòng vẽ tường ở trên ràng kiểu `Wall`, còn `.get` trả `Wall | None`.
+        host = walls_by_id.get(opening.wall_id)
+        if host is None:
+            continue
+        corners = _wall_span_corners_px(host, opening.offset_mm, opening.width_mm, mm_per_px, raster=True)
         _fill_polygon(canvas, corners, 0)
     return canvas.astype(np.bool_)
 
@@ -152,7 +160,10 @@ def object_boxes(layer: SpatialLayer, *, width_px: int, height_px: int, mm_per_p
     walls_by_id = {wall.id: wall for wall in layer.walls}
     detections: list[DetectionPx] = []
     for opening in layer.openings:
-        corners = _wall_span_corners_px(walls_by_id[opening.wall_id], opening.offset_mm, opening.width_mm, mm_per_px)
+        wall = walls_by_id.get(opening.wall_id)
+        if wall is None:
+            continue
+        corners = _wall_span_corners_px(wall, opening.offset_mm, opening.width_mm, mm_per_px)
         box = _clip_box(*_bounding_box(corners), width_px, height_px)
         if box is not None:
             detections.append(DetectionPx(label=_opening_label(opening), box=box, confidence=1.0))

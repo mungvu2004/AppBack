@@ -484,6 +484,12 @@ async def _build_held(
         raise PermanentError(DATASET_FAMILY_UNSUPPORTED)
     # Dọn lượt chết giữa chừng trước khi ghi: manifest chỉ kể object của lượt này, nên tệp mẫu
     # sót lại của lượt trước sẽ là rác không dòng nào tham chiếu (bước 2).
+    #
+    # Rào khoá **trước** lượt dọn (NO-273): `_claim` mở và đóng một session, nên giữa nó và dòng
+    # dưới có một khe thời gian thật. Mất khoá trong khe đó nghĩa là một lượt khác đã nhận cùng
+    # phiên bản và có thể đã ghi object; `delete_prefix` khi ấy xoá **của nó**. Đây đúng là bất
+    # biến số 1 của module: mất khoá → không ghi, không finish, **không** `delete_prefix`.
+    await fence.check()
     await storage.delete_prefix(version_prefix(version_id))
     writer = SampleWriter(storage, version_id, max_bytes=sample_max_bytes, before_put=fence.check)
     samples = await _write_samples(

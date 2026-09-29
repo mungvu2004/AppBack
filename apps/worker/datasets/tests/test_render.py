@@ -177,3 +177,44 @@ def test_wall_mask__empty_walls_returns_false_canvas() -> None:
     assert mask.shape == (40, 50)
     assert mask.dtype == np.bool_
     assert not mask.any()
+
+
+def test_wall_mask__orphan_door_is_skipped_and_the_rest_is_drawn() -> None:
+    """Ô mở `door` trỏ tường không có trong `walls` → bỏ đúng ô đó, mặt nạ còn lại vẫn đúng (NO-274).
+
+    Trước đây `walls_by_id[opening.wall_id]` ném `KeyError`, làm chết cả lượt dựng vì một tầng lẻ.
+    """
+    wall = _wall(start=(100, 500), end=(1100, 500), thickness=200, opening_ids=("D-0000000001",))
+    real_door = _opening("D-0000000001", offset=50, width=900, kind="door")
+    orphan = _opening("D-0000000009", wall_id="W-0000009999", offset=50, width=900, kind="door")
+
+    mask = wall_mask([wall], width_px=200, height_px=100, mm_per_px=MM_PER_PX, openings=[orphan, real_door])
+
+    # Giống hệt `test_wall_mask__door_gap_is_false`: ô mồ côi không thêm, không bớt pixel nào.
+    assert not mask[40:60, 15:105].any()
+    assert mask[40:60, 0:15].all()
+    assert mask[40:60, 105:120].all()
+
+
+def test_object_boxes__orphan_opening_is_skipped_and_the_rest_is_kept() -> None:
+    """Ô mở mồ côi bị bỏ khỏi `detections`; tường, ô mở thật và đồ đạc vẫn ra hộp (NO-274)."""
+    wall = _wall(opening_ids=("D-0000000001",))
+    real_door = _opening("D-0000000001", offset=50, width=900, swing="left")
+    orphan = _opening("D-0000000009", wall_id="W-0000009999", offset=50, width=900, swing="left")
+    table = _furniture(box=(0, 0, 500, 500))
+    layer = SpatialLayer(walls=(wall,), openings=(orphan, real_door), rooms=(), furniture=(table,))
+
+    detections = object_boxes(layer, width_px=200, height_px=100, mm_per_px=MM_PER_PX)
+
+    assert [d.label for d in detections] == ["door", "table"]
+
+
+def test_object_boxes__every_opening_orphan_still_returns_furniture() -> None:
+    """Không ô mở nào tìm được tường: hàm vẫn trả hộp của đồ đạc thay vì ném (NO-274, ca biên)."""
+    orphan = _opening("D-0000000009", wall_id="W-0000009999", offset=50, width=900)
+    table = _furniture(box=(0, 0, 500, 500))
+    layer = SpatialLayer(walls=(), openings=(orphan,), rooms=(), furniture=(table,))
+
+    detections = object_boxes(layer, width_px=200, height_px=100, mm_per_px=MM_PER_PX)
+
+    assert [d.label for d in detections] == ["table"]

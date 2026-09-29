@@ -12,7 +12,7 @@ vẹn vì `define_task` từ chối payload **trước** khi gọi thân (không
 """
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from celery import Celery
@@ -66,9 +66,10 @@ from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorDocumentRow
 from packages.messaging import PermanentError, SafeLock, safe_redis, send_task
 from packages.messaging.payloads.datasets import BUILD_VERSION_TASK, BuildDatasetVersionPayload
-from packages.messaging.redis import AsyncRedis, SyncRedis, broker_redis_sync
+from packages.messaging.redis import AsyncRedis, SyncRedis, broker_redis_sync, safe_redis_sync
 from packages.ml_contracts.artifacts import decode_mask
 from packages.ml_contracts.datasets import parse_manifest, split_for
+from packages.storage.keys import dataset_object
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import CHUNK_SIZE, ObjectStorage
 from packages.testing.factories.admin_ml_datasets import make_dataset
@@ -897,3 +898,57 @@ async def test_build_dataset_version__keeps_objects_when_another_run_finished(
     row = await read_version(db_sessionmaker, version_id)
     assert (row.status, row.manifest_sha256) == ("ready", "b" * 64)
     assert await _keys(local_storage, version_id) != []
+
+
+class _ClockThatStealsTheLock:
+    """`Clock` bọc `FakeClock`; lượt `now()` **đầu tiên** xoá khoá dựng trong Redis thật.
+
+    `_claim` gọi `clock.now()` để ghi `build_started_at`, và đó là lời gọi `now()` đầu tiên của một
+    lượt dựng. Tiêm ở đây là cách duy nhất chen vào **đúng** khe giữa `_claim` và lượt `delete_prefix`
+    dọn đầu lượt mà không phải gọi hàm private nào. Xoá bằng client **đồng bộ** vì `now()` là hàm đồng
+    bộ — vẫn là Redis thật (K23), không phải `fakeredis`.
+    """
+
+    def __init__(self, inner: FakeClock, *, version_id: str) -> None:
+        self._inner = inner
+        self._version_id = version_id
+        self.stolen = False
+
+    def now(self) -> datetime:
+        """Giờ của `FakeClock`; lượt đầu cướp khoá trước khi trả về."""
+        if not self.stolen:
+            self.stolen = True
+            client = safe_redis_sync()
+            try:
+                client.delete(f"lock:datasets:build:{self._version_id}")
+            finally:
+                client.close()
+        return self._inner.now()
+
+
+async def test_build_dataset_version__keeps_objects_when_the_lock_dies_before_cleanup(
+    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, safe_client: AsyncRedis
+) -> None:
+    """Mất khoá giữa `_claim` và lượt dọn → **không** `delete_prefix`; object của lượt kia còn nguyên (NO-273).
+
+    Đây là khe duy nhất của bước 2 mà bất biến số 1 từng bỏ ngỏ: `_claim` mở rồi đóng một session, nên
+    một lượt khác có thể đã nhận cùng phiên bản và ghi object xong **trước** khi lượt này chạm kho.
+    `build_started_at` khác `None` chứng minh lượt này đã qua `_claim`, tức dừng đúng trong khe cần kiểm.
+    """
+    async with db_sessionmaker() as db:
+        scene = await make_scene(db)
+        await approved_floor(db, local_storage, scene, fake_clock)
+        await db.commit()
+    version_id = await open_building_version(db_sessionmaker, fake_clock)
+    rival_key = dataset_object(version_id, "manifest.jsonl")
+    await local_storage.put(rival_key, b"{}\n", content_type="application/x-ndjson", max_bytes=16)
+    clock = _ClockThatStealsTheLock(fake_clock, version_id=version_id)
+
+    await run_build_dataset_version(db_sessionmaker, local_storage, clock, version_id=version_id)
+
+    assert clock.stolen
+    assert await local_storage.stat(rival_key) is not None, "object của lượt kia đã bị lượt mất khoá dọn mất"
+    assert await _keys(local_storage, version_id) == [rival_key]
+    row = await read_version(db_sessionmaker, version_id)
+    assert (row.status, row.manifest_sha256) == ("building", None)
+    assert row.build_started_at is not None
