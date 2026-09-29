@@ -1,0 +1,8 @@
+# Bảng case bắt buộc thêm của task dựng lớp không gian (B5-05 [8], CASE.md §2.3).
+#
+# Lệch khỏi prompt — [8] ghi `require = ["J03", "J08"]`; thêm J10 vì CASE.md §2.3 bắt mọi task
+#   `pipeline.*` có J10 mà `tools/case_gate.py` chỉ tự đòi J01, J06.
+
+[[task]]
+fn = "build_pipeline_layer"
+require = ["J03", "J08", "J10"]
