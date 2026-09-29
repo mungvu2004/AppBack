@@ -64,7 +64,8 @@
 
 | Loại lượt | Tối đa cùng lúc |
 |---|---|
-| `just verify` AppBack | **4** (tạm; đo lại ở M1 với đủ Postgres, 2 Redis, MinIO, Mailpit) |
+| `just verify` AppBack — cổng đầy đủ bước 5 chạy `pytest-xdist` (FIX-112) | **1** (đo 2026-09-29: một cổng `-n 6` = 32 container / 5.211 MiB; hai cổng cùng lúc làm sập Docker Desktop, VM 12,39 GB). Cần chạy cạnh lượt khác thì đặt `VERIFY_PYTEST_WORKERS=3` (mặc định 6) |
+| `just verify --steps 1,2,3,4` hay `run.sh shell` pytest đích (không xdist) | **2**, tính cả cổng đầy đủ đang chạy |
 | `pnpm verify` AppFront (~300 s một lượt, dùng hết CPU) | **2** |
 | Tổng cả hai loại | **4** |
 | Tác vụ GPU | **1** |
