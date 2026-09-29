@@ -21,6 +21,7 @@ nó, mà test chạy ở vòng theo hàm.
 import asyncio
 import os
 import secrets
+import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from urllib.parse import urlsplit, urlunsplit
@@ -35,9 +36,13 @@ from packages.db.hooks import DROP_ENV
 from packages.db.migrate_check import alembic_config
 from packages.db.settings import DatabaseSettings, reset_database_settings_cache
 
+# Một hằng, một chủ: `services.py` cũng đọc mã tiến trình này để chia dịch vụ dùng chung (R-07).
+# Nhập từ `worker_id` chứ không từ `services`: module kia kéo theo testcontainers và một tác dụng
+# phụ lúc nhập (`ryuk_disabled`), mà module CSDL không việc gì phải phụ thuộc vào đó (review F-3).
+from packages.testing.fixtures.worker_id import xdist_worker_id
+
 TEMPLATE_DB = "appback_template"
 SHARED_DB = "appback_test"
-XDIST_WORKER_ENV = "PYTEST_XDIST_WORKER"
 ALEMBIC_TABLE = "alembic_version"
 # Schema giữ bản chụp dữ liệu gốc do migration seed (`op.bulk_insert`), để nạp lại sau lượt dọn
 RESET_SCHEMA = "appback_reset_seed"
@@ -65,7 +70,7 @@ def shared_db_name() -> str:
 
 def _per_worker(base: str) -> str:
     """`base` kèm hậu tố tiến trình xdist, hay chính `base` khi chạy ngoài xdist."""
-    worker = os.environ.get(XDIST_WORKER_ENV, "").strip()
+    worker = xdist_worker_id()
     return f"{base}_{worker}" if worker else base
 
 
@@ -99,6 +104,24 @@ def _drop_database(url: str, name: str) -> None:
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)']))
 
 
+def assert_reset_target(url: str) -> None:
+    """Chặn cứng: lượt dọn `DELETE` chỉ chạy được trên database của chính tiến trình test này (FIX-114).
+
+    Lượt dọn xoá **mọi** bảng, nên một URL lạc — `DATABASE_URL` của máy thật, fixture bị gọi
+    ngoài pytest, tên database của tiến trình xdist khác — là mất dữ liệu không lùi được. Hai
+    điều kiện phải đúng cả hai, không thì `RuntimeError` và **không** câu SQL nào chạy: tên
+    database khớp đúng `shared_db_name()` của tiến trình, và tiến trình thật sự đang chạy dưới
+    pytest (`PYTEST_CURRENT_TEST` pytest đặt quanh từng pha, hay chính gói `pytest` đã nhập).
+    Fail-closed theo R-17: nghi ngờ thì không xoá.
+    """
+    name = urlsplit(url).path.lstrip("/")
+    expected = shared_db_name()
+    if name != expected:
+        raise RuntimeError(f"lượt dọn test từ chối database '{name}': chỉ dọn được '{expected}' (FIX-114)")
+    if not os.environ.get("PYTEST_CURRENT_TEST") and "pytest" not in sys.modules:
+        raise RuntimeError("lượt dọn test chỉ chạy dưới pytest: không thấy dấu vết phiên pytest (FIX-114)")
+
+
 async def _on_reset_connection(url: str, statements: list[str]) -> None:
     """Chạy `statements` trên database của test trong **một** giao dịch, có trần chờ khoá.
 
@@ -109,7 +132,11 @@ async def _on_reset_connection(url: str, statements: list[str]) -> None:
     `lock_timeout` là lưới an toàn: một kết nối của test còn treo giữa giao dịch giữ khoá dòng sẽ
     chặn `DELETE`. Có trần thì lượt dọn hỏng ngay với `LockNotAvailable` nêu đúng bảng, thay vì cả
     bước 5 đứng im.
+
+    `assert_reset_target` chạy **trước** khi mở kết nối: đây là đường duy nhất chạy `DELETE`, nên
+    chặn ở đây là chặn cho mọi người gọi (R-19).
     """
+    assert_reset_target(url)
     engine = create_async_engine(
         url,
         connect_args={

@@ -24,7 +24,8 @@ import httpx
 import pytest
 
 from packages.testing.fixtures import api as api_fixtures
-from packages.testing.fixtures.db import TEMPLATE_DB, XDIST_WORKER_ENV, template_db_name
+from packages.testing.fixtures.db import TEMPLATE_DB, template_db_name
+from packages.testing.fixtures.worker_id import XDIST_WORKER_ENV
 
 # --- tên database mẫu theo tiến trình xdist -----------------------------------------
 

@@ -37,6 +37,8 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "pytest-xdist",
+    # FIX-114: khoá liên tiến trình để các tiến trình xdist chia nhau một bộ dịch vụ
+    "filelock",
     "coverage",
     "httpx",
     "schemathesis",
