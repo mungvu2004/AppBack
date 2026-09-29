@@ -138,18 +138,44 @@ def step_lint_imports() -> StepOutcome:
     return StepOutcome("4", "lint-imports", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
+PYTEST_WORKERS_ENV = "VERIFY_PYTEST_WORKERS"
+DEFAULT_PYTEST_WORKERS = "6"
+
+
+def pytest_workers() -> str:
+    """Số tiến trình xdist của bước 5 — `VERIFY_PYTEST_WORKERS`, mặc định 6 (FIX-112).
+
+    6 là số đo được tốt nhất trên container cổng (12 CPU, 12 GB) khi trần máy là **hai** lượt
+    verify cùng lúc: mỗi tiến trình con dựng bộ container dịch vụ riêng của nó, nên số tiến trình
+    là số nhân của cả CPU lẫn RAM. Giá trị rỗng hay lạ → dùng mặc định chứ không truyền tiếp cho
+    pytest (xdist báo lỗi dùng sai, bước 5 hỏng vì cấu hình chứ không vì mã).
+    """
+    value = os.environ.get(PYTEST_WORKERS_ENV, "").strip()
+    return value if value.isdigit() and int(value) > 0 else DEFAULT_PYTEST_WORKERS
+
+
 def step_coverage() -> StepOutcome:
+    """Bước 5: pytest song song dưới `pytest-cov`, rồi `coverage_gate` (FIX-112).
+
+    `pytest-cov` chứ không `coverage run -m pytest`: xdist dựng tiến trình con qua execnet, mà
+    `coverage run` chỉ đo tiến trình chủ — độ phủ sẽ tụt gần về 0. Plugin bật coverage trong từng
+    tiến trình con rồi gộp vào `COVERAGE_FILE` (cấu hình `parallel = true` giữ nguyên), nên không
+    còn `coverage combine` riêng: gộp xong rồi, gọi lại chỉ thấy "No data to combine".
+    `--cov` không kèm đường dẫn: lấy `[tool.coverage.run] source`, cùng nguồn như trước.
+    `--cov-report=` tắt báo cáo của plugin — số thật do `coverage_gate` in ra từ `coverage json`.
+    `--dist loadfile`: mọi test cùng file vào cùng một tiến trình, nên fixture phiên (container
+    dịch vụ) dựng một lần cho cả file và test phụ thuộc thứ tự trong một file không bị xé ra.
+    """
     steps = [
-        ["coverage", "run", "-m", "pytest"],
-        ["coverage", "combine"],
+        ["pytest", "-n", pytest_workers(), "--dist", "loadfile", "--cov", "--cov-report="],
         ["coverage", "json"],
     ]
     for cmd in steps:
         r = _run(cmd)
         if r.returncode != 0:
-            return StepOutcome("5", "coverage run -m pytest", STATUS_FAIL, "pytest hoặc coverage hỏng")
+            return StepOutcome("5", "pytest -n (cov)", STATUS_FAIL, "pytest hoặc coverage hỏng")
     r = _run([sys.executable, "-m", "tools.coverage_gate"])
-    return StepOutcome("5", "coverage run -m pytest → coverage_gate", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
+    return StepOutcome("5", "pytest -n (cov) → coverage_gate", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
 _PERF_EXPR = "perf and not gpu"
@@ -231,7 +257,7 @@ _STEP_LABELS = {
     "2": "ruff check",
     "3": "mypy --strict",
     "4": "lint-imports",
-    "5": "coverage run -m pytest → coverage_gate",
+    "5": "pytest -n (cov) → coverage_gate",
     "5b": "pytest -m perf → case_gate",
     "6": "lint_migrations → migrate_check",
     "7": "H1 H3 H4 H5 (tools.contract.check)",

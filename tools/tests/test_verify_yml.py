@@ -31,3 +31,14 @@ def test_verify_yml_service_has_fixed_non_latest_image() -> None:
     image = doc["services"]["verify"]["image"]
     assert image
     assert not image.endswith(":latest")
+
+
+def test_verify_yml_truyền_số_tiến_trình_xdist_từ_host() -> None:
+    """`VERIFY_PYTEST_WORKERS` phải là dòng **không** có `=` — compose mới lấy giá trị của host.
+
+    `steps.pytest_workers()` đọc biến này để đặt `-n` cho bước 5 (FIX-112). Viết thành
+    `VERIFY_PYTEST_WORKERS=6` sẽ ghim cứng trong ảnh, `VERIFY_PYTEST_WORKERS=4 run.sh verify`
+    trên host không còn đổi được số tiến trình — cổng vẫn xanh nên chỉ test này thấy.
+    """
+    environment = _load()["services"]["verify"]["environment"]
+    assert "VERIFY_PYTEST_WORKERS" in environment

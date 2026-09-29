@@ -19,10 +19,24 @@ from apps.api.projects.summaries import set_layer_counts
 from apps.api.projects.tests.sql_count import count_sql
 from apps.api.projects.wire import DrawingOut
 from packages.core.ids import is_spatial_id
+from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
+
+
+@pytest.fixture(autouse=True)
+def _signer(drawing_signer: LocalDiskStorage) -> LocalDiskStorage:
+    """Khai thẳng chỗ phụ thuộc: `floor_outs` ký URL bản vẽ qua `drawings.urls.signer()` (FIX-112).
+
+    Không cài kho của test thì `signer()` rơi vào `_default_signer()`, hàm `@cache` đọc `STORAGE_*`
+    từ môi trường: các test này vốn chỉ **xanh nhờ** một test của `apps/api/drawings` đã làm ấm cache
+    đó trong cùng tiến trình (tuần tự `drawings/` chạy trước `floors/`). Chạy riêng file này là đỏ 7
+    test, và `pytest -n` chia hai thư mục sang hai tiến trình cũng đỏ y vậy. Cùng lý do và cùng
+    fixture như `test_service.py`.
+    """
+    return drawing_signer
 
 
 class _FakeApp:

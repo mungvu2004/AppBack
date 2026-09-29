@@ -35,6 +35,8 @@ dev = [
     "import-linter",
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
+    "pytest-xdist",
     "coverage",
     "httpx",
     "schemathesis",

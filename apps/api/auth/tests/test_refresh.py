@@ -195,7 +195,13 @@ async def test_auth_refresh__C24(auth_client: httpx.AsyncClient, db_session: Asy
     assert (await session_row(db_session, _sid(t0))).rotated_at is None
 
 
-@pytest.mark.parametrize("value", [None, "", "khong-co-dau-cham", f"{uuid4()}.ngan", f"{uuid4()}".upper() + ".x"])
+# UUID **hằng**, không `uuid4()`: thân `parametrize` chạy lúc *thu thập*, nên giá trị ngẫu nhiên làm mỗi
+# tiến trình pytest-xdist thu được id test khác nhau và xdist bỏ cả lượt ("Different tests were collected"
+# — FIX-112). Phiên của id này không tồn tại dù id là gì, nên hằng không mất case nào.
+_ABSENT_SID = "84c3034b-13c4-421b-8823-39fa9f2f33f9"
+
+
+@pytest.mark.parametrize("value", [None, "", "khong-co-dau-cham", f"{_ABSENT_SID}.ngan", _ABSENT_SID.upper() + ".x"])
 async def test_missing_or_malformed_cookie_is_401(auth_client: httpx.AsyncClient, value: str | None) -> None:
     """Cookie thiếu hoặc sai mẫu `<sid>.<token 43 ký tự>` → 401 `UNAUTHENTICATED`, không chạm DB."""
     response = await refresh_with(auth_client, value)

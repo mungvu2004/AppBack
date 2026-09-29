@@ -24,6 +24,8 @@ services:
       - VERIFY_BRANCH
       - VERIFY_CHANGED
       - VERIFY_VALID_NAMES
+      # FIX-112: số tiến trình xdist của bước 5 (mặc định 6 trong steps.py)
+      - VERIFY_PYTEST_WORKERS
       - VERIFY_OUT_DIR=/src-out
       - APPFRONT_DIR=/appfront
       - CONTRACT_SAMPLES_DIR=/tmp/contract-samples

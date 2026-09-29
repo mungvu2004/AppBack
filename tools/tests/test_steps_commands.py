@@ -103,28 +103,71 @@ def test_bước_1_đến_4_theo_mã_thoát(
 
 
 def test_bước_5_đạt_gọi_đủ_chuỗi(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
     fake = _fake(monkeypatch)
     assert steps.step_coverage().status == steps.STATUS_OK
-    assert [c[:2] for c in fake.calls][:3] == [["coverage", "run"], ["coverage", "combine"], ["coverage", "json"]]
+    # FIX-112: pytest-cov gộp sẵn dữ liệu của mọi tiến trình xdist → không còn `coverage combine`
+    assert [c[:2] for c in fake.calls][:2] == [["pytest", "-n"], ["coverage", "json"]]
     assert fake.ran("tools.coverage_gate")
 
 
+def test_bước_5_chạy_song_song_dưới_cov(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bước 5 phải mang `-n`, `--dist loadfile` và `--cov`; thiếu `--cov` là độ phủ tụt về 0."""
+    monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
+    fake = _fake(monkeypatch)
+    steps.step_coverage()
+    assert fake.calls[0] == [
+        "pytest",
+        "-n",
+        steps.DEFAULT_PYTEST_WORKERS,
+        "--dist",
+        "loadfile",
+        "--cov",
+        "--cov-report=",
+    ]
+    assert not fake.ran("coverage combine")
+
+
 def test_bước_5_pytest_hỏng_không_gọi_gate(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _fake(monkeypatch, coverage__run=(1, ""))
+    fake = _fake(monkeypatch, pytest=(1, ""))
     assert steps.step_coverage().status == steps.STATUS_FAIL
     assert not fake.ran("tools.coverage_gate")
-
-
-def test_bước_5_combine_hỏng_không_bị_nuốt(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # vd cấu hình [paths] sai: combine hỏng thì bước 5 hỏng, không lặng lẽ đi tiếp
-    fake = _fake(monkeypatch, coverage__combine=(1, ""))
-    assert steps.step_coverage().status == steps.STATUS_FAIL
     assert not fake.ran("coverage json")
+
+
+def test_bước_5_coverage_json_hỏng_không_bị_nuốt(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # vd cấu hình [paths] sai: coverage json hỏng thì bước 5 hỏng, không lặng lẽ đi tiếp
+    fake = _fake(monkeypatch, coverage__json=(1, ""))
+    assert steps.step_coverage().status == steps.STATUS_FAIL
+    assert not fake.ran("tools.coverage_gate")
 
 
 def test_bước_5_gate_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _fake(monkeypatch, **{"tools.coverage_gate": (1, "")})
     assert steps.step_coverage().status == steps.STATUS_FAIL
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2", "2"),
+        (" 4 ", "4"),
+        ("", steps.DEFAULT_PYTEST_WORKERS),
+        ("auto", steps.DEFAULT_PYTEST_WORKERS),
+        ("0", steps.DEFAULT_PYTEST_WORKERS),
+        ("-3", steps.DEFAULT_PYTEST_WORKERS),
+        ("2.5", steps.DEFAULT_PYTEST_WORKERS),
+    ],
+)
+def test_số_tiến_trình_bước_5_theo_env(monkeypatch: pytest.MonkeyPatch, value: str, expected: str) -> None:
+    """`VERIFY_PYTEST_WORKERS` đặt `-n`; giá trị lạ về mặc định thay vì truyền tiếp cho xdist."""
+    monkeypatch.setenv(steps.PYTEST_WORKERS_ENV, value)
+    assert steps.pytest_workers() == expected
+
+
+def test_số_tiến_trình_bước_5_mặc_định(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
+    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS
 
 
 # --- bước 5b ------------------------------------------------------------------------

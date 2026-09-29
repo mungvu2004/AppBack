@@ -303,6 +303,10 @@ async def test_email_soft_limit_admits_only_known_addresses(
         assert (await login(known, user.email, TEST_PASSWORD)).status_code == 204
 
 
+# FIX-112: trần **đồng hồ tường**. Bước 5 chạy `pytest -n 6`, mỗi tiến trình chỉ được ~1/6 CPU nên
+# trần đo lúc tuần tự không thể đạt (đo: `wait_until(timeout_s=1.5)` quá hạn); chạy riêng thì đạt. Marker `perf` là đúng
+# cơ chế của repo cho loại này — bước 5b chạy `-m perf` **tuần tự**, không dưới coverage (BE-00 §12).
+@pytest.mark.perf
 async def test_no_connection_is_held_while_hashing(
     auth_env: None,
     fake_clock: FakeClock,

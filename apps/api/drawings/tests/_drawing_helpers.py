@@ -5,27 +5,24 @@ cách gắn ngữ cảnh `floorOrder` của H1 cho N7. `make_drawing`, `png_byte
 `packages/testing/factories/drawings.py` (R-07: một bản duy nhất).
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 
 import pytest
 from httpx import Response
 
-from apps.api.drawings.urls import use_signer
 from packages.storage.port import ObjectStorage
 from packages.testing.golden import attach_context
 
 
 @pytest.fixture(autouse=True)
-def test_signer(local_storage: ObjectStorage) -> Iterator[ObjectStorage]:
-    """`urls.signer()` trỏ vào kho của test; gỡ lại để không rò sang test sau.
+def test_signer(drawing_signer: ObjectStorage) -> ObjectStorage:
+    """`autouse` để mọi test của module này có `urls.signer()` trỏ vào kho của test.
 
-    `autouse` trong module nào **nhập** nó: cổng `floor.drawings` và N7 ký URL qua
-    `signer()`, mà kho theo biến môi trường của tiến trình trỏ vào `tmp_path` của một
-    test khác.
+    Việc cài/gỡ nằm ở `drawing_signer` (`packages/testing/fixtures/signer.py`, FIX-112) — một bản
+    duy nhất, vì `apps/api/floors` cũng cần đúng như vậy. Ở đây chỉ còn phần `autouse`: cổng
+    `floor.drawings` và N7 ký URL qua `signer()`, nên cả module cần, không phải từng test xin.
     """
-    use_signer(local_storage)
-    yield local_storage
-    use_signer(None)
+    return drawing_signer
 
 
 def attach_floor_order(response: Response, floor_ids: Sequence[str]) -> None:

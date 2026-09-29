@@ -164,6 +164,10 @@ async def test_ingest_does_not_query_the_database(api_client: httpx.AsyncClient,
     assert statements == []
 
 
+# FIX-112: trần **đồng hồ tường**. Bước 5 chạy `pytest -n 6`, mỗi tiến trình chỉ được ~1/6 CPU nên
+# trần đo lúc tuần tự không thể đạt (đo: 2,21 s so với trần 2,0 s); chạy riêng thì đạt. Marker `perf` là đúng
+# cơ chế của repo cho loại này — bước 5b chạy `-m perf` **tuần tự**, không dưới coverage (BE-00 §12).
+@pytest.mark.perf
 async def test_one_hundred_batches_of_twenty_events_are_fast(api_client: httpx.AsyncClient) -> None:
     """100 lô 20 sự kiện < 2 s; trần khởi động ≤ 10 lô đầu, tổng ≤ `TELEMETRY_RATE_LIMIT`."""
     limit = telemetry_router._settings.telemetry_rate_limit

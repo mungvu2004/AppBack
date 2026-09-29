@@ -20,9 +20,24 @@ from apps.api.floors.settings import get_floors_settings, reset_floors_settings_
 from apps.api.floors.tests._bodies import floor_body, new_level_id, seed_project
 from packages.core.errors import AppError
 from packages.db.models.floors import FloorRow
+from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.fixtures.clock import FakeClock
+
+
+@pytest.fixture(autouse=True)
+def _signer(drawing_signer: LocalDiskStorage) -> LocalDiskStorage:
+    """Khai thẳng chỗ phụ thuộc: `service.*` trả `FloorOut`, mà đường đó ký URL bản vẽ (FIX-112).
+
+    `service.reorder_floors`/`patch_floor`/… gọi `floor_outs` → `drawings.view_parts.load` →
+    `drawings.urls.signer()`. Không cài kho của test thì `signer()` rơi vào `_default_signer()`,
+    hàm `@cache` đọc `STORAGE_*` từ môi trường: các test này vốn chỉ **xanh nhờ** một test của
+    `apps/api/drawings` đã làm ấm cache đó trong cùng tiến trình (tuần tự `drawings/` chạy trước
+    `floors/`). `pytest -n` chia hai thư mục sang hai tiến trình là đỏ ngay. Xin fixture dùng chung
+    ở đây làm chỗ phụ thuộc hiện ra trong mã, và không còn phụ thuộc thứ tự nào.
+    """
+    return drawing_signer
 
 
 def _principal(user_id: str) -> Principal:
