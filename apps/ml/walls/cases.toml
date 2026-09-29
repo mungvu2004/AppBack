@@ -1,0 +1,14 @@
+# Bảng case bắt buộc thêm của bước tách tường (B5-02 [8], CASE.md §2.3).
+#
+# Lệch khỏi prompt — [8] đòi `require = ["J03", "J08", "M01", "M02"]`, ở đây chỉ còn
+#   `["J03", "J08"]`: `_TEST_TASK_RE` (`tools/case_gate.py:296`) chỉ nhận mã `J\d{2}`
+#   cho test task, nên khai `M01`/`M02` là đòi một case mà cổng không bao giờ tìm thấy
+#   (NO-256). `tools/**` nằm trong khối [12] KHÔNG ĐƯỢC SỬA.
+#
+# Độ phủ case không giảm: cổng tự đòi J01 và J06 cho mọi task trong sổ
+# (`tools/case_gate.py:493-499`), và `apps/ml/walls/tests/test_tasks.py` có đủ
+# `test_segment_walls__J01, __J01_onnx, __J03, __J06, __J08, __M01, __M02`.
+
+[[task]]
+fn = "segment_walls"
+require = ["J03", "J08"]
