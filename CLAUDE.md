@@ -101,6 +101,7 @@ chưa hợp nhất). **Cấm** báo "đạt" cho bước chưa chạy (K25).
 
 ## Cấm tuyệt đối (BE-01 [9], nhắc lại)
 
-Không mock Postgres/Redis/MinIO/Mailpit trong test dịch vụ; không tải mạng
-trong test; không dùng Python/uv/Node của máy Windows trong cổng; không viết
+Mock/fake đúng tầng (K23, luật lai): dịch vụ thật cho SQL, constraint, khoá,
+đồng thời, after-commit, migration, hợp đồng; fake được cho logic phía trên;
+không SQLite; test chạy được song song; không tải mạng trong test; không dùng Python/uv/Node của máy Windows trong cổng; không viết
 mã nghiệp vụ của prompt khác.

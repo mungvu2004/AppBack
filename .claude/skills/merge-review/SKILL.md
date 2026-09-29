@@ -71,8 +71,9 @@ Chạy hết checklist `RULE.md` §3 cho các miền mà diff chạm, tối thi�
 - **PERF** — N+1, query không `LIMIT`, chặn vòng sự kiện, nạp cả tệp vào RAM, cache không TTL.
 - **RES** — timeout tường minh, retry có trần và backoff, lỗi phụ thuộc → 503 + `Retry-After`.
 - **DB/API** — tương thích ngược, khoá bảng, breaking change hợp đồng FE.
-- **TEST** — negative case, không phụ thuộc thời gian thật/thứ tự chạy, dịch vụ thật
-  thay vì mock (K23), test đồng thời cho luồng có tranh chấp.
+- **TEST** — negative case, không phụ thuộc thời gian thật/thứ tự chạy, chạy được song song,
+  mock/fake đúng tầng (K23 luật lai: fake khẳng định SQL/khoá/after-commit → P1; mỗi op/task
+  ≥ 1 test đường chính dịch vụ thật), test đồng thời cho luồng có tranh chấp.
 - **OBS/MNT** — log có cấu trúc không lộ bí mật, hàm quá dài, trùng lặp, dead code.
 
 Cộng thêm `RULE-CODE.md`: docstring mỗi hàm (R-01, R-02), không trùng lặp (R-07),

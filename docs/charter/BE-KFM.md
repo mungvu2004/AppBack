@@ -128,10 +128,21 @@
 - Đúng: mọi ghi đi vào Postgres hoặc object storage trong request đó.
 - Bắt bởi: test tích hợp đọc lại qua một session mới.
 
-**K23 — Mock chính dịch vụ đang kiểm.**
-- Sai: `AsyncMock` cho session DB trong test repository; `fakeredis` cho test rate limit.
-- Đúng: Testcontainers thật; mock chỉ dùng cho phụ thuộc **ngoài** module đang kiểm.
-- Bắt bởi: soát báo cáo của người điều phối.
+**K23 — Mock sai tầng** (luật lai, người dùng chốt 2026-09-29).
+- Sai: mock/fake Postgres, Redis, storage, Mailpit khi **thứ đang kiểm là hành vi của chính dịch vụ đó** — câu SQL,
+  CHECK/unique/`ON CONFLICT`, khoá (`FOR UPDATE`, `SafeLock`), tranh chấp và idempotency (C10, C14), after-commit và
+  gửi task (K17, J09/J10), migration, TTL/khoá Redis, luồng đọc-ghi object; `AsyncMock` cho session trong test
+  repository; `fakeredis` cho test rate limit. Thay Postgres bằng SQLite (khác ngữ nghĩa) — cấm ở mọi tầng.
+- Đúng:
+  - **Dịch vụ thật** (Testcontainers) cho mọi test ở danh sách "Sai" ở trên, test hợp đồng/golden (H1…), và case của
+    ma trận khẳng định trạng thái đã ghi (C01, C08, C09/C09b, C10, C14, C17, C18, mọi J-case). Mỗi op và mỗi task
+    có **ít nhất một** test đường chính chạy dịch vụ thật.
+  - **Được fake/mock** khi thứ đang kiểm là logic **phía trên** dịch vụ: nhánh nghiệp vụ, validate và mã lỗi (C02,
+    C03, C07…), ánh xạ dữ liệu, tính toán, chọn lý do bỏ/nhánh — fake tối giản trong test, không dựng lại ngữ nghĩa
+    SQL/khoá trong fake. Phụ thuộc **ngoài** module (HTTP bên thứ ba…) như cũ.
+  - Dòng "K23: không mock Postgres, Redis, storage" trong khối [9] của prompt đọc theo định nghĩa này (hiến chương
+    thắng prompt).
+- Bắt bởi: phiên `/merge-review` (mục TEST): test có fake mà khẳng định hành vi thuộc danh sách "Sai" → P1.
 
 **K24 — Qua cổng bằng cách né cổng.**
 - Sai: `# pragma: no cover` hay `pragma: no branch`, `# type: ignore` không mã lỗi, hạ ngưỡng, `--no-verify`, xoá test đỏ, bỏ qua test (có lý do hay không), thêm `.coveragerc`/`pytest.ini`/`ruff.toml`/`conftest.py` lồng để đổi luật, gắn `gpu` cho test khó.

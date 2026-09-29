@@ -60,7 +60,7 @@
 |---|---|
 | R-27 | Chỉ sửa file trong cột **Sở hữu** của prompt mình. Cần sửa chỗ khác → ghi “Nợ và việc chưa làm” (K27). |
 | R-28 | Giữ ranh giới import của BE-00 §2.1; không nhập `packages.testing` từ mã không phải test. |
-| R-29 | Không mock dịch vụ đang kiểm (Postgres, Redis, MinIO, Mailpit) — dùng container thật (K23). Không tải mạng trong test. |
+| R-29 | Mock/fake đúng tầng (K23, luật lai 2026-09-29): **dịch vụ thật** cho SQL, constraint, khoá, tranh chấp, idempotency, after-commit, migration, hợp đồng/golden và case khẳng định trạng thái đã ghi; **được fake** Postgres/Redis/storage khi kiểm logic phía trên (nhánh, validate, mã lỗi, ánh xạ). Mỗi op/task ≥ 1 test đường chính với dịch vụ thật. Không SQLite. Test chạy được song song (BE-00 §12). Không tải mạng trong test. |
 | R-30 | Bí mật không vào log, không vào URL, không hardcode; so sánh token/MAC bằng `hmac.compare_digest`. |
 | R-31 | Ghi bền vững trong chính request đó (không “lưu giả”, K22); xếp job **sau** commit (`on_after_commit`, K17). |
 | R-32 | Migration theo expand → migrate → contract; có đường lùi đã chạy thử (BE-00 §6.1). |
