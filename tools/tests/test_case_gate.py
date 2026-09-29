@@ -522,10 +522,14 @@ def test_real_task_names(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_main_đạt_khi_chưa_có_thao_tác(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Sổ thao tác và sổ task dựng tạm tại chỗ: cổng không được phụ thuộc repo đang có gì."""
+    """Sổ thao tác, sổ task và `cases.toml` dựng tạm tại chỗ: cổng không được phụ thuộc repo đang có gì.
+
+    `cases.toml` thật có `[[task]]` mà sổ task rỗng sẽ báo "task lạ" (NO-257).
+    """
     monkeypatch.setattr(case_gate, "JUNIT_PATHS", (tmp_path / "không-có.xml",))
     monkeypatch.setattr(case_gate, "_real_operations", list)
     monkeypatch.setattr(case_gate, "_real_task_names", list)
+    monkeypatch.setattr(case_gate, "load_cases_toml", lambda _paths: ({}, []))
     assert case_gate.main() == 0
 
 
