@@ -248,6 +248,29 @@
         "title": "BoundingBoxOut",
         "type": "object"
       },
+      "BuildDatasetVersionIn": {
+        "additionalProperties": false,
+        "description": "Thân N31; `projectIds` vắng = mọi dự án, có thì ít nhất một id (C02 `[]`).\n\nKhông kiểm mẫu `prj_…` ở đây: id sai mẫu và id không có/dự án xoá mềm phải ra\n**cùng** 422 `field:\"projectIds\"` (không máy dò) — `service._checked_project_ids`\nkiểm cả ba bằng `is_id` để lỗi luôn ở đúng khoá `projectIds`, không `projectIds.0`.",
+        "properties": {
+          "projectIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectids"
+          }
+        },
+        "title": "BuildDatasetVersionIn",
+        "type": "object"
+      },
       "BuildingOut": {
         "additionalProperties": false,
         "description": "`BuildingSchema` — `datumElevationMm` **có dấu** (tầng hầm nằm dưới mốc `+0.000`).",
@@ -414,6 +437,89 @@
         "title": "CornerOut",
         "type": "object"
       },
+      "CreateDatasetIn": {
+        "additionalProperties": false,
+        "description": "Thân N29; khoá lạ → 422 `VALIDATION` (C03).",
+        "properties": {
+          "family": {
+            "enum": [
+              "wallSegmentation",
+              "openingAndFurnitureDetection",
+              "dimensionReading"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "family"
+        ],
+        "title": "CreateDatasetIn",
+        "type": "object"
+      },
+      "CursorPage_DatasetOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[DatasetOut]",
+        "type": "object"
+      },
+      "CursorPage_DatasetVersionOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetVersionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[DatasetVersionOut]",
+        "type": "object"
+      },
       "CursorPage_FloorVersionSummaryOut_": {
         "additionalProperties": false,
         "properties": {
@@ -552,6 +658,115 @@
           "items"
         ],
         "title": "CursorPage[ProjectSummaryOut]",
+        "type": "object"
+      },
+      "DatasetOut": {
+        "additionalProperties": false,
+        "description": "`DatasetSchema`: một dataset đặt tên, không cột nội bộ (`createdBy`).",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "wallSegmentation",
+              "openingAndFurnitureDetection",
+              "dimensionReading"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "family",
+          "id",
+          "name"
+        ],
+        "title": "DatasetOut",
+        "type": "object"
+      },
+      "DatasetVersionOut": {
+        "additionalProperties": false,
+        "description": "`DatasetVersionSchema`: `manifestSha256`/`splitCounts` ⇔ `ready`, `failureCode` ⇔ `failed`.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "datasetId": {
+            "title": "Datasetid",
+            "type": "string"
+          },
+          "failureCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurecode"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "manifestSha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifestsha256"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "splitCounts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SplitCountsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "datasetId",
+          "id",
+          "sequence",
+          "source",
+          "status"
+        ],
+        "title": "DatasetVersionOut",
         "type": "object"
       },
       "DeleteUserBody": {
@@ -4350,6 +4565,31 @@
         "title": "SpatialLayerOut",
         "type": "object"
       },
+      "SplitCountsOut": {
+        "additionalProperties": false,
+        "description": "`{train, validation, test}` — luôn đủ ba khoá khi có mặt (K02).",
+        "properties": {
+          "test": {
+            "title": "Test",
+            "type": "integer"
+          },
+          "train": {
+            "title": "Train",
+            "type": "integer"
+          },
+          "validation": {
+            "title": "Validation",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "train",
+          "validation",
+          "test"
+        ],
+        "title": "SplitCountsOut",
+        "type": "object"
+      },
       "StraightenIn": {
         "additionalProperties": false,
         "description": "Thân #32: object rỗng; khoá lạ bị `extra=\"forbid\"` chặn (422).",
@@ -5018,6 +5258,246 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/ml/datasets": {
+      "get": {
+        "description": "N28 — datasets, mới nhất trước; `family` lạ → 422 `field:\"family\"`.",
+        "operationId": "ml_list_datasets_api_admin_ml_datasets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_DatasetOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml List Datasets",
+        "tags": [
+          "admin_ml_datasets"
+        ]
+      },
+      "post": {
+        "description": "N29 — đặt tên một dataset mới; tên đã dùng (không phân biệt hoa thường) → 409.",
+        "operationId": "ml_create_dataset_api_admin_ml_datasets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatasetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Create Dataset",
+        "tags": [
+          "admin_ml_datasets"
+        ]
+      }
+    },
+    "/api/admin/ml/datasets/{dataset_id}/versions": {
+      "get": {
+        "description": "N30 — phiên bản của một dataset, `sequence` giảm dần; dataset không có → 404.",
+        "operationId": "ml_list_dataset_versions_api_admin_ml_datasets__dataset_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_DatasetVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml List Dataset Versions",
+        "tags": [
+          "admin_ml_datasets"
+        ]
+      },
+      "post": {
+        "description": "N31 — mở một phiên bản `building`, gửi task dựng mẫu; đã có bản đang dựng → 409.",
+        "operationId": "ml_build_dataset_version_api_admin_ml_datasets__dataset_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildDatasetVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Build Dataset Version",
+        "tags": [
+          "admin_ml_datasets"
+        ]
+      }
+    },
     "/api/admin/ml/model-families": {
       "get": {
         "description": "N23 — đủ ba họ và bản đang kích hoạt của từng họ; không bao giờ có `nextCursor`.",
