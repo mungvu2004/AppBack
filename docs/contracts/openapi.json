@@ -470,6 +470,62 @@
         "title": "CursorPage[LatestFloorUploadOut]",
         "type": "object"
       },
+      "CursorPage_ModelFamilyOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ModelFamilyOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[ModelFamilyOut]",
+        "type": "object"
+      },
+      "CursorPage_ModelVersionOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVersionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[ModelVersionOut]",
+        "type": "object"
+      },
       "CursorPage_ProjectSummaryOut_": {
         "additionalProperties": false,
         "properties": {
@@ -2122,6 +2178,181 @@
           "rawValueMm"
         ],
         "title": "MeasurementRecordIn",
+        "type": "object"
+      },
+      "ModelFamilyOut": {
+        "additionalProperties": false,
+        "description": "`ModelFamilySchema`. Vắng `activeVersionId` = họ tường đang chạy đường cổ điển.",
+        "properties": {
+          "activeVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeversionid"
+          },
+          "family": {
+            "enum": [
+              "wallSegmentation",
+              "openingAndFurnitureDetection",
+              "dimensionReading"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "family",
+          "revision"
+        ],
+        "title": "ModelFamilyOut",
+        "type": "object"
+      },
+      "ModelMetricsOut": {
+        "additionalProperties": false,
+        "description": "`ModelMetricsSchema`: ba khoá tuỳ chọn, thực tế đúng **một** khoá của họ có mặt.",
+        "properties": {
+          "cer": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cer"
+          },
+          "iou": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iou"
+          },
+          "map50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Map50"
+          }
+        },
+        "title": "ModelMetricsOut",
+        "type": "object"
+      },
+      "ModelVersionOut": {
+        "additionalProperties": false,
+        "description": "`ModelVersionSchema`: một bản trọng số như quản trị thấy nó.",
+        "properties": {
+          "checksumSha256": {
+            "title": "Checksumsha256",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "creatorId": {
+            "title": "Creatorid",
+            "type": "string"
+          },
+          "datasetVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datasetversionid"
+          },
+          "evaluationStatus": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Evaluationstatus",
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "wallSegmentation",
+              "openingAndFurnitureDetection",
+              "dimensionReading"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelMetricsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trainingJobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trainingjobid"
+          },
+          "weightsFormat": {
+            "enum": [
+              "safetensors",
+              "onnx"
+            ],
+            "title": "Weightsformat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checksumSha256",
+          "createdAt",
+          "creatorId",
+          "evaluationStatus",
+          "family",
+          "id",
+          "label",
+          "weightsFormat"
+        ],
+        "title": "ModelVersionOut",
         "type": "object"
       },
       "NoteOut": {
@@ -3847,6 +4078,48 @@
         "title": "SegmentOut",
         "type": "object"
       },
+      "SetActiveModelVersionBody": {
+        "additionalProperties": false,
+        "description": "Thân trong của N24: `versionId` **bắt buộc**, `null` là lựa chọn có chủ đích.\n\nHọ nằm trên đường dẫn, nên luật \"`null` chỉ cho `wallSegmentation`\" không kiểm được ở\nđây — `service.py` trả 422 `MODEL_VERSION_FAMILY_MISMATCH` (`adminMl.ts:30-34`).",
+        "properties": {
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          }
+        },
+        "required": [
+          "versionId"
+        ],
+        "title": "SetActiveModelVersionBody",
+        "type": "object"
+      },
+      "SetActiveModelVersionIn": {
+        "additionalProperties": false,
+        "description": "`{baseVersion, body}` của N24 (W20) — cùng dạng `versioned(...)` nhưng có kiểu tĩnh.\n\nThiếu `baseVersion` bị khung chặn 428 trước Pydantic; khoá lạ ở vỏ ngoài hay trong `body`\n→ 422 `VALIDATION` với `field` là khoá ấy (C03).",
+        "properties": {
+          "baseVersion": {
+            "minimum": 0.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "body": {
+            "$ref": "#/components/schemas/SetActiveModelVersionBody"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "body"
+        ],
+        "title": "SetActiveModelVersionIn",
+        "type": "object"
+      },
       "SetCornersIn": {
         "additionalProperties": false,
         "description": "Thân #31: đúng bốn góc; thứ tự và hình học do `geometry` kiểm.",
@@ -4745,6 +5018,222 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/ml/model-families": {
+      "get": {
+        "description": "N23 — đủ ba họ và bản đang kích hoạt của từng họ; không bao giờ có `nextCursor`.",
+        "operationId": "ml_list_families_api_admin_ml_model_families_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_ModelFamilyOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ml List Families",
+        "tags": [
+          "admin_ml_registry"
+        ]
+      }
+    },
+    "/api/admin/ml/model-families/{family}/active": {
+      "put": {
+        "description": "N24 — kích hoạt một bản cho họ, hay `versionId: null` để quay về đường cổ điển.",
+        "operationId": "ml_activate_version_api_admin_ml_model_families__family__active_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family",
+            "required": true,
+            "schema": {
+              "title": "Family",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetActiveModelVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelFamilyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Activate Version",
+        "tags": [
+          "admin_ml_registry"
+        ]
+      }
+    },
+    "/api/admin/ml/model-versions": {
+      "get": {
+        "description": "N25 — các bản, mới nhất trước; `family` lạ → 422 `field:\"family\"`.",
+        "operationId": "ml_list_versions_api_admin_ml_model_versions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_ModelVersionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml List Versions",
+        "tags": [
+          "admin_ml_registry"
+        ]
+      },
+      "post": {
+        "description": "N26 — nhận `metadata` rồi `weights` theo luồng; 201 với bản `pending` vừa ghi.",
+        "operationId": "ml_upload_version_api_admin_ml_model_versions_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ml Upload Version",
+        "tags": [
+          "admin_ml_registry"
+        ]
+      }
+    },
+    "/api/admin/ml/model-versions/{model_version_id}": {
+      "get": {
+        "description": "N27 — một bản; id sai mẫu hay không có → 404 `modelVersion`.",
+        "operationId": "ml_read_version_api_admin_ml_model_versions__model_version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_version_id",
+            "required": true,
+            "schema": {
+              "title": "Model Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Read Version",
+        "tags": [
+          "admin_ml_registry"
+        ]
+      }
+    },
     "/api/auth/invitations/accept": {
       "post": {
         "description": "N10: nhận lời mời, mở phiên; K7=B — đường vào duy nhất cho người mới.",
