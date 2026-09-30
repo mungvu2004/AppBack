@@ -1,0 +1,14 @@
+# Bảng case bắt buộc thêm của task bắt đầu pipeline (B5-06a [8], CASE.md §2.3).
+# `tools/case_gate.py` tự đòi J01, J06; danh sách dưới là phần [8] đòi thêm.
+#
+# Lệch khỏi prompt: `U01`, `U02`, `U04`, `U06` **không** nằm trong `require` dù [8] đòi.
+# `tools/case_gate.py:296` `_TEST_TASK_RE = ^test_(?P<fn>.+)__(?P<case>J\d{2})$` chỉ nhận case
+# `J` cho task, nên case `U` khai ở đây luôn báo thiếu dù test có thật và đạt. CASE.md dòng 105
+# cho phép `U` với task; sai lệch nằm ở công cụ. Bốn test
+# `test_orchestrate_pipeline_start__U01/U02/U04/U06` **vẫn còn và vẫn chạy** ở bước 5 — chỉ
+# phần ghi sổ của case_gate bị bỏ. Thêm `U` lại vào `require` ngay khi công cụ nhận `[JU]\d{2}`
+# (nợ của điều phối, ghi `DEBT.md`).
+
+[[task]]
+fn = "orchestrate_pipeline_start"
+require = ["J02", "J03", "J05", "J08", "J09", "J10"]
