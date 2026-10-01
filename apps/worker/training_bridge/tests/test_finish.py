@@ -322,11 +322,17 @@ async def test_finish_rejects_metrics_of_another_family(
 @pytest.mark.asyncio
 async def test_finish_does_not_hold_a_db_connection_while_statting_weights(
     db_sessionmaker: async_sessionmaker[AsyncSession],
+    db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
 ) -> None:
-    """K36: trong lúc `stat` bị chặn, pool của engine không giữ kết nối nào."""
+    """K36: trong lúc `stat` bị chặn, pool của engine không giữ kết nối nào.
+
+    Session của chính test cũng mượn từ pool ấy, nên phải đóng sau khi dựng dữ liệu —
+    nếu không thì phép đếm đo kết nối của test, không phải của cầu nối.
+    """
     job, key = await weighted_job(db_session, local_storage, fake_clock)
+    await db_session.close()
     entered, release = threading.Event(), threading.Event()
     storage = _BlockingStatStorage(local_storage, entered, release)
     engine = db_sessionmaker.kw["bind"]
