@@ -75,6 +75,7 @@ async def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     for reset in caches:
         reset()
 
+
 _QUALITY_QUEUE: str = "pipeline.cpu"
 """Hàng mà `pipeline.quality.run` được xếp vào (`queue_for`, luật chung); dọn sau khi dựng cảnh."""
 
