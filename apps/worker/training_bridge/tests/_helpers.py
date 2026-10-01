@@ -6,6 +6,7 @@ Mọi test ở đây chạy trên dịch vụ thật (Postgres, Redis, kho `loca
 
 import hashlib
 from collections.abc import Mapping
+from typing import Literal
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,11 @@ WEIGHTS_NAME = "weights-0123456789abcdef0123456789abcdef.onnx"
 WEIGHTS_BODY = b"onnx-weights-for-tests"
 WEIGHTS_SHA = hashlib.sha256(WEIGHTS_BODY).hexdigest()
 ONNX_TYPE = "application/octet-stream"
+
+Split = Literal["train", "validation"]
+Level = Literal["info", "warning", "error"]
+Status = Literal["succeeded", "failed", "cancelled"]
+"""Ba `Literal` của payload B5-01, khai lại ở đây để hàm dựng payload không cần `type: ignore`."""
 
 
 async def seed_job(
@@ -79,11 +85,10 @@ def heartbeat(job_id: str, *, epoch: int = 1, sent_at_ms: int = 1) -> TrainingHe
     return TrainingHeartbeatPayload(job_id=job_id, epoch=epoch, sent_at_ms=sent_at_ms)
 
 
-def metric_point(*, step: int = 0, split: str = "train", at_ms: int = 1, **values: float) -> MetricPoint:
+def metric_point(*, step: int = 0, split: Split = "train", at_ms: int = 1, **values: float) -> MetricPoint:
     """Một điểm số đo; không truyền số đo nào thì mặc định `loss`."""
-    # type: ignore[arg-type] — `split` là Literal của B5-01, test chỉ truyền đúng hai giá trị của nó
     measured = values or {"loss": 0.5}
-    return MetricPoint(step=step, epoch=1, split=split, recorded_at_ms=at_ms, **measured)  # type: ignore[arg-type]
+    return MetricPoint(step=step, epoch=1, split=split, recorded_at_ms=at_ms, **measured)
 
 
 def metrics(job_id: str, *points: MetricPoint) -> TrainingMetricsPayload:
@@ -96,18 +101,17 @@ def log_line(
     *,
     template: str,
     params: Mapping[str, str | int | float | bool],
-    level: str = "info",
+    level: Level = "info",
 ) -> TrainingLogPayload:
     """Payload `log` một dòng (mẫu câu + tham số; cầu nối tự dựng văn bản)."""
-    # type: ignore[arg-type] — `level` là Literal của B5-01, test chỉ truyền đúng ba giá trị của nó
     values = dict(params)
-    return TrainingLogPayload(job_id=job_id, level=level, template=template, params=values)  # type: ignore[arg-type]
+    return TrainingLogPayload(job_id=job_id, level=level, template=template, params=values)
 
 
 def finished(
     job_id: str,
     *,
-    status: str = "succeeded",
+    status: Status = "succeeded",
     key: str | None = None,
     checksum: str | None = None,
     metric_values: Mapping[str, float] | None = None,
@@ -115,8 +119,7 @@ def finished(
 ) -> TrainingFinishedPayload:
     """Payload `finished`; `succeeded` mặc định mang khoá đúng mẫu và số đo của họ."""
     if status != "succeeded":
-        # type: ignore[arg-type] — `status` là Literal của B5-01, test chỉ truyền ba giá trị của nó
-        return TrainingFinishedPayload(job_id=job_id, status=status, error_code=error_code)  # type: ignore[arg-type]
+        return TrainingFinishedPayload(job_id=job_id, status=status, error_code=error_code)
     return TrainingFinishedPayload(
         job_id=job_id,
         status="succeeded",

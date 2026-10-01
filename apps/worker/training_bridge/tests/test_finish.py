@@ -340,8 +340,7 @@ async def test_finish_does_not_hold_a_db_connection_while_statting_weights(
     engine = db_sessionmaker.kw["bind"]
     done = finished(job.id, key=key)
     running = asyncio.create_task(
-        # type: ignore[arg-type] — bọc mỏng quanh kho thật, chỉ chặn một lượt `stat`
-        run_finish_training_job(db_sessionmaker, storage, fake_clock, done)  # type: ignore[arg-type]
+        run_finish_training_job(db_sessionmaker, storage, fake_clock, done)  # type: ignore[arg-type] — bọc kho thật
     )
     await asyncio.to_thread(entered.wait)
 
