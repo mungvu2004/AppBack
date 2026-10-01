@@ -41,6 +41,9 @@ SHA256_LEN: Final = 64
 
 _FINISHED_SQL: Final = "status IN ('succeeded', 'failed', 'cancelled')"
 
+_METRIC_FLOAT: Final = {"float_reason": "số đo huấn luyện là số thực, HOP-DONG-MOI §8"}
+"""Lý do `Float` của `loss`, `iou`, `map50` (quy ước `packages/db/tests/test_base.py`: mọi `Float` phải nêu lý do)."""
+
 
 class TrainingJobRow(Base, TimestampMixin):
     """Một job huấn luyện; N33 chèn, N35 và cầu nối `training_bridge` đổi trạng thái dưới `FOR UPDATE`."""
@@ -89,7 +92,7 @@ class TrainingJobRow(Base, TimestampMixin):
     )
 
 
-class TrainingMetricRow(Base):
+class TrainingMetricRow(Base, TimestampMixin):
     """Một điểm số đo; `(job_id, split, step)` đã có thì cầu nối bỏ điểm mới (J06)."""
 
     __tablename__ = TRAINING_METRICS
@@ -99,9 +102,9 @@ class TrainingMetricRow(Base):
     step: Mapped[int] = mapped_column(Integer, primary_key=True)
     epoch: Mapped[int] = mapped_column(Integer)
     recorded_at: Mapped[datetime]
-    loss: Mapped[float | None] = mapped_column(Float, default=None)
-    iou: Mapped[float | None] = mapped_column(Float, default=None)
-    map50: Mapped[float | None] = mapped_column(Float, default=None)
+    loss: Mapped[float | None] = mapped_column(Float, default=None, info=_METRIC_FLOAT)
+    iou: Mapped[float | None] = mapped_column(Float, default=None, info=_METRIC_FLOAT)
+    map50: Mapped[float | None] = mapped_column(Float, default=None, info=_METRIC_FLOAT)
 
     __table_args__ = (
         CheckConstraint(one_of("split", METRIC_SPLITS), name="split"),
@@ -114,7 +117,7 @@ class TrainingMetricRow(Base):
     )
 
 
-class TrainingLogRow(Base):
+class TrainingLogRow(Base, TimestampMixin):
     """Một dòng log đã dựng từ mẫu câu (`render_log`); `seq` = lớn nhất + 1 dưới khoá job."""
 
     __tablename__ = TRAINING_LOGS
