@@ -4,16 +4,23 @@ Không chạm DB hay kho: `service` đọc lớp dưới session rồi gọi `bu
 `to_json_bytes` tất định (cùng tài liệu → cùng byte) để giao lặp ghi đè `quality.json` y hệt.
 """
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from packages.domain.spatial.integrity import IntegrityIssue
+from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, has_critical
 from packages.domain.spatial.model import SpatialLayer
 
 QUALITY_REPORT_MAX_BYTES: Final = 8 * 1024 * 1024
 """Trần `quality.json` khi `put` (B5-07 [5]): 8 MiB."""
+
+QUALITY_ARTIFACT: Final = "quality.json"
+"""Tên artifact ghi dưới `run_prefix(…, "qualityCheck")` (B5-07, luật chung)."""
+
+_LOW_CONFIDENCE_LISTS: Final = ("walls", "openings", "rooms", "furniture")
+"""Bốn danh sách đếm tin cậy thấp, theo đúng thứ tự khoá của `lowConfidence`."""
 
 
 @dataclass(frozen=True)
@@ -28,12 +35,55 @@ class RunQualityReport:
     low_confidence: Mapping[str, int]
 
     def to_json_bytes(self) -> bytes:
-        """`quality.json` theo B5-07 [2]; chủ: việc A (prep chỉ dựng chữ ký)."""
-        raise NotImplementedError
+        """`quality.json` theo B5-07 [2]: khoá cố định, `refId` vắng khi `None`, byte tất định."""
+        payload: dict[str, object] = {
+            "schemaVersion": 1,
+            "runId": self.run_id,
+            "revision": self.revision,
+            "confidenceThreshold": self.confidence_threshold,
+            "hasCritical": self.has_critical,
+            "integrity": [_issue_wire(issue) for issue in self.issues],
+            "lowConfidence": dict(self.low_confidence),
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _issue_wire(issue: IntegrityIssue) -> dict[str, object]:
+    """Một lỗi toàn vẹn ra dây; `refId` vắng hẳn khoá khi `None` (W2)."""
+    wire: dict[str, object] = {"rule": issue.rule, "severity": issue.severity, "entityId": issue.entity_id}
+    if issue.ref_id is not None:
+        wire["refId"] = issue.ref_id
+    return wire
+
+
+def _low_confidence_count(entities: object, threshold: float) -> int:
+    """Số mục AI chưa duyệt có `confidence < threshold` (ngặt) trong một danh sách.
+
+    Mọi thực thể của `SpatialLayer` có `confidence` bắt buộc (không `None` được, W1) —
+    "mục không có `confidence`" của prompt không xảy ra với mô hình hiện tại; ghi "Lệch
+    khỏi prompt" trong báo cáo.
+    """
+    return sum(
+        1
+        for entity in entities  # type: ignore[attr-defined] — entity là Reviewed, luôn có ba trường này
+        if entity.source == "ai" and entity.reviewed is False and entity.confidence < threshold
+    )
 
 
 def build_report(
     *, run_id: str, revision: int, layer: SpatialLayer, level_id: str, threshold: Decimal
 ) -> RunQualityReport:
-    """Dựng báo cáo theo B5-07 [6] `build_report`; chủ: việc A (prep chỉ dựng chữ ký)."""
-    raise NotImplementedError
+    """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách."""
+    issues = tuple(check_integrity(layer, level_id=level_id))
+    threshold_f = float(threshold)
+    low_confidence = {
+        name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS
+    }
+    return RunQualityReport(
+        run_id=run_id,
+        revision=revision,
+        confidence_threshold=threshold_f,
+        issues=issues,
+        has_critical=has_critical(issues),
+        low_confidence=low_confidence,
+    )
