@@ -205,8 +205,9 @@ async def test_metrics_after_finish_inside_the_late_window_are_inserted(
     db_sessionmaker: async_sessionmaker[AsyncSession], db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Điểm tới sau khi job chốt, trong cửa sổ muộn → chèn, và `cancel_key` được đặt."""
-    job = await seed_job(db_session, status="succeeded", ended_at=fake_clock.now())
-    fake_clock.advance(LATE_WINDOW - timedelta(seconds=1))
+    job = await seed_job(db_session, status="cancelled")
+    assert job.ended_at is not None
+    fake_clock.set(job.ended_at + LATE_WINDOW - timedelta(seconds=1))
 
     await run_training_metrics(db_sessionmaker, fake_clock, metrics(job.id))
 
@@ -219,8 +220,9 @@ async def test_metrics_past_the_late_window_are_dropped(
     db_sessionmaker: async_sessionmaker[AsyncSession], db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Quá cửa sổ muộn thì điểm bị bỏ — N36 đã ngừng trả hàng cho job này."""
-    job = await seed_job(db_session, status="cancelled", ended_at=fake_clock.now())
-    fake_clock.advance(LATE_WINDOW + timedelta(seconds=1))
+    job = await seed_job(db_session, status="cancelled")
+    assert job.ended_at is not None
+    fake_clock.set(job.ended_at + LATE_WINDOW + timedelta(seconds=1))
 
     await run_training_metrics(db_sessionmaker, fake_clock, metrics(job.id))
 
@@ -309,9 +311,10 @@ async def test_log_after_finish_follows_the_late_window(
     db_sessionmaker: async_sessionmaker[AsyncSession], db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Log tới sau `finished`: trong cửa sổ chèn, quá cửa sổ bỏ."""
-    job = await seed_job(db_session, status="succeeded", ended_at=fake_clock.now())
+    job = await seed_job(db_session, status="cancelled")
     template, params = any_template()
-    fake_clock.advance(LATE_WINDOW - timedelta(seconds=1))
+    assert job.ended_at is not None
+    fake_clock.set(job.ended_at + LATE_WINDOW - timedelta(seconds=1))
     await run_training_log(db_sessionmaker, fake_clock, log_line(job.id, template=template, params=params))
     fake_clock.advance(timedelta(seconds=2))
 

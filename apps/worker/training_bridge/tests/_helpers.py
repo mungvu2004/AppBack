@@ -34,16 +34,28 @@ ONNX_TYPE = "application/octet-stream"
 
 
 async def seed_job(
-    db: AsyncSession, *, status: str = "running", family: TrainableFamily = FAMILY, **kwargs: object
+    db: AsyncSession,
+    *,
+    status: str = "running",
+    family: TrainableFamily = FAMILY,
+    epochs: int = 3,
+    current_epoch: int | None = None,
 ) -> TrainingJobRow:
     """Một job huấn luyện đã `commit`, trên một dataset `ready` của cùng họ.
 
     Mọi test cần một `dataset_version_id` có thật (FK `training_jobs`), nên dataset dựng ở
-    đây thay vì ở từng test; `kwargs` chuyển thẳng cho `make_training_job`.
+    đây thay vì ở từng test; bốn tham số còn lại là những gì test của cầu nối thật sự lái.
     """
     dataset = await make_dataset(db, family=family)
     version = await make_dataset_version(db, dataset=dataset)
-    return await make_training_job(db, dataset_version_id=version.id, family=family, status=status, **kwargs)  # type: ignore[arg-type] — kwargs của factory, test truyền đúng tên
+    return await make_training_job(
+        db,
+        dataset_version_id=version.id,
+        family=family,
+        status=status,
+        epochs=epochs,
+        current_epoch=current_epoch,
+    )
 
 
 def weights_key(job_id: str, name: str = WEIGHTS_NAME) -> str:
@@ -72,9 +84,15 @@ def metrics(job_id: str, *points: MetricPoint) -> TrainingMetricsPayload:
     return TrainingMetricsPayload(job_id=job_id, points=points or (metric_point(),))
 
 
-def log_line(job_id: str, *, template: str, params: Mapping[str, str | int | float | bool], level: str = "info"):  # noqa: ANN201 — kiểu trả là `TrainingLogPayload`, khai ở thân cho dòng ≤ 120 ký tự
+def log_line(
+    job_id: str,
+    *,
+    template: str,
+    params: Mapping[str, str | int | float | bool],
+    level: str = "info",
+) -> TrainingLogPayload:
     """Payload `log` một dòng (mẫu câu + tham số; cầu nối tự dựng văn bản)."""
-    return TrainingLogPayload(job_id=job_id, level=level, template=template, params=dict(params))  # type: ignore[arg-type] — `level` là Literal, test truyền đúng ba giá trị
+    return TrainingLogPayload(job_id=job_id, level=level, template=template, params=dict(params))  # type: ignore[arg-type] — `level` là Literal của B5-01, test truyền đúng ba giá trị
 
 
 def finished(

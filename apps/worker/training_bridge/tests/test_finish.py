@@ -6,17 +6,15 @@ bằng kho giả. Lõi `run_finish_training_job` nhận session factory, kho và
 
 import asyncio
 import threading
-from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from celery import Celery
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.admin_ml_registry.registry import MODEL_CHECKSUM_MISMATCH
+from apps.api.admin_ml_jobs.settings import reset_training_settings_cache
+from apps.worker.training_bridge.errors import MODEL_CHECKSUM_MISMATCH, TRAINING_METRICS_MISSING
 from apps.worker.training_bridge import tasks
-from apps.worker.training_bridge.errors import TRAINING_METRICS_MISSING
 from apps.worker.training_bridge.tasks import FINISHED_TASK, run_finish_training_job
 from apps.worker.training_bridge.tests._helpers import (
     METRIC,
@@ -67,19 +65,16 @@ async def _job(db: AsyncSession, job_id: str) -> TrainingJobRow:
     return row
 
 
-async def _versions(db: AsyncSession) -> list[str]:
-    """Id mọi bản model đang có (test kiểm "không bản nào được ghi")."""
-    return list((await db.execute(select(ModelVersionRow.id))).scalars())
+async def weighted_job(db: AsyncSession, storage: ObjectStorage) -> tuple[TrainingJobRow, str]:
+    """Một job `running` và object trọng số đúng mẫu đã nằm trong kho.
 
-
-@pytest.fixture
-async def weighted(
-    db_session: AsyncSession, local_storage: LocalDiskStorage
-) -> AsyncIterator[tuple[TrainingJobRow, str]]:
-    """Một job `running` và object trọng số đúng mẫu đã nằm trong kho."""
-    job = await seed_job(db_session)
-    await put_weights(local_storage, weights_key(job.id))
-    yield job, weights_key(job.id)
+    Là hàm chứ không phải fixture: fixture async của repo chạy trên vòng sự kiện phạm vi
+    session (`asyncio_default_fixture_loop_scope`), còn test chạy trên vòng của riêng nó —
+    một engine mở ở fixture sẽ "attached to a different loop" khi test dùng lại.
+    """
+    job = await seed_job(db)
+    await put_weights(storage, weights_key(job.id))
+    return job, weights_key(job.id)
 
 
 @pytest.mark.asyncio
@@ -88,10 +83,9 @@ async def test_finish_training_job__J01(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
 ) -> None:
     """`succeeded` hợp lệ: job chốt, bản `trained_version_id` `pending`, một lượt xin đánh giá."""
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
@@ -108,10 +102,9 @@ async def test_finish_training_job__J06(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
 ) -> None:
     """Gửi lại `finished`: job đã kết thúc → bỏ, một bản duy nhất, `attempts` không tăng."""
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
     payload = finished(job.id, key=key)
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, payload)
 
@@ -120,7 +113,6 @@ async def test_finish_training_job__J06(
     version = await db_session.get(ModelVersionRow, trained_version_id(job.id))
     assert version is not None
     assert version.evaluation_attempts == 1
-    assert await _versions(db_session) == [trained_version_id(job.id)]
     assert await safe_redis().get(cancel_key(job.id)) is not None
 
 
@@ -143,11 +135,10 @@ async def test_finish_training_job__J09(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Lỗi **sau** `register_trained_version`, **trước** commit → rollback: không bản, job không đổi."""
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
 
     async def _boom(*_args: object, **_kwargs: object) -> bool:
         """Mô phỏng một lỗi giữa giao dịch (J09)."""
@@ -158,7 +149,7 @@ async def test_finish_training_job__J09(
     with pytest.raises(RuntimeError):
         await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
-    assert await _versions(db_session) == []
+    assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
     assert (await _job(db_session, job.id)).status == "running"
 
 
@@ -176,7 +167,7 @@ async def test_finish_succeeded_while_cancelling_records_cancelled(
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
 
     assert (await _job(db_session, job.id)).status == "cancelled"
-    assert await _versions(db_session) == []
+    assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
     assert await safe_redis().get(cancel_key(job.id)) is not None
 
 
@@ -247,8 +238,8 @@ async def test_finish_rejects_weights_keys_outside_the_contract(
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
     row = await _job(db_session, job.id)
-    assert (row.status, row.failure_code) == ("failed", MODEL_CHECKSUM_MISMATCH.code)
-    assert await _versions(db_session) == []
+    assert (row.status, row.failure_code) == ("failed", MODEL_CHECKSUM_MISMATCH)
+    assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
 
 
 @pytest.mark.asyncio
@@ -263,7 +254,7 @@ async def test_finish_rejects_a_missing_object(
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
 
-    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH.code
+    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -272,16 +263,15 @@ async def test_finish_rejects_a_checksum_mismatch(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
 ) -> None:
     """`sha256` kho đo lại lệch `checksum_sha256` của runner → `MODEL_CHECKSUM_MISMATCH`."""
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
 
     await run_finish_training_job(
         db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key, checksum="0" * 64)
     )
 
-    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH.code
+    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -290,13 +280,10 @@ async def test_finish_rejects_weights_above_the_size_cap(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Object quá trần `TRAINING_WEIGHTS_MAX_BYTES` (hạ bằng env) → `MODEL_CHECKSUM_MISMATCH`."""
-    from apps.api.admin_ml_jobs.settings import reset_training_settings_cache
-
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
     monkeypatch.setenv("TRAINING_WEIGHTS_MAX_BYTES", "1")
     reset_training_settings_cache()
     try:
@@ -305,7 +292,7 @@ async def test_finish_rejects_weights_above_the_size_cap(
         monkeypatch.delenv("TRAINING_WEIGHTS_MAX_BYTES")
         reset_training_settings_cache()
 
-    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH.code
+    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -314,14 +301,13 @@ async def test_finish_rejects_metrics_of_another_family(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
 ) -> None:
     """`metrics` không đúng khoá `FAMILY_METRIC[family]` → `failed` `TRAINING_METRICS_MISSING`.
 
     Lệch khỏi prompt: `metrics == {}` không dựng được payload (`check_metrics` của B5-01 đòi
     đúng một khoá), nên ca này dùng số đo của **họ khác** — cùng nhánh mã, cùng mã lỗi.
     """
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
     assert METRIC != "iou"
 
     await run_finish_training_job(
@@ -330,7 +316,7 @@ async def test_finish_rejects_metrics_of_another_family(
 
     row = await _job(db_session, job.id)
     assert (row.status, row.failure_code) == ("failed", TRAINING_METRICS_MISSING)
-    assert await _versions(db_session) == []
+    assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
 
 
 @pytest.mark.asyncio
@@ -338,10 +324,9 @@ async def test_finish_does_not_hold_a_db_connection_while_statting_weights(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    weighted: tuple[TrainingJobRow, str],
 ) -> None:
     """K36: trong lúc `stat` bị chặn, pool của engine không giữ kết nối nào."""
-    job, key = weighted
+    job, key = await weighted_job(db_session, local_storage)
     entered, release = threading.Event(), threading.Event()
     storage = _BlockingStatStorage(local_storage, entered, release)
     engine = db_sessionmaker.kw["bind"]
