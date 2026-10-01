@@ -10,6 +10,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.core.clock import Clock
 from packages.db.models.admin_ml_jobs import TrainingJobRow
 from packages.messaging.payloads.training import trained_version_id
 from packages.ml_contracts.families import FAMILY_METRIC, TrainableFamily
@@ -40,11 +41,14 @@ async def seed_job(
     family: TrainableFamily = FAMILY,
     epochs: int = 3,
     current_epoch: int | None = None,
+    clock: Clock | None = None,
 ) -> TrainingJobRow:
     """Một job huấn luyện đã `commit`, trên một dataset `ready` của cùng họ.
 
     Mọi test cần một `dataset_version_id` có thật (FK `training_jobs`), nên dataset dựng ở
-    đây thay vì ở từng test; bốn tham số còn lại là những gì test của cầu nối thật sự lái.
+    đây thay vì ở từng test. `clock` là đồng hồ **của test**: job phải sinh ra ở mốc đó, vì
+    CHECK `ended_after_started` so `ended_at` do cầu nối ghi với `started_at` của job — một
+    job dựng ở giờ thật rồi chốt bằng `fake_clock` là mốc kết thúc lùi trước mốc bắt đầu.
     """
     dataset = await make_dataset(db, family=family)
     version = await make_dataset_version(db, dataset=dataset)
@@ -55,6 +59,7 @@ async def seed_job(
         status=status,
         epochs=epochs,
         current_epoch=current_epoch,
+        created_at=None if clock is None else clock.now(),
     )
 
 

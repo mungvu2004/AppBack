@@ -65,14 +65,14 @@ async def _job(db: AsyncSession, job_id: str) -> TrainingJobRow:
     return row
 
 
-async def weighted_job(db: AsyncSession, storage: ObjectStorage) -> tuple[TrainingJobRow, str]:
+async def weighted_job(db: AsyncSession, storage: ObjectStorage, clock: FakeClock) -> tuple[TrainingJobRow, str]:
     """Một job `running` và object trọng số đúng mẫu đã nằm trong kho.
 
     Là hàm chứ không phải fixture: fixture async của repo chạy trên vòng sự kiện phạm vi
     session (`asyncio_default_fixture_loop_scope`), còn test chạy trên vòng của riêng nó —
     một engine mở ở fixture sẽ "attached to a different loop" khi test dùng lại.
     """
-    job = await seed_job(db)
+    job = await seed_job(db, clock=clock)
     await put_weights(storage, weights_key(job.id))
     return job, weights_key(job.id)
 
@@ -85,7 +85,7 @@ async def test_finish_training_job__J01(
     fake_clock: FakeClock,
 ) -> None:
     """`succeeded` hợp lệ: job chốt, bản `trained_version_id` `pending`, một lượt xin đánh giá."""
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
@@ -104,7 +104,7 @@ async def test_finish_training_job__J06(
     fake_clock: FakeClock,
 ) -> None:
     """Gửi lại `finished`: job đã kết thúc → bỏ, một bản duy nhất, `attempts` không tăng."""
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
     payload = finished(job.id, key=key)
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, payload)
 
@@ -121,7 +121,7 @@ async def test_finish_training_job__J03(
     db_session: AsyncSession, celery_test_app: Celery, fake_clock: FakeClock
 ) -> None:
     """Payload sai schema là thông điệp độc: `define_task` từ chối trước thân, job không đổi."""
-    job = await seed_job(db_session)
+    job = await seed_job(db_session, clock=fake_clock)
 
     result = celery_test_app.tasks[FINISHED_TASK].apply(args=({"schema_version": 1, "job_id": job.id},))
 
@@ -138,7 +138,7 @@ async def test_finish_training_job__J09(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Lỗi **sau** `register_trained_version`, **trước** commit → rollback: không bản, job không đổi."""
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
 
     async def _boom(*_args: object, **_kwargs: object) -> bool:
         """Mô phỏng một lỗi giữa giao dịch (J09)."""
@@ -161,7 +161,7 @@ async def test_finish_succeeded_while_cancelling_records_cancelled(
     fake_clock: FakeClock,
 ) -> None:
     """`succeeded` tới khi job đang `cancelling` → `cancelled`, không bản model nào được ghi."""
-    job = await seed_job(db_session, status="cancelling")
+    job = await seed_job(db_session, status="cancelling", clock=fake_clock)
     await put_weights(local_storage, weights_key(job.id))
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
@@ -179,7 +179,7 @@ async def test_finish_failed_from_queued_sets_both_timestamps(
     fake_clock: FakeClock,
 ) -> None:
     """`failed` từ `queued`: `started_at = ended_at = now`, mã lỗi của runner đi thẳng vào job."""
-    job = await seed_job(db_session, status="queued")
+    job = await seed_job(db_session, status="queued", clock=fake_clock)
 
     await run_finish_training_job(
         db_sessionmaker, local_storage, fake_clock, finished(job.id, status="failed", error_code="TRAINER_CRASHED")
@@ -198,7 +198,7 @@ async def test_finish_cancelled_from_cancelling_arms_the_cancel_key(
     fake_clock: FakeClock,
 ) -> None:
     """`cancelled` từ `cancelling`: `cancel_key` đặt trước commit (runner có thể còn sống)."""
-    job = await seed_job(db_session, status="cancelling")
+    job = await seed_job(db_session, status="cancelling", clock=fake_clock)
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, status="cancelled"))
 
@@ -231,7 +231,7 @@ async def test_finish_rejects_weights_keys_outside_the_contract(
     other_job: bool,
 ) -> None:
     """Tên sai mẫu hay tiền tố của job khác → `failed` `MODEL_CHECKSUM_MISMATCH`, không bản model."""
-    job = await seed_job(db_session)
+    job = await seed_job(db_session, clock=fake_clock)
     key = model_artifact(_OTHER_JOB_VERSION if other_job else trained_version_id(job.id), name)
     await put_weights(local_storage, key)
 
@@ -250,7 +250,7 @@ async def test_finish_rejects_a_missing_object(
     fake_clock: FakeClock,
 ) -> None:
     """Khoá đúng mẫu nhưng object không có trong kho → `MODEL_CHECKSUM_MISMATCH`."""
-    job = await seed_job(db_session)
+    job = await seed_job(db_session, clock=fake_clock)
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
 
@@ -265,7 +265,7 @@ async def test_finish_rejects_a_checksum_mismatch(
     fake_clock: FakeClock,
 ) -> None:
     """`sha256` kho đo lại lệch `checksum_sha256` của runner → `MODEL_CHECKSUM_MISMATCH`."""
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
 
     await run_finish_training_job(
         db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key, checksum="0" * 64)
@@ -283,7 +283,7 @@ async def test_finish_rejects_weights_above_the_size_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Object quá trần `TRAINING_WEIGHTS_MAX_BYTES` (hạ bằng env) → `MODEL_CHECKSUM_MISMATCH`."""
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
     monkeypatch.setenv("TRAINING_WEIGHTS_MAX_BYTES", "1")
     reset_training_settings_cache()
     try:
@@ -307,7 +307,7 @@ async def test_finish_rejects_metrics_of_another_family(
     Lệch khỏi prompt: `metrics == {}` không dựng được payload (`check_metrics` của B5-01 đòi
     đúng một khoá), nên ca này dùng số đo của **họ khác** — cùng nhánh mã, cùng mã lỗi.
     """
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
     assert METRIC != "iou"
 
     await run_finish_training_job(
@@ -326,7 +326,7 @@ async def test_finish_does_not_hold_a_db_connection_while_statting_weights(
     fake_clock: FakeClock,
 ) -> None:
     """K36: trong lúc `stat` bị chặn, pool của engine không giữ kết nối nào."""
-    job, key = await weighted_job(db_session, local_storage)
+    job, key = await weighted_job(db_session, local_storage, fake_clock)
     entered, release = threading.Event(), threading.Event()
     storage = _BlockingStatStorage(local_storage, entered, release)
     engine = db_sessionmaker.kw["bind"]
