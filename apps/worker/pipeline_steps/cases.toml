@@ -1,0 +1,11 @@
+# Bảng case bắt buộc thêm của task và lịch điều phối bước (B5-06c [8], CASE.md §2.3).
+# `tools/case_gate.py` tự đòi J01, J06 cho mọi task/lịch; danh sách dưới là phần [8] đòi thêm.
+# Chỉ khai case J (`_TEST_TASK_RE` nhận `J\d{2}`, NO-294).
+
+[[task]]
+fn = "orchestrate_pipeline_step_done"
+require = ["J08", "J09", "J10"]
+
+[[task]]
+fn = "sweep_stuck_pipeline_runs"
+require = ["J07"]
