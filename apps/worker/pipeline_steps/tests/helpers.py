@@ -8,6 +8,7 @@ dòng ghim và tiền tố artifact đều đúng hình dạng mà lõi `step_do
 from dataclasses import dataclass
 from typing import Any, Final, cast
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -16,10 +17,12 @@ from apps.api.drawings.tests._helpers import make_scene
 from apps.worker.pipeline_build.artifacts import input_key
 from apps.worker.pipeline_orchestrate.keys import run_prefix
 from apps.worker.pipeline_orchestrate.start import run_pipeline_start
+from apps.worker.pipeline_steps.step_done import run_pipeline_step_done
 from packages.db.hooks import after_commit_idle
-from packages.db.models.drawings import DrawingRow
+from packages.db.models.drawings import DrawingRow, PipelineRunRow
 from packages.messaging.payloads.drawings import PipelineStartPayload
-from packages.messaging.redis import SyncRedis
+from packages.messaging.redis import SyncRedis, broker_redis_sync
+from packages.messaging.streams import EventBus, upload_stream
 from packages.ml_contracts.artifacts import (
     ObjectsResult,
     TextResult,
@@ -128,6 +131,30 @@ def step_result(arranged: Arranged, step: str, **kw: object) -> StepResultPayloa
         return StepResultPayload.model_construct(schema_version=1, **cast("Any", fields))
 
 
-def ml_steps_of(*families: ModelFamily) -> tuple[str, ...]:
-    """Id bước của các họ cho trước — tránh mỗi test tự tra `FAMILY_STEP`."""
-    return tuple(FAMILY_STEP[family] for family in families)
+@pytest.fixture
+def cpu_queue(messaging_env: None) -> SyncRedis:
+    """Hàng `pipeline.cpu` dùng chung cả phiên; xoá trước khi đếm (BE-00 §12)."""
+    client = broker_redis_sync()
+    client.delete(CPU_QUEUE)
+    return client
+
+
+async def deliver_ml(
+    maker: Maker, storage: ObjectStorage, arranged: Arranged, family: ModelFamily, clock: FakeClock
+) -> None:
+    """Một lượt giao `step_done` `completed` cho bước ML của `family`, artifact đã nằm trong kho."""
+    keys = await put_ml_artifacts(storage, arranged, family)
+    payload = step_result(arranged, FAMILY_STEP[family], artifact_keys=keys)
+    await run_pipeline_step_done(payload, sessionmaker=maker, clock=clock)
+
+
+async def steps_seen(bus: EventBus, upload_id: str, *, after: int) -> list[tuple[object, object, object]]:
+    """Khung `Progress` mới kể từ sự kiện thứ `after`, dạng `(status, step, progressPercent)`."""
+    events = await bus.read_after(upload_stream(upload_id), "0-0")
+    return [(e.data["status"], e.data["step"], e.data["progressPercent"]) for e in events[after:]]
+
+
+async def run_row(maker: Maker, run_id: str) -> PipelineRunRow:
+    """Dòng `pipeline_runs` đọc lại trên session mới — trạng thái đã commit, không phải cache."""
+    async with maker() as db:
+        return (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == run_id))).scalar_one()
