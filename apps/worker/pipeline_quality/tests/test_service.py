@@ -9,7 +9,7 @@ import asyncio
 import json
 from datetime import timedelta
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, NoReturn, cast
 
 import pytest
 from sqlalchemy import delete, select, update
@@ -21,7 +21,7 @@ from apps.api.spatial_read.codec import document_to_json
 from apps.api.spatial_read.documents import load_document
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.tests.helpers import open_run_at_build
-from apps.worker.pipeline_quality import tasks
+from apps.worker.pipeline_quality import service, tasks
 from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
@@ -178,9 +178,23 @@ async def test_run_quality__closed_but_not_completed_skips_without_redis(
     local_storage: ObjectStorage,
     fake_clock: FakeClock,
     quality_env: None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Lượt đã `closed` (bị thay) nhưng chưa từng `completed` → `skipped`, không soát Redis (F2)."""
+    """Lượt đã `closed` (bị thay) nhưng chưa từng `completed` → `skipped`, không gọi `streams_redis`.
+
+    Đếm lời gọi thật thay vì chỉ khẳng định `outcome`: xoá chặn `status == "completed"` ở
+    `service._handle_early_exit` thì test này phải đỏ (trước đó nó xanh dù mất chặn, TEST-02).
+    """
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+    calls = 0
+
+    def _counting_streams_redis() -> NoReturn:
+        """Đếm lời gọi rồi ném — thay cho client Redis thật, lượt này không được chạm tới nó."""
+        nonlocal calls
+        calls += 1
+        raise AssertionError("không được gọi streams_redis khi lượt chưa từng completed")
+
+    monkeypatch.setattr(service, "streams_redis", _counting_streams_redis)
     async with db_sessionmaker() as db:
         await start_run(db, upload_id=arranged.upload_id, clock=fake_clock)
         await db.commit()
@@ -188,6 +202,7 @@ async def test_run_quality__closed_but_not_completed_skips_without_redis(
     outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
 
     assert outcome == "skipped"
+    assert calls == 0
 
 
 @pytest.mark.asyncio(loop_scope="function")

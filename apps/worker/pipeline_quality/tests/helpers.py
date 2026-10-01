@@ -14,8 +14,6 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.ml.runtime.settings import reset_ml_settings_cache
-from apps.ml.runtime.tasks_util import reset_infer_context
 from apps.worker.pipeline_build.tasks import reset_build_context
 from apps.worker.pipeline_orchestrate.tasks import reset_orchestrate_storage
 from apps.worker.pipeline_persist.service import run_persist
@@ -36,9 +34,10 @@ _TASK_RESETS = (
     reset_orchestrate_storage,
     reset_persist_storage,
     reset_quality_storage,
-    reset_infer_context,
 )
-"""Danh sách `reset_*` **đầy đủ** (R-02): mọi tiến trình worker trong một dây e2e, kể cả ML."""
+"""`reset_*` của mọi tiến trình worker `pipeline_quality` chạm tới (R-02); phần suy luận ML
+(`reset_infer_context`) thuộc fixture `e2e_env` của `tests/e2e/test_pipeline_e2e.py` — module này
+không nhập gói suy luận ([9])."""
 
 
 @pytest_asyncio.fixture(loop_scope="function")
@@ -47,7 +46,7 @@ async def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     giữa `test_runtime.py` (B) và `tests/e2e/test_pipeline_e2e.py` (C) — gom theo R-02.
 
     Task tự đọc biến môi trường trên vòng sự kiện của chính nó (không truyền fixture object
-    vào task). Thiếu `reset_infer_context` làm lượt e2e thứ hai đọc kho ML cũ (C2).
+    vào task). `ML_BACKEND` chỉ e2e dùng nhưng đặt chung ở đây vô hại (chỉ một biến môi trường).
     """
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", db_url)
@@ -59,12 +58,7 @@ async def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("DB_CONNECT_TIMEOUT_S", "10")
     monkeypatch.setenv("METRICS_PORT", "0")
     monkeypatch.setenv("ML_BACKEND", "fake")
-    caches = (
-        reset_settings_cache,
-        reset_database_settings_cache,
-        reset_storage_settings_cache,
-        reset_ml_settings_cache,
-    )
+    caches = (reset_settings_cache, reset_database_settings_cache, reset_storage_settings_cache)
     for reset in caches:
         reset()
     for reset in _TASK_RESETS:

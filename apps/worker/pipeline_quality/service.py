@@ -69,8 +69,6 @@ async def _last_event_is_settled(upload_id: str) -> bool:
     if not entries:
         return True
     _, fields = entries[0]
-    if fields is None:
-        return True
     data: dict[str, object] = json.loads(fields[FIELD])
     return bool(data.get("status") == "completed")
 
@@ -85,7 +83,7 @@ async def _reconcile_stale_progress(sessionmaker: async_sessionmaker[AsyncSessio
 
 
 async def _run_status(sessionmaker: async_sessionmaker[AsyncSession], run_id: str) -> str | None:
-    """`status` hiện tại của lượt, đọc không khoá (F2, K33 cấm ghi chứ không cấm đọc)."""
+    """`status` hiện tại của lượt, đọc không khoá (K33 cấm ghi `pipeline_runs`, không cấm đọc)."""
     async with session_scope(sessionmaker) as db:
         stmt = select(PipelineRunRow.status).where(PipelineRunRow.id == run_id)
         return (await db.execute(stmt)).scalar_one_or_none()
@@ -122,7 +120,7 @@ async def _phase_one(
 async def _handle_early_exit(
     sessionmaker: async_sessionmaker[AsyncSession], outcome: _EarlyExit, ctx: PersistContext | None
 ) -> None:
-    """J10 chỉ cho lượt đã `completed` thật (F2); mọi lý do khác không chạm Redis (F3)."""
+    """J10 chỉ soát Redis cho lượt đã thật sự `completed`; mọi lý do đóng khác không chạm Redis ([6])."""
     if outcome != "closed" or ctx is None:
         return
     if await _run_status(sessionmaker, ctx.run_id) == "completed":
@@ -136,7 +134,7 @@ async def run_quality(
     storage: ObjectStorage,
     clock: Clock,
 ) -> QualityOutcome:
-    """Kiểm chất lượng một lượt theo B5-07 [6] bước 1 tới 4; chủ: việc A."""
+    """Kiểm chất lượng một lượt theo B5-07 [6] bước 1 tới 4."""
     async with session_scope(sessionmaker) as db:
         read = await _phase_one(db, payload.run_id)
         await db.rollback()
@@ -158,8 +156,8 @@ async def run_quality(
         else:
             step_result = await record_step(db, run_id=payload.run_id, step=STEP, status="completed", clock=clock)
             completed = step_result is not None
-            # `record_step` trả `None` sau khi đã tự `_abandon(FLOOR_DELETED)` khi tầng quá cửa sổ
-            # (F1): không `rollback` ở đây, để `session_scope` commit bản ghi hỏng đó thay vì xoá nó.
+            # `record_step` trả `None` sau khi đã tự `_abandon(FLOOR_DELETED)` khi tầng quá cửa sổ:
+            # không `rollback` ở đây, để `session_scope` commit bản ghi hỏng đó thay vì xoá nó (R-05).
     await after_commit_idle(db)
     if not completed:
         return "skipped"
@@ -175,6 +173,6 @@ async def fail_quality(
     sessionmaker: async_sessionmaker[AsyncSession],
     clock: Clock,
 ) -> None:
-    """`on_failed`: đánh hỏng bước `qualityCheck` với mã đã cho (K33); chủ: việc A."""
+    """`on_failed`: đánh hỏng bước `qualityCheck` với mã đã cho (K33)."""
     async with session_scope(sessionmaker) as db:
         await record_step(db, run_id=payload.run_id, step=STEP, status="failed", clock=clock, error_code=code)

@@ -29,8 +29,24 @@ def _wall(id_: str, *, confidence: float, extra: dict[str, object] | None = None
 
 
 def test_build_report__ai_below_threshold_counts_as_low_confidence() -> None:
-    """Ngưỡng 0,7: một tường AI chưa duyệt với `confidence < 0.7` → `lowConfidence.walls == 1`."""
-    layer = SpatialLayer(walls=(_wall("W-WALL0000000001", confidence=0.5),), openings=(), rooms=(), furniture=())
+    """Ngưỡng 0,7, bốn tường ([8]): AI 0,5 và AI 0,9 (chỉ 0,5 dưới ngưỡng), `human` 0,3 và
+    `human` `reviewed` 0,2 (cả hai bị loại dù dưới ngưỡng) → `lowConfidence.walls == 1`.
+
+    Hai điều kiện loại trừ của `_low_confidence_count` (`source == "ai"`, `reviewed is False`)
+    mỗi cái có một tường đi qua nhánh sai của nó (TEST-02): bỏ điều kiện `source` thì tường
+    `human` 0,3 bị đếm nhầm; bỏ điều kiện `reviewed` thì tường `human reviewed` 0,2 bị đếm nhầm.
+    """
+    layer = SpatialLayer(
+        walls=(
+            _wall("W-WALL0000000001", confidence=0.5),
+            _wall("W-WALL0000000002", confidence=0.9),
+            _wall("W-WALL0000000003", confidence=0.3, extra={"source": "human", "reviewed": False}),
+            _wall("W-WALL0000000004", confidence=0.2, extra={"source": "human", "reviewed": True}),
+        ),
+        openings=(),
+        rooms=(),
+        furniture=(),
+    )
     report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert report.low_confidence == {"walls": 1, "openings": 0, "rooms": 0, "furniture": 0}
 
