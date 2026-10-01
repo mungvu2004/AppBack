@@ -1,18 +1,109 @@
 """Lõi task `pipeline.quality.run` (B5-07 [6]): kiểm lớp đã ghi, ghi `quality.json`, đóng lượt.
 
-Chủ: việc A. Prep chỉ dựng chữ ký để B (test runtime) và C (e2e) viết ngay từ phút 0.
+Ba pha vì K36, cùng khuôn `pipeline_persist.service`: pha 1 (một session) khoá lượt, đọc lớp
+và cài đặt dự án rồi **đóng**; pha 2 dựng báo cáo và `put` kho **ngoài** mọi session; pha 3
+(session mới) khoá lại, `record_step(completed)`, commit. Một lượt bị thay ở pha 2 (giữa
+`put` và khoá lại pha 3) chỉ còn `skipped` — báo cáo đã ghi đè vô hại, lượt mới sẽ ghi lại.
+
+Nhánh J10 (lượt đã kết thúc khi tới `lock_run`, kể cả đã thay) soát sự kiện cuối trên stream
+tiến độ: còn thiếu trạng thái cuối (ví dụ tiến trình trước chết ngay sau `record_step` mà
+chưa phát) thì phát lại một lần; đã có thì không chạm Redis thêm. Redis treo/timeout coi như
+"đã có" để không phát đôi `completed` (K18).
 """
 
-from typing import Literal
+import asyncio
+import json
+import logging
+from decimal import Decimal
+from typing import Final, Literal
 
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.drawings.progress import LAST_STEP
+from apps.api.drawings.runs import lock_run, publish_progress_after_commit, record_step
+from apps.api.project_settings.read import read_settings
+from apps.api.spatial_read.codec import DocumentCorruptError
+from apps.api.spatial_read.documents import FloorDocument, load_document
+from apps.worker.pipeline_orchestrate.pins import load_pins
+from apps.worker.pipeline_persist.context import PersistContext, load_context
+from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
+from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT, QUALITY_REPORT_MAX_BYTES, build_report
 from packages.core.clock import Clock
+from packages.db.engine import session_scope
+from packages.db.hooks import after_commit_idle
 from packages.messaging.payloads.pipeline import RunStepPayload
+from packages.messaging.redis import streams_redis
+from packages.messaging.streams import FIELD, upload_stream
+from packages.messaging.tasks import PermanentError
+from packages.storage.keys import run_artifact
 from packages.storage.port import ObjectStorage
+
+_log: Final = logging.getLogger(__name__)
+
+STEP: Final = LAST_STEP
+"""Tên bước `qualityCheck`; cùng một hằng với FE xem là bước cuối (BE-BIND §4)."""
 
 QualityOutcome = Literal["completed", "skipped"]
 """Kết quả một lượt giao: đã đóng lượt, hay bỏ qua (lượt muộn, bị thay, chưa ghi lớp, giao lặp)."""
+
+_XREVRANGE_TIMEOUT_S: Final = 1.0
+"""Trần đọc sự kiện cuối (nhánh J10): dọn dẹp phụ, không phải đường chính, không đáng chờ lâu."""
+
+
+async def _last_event_is_settled(upload_id: str) -> bool:
+    """Sự kiện cuối của stream tiến độ đã là trạng thái cuối, hay không rõ (Redis treo/rỗng).
+
+    Chỉ khi biết chắc sự kiện cuối **không** phải `completed` mới đáng phát lại; mọi trường hợp
+    khác (đã `completed`, stream rỗng/đã hết hạn, hay không đọc được) đều để yên (K18).
+    """
+    try:
+        client = streams_redis()
+        entries = await asyncio.wait_for(
+            client.xrevrange(upload_stream(upload_id), "+", "-", count=1), _XREVRANGE_TIMEOUT_S
+        )
+    except (TimeoutError, RedisError):
+        return True
+    if not entries:
+        return True
+    _, fields = entries[0]
+    data = json.loads(fields[FIELD])
+    return data.get("status") == "completed"
+
+
+async def _reconcile_stale_progress(sessionmaker: async_sessionmaker[AsyncSession], upload_id: str) -> None:
+    """Phát lại `Progress` một lần nếu sự kiện cuối chưa phản ánh trạng thái cuối (nhánh J10)."""
+    if await _last_event_is_settled(upload_id):
+        return
+    async with session_scope(sessionmaker) as db:
+        await publish_progress_after_commit(db, upload_id)
+    await after_commit_idle(db)
+
+
+async def _phase_one(
+    db: AsyncSession, run_id: str
+) -> tuple[PersistContext, FloorDocument, int, Decimal] | None:
+    """Khoá lượt, đọc lớp đã ghi + cài đặt dự án; `None` khi không còn gì để kiểm.
+
+    Lượt chưa `persisted_revision` (chưa qua B5-06b) → log `quality_before_persist`, `None`.
+    """
+    ctx = await load_context(db, run_id)
+    if ctx is None:
+        return None
+    if await lock_run(db, run_id=run_id) is None:
+        return None
+    pins = await load_pins(db, run_id)
+    if pins is None or pins.persisted_revision is None:
+        _log.info("quality_before_persist", extra={"run_id": run_id})
+        return None
+    try:
+        document = await load_document(db, ctx.floor_pk)
+    except DocumentCorruptError as exc:
+        raise PermanentError(PIPELINE_RESULT_INVALID) from exc
+    if document is None:
+        raise PermanentError(PIPELINE_RESULT_INVALID)
+    threshold = (await read_settings(db, ctx.project_id)).confidence_threshold
+    return ctx, document, pins.persisted_revision, threshold
 
 
 async def run_quality(
@@ -23,7 +114,34 @@ async def run_quality(
     clock: Clock,
 ) -> QualityOutcome:
     """Kiểm chất lượng một lượt theo B5-07 [6] bước 1 tới 4; chủ: việc A."""
-    raise NotImplementedError
+    async with session_scope(sessionmaker) as db:
+        early_ctx = await load_context(db, payload.run_id)
+        if early_ctx is None:
+            return "skipped"
+        read = await _phase_one(db, payload.run_id)
+        await db.rollback()
+        if read is None:
+            await _reconcile_stale_progress(sessionmaker, early_ctx.upload_id)
+            return "skipped"
+
+    ctx, document, revision, threshold = read
+    report = build_report(
+        run_id=payload.run_id, revision=revision, layer=document.layer, level_id=ctx.level_id, threshold=threshold
+    )
+    key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, payload.run_id, STEP, QUALITY_ARTIFACT)
+    await storage.put(key, report.to_json_bytes(), content_type="application/json", max_bytes=QUALITY_REPORT_MAX_BYTES)
+
+    async with session_scope(sessionmaker) as db:
+        if await lock_run(db, run_id=payload.run_id) is None:
+            await db.rollback()
+            return "skipped"
+        if await record_step(db, run_id=payload.run_id, step=STEP, status="completed", clock=clock) is None:
+            await db.rollback()
+            return "skipped"
+    await after_commit_idle(db)
+    if report.has_critical:
+        _log.info("quality_critical_issues", extra={"run_id": payload.run_id, "issue_count": len(report.issues)})
+    return "completed"
 
 
 async def fail_quality(
@@ -34,4 +152,5 @@ async def fail_quality(
     clock: Clock,
 ) -> None:
     """`on_failed`: đánh hỏng bước `qualityCheck` với mã đã cho (K33); chủ: việc A."""
-    raise NotImplementedError
+    async with session_scope(sessionmaker) as db:
+        await record_step(db, run_id=payload.run_id, step=STEP, status="failed", clock=clock, error_code=code)
