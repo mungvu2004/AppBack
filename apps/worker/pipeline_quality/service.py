@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 from decimal import Decimal
-from typing import Final, Literal
+from typing import Final, Literal, cast
 
 from redis.exceptions import RedisError
 from sqlalchemy import select
@@ -69,7 +69,9 @@ async def _last_event_is_settled(upload_id: str) -> bool:
     if not entries:
         return True
     _, fields = entries[0]
-    data: dict[str, object] = json.loads(fields[FIELD])
+    # `xrevrange` không bao giờ trả `fields=None` (R-11: không viết nhánh không tới được);
+    # stub kiểu của redis-py chỉ rộng hơn giá trị thật.
+    data: dict[str, object] = json.loads(cast("dict[str, str]", fields)[FIELD])
     return bool(data.get("status") == "completed")
 
 
