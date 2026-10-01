@@ -11,8 +11,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterable, Callable, Coroutine, Iterator
-from pathlib import Path
+from collections.abc import AsyncIterable, Callable, Coroutine
 from typing import Final, NoReturn, cast
 
 import pytest
@@ -26,17 +25,16 @@ from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_quality import service, tasks
 from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
-from packages.core.settings import reset_settings_cache
+from apps.worker.pipeline_quality.tests.helpers import process_env as process_env
 from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.models.spatial import FloorDocumentRow
-from packages.db.settings import DatabaseSettings, reset_database_settings_cache
+from packages.db.settings import DatabaseSettings
 from packages.messaging.celery_app import send_task
 from packages.messaging.redis import AsyncRedis, SyncRedis, streams_redis_sync
 from packages.messaging.streams import FIELD, upload_stream
 from packages.storage.keys import run_artifact
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import ObjectInfo
-from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.db import drop_after_commit
 from packages.testing.fixtures.messaging import WorkerFactory
@@ -50,33 +48,11 @@ WAIT_S: Final = 30.0
 _log = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Môi trường của một tiến trình worker thật, khuôn `pipeline_persist/tests/test_persist_runtime.py:74-96`.
-
-    Task tự dựng `worker_sessionmaker()` trên vòng sự kiện của chính nó nên không đưa
-    `db_sessionmaker` của fixture vào task (dùng chéo vòng ném "attached to a different loop").
-    """
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("STORAGE_BACKEND", "local")
-    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
-    monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
-    monkeypatch.setenv("SECRET_KEY", "fixture-secret-for-pipeline-quality-runtime-01")
-    caches = (reset_settings_cache, reset_database_settings_cache, reset_storage_settings_cache)
-    for reset in caches:
-        reset()
-    tasks.reset_quality_storage()
-    yield
-    tasks.reset_quality_storage()
-    for reset in caches:
-        reset()
-
-
 def on_own_loop[T](db_url: str, work: Callable[[Maker], Coroutine[object, object, T]]) -> T:
     """Chạy `work` trên engine dựng riêng cho vòng `asyncio.run` này; khuôn `test_persist_runtime.py:99-116`."""
 
     async def main() -> T:
+        """Dựng engine riêng cho vòng này, chạy `work`, rồi `dispose`."""
         engine = create_engine(DatabaseSettings(database_url=db_url))
         try:
             return await work(create_sessionmaker(engine))
@@ -207,6 +183,7 @@ async def test_check_pipeline_quality__J06(
     async def counting_put(
         key: str, data: bytes | AsyncIterable[bytes], *, content_type: str, max_bytes: int
     ) -> ObjectInfo:
+        """`put` thật, chỉ thêm đếm số lượt gọi để test khẳng định không ghi đè lần hai."""
         nonlocal put_calls
         put_calls += 1
         return await original_put(key, data, content_type=content_type, max_bytes=max_bytes)
@@ -243,6 +220,7 @@ def test_check_pipeline_quality__J03(
     arranged = on_own_loop(db_url, lambda maker: open_run_at_quality(maker, local_storage, fake_clock))
 
     async def _corrupt(maker: Maker) -> None:
+        """Ghi `schema_version` sai lược đồ trực tiếp bằng SQL để giả lập tài liệu hỏng."""
         async with maker() as db:
             await db.execute(
                 update(FloorDocumentRow).where(FloorDocumentRow.floor_pk == arranged.floor_pk).values(schema_version=2)
@@ -292,9 +270,11 @@ class _HangingXrevrange:
     """
 
     def __init__(self, started: asyncio.Event) -> None:
+        """Giữ cờ báo cho test biết `xrevrange` đã được gọi."""
         self._started = started
 
     async def xrevrange(self, *args: object, **kwargs: object) -> NoReturn:
+        """Treo vô hạn (chỉ `wait_for` ngoài huỷ được) để giả lập Redis không trả lời."""
         self._started.set()
         await asyncio.Event().wait()
         raise AssertionError("không tới đây: Event không ai đặt")
@@ -304,6 +284,7 @@ class _FailingXrevrange:
     """`xrevrange` ném `RedisError` ngay (nhánh lỗi, không treo) — tách khỏi nhánh `TimeoutError`."""
 
     async def xrevrange(self, *args: object, **kwargs: object) -> NoReturn:
+        """Ném `RedisError` ngay lập tức, không treo."""
         raise redis.exceptions.RedisError("redis-broker giả lập hỏng")
 
 

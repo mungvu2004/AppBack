@@ -40,19 +40,14 @@ from apps.api.spatial_read.counts import layer_counts, recount_floor
 from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_write.tests._route_helpers import layer_path as write_layer_path
 from apps.api.spatial_write.tests._route_helpers import wire
-from apps.ml.runtime.settings import reset_ml_settings_cache
-from apps.ml.runtime.tasks_util import reset_infer_context
-from apps.worker.pipeline_build.tasks import reset_build_context
 from apps.worker.pipeline_orchestrate.pins import load_pins
-from apps.worker.pipeline_orchestrate.tasks import reset_orchestrate_storage
-from apps.worker.pipeline_persist.tasks import reset_persist_storage
-from apps.worker.pipeline_quality.tasks import reset_quality_storage
+from apps.worker.pipeline_quality.tests.helpers import process_env as process_env
 from packages.core.clock import SystemClock
-from packages.core.settings import get_core_settings, reset_settings_cache
+from packages.core.settings import get_core_settings
 from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.models.auth import User
 from packages.db.models.drawings import PipelineRunRow
-from packages.db.settings import DatabaseSettings, reset_database_settings_cache
+from packages.db.settings import DatabaseSettings
 from packages.messaging.celery_app import QUEUES
 from packages.messaging.redis import streams_redis
 from packages.messaging.schedules import discover_submodules
@@ -60,7 +55,6 @@ from packages.messaging.streams import EventBus, upload_stream
 from packages.ml_contracts.synthetic import render_plan
 from packages.storage.keys import run_artifact
 from packages.storage.local import LocalDiskStorage
-from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
@@ -90,48 +84,6 @@ def test_synthetic_plan_has_no_frame() -> None:
     plan = render_plan(SEED)
     quad = find_frame(load_raster(plan.image_png, max_pixels=DEFAULT_MAX_PIXELS))
     assert quad is None, quad
-
-
-@pytest_asyncio.fixture(loop_scope="function")
-async def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
-    """Môi trường một tiến trình duy nhất cho cả app thật và task thật: cùng DB, cùng kho đĩa.
-
-    Khuôn `apps/worker/pipeline_persist/tests/test_persist_runtime.py::process_env` cộng
-    `ML_BACKEND=fake` (B5-01): task tự đọc biến môi trường trên vòng sự kiện của chính nó, nên
-    mọi thứ phải nằm trong `monkeypatch.setenv`, không truyền fixture object vào task.
-    """
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("STORAGE_BACKEND", "local")
-    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
-    monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
-    monkeypatch.setenv("SECRET_KEY", "fixture-secret-for-pipeline-e2e-01")
-    monkeypatch.delenv("SECRET_KEY_PREVIOUS", raising=False)
-    monkeypatch.setenv("DB_CONNECT_TIMEOUT_S", "10")
-    monkeypatch.setenv("METRICS_PORT", "0")
-    monkeypatch.setenv("ML_BACKEND", "fake")
-    caches = (
-        reset_settings_cache,
-        reset_database_settings_cache,
-        reset_storage_settings_cache,
-        reset_ml_settings_cache,
-    )
-    task_resets = (
-        reset_build_context,
-        reset_orchestrate_storage,
-        reset_persist_storage,
-        reset_quality_storage,
-        reset_infer_context,
-    )
-    for reset in caches:
-        reset()
-    for reset in task_resets:
-        reset()
-    yield
-    for reset in task_resets:
-        reset()
-    for reset in caches:
-        reset()
 
 
 @pytest.fixture
@@ -342,6 +294,7 @@ async def test_spatial_read_layer__C01_pipeline(
     threshold = float(server["threshold"])
 
     def _low(items: list[dict[str, Any]]) -> int:
+        """Số mục AI chưa duyệt có confidence dưới ngưỡng, trong một danh sách."""
         return sum(
             1 for item in items if item["source"] == "ai" and not item["reviewed"] and item["confidence"] < threshold
         )
@@ -388,6 +341,7 @@ async def test_pipeline_e2e_rerun_keeps_reviewed(
     assert first["status"] == "completed", first
 
     async def _read_doc(maker: async_sessionmaker[AsyncSession]) -> Any:
+        """Đọc lại tài liệu tầng bằng session mới để khẳng định đã commit thật."""
         async with maker() as db:
             doc = await load_document(db, floor_pk)
             assert doc is not None
@@ -462,6 +416,7 @@ async def test_pipeline_e2e_rerun_rescales_page(
     assert first["status"] == "completed", first
 
     async def _read_doc(maker: async_sessionmaker[AsyncSession]) -> Any:
+        """Đọc lại tài liệu tầng bằng session mới để khẳng định đã commit thật."""
         async with maker() as db:
             doc = await load_document(db, floor_pk)
             assert doc is not None
@@ -528,5 +483,6 @@ async def _run_id_of(maker: async_sessionmaker[AsyncSession], upload_id: str) ->
 
 
 async def _load_pins(maker: async_sessionmaker[AsyncSession], run_id: str) -> Any:
+    """Dòng `pipeline_run_models` của lượt chạy, đọc qua session riêng."""
     async with maker() as db:
         return await load_pins(db, run_id)
