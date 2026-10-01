@@ -9,7 +9,7 @@ không `apps.ml` (K, B6-03b cùng đợt).
 - `sweep_lost_training_jobs` (1'): job `running|cancelling` có nhịp tim quá hạn **và**
   `claim_key` vắng → chốt `failed`/`cancelled`. Claim còn → chỉ log, không đổi (runner có
   thể chỉ chậm gửi nhịp tim).
-- `requeue_training_jobs` (5'): job `queued` đứng im quá `training_requeue_after_s ×
+- `requeue_training_jobs` (5'): job `queued` đứng im quá `training_requeue_after_s x
   2^requeue_count` **và** `claim_key` vắng → gửi lại tối đa sáu lượt, hết lượt mà vẫn quá
   hạn → `failed` `TRAINING_DISPATCH_STALLED`.
 - `purge_training_job_artifacts` (1h): job `failed|cancelled` đã `ended_at` quá
@@ -76,7 +76,7 @@ async def _claims_present(job_ids: Sequence[str]) -> dict[str, bool] | None:
     """`claim_key` của cả lô (không rỗng) bằng một lượt `MGET`; `None` nếu Redis lỗi (bỏ cả lượt, K)."""
     try:
         values = await safe_redis().mget([claim_key(job_id) for job_id in job_ids])
-    except Exception:
+    except Exception:  # noqa: BLE001 — Redis lỗi kiểu gì cũng là "không đọc được claim": bỏ cả lượt, không đổi job nào
         return None
     return dict(zip(job_ids, (value is not None for value in values), strict=True))
 
@@ -113,7 +113,7 @@ async def _finish_lost_job(
         row.ended_at = now
         try:
             await arm_cancel_key(job_id)
-        except Exception:
+        except Exception:  # noqa: BLE001 — Redis lỗi kiểu gì cũng rollback: không chốt job khi `cancel_key` chưa đặt
             await db.rollback()
             _log.warning("training_heartbeat_lost_cancel_key_failed", extra={"job_id": job_id})
             return False
@@ -200,7 +200,7 @@ async def _process_requeue_job(sessionmaker: async_sessionmaker[AsyncSession], c
             row.ended_at = now
             try:
                 await arm_cancel_key(job_id)
-            except Exception:
+            except Exception:  # noqa: BLE001 — như trên: không chốt `failed` khi `cancel_key` chưa đặt được
                 await db.rollback()
                 _log.warning("training_dispatch_stalled_cancel_key_failed", extra={"job_id": job_id})
                 return False

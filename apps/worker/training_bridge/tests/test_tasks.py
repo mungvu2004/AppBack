@@ -32,7 +32,7 @@ from apps.worker.training_bridge.tests._helpers import (
     read_job,
     seed_job,
 )
-from packages.db.models.admin_ml_jobs import TrainingJobRow, TrainingLogRow, TrainingMetricRow
+from packages.db.models.admin_ml_jobs import TrainingLogRow, TrainingMetricRow
 from packages.messaging.payloads.training import LOG_TEMPLATES, cancel_key
 from packages.messaging.redis import safe_redis
 from packages.ml_contracts.payloads import EvaluationDonePayload

@@ -13,8 +13,8 @@ from celery import Celery
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.admin_ml_jobs.settings import reset_training_settings_cache
-from apps.worker.training_bridge.errors import MODEL_CHECKSUM_MISMATCH, TRAINING_METRICS_MISSING
 from apps.worker.training_bridge import tasks
+from apps.worker.training_bridge.errors import MODEL_CHECKSUM_MISMATCH, TRAINING_METRICS_MISSING
 from apps.worker.training_bridge.tasks import FINISHED_TASK, run_finish_training_job
 from apps.worker.training_bridge.tests._helpers import (
     METRIC,
@@ -54,7 +54,7 @@ class _BlockingStatStorage:
         await asyncio.to_thread(self._release.wait)
         return await self._inner.stat(key)
 
-    def __getattr__(self, name: str) -> Any:  # noqa: ANN401 — chuyển tiếp nguyên vẹn mọi phương thức khác của kho
+    def __getattr__(self, name: str) -> Any:  # chuyển tiếp nguyên vẹn mọi phương thức khác của kho
         """Mọi phương thức khác đi thẳng xuống kho thật."""
         return getattr(self._inner, name)
 

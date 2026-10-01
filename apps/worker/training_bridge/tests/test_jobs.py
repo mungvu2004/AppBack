@@ -35,6 +35,7 @@ from apps.worker.training_bridge.jobs import (
     run_sweep_lost_training_jobs,
     sweep_lost_training_jobs,
 )
+from apps.worker.training_bridge.tests._helpers import process_maker, worker_process_env
 from packages.db.models.admin_ml_jobs import TrainingJobRow
 from packages.db.settings import reset_database_settings_cache
 from packages.messaging.celery_app import queue_for
@@ -45,7 +46,6 @@ from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.keys import model_artifact
 from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.admin_ml_datasets import make_dataset, make_dataset_version
-from apps.worker.training_bridge.tests._helpers import process_maker, worker_process_env
 from packages.testing.factories.admin_ml_jobs import make_training_job
 from packages.testing.factories.admin_ml_registry import make_model_version
 from packages.testing.fixtures.clock import FakeClock
@@ -276,7 +276,7 @@ async def test_sweep_lost_training_jobs_skips_a_row_another_beat_already_finishe
         started_at=stale - timedelta(minutes=1),
         last_heartbeat_at=stale,
     )
-    real_claims_present = jobs_module._claims_present  # noqa: SLF001 — mô phỏng beat khác chen vào giữa lượt
+    real_claims_present = jobs_module._claims_present  # mô phỏng beat khác chen vào giữa lượt
 
     async def _claims_present_then_race(job_ids: list[str]) -> dict[str, bool] | None:
         """`_claims_present` thật, nhưng đổi trạng thái của job ngay trước khi trả — giả một beat khác đã chốt nó."""
@@ -403,7 +403,7 @@ async def test_requeue_training_jobs_skips_a_row_another_beat_already_requeued(
     job = await make_training_job(db_session, dataset_version_id=dsv, status="queued", created_at=fake_clock.now())
     settings = get_training_settings()
     fake_clock.advance(timedelta(seconds=settings.training_requeue_after_s + 1))
-    real_claims_present = jobs_module._claims_present  # noqa: SLF001 — mô phỏng beat khác chen vào giữa lượt
+    real_claims_present = jobs_module._claims_present  # mô phỏng beat khác chen vào giữa lượt
 
     async def _claims_present_then_race(job_ids: list[str]) -> dict[str, bool] | None:
         """`_claims_present` thật, nhưng đổi trạng thái của job ngay trước khi trả — giả một beat khác đã gửi lại nó."""
