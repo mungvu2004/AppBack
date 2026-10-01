@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.worker.training_bridge.tasks import FINISHED_TASK, HEARTBEAT_TASK, LOG_TASK, METRICS_TASK
 from apps.worker.training_bridge.tests._helpers import (
-    METRIC,
     finished,
     heartbeat,
     log_line,
