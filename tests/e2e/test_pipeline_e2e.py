@@ -41,6 +41,7 @@ from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_write.tests._route_helpers import layer_path as write_layer_path
 from apps.api.spatial_write.tests._route_helpers import wire
 from apps.ml.runtime.settings import reset_ml_settings_cache
+from apps.ml.runtime.tasks_util import reset_infer_context
 from apps.worker.pipeline_build.tasks import reset_build_context
 from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_orchestrate.tasks import reset_orchestrate_storage
@@ -53,7 +54,9 @@ from packages.db.models.auth import User
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.settings import DatabaseSettings, reset_database_settings_cache
 from packages.messaging.celery_app import QUEUES
+from packages.messaging.redis import streams_redis
 from packages.messaging.schedules import discover_submodules
+from packages.messaging.streams import EventBus, upload_stream
 from packages.ml_contracts.synthetic import render_plan
 from packages.storage.keys import run_artifact
 from packages.storage.local import LocalDiskStorage
@@ -63,6 +66,9 @@ from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.auth import SignedIn, sign_in
 from packages.testing.fixtures.messaging import WorkerFactory
+from packages.vision.preprocess.geometry import find_frame
+from packages.vision.preprocess.raster import load_raster
+from packages.vision.preprocess.types import DEFAULT_MAX_PIXELS
 
 _log = logging.getLogger(__name__)
 
@@ -71,6 +77,17 @@ POLL_TIMEOUT_S: Final = 120.0
 """Trần hỏi #8 (spec [6]); không mang mã case nên không gắn `perf` (luật 14)."""
 
 SEED: Final = 7
+
+
+def test_synthetic_plan_has_no_frame() -> None:
+    """Ảnh `render_plan` không có khung nhận được (B2-05a/B5-01) — tiền đề của mọi e2e dưới đây.
+
+    Khác `None` → đường nắn tự động của B2-05a cắt dấu nhận của bộ giả: dừng cả tệp, ghi Nợ
+    B2-05a/B5-01, không tự sửa (spec [6] "việc làm đầu tiên").
+    """
+    plan = render_plan(SEED)
+    quad = find_frame(load_raster(plan.image_png, max_pixels=DEFAULT_MAX_PIXELS))
+    assert quad is None, quad
 
 
 @pytest_asyncio.fixture(loop_scope="function")
@@ -97,7 +114,13 @@ async def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPat
         reset_storage_settings_cache,
         reset_ml_settings_cache,
     )
-    task_resets = (reset_build_context, reset_orchestrate_storage, reset_persist_storage, reset_quality_storage)
+    task_resets = (
+        reset_build_context,
+        reset_orchestrate_storage,
+        reset_persist_storage,
+        reset_quality_storage,
+        reset_infer_context,
+    )
     for reset in caches:
         reset()
     for reset in task_resets:
@@ -202,6 +225,16 @@ async def _poll_progress(
     pytest.fail(f"#8 không tới completed/failed trong {POLL_TIMEOUT_S}s; Progress cuối: {wire}")
 
 
+async def _stream_progress_percents(upload_id: str) -> list[int]:
+    """`progressPercent` của mọi sự kiện trên `upload_stream(upload_id)`, theo thứ tự id (spec [6])."""
+    client = streams_redis()
+    try:
+        events = await EventBus(client).read_after(upload_stream(upload_id), "0-0")
+    finally:
+        await client.aclose()
+    return [int(str(event.data["progressPercent"])) for event in events]
+
+
 async def test_spatial_read_layer__C01_pipeline(
     db_url: str,
     e2e_worker: None,
@@ -223,6 +256,9 @@ async def test_spatial_read_layer__C01_pipeline(
     assert progress["progressPercent"] == 100
     assert progress["step"] == LAST_STEP == "qualityCheck"
     assert "endedAt" in progress
+
+    percents = await _stream_progress_percents(upload_id)
+    assert percents == sorted(percents), percents
 
     layer_response = await e2e_client.get(
         f"/api/projects/{project_id}/floors/{level_id}/spatial/layer", headers=headers
@@ -380,10 +416,15 @@ async def test_pipeline_e2e_rerun_keeps_reviewed(
 
     doc_two = await on_db(db_url, _read_doc)
     kept = next(w for w in doc_two.layer.walls if w.id == target.id)
-    assert kept.reviewed is True
-    assert kept.source == "human"
-    assert kept.centreline == target.centreline
+    assert kept == reviewed_wall, (kept, reviewed_wall)
     assert len(doc_two.layer.walls) == len(doc_one.layer.walls)
+
+    versions = await e2e_client.get(f"/api/projects/{project_id}/versions?floorId={level_id}", headers=headers)
+    assert versions.status_code == 200, versions.text
+    version_items = versions.json()["items"]
+    before_rerun = next(v for v in version_items if v["floorRevision"] == revision_after_review)
+    assert before_rerun["floorRevision"] == revision_after_review
+
     _log.info(
         "e2e rerun_keeps_reviewed: revision tr.duyệt=%d revision sau lượt 2=%d tường giữ nguyên=%s thời gian=%.1fs",
         revision_after_review,
