@@ -52,11 +52,14 @@ def test_build_report__empty_layer_has_no_issues_and_zero_counts() -> None:
 
 
 def test_build_report__issue_order_preserved_and_ref_id_absent_on_wire() -> None:
-    """Thứ tự `issues` giữ nguyên thứ tự `check_integrity`; `refId` vắng hẳn khoá khi `None`."""
+    """Thứ tự `issues` giữ nguyên thứ tự `check_integrity`; `refId` vắng hẳn khoá khi `None`.
+
+    `_duplicate_ids` báo **một** lỗi cho mỗi id trùng (không phải một lỗi mỗi lần xuất hiện).
+    """
     duplicated = _wall("W-WALL0000000001", confidence=0.9)
     layer = SpatialLayer(walls=(duplicated, duplicated), openings=(), rooms=(), furniture=())
     report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
-    assert [issue.rule for issue in report.issues] == ["duplicateId", "duplicateId"]
+    assert [issue.rule for issue in report.issues] == ["duplicateId"]
     wire = json.loads(report.to_json_bytes())
     assert all("refId" not in item for item in wire["integrity"])
 
