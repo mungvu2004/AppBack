@@ -33,10 +33,9 @@ from typing import Any, Final, cast
 from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.library.assets import open_storage
 from apps.worker.training_bridge.errors import TRAINING_DISPATCH_STALLED, TRAINING_HEARTBEAT_LOST
 from apps.worker.training_bridge.settings import get_training_settings
-from apps.worker.training_bridge.tasks import arm_cancel_key
+from apps.worker.training_bridge.tasks import arm_cancel_key, open_storage
 from packages.core.clock import Clock, SystemClock
 from packages.core.object_keys import model_prefix
 from packages.db.engine import session_scope, worker_sessionmaker
@@ -45,6 +44,7 @@ from packages.db.models.admin_ml_datasets import DatasetVersionRow
 from packages.db.models.admin_ml_jobs import TrainingJobRow
 from packages.messaging import periodic, safe_redis, send_task
 from packages.messaging.payloads.training import claim_key, trained_version_id
+from packages.messaging.redis import DEPENDENCY_ERRORS
 from packages.ml_contracts.families import TrainableFamily
 from packages.ml_contracts.payloads import TrainJobPayload
 from packages.storage.port import ObjectStorage
@@ -73,11 +73,20 @@ _LOST_TRANSITION: Final = {"running": _RUNNING_TO, "cancelling": _CANCELLING_TO}
 
 
 async def _claims_present(job_ids: Sequence[str]) -> dict[str, bool] | None:
-    """`claim_key` của cả lô (không rỗng) bằng một lượt `MGET`; `None` nếu Redis lỗi (bỏ cả lượt, K)."""
+    """`claim_key` của cả lô (không rỗng) bằng một lượt `MGET`; `None` khi **Redis** lỗi (bỏ cả lượt).
+
+    Chỉ `DEPENDENCY_ERRORS` thành `None`: một lỗi khác (thiếu `REDIS_BROKER_URL` ở tiến trình
+    beat, bug trong lô) phải nổi lên, vì nuốt nó biến cả ba lịch thành "luôn trả 0" im lặng và
+    quy sai nguyên nhân cho Redis. Client dựng mới mỗi lượt nên đóng lại trong `finally` (R-24).
+    """
+    client = safe_redis()
     try:
-        values = await safe_redis().mget([claim_key(job_id) for job_id in job_ids])
-    except Exception:  # noqa: BLE001 — Redis lỗi kiểu gì cũng là "không đọc được claim": bỏ cả lượt, không đổi job nào
+        values = await client.mget([claim_key(job_id) for job_id in job_ids])
+    except DEPENDENCY_ERRORS as exc:
+        _log.warning("training_claim_read_failed", extra={"error": type(exc).__name__})
         return None
+    finally:
+        await client.aclose()
     return dict(zip(job_ids, (value is not None for value in values), strict=True))
 
 
@@ -113,9 +122,12 @@ async def _finish_lost_job(
         row.ended_at = now
         try:
             await arm_cancel_key(job_id)
-        except Exception:  # noqa: BLE001 — Redis lỗi kiểu gì cũng rollback: không chốt job khi `cancel_key` chưa đặt
+        except DEPENDENCY_ERRORS as exc:
             await db.rollback()
-            _log.warning("training_heartbeat_lost_cancel_key_failed", extra={"job_id": job_id})
+            _log.warning(
+                "training_heartbeat_lost_cancel_key_failed",
+                extra={"job_id": job_id, "error": type(exc).__name__},
+            )
             return False
         await db.commit()
     return True
@@ -200,9 +212,12 @@ async def _process_requeue_job(sessionmaker: async_sessionmaker[AsyncSession], c
             row.ended_at = now
             try:
                 await arm_cancel_key(job_id)
-            except Exception:  # noqa: BLE001 — như trên: không chốt `failed` khi `cancel_key` chưa đặt được
+            except DEPENDENCY_ERRORS as exc:
                 await db.rollback()
-                _log.warning("training_dispatch_stalled_cancel_key_failed", extra={"job_id": job_id})
+                _log.warning(
+                    "training_dispatch_stalled_cancel_key_failed",
+                    extra={"job_id": job_id, "error": type(exc).__name__},
+                )
                 return False
         session = db
         await db.commit()

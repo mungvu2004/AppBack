@@ -52,8 +52,15 @@ async def arm_cancel_key(job_id: str) -> None:
 
     Gọi **trước** commit; Redis lỗi thì ngoại lệ lan lên để người gọi rollback (task: lỗi
     tạm J02, lịch: bỏ lượt). Gọi lại trên job đã kết thúc là bình thường (đặt lại khoá).
+
+    `safe_redis()` dựng client **mới** mỗi lượt gọi, nên đóng trong `finally` (R-24): mỗi task và
+    mỗi beat gọi hàm này, bỏ lại pool thì tiến trình worker rò kết nối dần.
     """
-    await safe_redis().set(cancel_key(job_id), "1", ex=get_training_settings().training_cancel_ttl_s)
+    client = safe_redis()
+    try:
+        await client.set(cancel_key(job_id), "1", ex=get_training_settings().training_cancel_ttl_s)
+    finally:
+        await client.aclose()
 
 
 HEARTBEAT_TASK: Final = "default.training_bridge.heartbeat"
@@ -155,6 +162,9 @@ async def run_training_metrics(
     `recorded_at = min(mốc gửi, now)`: đồng hồ của runner có thể chạy trước, mà một điểm
     "tương lai" làm trục thời gian của FE nhảy (M05). Lô tới muộn vẫn chèn — N36 chỉ trả
     phần đủ cả hai `split` — chỉ log để thấy runner gửi lệch thứ tự.
+
+    Trần `training_max_metric_points` kiểm theo **từng điểm**: một lô 500 điểm (`MAX_METRIC_POINTS`)
+    không được vượt trần rồi mới bị chặn ở lô sau — chèn tới trần, phần dư bỏ và log một lần.
     """
     settings = get_training_settings()
     async with session_scope(sessionmaker) as db:
@@ -167,13 +177,14 @@ async def run_training_metrics(
         total = await db.scalar(
             select(func.count()).select_from(TrainingMetricRow).where(TrainingMetricRow.job_id == job.id)
         )
-        if (total or 0) >= settings.training_max_metric_points:
-            _ignore(METRICS_TASK, job.id, "metric_points_exhausted", points=total)
-            return
+        stored = total or 0
         allowed = frozenset({"loss", FAMILY_METRIC[cast("ModelFamily", job.family)]})
         max_steps = await _max_steps(db, job.id)
         now = clock.now()
         for point in payload.points:
+            if stored >= settings.training_max_metric_points:
+                _ignore(METRICS_TASK, job.id, "metric_points_exhausted", points=stored)
+                return
             values = _point_values(point, allowed)
             if values is None:
                 _ignore(METRICS_TASK, job.id, "metric_not_of_family", split=point.split, step=point.step)
@@ -193,6 +204,7 @@ async def run_training_metrics(
                 )
                 .on_conflict_do_nothing()
             )
+            stored += 1
 
 
 def dedupe_sha(payload: TrainingLogPayload) -> str:

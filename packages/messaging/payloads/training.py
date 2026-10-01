@@ -86,7 +86,7 @@ LOG_TEMPLATES: Final[Mapping[str, LogTemplate]] = MappingProxyType(
 )
 """Bảng BE-00 §9 "Mẫu log huấn luyện": khoá khớp `^[a-z][a-z0-9_]{0,63}$`, câu viết thường."""
 
-_LOG_PARAM_MAX_CHARS: Final = 2000
+_LOG_TEXT_MAX_CHARS: Final = 2000
 
 _ENV_ASSIGN_RE: Final = re.compile(r"\b[A-Z][A-Z0-9_]*=\S+")
 """`KHOÁ=giá trị` (vd `DATABASE_URL=postgres://…`): che trước URL nên cả cụm thành một."""
@@ -152,4 +152,4 @@ def render_log(template: str, params: Mapping[str, str | int | float | bool]) ->
         return None
     formatted = {key: _format_param(key, value) for key, value in params.items()}
     text = tmpl.text.format(**formatted)
-    return text[:_LOG_PARAM_MAX_CHARS]
+    return text[:_LOG_TEXT_MAX_CHARS]

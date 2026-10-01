@@ -229,7 +229,7 @@ async def test_metrics_above_the_point_cap_are_dropped(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Trần điểm (hạ bằng biến môi trường) đạt rồi thì cả lô bị bỏ."""
+    """Trần điểm (hạ bằng biến môi trường) đạt rồi thì lô sau bị bỏ."""
     job = await seed_job(db_session)
     monkeypatch.setenv("TRAINING_MAX_METRIC_POINTS", "1")
     reset_training_settings_cache()
@@ -241,6 +241,36 @@ async def test_metrics_above_the_point_cap_are_dropped(
         reset_training_settings_cache()
 
     assert await _count(db_session, TrainingMetricRow, job.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_metrics_stop_at_the_point_cap_in_the_middle_of_a_batch(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lô vượt trần giữa chừng: chèn tới trần rồi bỏ phần dư (review lượt 1, P3 #7).
+
+    Một lô của runner tới 500 điểm, nên kiểm trần **một lần trước vòng lặp** sẽ cho cả lô
+    vượt trần rồi mới chặn ở lô sau.
+    """
+    job = await seed_job(db_session)
+    batch = metrics(
+        job.id,
+        metric_point(step=0, loss=0.1),
+        metric_point(step=1, loss=0.2),
+        metric_point(step=2, loss=0.3),
+    )
+    monkeypatch.setenv("TRAINING_MAX_METRIC_POINTS", "2")
+    reset_training_settings_cache()
+    try:
+        await run_training_metrics(db_sessionmaker, fake_clock, batch)
+    finally:
+        monkeypatch.delenv("TRAINING_MAX_METRIC_POINTS")
+        reset_training_settings_cache()
+
+    assert await _count(db_session, TrainingMetricRow, job.id) == 2
 
 
 @pytest.mark.asyncio

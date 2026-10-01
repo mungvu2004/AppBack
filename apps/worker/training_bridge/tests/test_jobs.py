@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # testcontainers chưa có py.typed
@@ -247,7 +248,7 @@ async def test_sweep_lost_training_jobs_rolls_back_one_job_when_arm_cancel_key_f
 
     async def _broken_arm_cancel_key(job_id: str) -> None:
         """Giả Redis lỗi đúng lúc đặt `cancel_key` — khuôn `arm_cancel_key` thật, chỉ đổi phần ném lỗi."""
-        raise RuntimeError("redis lỗi")
+        raise RedisConnectionError("redis lỗi")
 
     monkeypatch.setattr("apps.worker.training_bridge.jobs.arm_cancel_key", _broken_arm_cancel_key)
 
@@ -381,7 +382,7 @@ async def test_requeue_training_jobs_rolls_back_when_arm_cancel_key_fails_at_the
 
     async def _broken_arm_cancel_key(job_id: str) -> None:
         """Giả Redis lỗi đúng lúc đặt `cancel_key` — khuôn `arm_cancel_key` thật, chỉ đổi phần ném lỗi."""
-        raise RuntimeError("redis lỗi")
+        raise RedisConnectionError("redis lỗi")
 
     monkeypatch.setattr("apps.worker.training_bridge.jobs.arm_cancel_key", _broken_arm_cancel_key)
 
@@ -688,3 +689,34 @@ def test_purge_training_job_artifacts_smoke(local_storage: LocalDiskStorage, tmp
     reset_database_settings_cache()
 
     assert not (tmp_path / "objects" / key).exists()
+
+
+async def test_sweep_lost_training_jobs_lets_a_non_dependency_error_surface(
+    db_session: AsyncSession, db_sessionmaker: Maker, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lỗi **không** phải phụ thuộc (vd `RuntimeError`) nổi lên khỏi lịch chứ không bị nuốt.
+
+    Lịch hỏng to còn hơn hỏng im: một lỗi lập trình bị nuốt thành "0 job" làm job mất nhịp tim
+    không bao giờ được chốt, mà log lại quy nguyên nhân cho Redis (review lượt 1, P1 #2).
+    """
+    fake_clock.set(datetime.now(UTC))
+    dsv = await _ready_dataset_version(db_session)
+    timeout = get_training_settings().training_heartbeat_timeout_s
+    stale = fake_clock.now() - timedelta(seconds=timeout + 60)
+    await make_training_job(
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
+    )
+
+    async def _broken_claims(job_ids: list[str]) -> dict[str, bool] | None:
+        """Lỗi lập trình giữa lượt đọc claim — không thuộc `DEPENDENCY_ERRORS`."""
+        raise RuntimeError("bug trong lô")
+
+    monkeypatch.setattr("apps.worker.training_bridge.jobs._claims_present", _broken_claims)
+
+    with pytest.raises(RuntimeError, match="bug trong lô"):
+        await run_sweep_lost_training_jobs(db_sessionmaker, fake_clock)
