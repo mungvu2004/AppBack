@@ -81,7 +81,9 @@ def heartbeat(job_id: str, *, epoch: int = 1, sent_at_ms: int = 1) -> TrainingHe
 
 def metric_point(*, step: int = 0, split: str = "train", at_ms: int = 1, **values: float) -> MetricPoint:
     """Một điểm số đo; không truyền số đo nào thì mặc định `loss`."""
-    return MetricPoint(step=step, epoch=1, split=split, recorded_at_ms=at_ms, **(values or {"loss": 0.5}))  # type: ignore[arg-type] — `split` là Literal, test truyền đúng hai giá trị
+    # type: ignore[arg-type] — `split` là Literal của B5-01, test chỉ truyền đúng hai giá trị của nó
+    measured = values or {"loss": 0.5}
+    return MetricPoint(step=step, epoch=1, split=split, recorded_at_ms=at_ms, **measured)  # type: ignore[arg-type]
 
 
 def metrics(job_id: str, *points: MetricPoint) -> TrainingMetricsPayload:
@@ -97,7 +99,9 @@ def log_line(
     level: str = "info",
 ) -> TrainingLogPayload:
     """Payload `log` một dòng (mẫu câu + tham số; cầu nối tự dựng văn bản)."""
-    return TrainingLogPayload(job_id=job_id, level=level, template=template, params=dict(params))  # type: ignore[arg-type] — `level` là Literal của B5-01, test truyền đúng ba giá trị
+    # type: ignore[arg-type] — `level` là Literal của B5-01, test chỉ truyền đúng ba giá trị của nó
+    values = dict(params)
+    return TrainingLogPayload(job_id=job_id, level=level, template=template, params=values)  # type: ignore[arg-type]
 
 
 def finished(
@@ -111,7 +115,8 @@ def finished(
 ) -> TrainingFinishedPayload:
     """Payload `finished`; `succeeded` mặc định mang khoá đúng mẫu và số đo của họ."""
     if status != "succeeded":
-        return TrainingFinishedPayload(job_id=job_id, status=status, error_code=error_code)  # type: ignore[arg-type] — `status` là Literal của B5-01
+        # type: ignore[arg-type] — `status` là Literal của B5-01, test chỉ truyền ba giá trị của nó
+        return TrainingFinishedPayload(job_id=job_id, status=status, error_code=error_code)  # type: ignore[arg-type]
     return TrainingFinishedPayload(
         job_id=job_id,
         status="succeeded",

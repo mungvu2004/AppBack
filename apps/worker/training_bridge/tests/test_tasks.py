@@ -318,7 +318,8 @@ async def test_log_after_finish_follows_the_late_window(
     await run_training_log(db_sessionmaker, fake_clock, log_line(job.id, template=template, params=params))
     fake_clock.advance(timedelta(seconds=2))
 
-    await run_training_log(db_sessionmaker, fake_clock, log_line(job.id, template=template, params=params, level="error"))
+    late = log_line(job.id, template=template, params=params, level="error")
+    await run_training_log(db_sessionmaker, fake_clock, late)
 
     assert await _count(db_session, TrainingLogRow, job.id) == 1
 
@@ -397,7 +398,8 @@ async def test_record_model_evaluation_of_missing_version_logs_info(
     db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock, caplog: pytest.LogCaptureFixture
 ) -> None:
     """`set_evaluation` trả `False` là bình thường (lịch B6-01 gửi lại) → log mức `info`, không lỗi."""
-    payload = EvaluationDonePayload(version_id="mdl_01KB60100000000000000000ZZ", status="failed", error_code="BOOM_CODE")
+    missing = "mdl_01KB60100000000000000000ZZ"
+    payload = EvaluationDonePayload(version_id=missing, status="failed", error_code="BOOM_CODE")
 
     with caplog.at_level(logging.INFO):
         await run_record_model_evaluation(db_sessionmaker, fake_clock, payload)

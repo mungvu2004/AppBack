@@ -42,6 +42,7 @@ class _BlockingStatStorage:
     """Kho thật với **một** lượt `stat` bị chặn — để đo K36 (không giữ kết nối DB khi chạm kho)."""
 
     def __init__(self, inner: ObjectStorage, entered: threading.Event, release: threading.Event) -> None:
+        """Giữ kho thật cùng hai cờ: `entered` báo đã vào `stat`, `release` cho phép đi tiếp."""
         self._inner = inner
         self._entered = entered
         self._release = release
@@ -91,7 +92,8 @@ async def test_finish_training_job__J01(
 
     row = await _job(db_session, job.id)
     version = await db_session.get(ModelVersionRow, trained_version_id(job.id))
-    assert (row.status, row.result_model_version_id, row.ended_at) == ("succeeded", trained_version_id(job.id), fake_clock.now())
+    expected = ("succeeded", trained_version_id(job.id), fake_clock.now())
+    assert (row.status, row.result_model_version_id, row.ended_at) == expected
     assert version is not None
     assert (version.evaluation_status, version.evaluation_attempts, version.training_job_id) == ("pending", 1, job.id)
 
@@ -336,8 +338,10 @@ async def test_finish_does_not_hold_a_db_connection_while_statting_weights(
     entered, release = threading.Event(), threading.Event()
     storage = _BlockingStatStorage(local_storage, entered, release)
     engine = db_sessionmaker.kw["bind"]
+    done = finished(job.id, key=key)
     running = asyncio.create_task(
-        run_finish_training_job(db_sessionmaker, storage, fake_clock, finished(job.id, key=key))  # type: ignore[arg-type] — bọc mỏng quanh kho thật, chỉ chặn một lượt `stat`
+        # type: ignore[arg-type] — bọc mỏng quanh kho thật, chỉ chặn một lượt `stat`
+        run_finish_training_job(db_sessionmaker, storage, fake_clock, done)  # type: ignore[arg-type]
     )
     await asyncio.to_thread(entered.wait)
 
