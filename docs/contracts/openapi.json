@@ -335,6 +335,13 @@
         "title": "BuildingOut",
         "type": "object"
       },
+      "CancelTrainingJobIn": {
+        "additionalProperties": false,
+        "description": "Thân N35 là `{}`; khoá lạ → 422 `VALIDATION` (C03), không bị bỏ qua.",
+        "properties": {},
+        "title": "CancelTrainingJobIn",
+        "type": "object"
+      },
       "ChangePasswordBody": {
         "additionalProperties": false,
         "description": "Thân N13: `{currentPassword, newPassword}`.",
@@ -462,6 +469,42 @@
           "family"
         ],
         "title": "CreateDatasetIn",
+        "type": "object"
+      },
+      "CreateTrainingJobIn": {
+        "additionalProperties": false,
+        "description": "Thân N33; khoá lạ → 422 `VALIDATION` (C03).\n\n`baseModel` chỉ là `str` ở đây: nó phải ra 422 `TRAINING_BASE_MODEL_MISMATCH`\n(mã riêng của [2]), không phải 422 `VALIDATION` của một `Literal` — nên luật\n\"thuộc `BASE_MODELS[family]`\" nằm ở `service.create_job`.",
+        "properties": {
+          "baseModel": {
+            "title": "Basemodel",
+            "type": "string"
+          },
+          "datasetVersionId": {
+            "title": "Datasetversionid",
+            "type": "string"
+          },
+          "epochs": {
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Epochs",
+            "type": "integer"
+          },
+          "family": {
+            "enum": [
+              "wallSegmentation",
+              "openingAndFurnitureDetection"
+            ],
+            "title": "Family",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseModel",
+          "datasetVersionId",
+          "epochs",
+          "family"
+        ],
+        "title": "CreateTrainingJobIn",
         "type": "object"
       },
       "CursorPage_DatasetOut_": {
@@ -658,6 +701,90 @@
           "items"
         ],
         "title": "CursorPage[ProjectSummaryOut]",
+        "type": "object"
+      },
+      "CursorPage_TrainingJobOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[TrainingJobOut]",
+        "type": "object"
+      },
+      "CursorPage_TrainingLogLineOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingLogLineOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[TrainingLogLineOut]",
+        "type": "object"
+      },
+      "CursorPage_TrainingMetricPointOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingMetricPointOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[TrainingMetricPointOut]",
         "type": "object"
       },
       "DatasetOut": {
@@ -4632,6 +4759,213 @@
       "ThresholdValue": {
         "type": "number"
       },
+      "TrainingJobOut": {
+        "additionalProperties": false,
+        "description": "`TrainingJobSchema`: trường theo trạng thái, không cột của cầu nối (K01, K02).",
+        "properties": {
+          "baseModel": {
+            "title": "Basemodel",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "creatorId": {
+            "title": "Creatorid",
+            "type": "string"
+          },
+          "currentEpoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentepoch"
+          },
+          "datasetVersionId": {
+            "title": "Datasetversionid",
+            "type": "string"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endedat"
+          },
+          "epochs": {
+            "title": "Epochs",
+            "type": "integer"
+          },
+          "failureCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurecode"
+          },
+          "family": {
+            "enum": [
+              "wallSegmentation",
+              "openingAndFurnitureDetection"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resultModelVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultmodelversionid"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseModel",
+          "createdAt",
+          "creatorId",
+          "datasetVersionId",
+          "epochs",
+          "family",
+          "id",
+          "status"
+        ],
+        "title": "TrainingJobOut",
+        "type": "object"
+      },
+      "TrainingLogLineOut": {
+        "additionalProperties": false,
+        "description": "`TrainingLogLineSchema`: `message` đã dựng từ mẫu câu, không `dedupeSha` (K01).",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "level",
+          "message",
+          "seq"
+        ],
+        "title": "TrainingLogLineOut",
+        "type": "object"
+      },
+      "TrainingMetricPointOut": {
+        "additionalProperties": false,
+        "description": "`TrainingMetricPointSchema`: ít nhất một số đo; hai số đo lạ của họ khác vắng.",
+        "properties": {
+          "epoch": {
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "iou": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iou"
+          },
+          "loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss"
+          },
+          "map50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Map50"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "title": "Recordedat",
+            "type": "string"
+          },
+          "split": {
+            "title": "Split",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "epoch",
+          "recordedAt",
+          "split",
+          "step"
+        ],
+        "title": "TrainingMetricPointOut",
+        "type": "object"
+      },
       "UpdateMeBody": {
         "additionalProperties": false,
         "description": "Thân N12: `UpdateMeSchema`; ≥ 1 khoá, mọi khoá vắng giữ nguyên giá trị cũ.",
@@ -5711,6 +6045,368 @@
         "summary": "Ml Read Version",
         "tags": [
           "admin_ml_registry"
+        ]
+      }
+    },
+    "/api/admin/ml/training-jobs": {
+      "get": {
+        "description": "N32 — job huấn luyện, mới nhất trước; `family`/`status` lạ → 422 `field`.",
+        "operationId": "ml_list_jobs_api_admin_ml_training_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_TrainingJobOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml List Jobs",
+        "tags": [
+          "admin_ml_jobs"
+        ]
+      },
+      "post": {
+        "description": "N33 — mở một job `queued` và gửi runner; bản dataset chưa `ready` hay khác họ → 422.",
+        "operationId": "ml_create_job_api_admin_ml_training_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrainingJobIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Create Job",
+        "tags": [
+          "admin_ml_jobs"
+        ]
+      }
+    },
+    "/api/admin/ml/training-jobs/{job_id}": {
+      "get": {
+        "description": "N34 — một job; không có hay id sai mẫu → 404 `resource:\"trainingJob\"`.",
+        "operationId": "ml_read_job_api_admin_ml_training_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Read Job",
+        "tags": [
+          "admin_ml_jobs"
+        ]
+      }
+    },
+    "/api/admin/ml/training-jobs/{job_id}/cancel": {
+      "post": {
+        "description": "N35 — `queued` → `cancelled`, `running` → `cancelling`; job đã xong → 409.",
+        "operationId": "ml_cancel_job_api_admin_ml_training_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTrainingJobIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml Cancel Job",
+        "tags": [
+          "admin_ml_jobs"
+        ]
+      }
+    },
+    "/api/admin/ml/training-jobs/{job_id}/logs": {
+      "get": {
+        "description": "N37 — dòng log `seq > since`, `seq` tăng; cùng luật `nextCursor` với N36.",
+        "operationId": "ml_list_job_logs_api_admin_ml_training_jobs__job_id__logs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": -1,
+              "minimum": -1,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_TrainingLogLineOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml List Job Logs",
+        "tags": [
+          "admin_ml_jobs"
+        ]
+      }
+    },
+    "/api/admin/ml/training-jobs/{job_id}/metrics": {
+      "get": {
+        "description": "N36 — điểm số đo `step > since`, `step` tăng; bước cuối chờ đủ `split` mới ra.",
+        "operationId": "ml_list_job_metrics_api_admin_ml_training_jobs__job_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": -1,
+              "minimum": -1,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_TrainingMetricPointOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ml List Job Metrics",
+        "tags": [
+          "admin_ml_jobs"
         ]
       }
     },
