@@ -13,7 +13,7 @@ import httpx
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from testcontainers.redis import RedisContainer
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # testcontainers chưa có py.typed
 
 from apps.api.access.kinds import ActivityKind
 from apps.api.admin_ml_jobs.errors import (

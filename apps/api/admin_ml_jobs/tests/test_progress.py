@@ -39,15 +39,25 @@ async def _get(client: httpx.AsyncClient, principal: Principal, path: str, **par
     return await client.get(path, headers=auth_headers(principal), params=params)
 
 
-async def _job(db: AsyncSession, *, status: str = "running", ended_at: datetime | None = None) -> TrainingJobRow:
+async def _job(
+    db: AsyncSession, *, status: str = "running", started_at: datetime | None = None, ended_at: datetime | None = None
+) -> TrainingJobRow:
     """Một job họ cửa/nội thất ở `status`, kèm bản dataset `ready` cho FK.
 
-    `ended_at` chỉ truyền khi test cần cửa sổ muộn: mặc định của factory là giờ **thật**,
-    lệch hẳn với `fake_clock` mà app dùng, nên cửa sổ sẽ không bao giờ đóng.
+    Hai mốc chỉ truyền khi test cần cửa sổ muộn: mặc định của factory là giờ **thật**, lệch
+    hẳn với `fake_clock` mà app dùng, nên `ended_at` giả sẽ nhỏ hơn `started_at` thật và
+    CHECK `ended_after_started` chặn ngay lượt test tự kết thúc job.
     """
     dataset = await make_dataset(db, family=OPENING)
     version = await make_dataset_version(db, dataset=dataset, status="ready")
-    return await make_training_job(db, dataset_version_id=version.id, family=OPENING, status=status, ended_at=ended_at)
+    return await make_training_job(
+        db,
+        dataset_version_id=version.id,
+        family=OPENING,
+        status=status,
+        started_at=started_at,
+        ended_at=ended_at,
+    )
 
 
 def _steps(body: dict[str, object]) -> list[tuple[int, str]]:
@@ -86,7 +96,7 @@ async def test_ml_list_job_metrics__C01(
 async def test_ml_list_job_metrics__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`since` < −1 và `limit` ngoài [1, 200] → 422 của khung (query đã kiểm biên)."""
+    """`since` < -1 và `limit` ngoài [1, 200] → 422 của khung (query đã kiểm biên)."""
     job = await _job(db_session)
 
     bad_since = await _get(api_client, fake_principal, metrics_path(job.id), since=-2)
@@ -110,7 +120,7 @@ async def test_ml_list_job_metrics__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
     """0 điểm; 1 bước; 5 bước với `limit=2` → `nextCursor` rồi trang 2; cửa sổ muộn giữ cursor, quá thì vắng."""
-    job = await _job(db_session)
+    job = await _job(db_session, started_at=fake_clock.now())
     empty = await _get(api_client, fake_principal, metrics_path(job.id))
     assert empty.json() == {"items": [], "nextCursor": "-1"}
 
@@ -249,7 +259,7 @@ async def test_ml_list_job_logs__C01(
 async def test_ml_list_job_logs__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`since` < −1 và `limit` ngoài [1, 200] → 422 của khung."""
+    """`since` < -1 và `limit` ngoài [1, 200] → 422 của khung."""
     job = await _job(db_session)
 
     bad_since = await _get(api_client, fake_principal, logs_path(job.id), since=-2)
@@ -271,7 +281,7 @@ async def test_ml_list_job_logs__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
     """0 dòng; 1 dòng; 5 dòng `limit=2` → hai trang; cửa sổ muộn giữ `nextCursor`, quá thì vắng."""
-    job = await _job(db_session)
+    job = await _job(db_session, started_at=fake_clock.now())
     empty = await _get(api_client, fake_principal, logs_path(job.id))
     assert empty.json() == {"items": [], "nextCursor": "-1"}
 

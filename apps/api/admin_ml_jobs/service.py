@@ -135,7 +135,8 @@ async def _ready_version(db: AsyncSession, *, dataset_version_id: str, family: s
     found = (await db.execute(stmt)).first()
     if found is None:
         raise NOT_FOUND.error(resource=DATASET_VERSION_RESOURCE)
-    version, dataset_family = found
+    version: DatasetVersionRow = found[0]
+    dataset_family = str(found[1])
     if version.status != "ready" or version.manifest_sha256 is None:
         raise DATASET_VERSION_NOT_READY.error()
     if dataset_family != family:
