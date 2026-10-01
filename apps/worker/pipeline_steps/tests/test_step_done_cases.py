@@ -8,6 +8,7 @@ và đường thông điệp độc. Dịch vụ thật (K23): Postgres, Redis, 
 import asyncio
 import logging
 from collections.abc import Iterator
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
@@ -21,7 +22,9 @@ from apps.worker.pipeline_build.artifacts import layer_key
 from apps.worker.pipeline_orchestrate.pins import load_pins, mark_persisted
 from apps.worker.pipeline_steps import step_done as core
 from apps.worker.pipeline_steps import tasks
+from apps.worker.pipeline_steps.settings import get_steps_settings
 from apps.worker.pipeline_steps.step_done import BUILD_STEP, run_pipeline_step_done
+from apps.worker.pipeline_steps.sweep import _IDLE_MARK, run_stuck_pipeline_sweep
 from apps.worker.pipeline_steps.tests import helpers
 from apps.worker.pipeline_steps.tests.helpers import (
     CPU_QUEUE,
@@ -31,16 +34,19 @@ from apps.worker.pipeline_steps.tests.helpers import (
     step_result,
     steps_seen,
 )
+from packages.core.clock import SystemClock
+from packages.core.ids import new_id
 from packages.core.settings import reset_settings_cache
 from packages.db.hooks import after_commit_idle
 from packages.db.settings import reset_database_settings_cache
-from packages.messaging.redis import SyncRedis
+from packages.messaging.redis import SyncRedis, broker_redis
 from packages.messaging.streams import EventBus, upload_stream
 from packages.ml_contracts.families import FAMILY_STEP, ModelFamily
 from packages.ml_contracts.payloads import StepResultPayload
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.clock import FakeClock
+from packages.testing.fixtures.db import drop_after_commit
 from packages.testing.fixtures.messaging import queued_payloads
 
 type Maker = async_sessionmaker[AsyncSession]
@@ -225,3 +231,55 @@ async def test_orchestrate_pipeline_step_done__J09(
         pins = await load_pins(db, arranged.run_id)
     assert pins is not None
     assert TEXTS not in pins.used
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_orchestrate_pipeline_step_done__J10(
+    db_sessionmaker: Maker,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    cpu_queue: SyncRedis,
+    event_bus: EventBus,
+) -> None:
+    """Callback bị bỏ (`drop_after_commit`) → giao lại không gửi; lõi quét bù mới gửi `build`.
+
+    Đây là lý do `step_done` **không** gửi lại khi giao lặp: bước đã đẩy rồi, nên chỉ quét bù
+    (sở hữu số đếm lùi) được phép xếp lại bước hiện tại.
+    """
+    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, cpu_queue)
+    for family in (WALLS, OBJECTS):
+        await deliver_ml(db_sessionmaker, local_storage, arranged, family, fake_clock)
+    cpu_queue.delete(CPU_QUEUE)
+
+    with drop_after_commit():
+        await deliver_ml(db_sessionmaker, local_storage, arranged, TEXTS, fake_clock)
+    assert queued_payloads(cpu_queue, CPU_QUEUE) == []
+
+    await deliver_ml(db_sessionmaker, local_storage, arranged, TEXTS, fake_clock)
+    assert queued_payloads(cpu_queue, CPU_QUEUE) == []
+
+    async with db_sessionmaker() as db:
+        mark = (await db.execute(_IDLE_MARK, {"run_id": arranged.run_id})).scalar_one()
+    after_s = get_steps_settings().PIPELINE_STEP_REQUEUE_AFTER_S
+    fake_clock.set(mark + timedelta(seconds=after_s + 1))
+    await run_stuck_pipeline_sweep(db_sessionmaker, broker_redis(), fake_clock, batch=10)
+
+    assert [m["run_id"] for m in queued_payloads(cpu_queue, CPU_QUEUE)] == [arranged.run_id]
+    events = await event_bus.read_after(upload_stream(arranged.upload_id), "0-0")
+    last = events[-1].data
+    assert (last["status"], last["step"], last["progressPercent"]) == ("running", BUILD_STEP, 70)
+
+
+@pytest.mark.usefixtures("process_env", "celery_test_app")
+def test_fail_pipeline_step_done_runs_core_on_process_loop(caplog: pytest.LogCaptureFixture) -> None:
+    """`on_failed` đồng bộ mà `define_task` gọi: lõi chạy trên vòng sự kiện của tiến trình worker.
+
+    Lượt không tồn tại là ca rẻ nhất đi hết đường dây đồng bộ → `runner()` → lõi: không cần
+    sân khấu nào, và khẳng định đúng điều cần: `on_failed` **không** ném với kết quả muộn.
+    """
+    missing = StepResultPayload(run_id=new_id("run", SystemClock()), step=BUILD_STEP, status="completed", duration_ms=1)
+
+    with caplog.at_level(logging.INFO):
+        tasks.fail_pipeline_step_done(missing, "RETRY_EXHAUSTED")
+
+    assert "pipeline_result_ignored" in caplog.text
