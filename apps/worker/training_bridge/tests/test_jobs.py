@@ -133,8 +133,12 @@ async def test_sweep_lost_training_jobs__J01(
     timeout = get_training_settings().training_heartbeat_timeout_s
     stale = fake_clock.now() - timedelta(seconds=timeout + 60)
     job = await make_training_job(
-        db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
 
     assert await run_sweep_lost_training_jobs(db_sessionmaker, fake_clock) == 1
@@ -153,8 +157,12 @@ async def test_sweep_lost_training_jobs__J06(
     timeout = get_training_settings().training_heartbeat_timeout_s
     stale = fake_clock.now() - timedelta(seconds=timeout + 60)
     job = await make_training_job(
-        db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
     await run_sweep_lost_training_jobs(db_sessionmaker, fake_clock)
 
@@ -177,12 +185,20 @@ async def test_sweep_lost_training_jobs__J07(
     timeout = get_training_settings().training_heartbeat_timeout_s
     stale = fake_clock.now() - timedelta(seconds=timeout + 60)
     lost = await make_training_job(
-        db_session, dataset_version_id=dsv, status="cancelling", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="cancelling",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
     claimed = await make_training_job(
-        db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
     safe_client.set(claim_key(claimed.id), "1")
 
@@ -194,8 +210,12 @@ async def test_sweep_lost_training_jobs__J07(
     assert any(record.getMessage() == "training_heartbeat_late" for record in caplog.records)
 
     second_lost = await make_training_job(
-        db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
     _kill_redis(monkeypatch)
     with caplog.at_level(logging.WARNING, logger="apps.worker.training_bridge.jobs"):
@@ -217,8 +237,12 @@ async def test_sweep_lost_training_jobs_rolls_back_one_job_when_arm_cancel_key_f
     timeout = get_training_settings().training_heartbeat_timeout_s
     stale = fake_clock.now() - timedelta(seconds=timeout + 60)
     broken = await make_training_job(
-        db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
 
     async def _broken_arm_cancel_key(job_id: str) -> None:
@@ -245,8 +269,12 @@ async def test_sweep_lost_training_jobs_skips_a_row_another_beat_already_finishe
     timeout = get_training_settings().training_heartbeat_timeout_s
     stale = fake_clock.now() - timedelta(seconds=timeout + 60)
     job = await make_training_job(
-        db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-        started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+        db_session,
+        dataset_version_id=dsv,
+        status="running",
+        created_at=stale - timedelta(minutes=1),
+        started_at=stale - timedelta(minutes=1),
+        last_heartbeat_at=stale,
     )
     real_claims_present = jobs_module._claims_present  # noqa: SLF001 — mô phỏng beat khác chen vào giữa lượt
 
@@ -571,8 +599,12 @@ async def _seed_stale_running() -> str:
             timeout = get_training_settings().training_heartbeat_timeout_s
             stale = clock.now() - timedelta(seconds=timeout + 60)
             job = await make_training_job(
-                db, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
-                started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
+                db,
+                dataset_version_id=dsv,
+                status="running",
+                created_at=stale - timedelta(minutes=1),
+                started_at=stale - timedelta(minutes=1),
+                last_heartbeat_at=stale,
             )
         return job.id
     finally:

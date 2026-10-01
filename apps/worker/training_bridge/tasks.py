@@ -129,9 +129,11 @@ async def run_training_heartbeat(
 
 async def _max_steps(db: AsyncSession, job_id: str) -> dict[str, int]:
     """Bước lớn nhất đã ghi theo `split` — mốc nhận ra một lô tới muộn (`training_metric_late`)."""
-    stmt = select(TrainingMetricRow.split, func.max(TrainingMetricRow.step)).where(
-        TrainingMetricRow.job_id == job_id
-    ).group_by(TrainingMetricRow.split)
+    stmt = (
+        select(TrainingMetricRow.split, func.max(TrainingMetricRow.step))
+        .where(TrainingMetricRow.job_id == job_id)
+        .group_by(TrainingMetricRow.split)
+    )
     return {str(split): int(step) for split, step in (await db.execute(stmt)).all()}
 
 
@@ -177,9 +179,7 @@ async def run_training_metrics(
                 _ignore(METRICS_TASK, job.id, "metric_not_of_family", split=point.split, step=point.step)
                 continue
             if point.step <= max_steps.get(point.split, -1):
-                _log.warning(
-                    "training_metric_late", extra={"job_id": job.id, "split": point.split, "step": point.step}
-                )
+                _log.warning("training_metric_late", extra={"job_id": job.id, "split": point.split, "step": point.step})
             sent = datetime.fromtimestamp(point.recorded_at_ms / 1000, UTC)
             await db.execute(
                 insert(TrainingMetricRow)
@@ -225,9 +225,7 @@ async def run_training_log(
         if message is None:
             _ignore(LOG_TASK, job.id, "template_unknown", template=payload.template)
             return
-        lines = await db.scalar(
-            select(func.count()).select_from(TrainingLogRow).where(TrainingLogRow.job_id == job.id)
-        )
+        lines = await db.scalar(select(func.count()).select_from(TrainingLogRow).where(TrainingLogRow.job_id == job.id))
         if (lines or 0) >= settings.training_max_log_lines:
             _ignore(LOG_TASK, job.id, "log_lines_exhausted", lines=lines)
             return
