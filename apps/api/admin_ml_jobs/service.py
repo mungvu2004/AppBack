@@ -323,6 +323,4 @@ async def list_job_logs(db: AsyncSession, *, job_id: str, since: int, limit: int
     items = rows[:limit]
     position = items[-1].seq if items else since
     exhausted = _past_late_window(job, now, settings) and len(rows) == len(items)
-    return TrainingLogPage(
-        items=[log_line_out(row) for row in items], next_cursor=None if exhausted else str(position)
-    )
+    return TrainingLogPage(items=[log_line_out(row) for row in items], next_cursor=None if exhausted else str(position))

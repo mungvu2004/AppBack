@@ -47,9 +47,7 @@ async def _job(db: AsyncSession, *, status: str = "running", ended_at: datetime 
     """
     dataset = await make_dataset(db, family=OPENING)
     version = await make_dataset_version(db, dataset=dataset, status="ready")
-    return await make_training_job(
-        db, dataset_version_id=version.id, family=OPENING, status=status, ended_at=ended_at
-    )
+    return await make_training_job(db, dataset_version_id=version.id, family=OPENING, status=status, ended_at=ended_at)
 
 
 def _steps(body: dict[str, object]) -> list[tuple[int, str]]:
@@ -122,11 +120,11 @@ async def test_ml_list_job_metrics__C15(
     assert one.json()["nextCursor"] == "-1"
 
     points = [(step, split) for step in range(5) for split in ("train", "validation")]
-    await add_metrics(
-        db_session, job_id=job.id, at=fake_clock.now(), points=[p for p in points if p[0] > 0]
-    )
+    await add_metrics(db_session, job_id=job.id, at=fake_clock.now(), points=[p for p in points if p[0] > 0])
     first = await _get(api_client, fake_principal, metrics_path(job.id), limit=2)
-    second = await _get(api_client, fake_principal, metrics_path(job.id), limit=2, since=int(first.json()["nextCursor"]))
+    second = await _get(
+        api_client, fake_principal, metrics_path(job.id), limit=2, since=int(first.json()["nextCursor"])
+    )
 
     assert _steps(first.json()) == [(0, "train"), (0, "validation")]
     assert first.json()["nextCursor"] == "0"
@@ -166,9 +164,7 @@ async def test_ml_list_job_metrics_holds_the_last_step_until_both_splits_arrive(
 ) -> None:
     """Bước 3 mới một `split` → chưa trả; thêm bước 4 → bước 3 ra đủ hai `split` ([8] N36)."""
     job = await _job(db_session)
-    await add_metrics(
-        db_session, job_id=job.id, at=fake_clock.now(), points=[(3, "train"), (3, "validation")]
-    )
+    await add_metrics(db_session, job_id=job.id, at=fake_clock.now(), points=[(3, "train"), (3, "validation")])
     held = await _get(api_client, fake_principal, metrics_path(job.id), since=2)
 
     await add_metrics(db_session, job_id=job.id, at=fake_clock.now(), points=[(4, "train")])

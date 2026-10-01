@@ -191,9 +191,7 @@ async def test_ml_create_job__base_model_mismatch(
     assert response.json()["code"] == TRAINING_BASE_MODEL_MISMATCH.code
 
 
-async def test_ml_create_job__missing_version(
-    api_client: httpx.AsyncClient, fake_principal: Principal
-) -> None:
+async def test_ml_create_job__missing_version(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
     """Bản dataset không có → 404 `resource:"datasetVersion"` (không 422)."""
     response = await _post(api_client, fake_principal, JOBS_PATH, _body("dsv_01KB6030000000000000000404"))
 

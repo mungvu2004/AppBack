@@ -95,9 +95,7 @@ async def test_ml_list_jobs__C15(
 
     newest_first = [job.id for job in reversed(jobs)]
     first = await _get(api_client, fake_principal, JOBS_PATH, family=WALL, limit=3)
-    second = await _get(
-        api_client, fake_principal, JOBS_PATH, family=WALL, limit=3, cursor=first.json()["nextCursor"]
-    )
+    second = await _get(api_client, fake_principal, JOBS_PATH, family=WALL, limit=3, cursor=first.json()["nextCursor"])
     over_limit = await _get(api_client, fake_principal, JOBS_PATH, limit=201)
 
     assert [item["id"] for item in first.json()["items"]] == newest_first[:3]
