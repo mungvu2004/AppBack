@@ -24,10 +24,9 @@ from apps.worker.pipeline_steps import step_done as core
 from apps.worker.pipeline_steps import tasks
 from apps.worker.pipeline_steps.settings import get_steps_settings
 from apps.worker.pipeline_steps.step_done import BUILD_STEP, run_pipeline_step_done
-from apps.worker.pipeline_steps.sweep import _IDLE_MARK, run_stuck_pipeline_sweep
+from apps.worker.pipeline_steps.sweep import _IDLE_MARK, CPU_QUEUE, run_stuck_pipeline_sweep
 from apps.worker.pipeline_steps.tests import helpers
 from apps.worker.pipeline_steps.tests.helpers import (
-    CPU_QUEUE,
     deliver_ml,
     open_run_at_ml,
     put_ml_artifacts,

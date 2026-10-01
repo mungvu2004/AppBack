@@ -16,9 +16,9 @@ from apps.worker.pipeline_build.artifacts import input_key, layer_key
 from apps.worker.pipeline_orchestrate.pins import load_pins, set_step_requeue
 from apps.worker.pipeline_steps.errors import MODEL_PIN_MISMATCH, PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_steps.step_done import BUILD_STEP, fail_pipeline_step_done_core, run_pipeline_step_done
+from apps.worker.pipeline_steps.sweep import CPU_QUEUE
 from apps.worker.pipeline_steps.tests import helpers
 from apps.worker.pipeline_steps.tests.helpers import (
-    CPU_QUEUE,
     Arranged,
     deliver_ml,
     open_run_at_ml,

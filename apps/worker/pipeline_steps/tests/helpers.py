@@ -10,6 +10,7 @@ dòng ghim và tiền tố artifact đều đúng hình dạng mà lõi `step_do
 """
 
 import json
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -29,6 +30,8 @@ from apps.worker.pipeline_steps.settings import reset_steps_settings_cache
 from apps.worker.pipeline_steps.step_done import run_pipeline_step_done
 from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE, run_stuck_pipeline_sweep
 from packages.core.clock import Clock
+from packages.core.object_keys import run_prefix as artifact_run_prefix
+from packages.core.object_keys import upload_prefix
 from packages.db.hooks import after_commit_idle
 from packages.db.models.drawings import DrawingRow, PipelineRunRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
@@ -47,16 +50,21 @@ from packages.ml_contracts.artifacts import (
 from packages.ml_contracts.families import FAMILY_STEP, ModelFamily
 from packages.ml_contracts.payloads import StepResultPayload
 from packages.ml_contracts.synthetic import render_plan
-from packages.storage.keys import run_artifact as artifact_run_prefix
-from packages.storage.keys import upload_original, upload_page, upload_prefix
+from packages.storage.keys import upload_original, upload_page
+from packages.storage.local import LocalDiskStorage
 from packages.storage.port import ObjectStorage
+from packages.testing.factories.auth import make_user
 from packages.testing.factories.drawings import make_complete_upload, make_drawing
+from packages.testing.factories.floors import make_floor
 from packages.testing.factories.pipeline_orchestrate import make_run_pins
+from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.db import drop_after_commit
 from packages.vision.preprocess.tests.synthetic import encode
 
 type Maker = async_sessionmaker[AsyncSession]
+
+_log = logging.getLogger(__name__)
 
 PLAN_SEED: Final = 7
 """Seed trang tổng hợp; cố định để khổ trang (và `width_px` của `BuildStepPayload`) tất định."""
