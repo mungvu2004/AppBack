@@ -154,9 +154,8 @@ async def run_sweep_lost_training_jobs(
 
 async def _dispatch_training_run(db: AsyncSession, row: TrainingJobRow) -> None:
     """Đăng ký gửi `RUNNER_START_TASK` **sau** commit (K17); `manifest_sha256` ghim của dataset."""
-    manifest_sha256 = (
-        await db.execute(select(DatasetVersionRow.manifest_sha256).where(DatasetVersionRow.id == row.dataset_version_id))
-    ).scalar_one()
+    manifest_stmt = select(DatasetVersionRow.manifest_sha256).where(DatasetVersionRow.id == row.dataset_version_id)
+    manifest_sha256 = (await db.execute(manifest_stmt)).scalar_one()
     if manifest_sha256 is None:
         raise RuntimeError(f"dataset {row.dataset_version_id!r} chưa có manifest_sha256")
     payload = TrainJobPayload(
@@ -179,11 +178,12 @@ async def _process_requeue_job(sessionmaker: async_sessionmaker[AsyncSession], c
     settings = get_training_settings()
     now = clock.now()
     async with sessionmaker() as db:
-        row = (
-            await db.execute(
-                select(TrainingJobRow).where(TrainingJobRow.id == job_id, TrainingJobRow.status == "queued").with_for_update()
-            )
-        ).scalar_one_or_none()
+        stmt = (
+            select(TrainingJobRow)
+            .where(TrainingJobRow.id == job_id, TrainingJobRow.status == "queued")
+            .with_for_update()
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
         if row is None:
             await db.rollback()
             return False

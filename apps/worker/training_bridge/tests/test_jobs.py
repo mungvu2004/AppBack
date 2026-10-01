@@ -14,9 +14,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped] — gói không có stub kiểu
 
 from apps.api.admin_ml_jobs.settings import get_training_settings, reset_training_settings_cache
+from apps.worker.training_bridge import jobs as jobs_module
 from apps.worker.training_bridge.errors import TRAINING_DISPATCH_STALLED, TRAINING_HEARTBEAT_LOST
 from apps.worker.training_bridge.jobs import (
     MAX_REQUEUE_ATTEMPTS,
@@ -223,6 +224,7 @@ async def test_sweep_lost_training_jobs_rolls_back_one_job_when_arm_cancel_key_f
     )
 
     async def _broken_arm_cancel_key(job_id: str) -> None:
+        """Giả Redis lỗi đúng lúc đặt `cancel_key` — khuôn `arm_cancel_key` thật, chỉ đổi phần ném lỗi."""
         raise RuntimeError("redis lỗi")
 
     monkeypatch.setattr("apps.worker.training_bridge.jobs.arm_cancel_key", _broken_arm_cancel_key)
@@ -248,11 +250,10 @@ async def test_sweep_lost_training_jobs_skips_a_row_another_beat_already_finishe
         db_session, dataset_version_id=dsv, status="running", created_at=stale - timedelta(minutes=1),
         started_at=stale - timedelta(minutes=1), last_heartbeat_at=stale,
     )
-    from apps.worker.training_bridge import jobs as jobs_module
-
     real_claims_present = jobs_module._claims_present  # noqa: SLF001 — mô phỏng beat khác chen vào giữa lượt
 
     async def _claims_present_then_race(job_ids: list[str]) -> dict[str, bool] | None:
+        """`_claims_present` thật, nhưng đổi trạng thái của job ngay trước khi trả — giả một beat khác đã chốt nó."""
         async with db_sessionmaker() as db:
             await db.execute(update(TrainingJobRow).where(TrainingJobRow.id == job.id).values(status="cancelling"))
             await db.commit()
@@ -344,11 +345,16 @@ async def test_requeue_training_jobs_rolls_back_when_arm_cancel_key_fails_at_the
     dsv = await _ready_dataset_version(db_session)
     settings = get_training_settings()
     job = await make_training_job(
-        db_session, dataset_version_id=dsv, status="queued", created_at=fake_clock.now(), requeue_count=MAX_REQUEUE_ATTEMPTS
+        db_session,
+        dataset_version_id=dsv,
+        status="queued",
+        created_at=fake_clock.now(),
+        requeue_count=MAX_REQUEUE_ATTEMPTS,
     )
     fake_clock.advance(timedelta(seconds=settings.training_requeue_after_s * (2**MAX_REQUEUE_ATTEMPTS) + 1))
 
     async def _broken_arm_cancel_key(job_id: str) -> None:
+        """Giả Redis lỗi đúng lúc đặt `cancel_key` — khuôn `arm_cancel_key` thật, chỉ đổi phần ném lỗi."""
         raise RuntimeError("redis lỗi")
 
     monkeypatch.setattr("apps.worker.training_bridge.jobs.arm_cancel_key", _broken_arm_cancel_key)
@@ -371,14 +377,15 @@ async def test_requeue_training_jobs_skips_a_row_another_beat_already_requeued(
     job = await make_training_job(db_session, dataset_version_id=dsv, status="queued", created_at=fake_clock.now())
     settings = get_training_settings()
     fake_clock.advance(timedelta(seconds=settings.training_requeue_after_s + 1))
-    from apps.worker.training_bridge import jobs as jobs_module
-
     real_claims_present = jobs_module._claims_present  # noqa: SLF001 — mô phỏng beat khác chen vào giữa lượt
 
     async def _claims_present_then_race(job_ids: list[str]) -> dict[str, bool] | None:
+        """`_claims_present` thật, nhưng đổi trạng thái của job ngay trước khi trả — giả một beat khác đã gửi lại nó."""
         async with db_sessionmaker() as db:
             await db.execute(
-                update(TrainingJobRow).where(TrainingJobRow.id == job.id).values(status="running", started_at=fake_clock.now())
+                update(TrainingJobRow)
+                .where(TrainingJobRow.id == job.id)
+                .values(status="running", started_at=fake_clock.now())
             )
             await db.commit()
         return await real_claims_present(job_ids)
@@ -397,7 +404,9 @@ async def test_requeue_training_jobs_raises_when_the_dataset_has_no_manifest(
     fake_clock.set(datetime.now(UTC))
     dataset = await make_dataset(db_session, family=FAMILY, created_by=SEED_USER)
     building = await make_dataset_version(db_session, dataset=dataset, status="building", sequence=1)
-    job = await make_training_job(db_session, dataset_version_id=building.id, status="queued", created_at=fake_clock.now())
+    job = await make_training_job(
+        db_session, dataset_version_id=building.id, status="queued", created_at=fake_clock.now()
+    )
     settings = get_training_settings()
     fake_clock.advance(timedelta(seconds=settings.training_requeue_after_s + 1))
 
@@ -555,7 +564,12 @@ def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
     monkeypatch.setenv("SECRET_KEY", "fixture-secret-for-training-bridge-jobs-01")
-    caches = (reset_settings_cache, reset_database_settings_cache, reset_storage_settings_cache, reset_training_settings_cache)
+    caches = (
+        reset_settings_cache,
+        reset_database_settings_cache,
+        reset_storage_settings_cache,
+        reset_training_settings_cache,
+    )
     for reset in caches:
         reset()
     yield
