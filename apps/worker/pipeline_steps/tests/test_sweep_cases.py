@@ -34,7 +34,7 @@ from apps.worker.pipeline_steps.tests.helpers import (
     sweep,
 )
 from packages.messaging.redis import SyncRedis
-from packages.messaging.streams import EventBus
+from packages.messaging.streams import EventBus, upload_stream
 from packages.ml_contracts.families import MODEL_FAMILIES
 from packages.storage.local import LocalDiskStorage
 from packages.testing.fixtures.clock import FakeClock
@@ -137,3 +137,9 @@ async def test_sweep_stuck_pipeline_runs__J07(
     assert (row.status, row.error_code, row.current_step) == ("failed", PIPELINE_STEP_TIMEOUT, "wallSegmentation")
     assert row.ended_at is None
     assert marks == [601, 1201, 2401]
+    # Nhánh hết trần cũng phải **phát** được sự kiện: `_requeue_one` chờ callback sau commit ở mọi
+    # nhánh, nên `Progress failed` tới nơi dù tiến trình không bật `DB_AFTER_COMMIT_INLINE`.
+    events = await steps_seen(event_bus, arranged.upload_id, after=0)
+    assert events[-1] == ("failed", "wallSegmentation", 5)
+    last = (await event_bus.read_after(upload_stream(arranged.upload_id), "0-0"))[-1].data
+    assert (last["error"], last.get("endedAt")) == (PIPELINE_STEP_TIMEOUT, None)

@@ -24,9 +24,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import QueuePool
 
+from apps.worker.pipeline_orchestrate.pins import record_used
 from apps.worker.pipeline_steps.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_steps.settings import get_steps_settings
-from apps.worker.pipeline_steps.step_done import BUILD_TASK, QUALITY_TASK
+from apps.worker.pipeline_steps.step_done import BUILD_STEP, BUILD_TASK, QUALITY_TASK
 from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE, _requeue_one, run_stuck_pipeline_sweep
 from apps.worker.pipeline_steps.tests import helpers
 from apps.worker.pipeline_steps.tests.helpers import (
@@ -321,3 +322,45 @@ async def test_requeue_one_skips_run_that_changed_after_selection(
 
     assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
     assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
+
+
+async def test_sweep_keeps_run_whose_family_just_finished(
+    sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Một họ ML vừa xong (`record_used`) → lượt **không** im, dù hai `updated_at` đã quá ngưỡng.
+
+    `pins.record_used` ghi bằng `text()` thuần nên `TimestampMixin.onupdate` không chạy: chỉ
+    `last_used_at` nhảy. Nếu mốc im bỏ cột đó, quét bù gửi lại đúng suy luận **đang chạy** và đốt
+    một lượt `step_requeue_count`. Test đi đường thật (`record_used`), không đặt tay cột nào.
+    """
+    arranged = await arrange_run(db_sessionmaker, local_storage, fake_clock)
+    await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
+    async with db_sessionmaker() as db:
+        await record_used(db, run_id=arranged.run_id, family=MODEL_FAMILIES[0], used="classic")
+        await db.commit()
+
+    await sweep(db_sessionmaker, fake_clock)
+
+    assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
+    assert await read_count(db_sessionmaker, arranged.run_id) == 0
+    assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
+
+
+async def test_sweep_fails_build_step_without_matching_drawing(
+    sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """`spatialDataBuild` mà tầng không có bản vẽ của lượt tải này → `queue_build` đánh `failed`.
+
+    Khác `test_sweep_fails_run_without_matching_drawing`: ca đó đi nhánh ML của `_resend`, ca này
+    đi `queue_build` của `step_done` (nhánh hỏng duy nhất của hàm dùng chung đó).
+    """
+    arranged = await arrange_run(
+        db_sessionmaker, local_storage, fake_clock, step=BUILD_STEP, with_drawing=False, progress_percent=70
+    )
+    await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
+
+    await sweep(db_sessionmaker, fake_clock)
+
+    row = await run_row(db_sessionmaker, arranged.run_id)
+    assert (row.status, row.error_code, row.current_step) == ("failed", PIPELINE_RESULT_INVALID, BUILD_STEP)
+    assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)

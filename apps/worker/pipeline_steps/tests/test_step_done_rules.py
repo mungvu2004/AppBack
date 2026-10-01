@@ -8,7 +8,7 @@ Dịch vụ thật (K23): Postgres, Redis, kho đĩa `local_storage`; mọi kh�
 from typing import Final
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.runs import start_run
@@ -29,6 +29,7 @@ from apps.worker.pipeline_steps.tests.helpers import (
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.db.hooks import after_commit_idle
+from packages.db.models.drawings import DrawingRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
 from packages.messaging.redis import SyncRedis
 from packages.ml_contracts.families import FAMILY_STEP, ModelFamily
@@ -377,3 +378,33 @@ async def test_fail_pipeline_step_done_ignores_used_family(
 
     row = await run_row(db_sessionmaker, arranged.run_id)
     assert (row.status, row.error_code, row.current_step) == ("running", None, OBJECTS)
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_step_done_rejects_drawing_of_another_upload(
+    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, clean_queues: SyncRedis
+) -> None:
+    """Bản vẽ hiện hành của tầng đổi sang lượt tải khác **giữa** hai kết quả ML → `PIPELINE_RESULT_INVALID`.
+
+    Lõi tra lại `load_run_context` dưới khoá ở **mỗi** lượt giao, nên một lượt tải mới chen vào
+    giữa ba bước ML không bao giờ làm lượt cũ xếp được `spatialDataBuild` (F4 của review lượt 1).
+    """
+    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, clean_queues)
+    stranger = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, clean_queues)
+    for family in (WALLS, OBJECTS):
+        await deliver_ml(db_sessionmaker, local_storage, arranged, family, fake_clock)
+    async with db_sessionmaker() as db:
+        stmt = update(DrawingRow).where(DrawingRow.floor_pk == arranged.floor_pk)
+        await db.execute(stmt.values(upload_id=stranger.upload_id))
+        await db.commit()
+    clean_queues.delete(CPU_QUEUE)
+
+    await deliver_ml(db_sessionmaker, local_storage, arranged, TEXTS, fake_clock)
+
+    row = await run_row(db_sessionmaker, arranged.run_id)
+    async with db_sessionmaker() as db:
+        pins = await load_pins(db, arranged.run_id)
+    assert (row.status, row.error_code, row.current_step) == ("failed", PIPELINE_RESULT_INVALID, TEXTS_STEP)
+    assert pins is not None
+    assert TEXTS not in pins.used
+    assert queued_payloads(clean_queues, CPU_QUEUE) == []

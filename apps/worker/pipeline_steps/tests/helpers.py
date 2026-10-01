@@ -269,11 +269,14 @@ async def _arrange(
 
 
 async def set_idle(maker: Maker, run_id: str, clock: FakeClock, *, seconds: float) -> datetime:
-    """Đặt hai `updated_at` **và** `started_at` về một mốc cố định rồi `fake_clock.set` tới `mốc + seconds`.
+    """Đặt hai `updated_at`, `last_used_at` **và** `started_at` về một mốc rồi `fake_clock.set` tới `mốc + seconds`.
 
     Trả mốc im đã **đọc lại** từ DB: giờ của Postgres và của `fake_clock` không cùng nguồn, nên
     chỉ giá trị đọc lại mới dùng được để tính ngưỡng ([8]). `started_at` đi cùng mốc vì nếu không,
     `now - started_at` vượt `PIPELINE_RUN_MAX_S` và mọi luật giữ theo hàng bị bỏ qua.
+
+    `last_used_at` cũng phải lùi: mốc im của lõi là `greatest(r.updated_at, m.updated_at,
+    m.last_used_at)`, nên để cột đó ở giờ thật là dựng một lượt **không** im.
     """
     mark = datetime(2026, 3, 1, 12, tzinfo=UTC)
     async with maker() as db:
@@ -281,7 +284,9 @@ async def set_idle(maker: Maker, run_id: str, clock: FakeClock, *, seconds: floa
             update(PipelineRunRow).where(PipelineRunRow.id == run_id).values(updated_at=mark, started_at=mark)
         )
         await db.execute(
-            update(PipelineRunModelsRow).where(PipelineRunModelsRow.run_id == run_id).values(updated_at=mark)
+            update(PipelineRunModelsRow)
+            .where(PipelineRunModelsRow.run_id == run_id)
+            .values(updated_at=mark, last_used_at=mark)
         )
         await db.commit()
         stmt = text(

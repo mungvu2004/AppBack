@@ -10,6 +10,9 @@ Hai bất biến đắt giá:
 - **Redis trước mọi session** (K36): `LLEN` của hai hàng đọc xong mới mở session, nên broker treo
   không giữ một kết nối pool nào; hàng không đọc được coi như **còn việc** (thà chậm một nhịp 5
   phút hơn gửi lại một bước còn đang chạy).
+- **Mốc im gồm `last_used_at`**: `pins.record_used` ghi bằng `text()` thuần nên `TimestampMixin.
+  onupdate` không chạy — chỉ `last_used_at` đổi khi một bước ML vừa xong. Bỏ cột đó khỏi `greatest`
+  là gửi lại chính suy luận đang chạy (lãng phí GPU) và đốt một lượt `step_requeue_count`.
 - **Mốc im đọc hai lần**: một lần không khoá để chọn lô, một lần dưới `lock_run` + `load_pins(
   for_update=True)` — kết quả thật tới giữa hai lần đọc thì lượt bị bỏ khỏi lượt quét này.
 
@@ -52,18 +55,24 @@ _ML_STEPS: Final = list(MODEL_FAMILIES)
 _CANDIDATES: Final = text(
     "SELECT r.id FROM pipeline_runs r JOIN pipeline_run_models m ON m.run_id = r.id"
     " WHERE r.status = 'running' AND r.superseded_by IS NULL"
-    " AND :now - greatest(r.updated_at, m.updated_at)"
+    " AND :now - greatest(r.updated_at, m.updated_at, m.last_used_at)"
     " >= make_interval(secs => :after * power(2, m.step_requeue_count))"
     " AND (NOT (:cpu_busy OR (:ml_busy AND r.current_step = ANY(:ml_steps)))"
     " OR (r.started_at IS NOT NULL AND :now - r.started_at > make_interval(secs => :run_max)))"
-    " ORDER BY greatest(r.updated_at, m.updated_at) LIMIT :batch"
+    " ORDER BY greatest(r.updated_at, m.updated_at, m.last_used_at), r.id LIMIT :batch"
 ).bindparams(bindparam("ml_steps", type_=ARRAY(Text)))
-"""Chọn lô: lượt chờ hàng bị loại **trong** `WHERE` nên không chiếm suất `LIMIT` ([6] bước 2)."""
+"""Chọn lô: lượt chờ hàng bị loại **trong** `WHERE` nên không chiếm suất `LIMIT` ([6] bước 2).
+
+`r.id` phá hoà ở `ORDER BY` (khuôn `purge._select_due`): nhiều lượt cùng mốc im là chuyện thường
+(ghi trong một giao dịch, hay cùng một nhịp `now()`), mà `LIMIT` không có khoá phụ thì Postgres
+được chọn tập con tuỳ ý — một lượt có thể bị bỏ qua nhiều lượt quét liền.
+"""
 
 _IDLE_MARK: Final = text(
-    "SELECT greatest(r.updated_at, m.updated_at) FROM pipeline_runs r"
+    "SELECT greatest(r.updated_at, m.updated_at, m.last_used_at) FROM pipeline_runs r"
     " JOIN pipeline_run_models m ON m.run_id = r.id WHERE r.id = :run_id"
 )
+"""Mốc im đọc lại dưới khoá; cùng công thức `greatest` với `_CANDIDATES` (một định nghĩa, R-02)."""
 
 
 async def _queue_busy(broker: AsyncRedis, key: str) -> bool:
@@ -134,38 +143,48 @@ async def _resend(db: AsyncSession, run: RunRow, pins: RunPins, clock: Clock) ->
 async def _requeue_one(
     sessionmaker: async_sessionmaker[AsyncSession], run_id: str, clock: Clock, settings: StepsSettings
 ) -> None:
-    """Một giao dịch cho một lượt: khoá, kiểm lại mốc im, gửi lại hay đánh hết trần."""
+    """Một giao dịch cho một lượt, rồi **luôn** chờ callback sau commit ([6] "khuôn").
+
+    Thân nằm ở `_requeue_body` để mọi nhánh bỏ sớm vẫn rơi xuống `after_commit_idle`: nhánh hết
+    trần hẹn một `Progress failed` qua `record_step`, mà không có `DB_AFTER_COMMIT_INLINE=1` thì
+    `return` trong `async with` làm hàm lịch trả về trước khi sự kiện kịp phát.
+    """
     async with session_scope(sessionmaker) as db:
-        run = await lock_run(db, run_id=run_id)
-        if run is None:
-            return
-        pins = await load_pins(db, run_id, for_update=True)
-        idle = None if pins is None else await _idle_seconds(db, run_id, clock)
-        if pins is None or idle is None:
-            return
-        count = pins.step_requeue_count
-        if idle < settings.PIPELINE_STEP_REQUEUE_AFTER_S * 2**count:
-            _log.info("sweep_run_fresh", extra={"run_id": run_id, "idle_s": idle})
-            return
-        if count >= settings.PIPELINE_STEP_REQUEUE_MAX:
-            _log.info("sweep_run_timeout", extra={"run_id": run_id, "step": run.current_step, "idle_s": idle})
-            await record_step(
-                db,
-                run_id=run_id,
-                step=run.current_step,
-                status="failed",
-                clock=clock,
-                error_code=PIPELINE_STEP_TIMEOUT,
-            )
-            return
-        await set_step_requeue(db, run_id=run_id, count=count + 1)
-        _log.info(
-            "sweep_run_requeued",
-            extra={"run_id": run_id, "step": run.current_step, "attempt": count + 1, "idle_s": idle},
-        )
-        if await _resend(db, run, pins, clock):
-            await publish_progress_after_commit(db, run.upload_id)
+        await _requeue_body(db, run_id, clock, settings)
     await after_commit_idle(db)
+
+
+async def _requeue_body(db: AsyncSession, run_id: str, clock: Clock, settings: StepsSettings) -> None:
+    """Khoá lượt, kiểm lại mốc im dưới khoá, gửi lại bước hay đánh hết trần (không commit)."""
+    run = await lock_run(db, run_id=run_id)
+    if run is None:
+        return
+    pins = await load_pins(db, run_id, for_update=True)
+    idle = None if pins is None else await _idle_seconds(db, run_id, clock)
+    if pins is None or idle is None:
+        return
+    count = pins.step_requeue_count
+    if idle < settings.PIPELINE_STEP_REQUEUE_AFTER_S * 2**count:
+        _log.info("sweep_run_fresh", extra={"run_id": run_id, "idle_s": idle})
+        return
+    if count >= settings.PIPELINE_STEP_REQUEUE_MAX:
+        _log.info("sweep_run_timeout", extra={"run_id": run_id, "step": run.current_step, "idle_s": idle})
+        await record_step(
+            db,
+            run_id=run_id,
+            step=run.current_step,
+            status="failed",
+            clock=clock,
+            error_code=PIPELINE_STEP_TIMEOUT,
+        )
+        return
+    await set_step_requeue(db, run_id=run_id, count=count + 1)
+    _log.info(
+        "sweep_run_requeued",
+        extra={"run_id": run_id, "step": run.current_step, "attempt": count + 1, "idle_s": idle},
+    )
+    if await _resend(db, run, pins, clock):
+        await publish_progress_after_commit(db, run.upload_id)
 
 
 async def run_stuck_pipeline_sweep(
