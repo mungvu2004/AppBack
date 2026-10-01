@@ -13,7 +13,6 @@ bằng `logging`.
 """
 
 import asyncio
-import json
 import logging
 import time
 from typing import Final, cast
@@ -22,23 +21,24 @@ import pytest
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import QueuePool
 
 from apps.worker.pipeline_steps.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_steps.settings import get_steps_settings
 from apps.worker.pipeline_steps.step_done import BUILD_TASK, QUALITY_TASK
 from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE, _requeue_one, run_stuck_pipeline_sweep
-from apps.worker.pipeline_steps.tests.test_sweep_cases import (
+from apps.worker.pipeline_steps.tests import helpers
+from apps.worker.pipeline_steps.tests.helpers import (
     BATCH,
     REQUEUE_AFTER_S,
+    Maker,
     arrange_run,
-    clean_queues,
+    queued_tasks,
     read_count,
-    read_run,
+    run_row,
     set_idle,
     sweep,
-    sweep_env,
 )
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
@@ -55,10 +55,10 @@ from packages.storage.local import LocalDiskStorage
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.messaging import queued_payloads
 
-__all__ = ["clean_queues", "sweep_env"]
-"""Hai fixture nhập từ `test_sweep_cases`; khai lại để chúng là tên công khai của module này."""
+clean_queues = helpers.clean_queues
+sweep_env = helpers.sweep_env
+"""Hai fixture của `helpers`, gán lại để pytest thấy chúng trong module này (R-02)."""
 
-type Maker = async_sessionmaker[AsyncSession]
 
 _log = logging.getLogger(__name__)
 
@@ -68,16 +68,6 @@ IDLE_S: Final = REQUEUE_AFTER_S + 60
 """Mốc im dùng cho mọi lượt ở file này: quá ngưỡng lần đầu (`step_requeue_count = 0`)."""
 
 _START_TASK: Final = "pipeline.orchestrate.start"
-
-
-def queued_tasks(client: SyncRedis, queue: str) -> list[str]:
-    """Tên task của mọi thông điệp đang nằm trên một hàng, **mới nhất trước**.
-
-    `queued_payloads` chỉ bóc `args[0]`, mà mấy test ở đây phân biệt **task nào** đã gửi — tên
-    nằm ở `headers.task` của phong bì kombu, không ở thân. kombu `LPUSH` rồi `BRPOP`, nên `LRANGE`
-    trả ngược thứ tự gửi.
-    """
-    return [json.loads(raw)["headers"]["task"] for raw in client.lrange(queue, 0, -1)]
 
 
 class _HangingLlen(Redis):
@@ -247,7 +237,7 @@ async def test_sweep_fails_run_without_matching_drawing(
 
     await sweep(db_sessionmaker, fake_clock)
 
-    row = await read_run(db_sessionmaker, arranged.run_id)
+    row = await run_row(db_sessionmaker, arranged.run_id)
     assert (row.status, row.error_code) == ("failed", PIPELINE_RESULT_INVALID)
     assert sweep_env.llen(ML_QUEUE) == 0
 
@@ -295,7 +285,7 @@ async def test_sweep_survives_unreadable_queue(
         assert checked_out == 0, "LLEN treo mà pool còn kết nối: lõi đọc Redis trong session (K36)"
     assert sweep_env.llen(ML_QUEUE) == 0
     assert await read_count(db_sessionmaker, arranged.run_id) == 0
-    assert (await read_run(db_sessionmaker, arranged.run_id)).status == "running"
+    assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
 
 
 def test_queue_names_match_kombu_list_keys(sweep_env: SyncRedis) -> None:
@@ -330,4 +320,4 @@ async def test_requeue_one_skips_run_that_changed_after_selection(
     await _requeue_one(db_sessionmaker, arranged.run_id, fake_clock, settings)
 
     assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
-    assert (await read_run(db_sessionmaker, arranged.run_id)).status == "running"
+    assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"

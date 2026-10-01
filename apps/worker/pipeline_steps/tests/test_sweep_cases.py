@@ -16,208 +16,34 @@ dựng dùng chung, không hai bản lệch nhau (R-02). `tests/helpers.py` củ
 
 import asyncio
 import logging
-from collections.abc import Iterator
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import Final, cast
 
-import pytest
-from PIL import Image
-from sqlalchemy import select, text, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import text
 
-from apps.api.drawings.runs import reset_sync_bus_cache, start_run
-from apps.api.drawings.tests._helpers import make_scene
 from apps.worker.pipeline_steps import jobs
 from apps.worker.pipeline_steps.errors import PIPELINE_STEP_TIMEOUT
-from apps.worker.pipeline_steps.settings import reset_steps_settings_cache
-from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE, run_stuck_pipeline_sweep
-from packages.db.hooks import after_commit_idle
-from packages.db.models.drawings import PipelineRunRow
-from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
-from packages.db.settings import reset_database_settings_cache
-from packages.messaging.redis import SyncRedis, broker_redis, broker_redis_sync
-from packages.messaging.streams import EventBus, upload_stream
-from packages.ml_contracts.families import MODEL_FAMILIES, ModelFamily
+from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE
+from apps.worker.pipeline_steps.tests import helpers
+from apps.worker.pipeline_steps.tests.helpers import (
+    REQUEUE_AFTER_S,
+    Maker,
+    arrange_run,
+    read_count,
+    run_row,
+    set_idle,
+    steps_seen,
+    sweep,
+)
+from packages.messaging.redis import SyncRedis
+from packages.messaging.streams import EventBus
+from packages.ml_contracts.families import MODEL_FAMILIES
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.drawings import make_complete_upload, make_drawing
-from packages.testing.factories.pipeline_orchestrate import make_run_pins
 from packages.testing.fixtures.clock import FakeClock
-from packages.testing.fixtures.db import drop_after_commit
-from packages.vision.preprocess.tests.synthetic import encode
-
-type Maker = async_sessionmaker[AsyncSession]
 
 _log = logging.getLogger(__name__)
 
-REQUEUE_AFTER_S: Final = 600
-"""`PIPELINE_STEP_REQUEUE_AFTER_S` mặc định của `StepsSettings`; test đặt mốc im quanh số này."""
-BATCH: Final = 10
-
-
-@dataclass(frozen=True, slots=True)
-class Arranged:
-    """Một lượt `running` đã ghim, có bản vẽ hiện hành — điểm xuất phát mọi test quét bù."""
-
-    run_id: str
-    upload_id: str
-    floor_pk: int
-
-
-def png(width: int = 48, height: int = 32) -> bytes:
-    """Một PNG thật nhỏ nhất đủ để `make_drawing` đọc được kích thước."""
-    return encode(Image.new("RGB", (width, height), "white"), "PNG")
-
-
-async def arrange_run(
-    maker: Maker,
-    storage: LocalDiskStorage,
-    clock: FakeClock,
-    *,
-    step: str = "wallSegmentation",
-    status: str = "running",
-    used: dict[ModelFamily, str] | None = None,
-    requeue_count: int = 0,
-    with_drawing: bool = True,
-    level_id: str | None = None,
-    progress_percent: int = 5,
-) -> Arranged:
-    """Lượt chạy ở `step` với `status`, dòng ghim và (tuỳ chọn) bản vẽ hiện hành đã commit.
-
-    `start_run` mở lượt `pending` ở `preprocess`; bước, trạng thái và `progress_percent` đặt bằng
-    `UPDATE` vì không có lõi nào đẩy lượt tới giữa chuỗi mà không gửi thông điệp. Mặc định 5 là
-    trọng số của `preprocess` — đúng số `Progress` của một lượt vừa vào `wallSegmentation`.
-
-    Cả giao dịch nằm trong `drop_after_commit()`: `start_run` tự hẹn một `pipeline.orchestrate.start`
-    sau commit (`runs.py:132`), mà thông điệp đó vừa làm `pipeline.cpu` "còn việc" (lõi giữ mọi
-    lượt) vừa lẫn vào phần đếm hàng của test. Bỏ nó đi **là** cảnh cần dựng: thông điệp đã mất.
-    """
-    with drop_after_commit():
-        return await _arrange(
-            maker,
-            storage,
-            clock,
-            step=step,
-            status=status,
-            used=used,
-            requeue_count=requeue_count,
-            with_drawing=with_drawing,
-            level_id=level_id,
-            progress_percent=progress_percent,
-        )
-
-
-async def _arrange(
-    maker: Maker,
-    storage: LocalDiskStorage,
-    clock: FakeClock,
-    *,
-    step: str,
-    status: str,
-    used: dict[ModelFamily, str] | None,
-    requeue_count: int,
-    with_drawing: bool,
-    level_id: str | None,
-    progress_percent: int,
-) -> Arranged:
-    """Thân của `arrange_run`, tách ra để `drop_after_commit()` bọc đúng một khối `async with`."""
-    async with maker() as db:
-        scene = await make_scene(db, level_id=level_id)
-        upload = await make_complete_upload(
-            db, storage, project=scene.project, floor=scene.floor, data=png(), file_name="plan.png"
-        )
-        if with_drawing:
-            await make_drawing(db, storage, upload=upload, png=png())
-        run = await start_run(db, upload_id=upload.id, clock=clock)
-        await make_run_pins(db, run_id=run.id, used=used, step_requeue_count=requeue_count)
-        await db.execute(
-            update(PipelineRunRow)
-            .where(PipelineRunRow.id == run.id)
-            .values(status=status, current_step=step, started_at=clock.now(), progress_percent=progress_percent)
-        )
-        await db.commit()
-    await after_commit_idle(db)
-    placed = await read_run(maker, run.id)
-    assert (placed.status, placed.current_step) == (status, step), "bản dựng không đặt được lượt vào đúng bước"
-    return Arranged(run_id=run.id, upload_id=upload.id, floor_pk=scene.floor.pk)
-
-
-async def set_idle(maker: Maker, run_id: str, clock: FakeClock, *, seconds: float) -> datetime:
-    """Đặt hai `updated_at` **và** `started_at` về một mốc cố định rồi `fake_clock.set` tới `mốc + seconds`.
-
-    Trả mốc im đã **đọc lại** từ DB: giờ của Postgres và của `fake_clock` không cùng nguồn, nên
-    chỉ giá trị đọc lại mới dùng được để tính ngưỡng ([8]). `started_at` đi cùng mốc vì nếu không,
-    `now - started_at` vượt `PIPELINE_RUN_MAX_S` và mọi luật giữ theo hàng bị bỏ qua.
-    """
-    mark = datetime(2026, 3, 1, 12, tzinfo=UTC)
-    async with maker() as db:
-        await db.execute(
-            update(PipelineRunRow).where(PipelineRunRow.id == run_id).values(updated_at=mark, started_at=mark)
-        )
-        await db.execute(
-            update(PipelineRunModelsRow).where(PipelineRunModelsRow.run_id == run_id).values(updated_at=mark)
-        )
-        await db.commit()
-        stmt = text(
-            "SELECT greatest(r.updated_at, m.updated_at) FROM pipeline_runs r"
-            " JOIN pipeline_run_models m ON m.run_id = r.id WHERE r.id = :run_id"
-        )
-        read_back = cast("datetime", (await db.execute(stmt, {"run_id": run_id})).scalar_one())
-    clock.set(read_back + timedelta(seconds=seconds))
-    _log.info("sweep_test_idle", extra={"run_id": run_id, "idle_s": seconds, "mark": read_back.isoformat()})
-    return read_back
-
-
-async def read_run(maker: Maker, run_id: str) -> PipelineRunRow:
-    """Dòng `pipeline_runs` trên session mới (trạng thái đã commit, không cache identity map)."""
-    async with maker() as db:
-        return (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == run_id))).scalar_one()
-
-
-async def read_count(maker: Maker, run_id: str) -> int:
-    """`step_requeue_count` hiện tại của lượt."""
-    async with maker() as db:
-        stmt = select(PipelineRunModelsRow.step_requeue_count).where(PipelineRunModelsRow.run_id == run_id)
-        return (await db.execute(stmt)).scalar_one()
-
-
-async def progress_events(bus: EventBus, upload_id: str) -> list[tuple[object, object, object]]:
-    """`(status, step, progressPercent)` của mọi `Progress` trên luồng của một lượt tải."""
-    events = await bus.read_after(upload_stream(upload_id), "0-0")
-    return [(e.data["status"], e.data["step"], e.data["progressPercent"]) for e in events]
-
-
-async def sweep(maker: Maker, clock: FakeClock, *, batch: int = BATCH) -> None:
-    """Một lượt quét với client Redis riêng, đóng lại sau (lõi không đóng `broker` của người gọi)."""
-    broker = broker_redis()
-    try:
-        await run_stuck_pipeline_sweep(maker, broker, clock, batch=batch)
-    finally:
-        await broker.aclose()
-
-
-@pytest.fixture
-def clean_queues(messaging_env: None) -> Iterator[SyncRedis]:
-    """Hai hàng dùng chung cả phiên; `DEL` trước **và** sau mỗi test (BE-00 §12, test song song)."""
-    client = broker_redis_sync()
-    client.delete(ML_QUEUE, CPU_QUEUE)
-    yield client
-    client.delete(ML_QUEUE, CPU_QUEUE)
-
-
-@pytest.fixture
-def sweep_env(
-    clean_queues: SyncRedis, db_url: str, monkeypatch: pytest.MonkeyPatch, local_storage: LocalDiskStorage
-) -> Iterator[SyncRedis]:
-    """Biến môi trường để hàm lịch dựng đúng DB/broker của test; cache đọc lại hai đầu."""
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    reset_database_settings_cache()
-    reset_steps_settings_cache()
-    reset_sync_bus_cache()
-    yield clean_queues
-    reset_database_settings_cache()
-    reset_steps_settings_cache()
-    reset_sync_bus_cache()
+clean_queues = helpers.clean_queues
+sweep_env = helpers.sweep_env
+"""Hai fixture của `helpers`, gán lại để pytest thấy chúng trong module này (R-02)."""
 
 
 async def test_sweep_stuck_pipeline_runs__J01(
@@ -292,7 +118,7 @@ async def test_sweep_stuck_pipeline_runs__J07(
         marks.append(idle)
         assert sweep_env.llen(ML_QUEUE) == len(MODEL_FAMILIES), f"lượt {attempt + 1} phải gửi ba họ"
         assert await read_count(db_sessionmaker, arranged.run_id) == attempt + 1
-        events = await progress_events(event_bus, arranged.upload_id)
+        events = await steps_seen(event_bus, arranged.upload_id, after=0)
         assert events[-1] == ("running", "wallSegmentation", 5), f"lượt {attempt + 1} phải phát lại Progress"
 
     # Ngay dưới ngưỡng lùi lượt 2 → không gửi lại (lùi thật sự x 2, không phải hằng).
@@ -305,7 +131,7 @@ async def test_sweep_stuck_pipeline_runs__J07(
     await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=REQUEUE_AFTER_S * 8 + 1)
     await sweep(db_sessionmaker, fake_clock)
 
-    row = await read_run(db_sessionmaker, arranged.run_id)
+    row = await run_row(db_sessionmaker, arranged.run_id)
     _log.info("sweep_test_requeue_marks", extra={"run_id": arranged.run_id, "idle_s": marks})
     assert sweep_env.llen(ML_QUEUE) == 0
     assert (row.status, row.error_code, row.current_step) == ("failed", PIPELINE_STEP_TIMEOUT, "wallSegmentation")

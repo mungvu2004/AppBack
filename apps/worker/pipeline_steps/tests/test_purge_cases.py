@@ -6,94 +6,22 @@ lượt dọn (chỉ `runs/` bị xoá).
 """
 
 import asyncio
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.drawings.runs import start_run
-from apps.worker.pipeline_orchestrate.keys import run_prefix
 from apps.worker.pipeline_steps import jobs
 from apps.worker.pipeline_steps.purge import run_pipeline_artifact_purge
 from apps.worker.pipeline_steps.settings import reset_steps_settings_cache
+from apps.worker.pipeline_steps.tests.helpers import RETENTION_S, Maker, Scene, build_scene
 from packages.core.clock import Clock
-from packages.core.object_keys import run_prefix as artifact_run_prefix
-from packages.core.object_keys import upload_prefix
 from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.settings import DatabaseSettings, reset_database_settings_cache
-from packages.storage.keys import upload_original, upload_page
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
-from packages.testing.factories.auth import make_user
-from packages.testing.factories.drawings import make_complete_upload
-from packages.testing.factories.floors import make_floor
-from packages.testing.factories.pipeline_orchestrate import make_run_pins
-from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
-
-type Maker = async_sessionmaker[AsyncSession]
-
-PAGE_BYTES: Final = b"%PDF-1.4 fake page for purge tests"
-"""Nội dung tệp gốc tối thiểu — không ai đọc lại nó, chỉ cần `make_complete_upload` chấp nhận."""
-
-RETENTION_S: Final = 604800
-"""Bản sao hằng mặc định của `PIPELINE_ARTIFACT_RETENTION_S` (7 ngày) — chỉ để tính `age` test."""
-
-
-@dataclass(frozen=True, slots=True)
-class Scene:
-    """Mọi id + khoá kho của một cảnh dọn artifact đã dựng."""
-
-    run_id: str
-    run_prefix: str
-    run_artifact_key: str
-    page_key: str
-    original_key: str
-
-
-async def build_scene(maker: Maker, storage: LocalDiskStorage, clock: Clock, *, status: str, age: timedelta) -> Scene:
-    """Dựng lượt tải + lượt chạy pipeline, ghi một artifact dưới `runs/`, một trang, một gốc.
-
-    `status`/`updated_at` đặt thẳng bằng SQL sau `start_run` (spec: không chờ `tests/helpers.py`
-    của nhánh A — SQL tay + factory đã có của B5-06a/B2-04 đủ dựng cảnh).
-    """
-    async with maker() as db:
-        owner = await make_user(db)
-        project = await make_project(db, owner=owner)
-        floor = await make_floor(db, project=project)
-        upload = await make_complete_upload(
-            db, storage, project=project, floor=floor, data=PAGE_BYTES, file_name="plan.pdf"
-        )
-        await db.commit()
-    async with maker() as db:
-        run = await start_run(db, upload_id=upload.id, clock=clock)
-        await make_run_pins(db, run_id=run.id)
-        await db.commit()
-
-    upload_root = upload_prefix(project.id, floor.level_id, upload.id)
-    run_artifact_key = f"{artifact_run_prefix(upload_root, run.id, 'preprocess')}out.json"
-    await storage.put(run_artifact_key, b"{}", content_type="application/json", max_bytes=16)
-    page_key = upload_page(project.id, floor.level_id, upload.id, 0)
-    await storage.put(page_key, b"\x89PNG", content_type="image/png", max_bytes=16)
-
-    async with maker() as db:
-        await db.execute(
-            text("UPDATE pipeline_runs SET status = :status, updated_at = :updated_at WHERE id = :run_id"),
-            {"status": status, "updated_at": clock.now() - age, "run_id": run.id},
-        )
-        await db.commit()
-
-    return Scene(
-        run_id=run.id,
-        run_prefix=run_prefix(project_id=project.id, level_id=floor.level_id, upload_id=upload.id, run_id=run.id),
-        run_artifact_key=run_artifact_key,
-        page_key=page_key,
-        original_key=upload_original(project.id, floor.level_id, upload.id, "pdf"),
-    )
 
 
 class _CountingDelete(LocalDiskStorage):

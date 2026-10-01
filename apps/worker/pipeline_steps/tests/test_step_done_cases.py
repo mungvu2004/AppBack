@@ -57,8 +57,8 @@ TEXTS: Final[ModelFamily] = "dimensionReading"
 
 _log = logging.getLogger(__name__)
 
-cpu_queue = helpers.cpu_queue
-"""Fixture hàng `pipeline.cpu` của `helpers`, gán lại để pytest thấy nó trong module này (R-02)."""
+clean_queues = helpers.clean_queues
+"""Fixture hai hàng của `helpers`, gán lại để pytest thấy nó trong module này (R-02)."""
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ async def test_orchestrate_pipeline_step_done__J01(
     db_sessionmaker: Maker,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    cpu_queue: SyncRedis,
+    clean_queues: SyncRedis,
     event_bus: EventBus,
 ) -> None:
     """Ba bước ML về **không** theo thứ tự rồi `spatialDataBuild`: chuỗi `Progress`, một `build`, một `persist`.
@@ -95,7 +95,7 @@ async def test_orchestrate_pipeline_step_done__J01(
     Khẳng định cốt lõi của [8] J01: kết quả `dimensionReading` tới trước không phát sự kiện nào
     (lượt vẫn đứng ở `wallSegmentation`), và lượt giao cuối đẩy **hai** bước trong một commit.
     """
-    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, cpu_queue)
+    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, clean_queues)
     before = len(await event_bus.read_after(upload_stream(arranged.upload_id), "0-0"))
 
     await deliver_ml(db_sessionmaker, local_storage, arranged, TEXTS, fake_clock)
@@ -118,22 +118,22 @@ async def test_orchestrate_pipeline_step_done__J01(
     assert pins.used[WALLS] == "classic"
     assert pins.step_requeue_count == 0
     assert (wire["status"], wire["step"], wire["progressPercent"]) == ("running", BUILD_STEP, 70)
-    builds = queued_payloads(cpu_queue, CPU_QUEUE)
+    builds = queued_payloads(clean_queues, CPU_QUEUE)
     assert [m["run_id"] for m in builds] == [arranged.run_id], builds
     assert (Decimal(str(builds[0]["fallback_mm_per_px"])), builds[0]["width_px"]) == (scale, arranged.width_px)
 
-    cpu_queue.delete(CPU_QUEUE)
+    clean_queues.delete(CPU_QUEUE)
     built = step_result(arranged, BUILD_STEP, artifact_keys=(layer_key(arranged.run_prefix),))
     await run_pipeline_step_done(built, sessionmaker=db_sessionmaker, clock=fake_clock)
-    persists = queued_payloads(cpu_queue, CPU_QUEUE)
+    persists = queued_payloads(clean_queues, CPU_QUEUE)
     assert [m["run_id"] for m in persists] == [arranged.run_id], persists
 
     async with db_sessionmaker() as db:
         await mark_persisted(db, run_id=arranged.run_id, revision=3)
         await db.commit()
-    cpu_queue.delete(CPU_QUEUE)
+    clean_queues.delete(CPU_QUEUE)
     await run_pipeline_step_done(built, sessionmaker=db_sessionmaker, clock=fake_clock)
-    assert queued_payloads(cpu_queue, CPU_QUEUE) == []
+    assert queued_payloads(clean_queues, CPU_QUEUE) == []
 
 
 async def two_ml_steps_done(
@@ -153,7 +153,7 @@ def test_orchestrate_pipeline_step_done__J01_smoke(
     db_sessionmaker: Maker,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    cpu_queue: SyncRedis,
+    clean_queues: SyncRedis,
 ) -> None:
     """Task thật qua `apply` (bước sau đi **cùng** hàng `pipeline.cpu`, nên không chạy worker).
 
@@ -161,12 +161,12 @@ def test_orchestrate_pipeline_step_done__J01_smoke(
     không lồng được vào vòng của pytest-asyncio. Không gọi `after_commit_idle`: `create_celery`
     của app thử đặt `DB_AFTER_COMMIT_INLINE=1` nên callback sau commit chạy tại chỗ.
     """
-    payload = asyncio.run(two_ml_steps_done(db_sessionmaker, local_storage, fake_clock, cpu_queue))
+    payload = asyncio.run(two_ml_steps_done(db_sessionmaker, local_storage, fake_clock, clean_queues))
 
     result = tasks.orchestrate_pipeline_step_done.apply(args=[payload.model_dump(mode="json")])
 
     assert result.successful(), result.traceback
-    assert [m["run_id"] for m in queued_payloads(cpu_queue, CPU_QUEUE)] == [payload.run_id]
+    assert [m["run_id"] for m in queued_payloads(clean_queues, CPU_QUEUE)] == [payload.run_id]
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -174,11 +174,11 @@ async def test_orchestrate_pipeline_step_done__J06(
     db_sessionmaker: Maker,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    cpu_queue: SyncRedis,
+    clean_queues: SyncRedis,
     event_bus: EventBus,
 ) -> None:
     """Giao lặp cùng một `completed`: `used` không đổi, không `Progress` mới, vẫn một `build`."""
-    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, cpu_queue)
+    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, clean_queues)
     for family in (WALLS, OBJECTS, TEXTS):
         await deliver_ml(db_sessionmaker, local_storage, arranged, family, fake_clock)
     before = len(await event_bus.read_after(upload_stream(arranged.upload_id), "0-0"))
@@ -190,7 +190,7 @@ async def test_orchestrate_pipeline_step_done__J06(
     assert pins is not None
     assert set(pins.used) == {WALLS, OBJECTS, TEXTS}
     assert await steps_seen(event_bus, arranged.upload_id, after=before) == []
-    assert [m["run_id"] for m in queued_payloads(cpu_queue, CPU_QUEUE)] == [arranged.run_id]
+    assert [m["run_id"] for m in queued_payloads(clean_queues, CPU_QUEUE)] == [arranged.run_id]
 
 
 @pytest.mark.usefixtures("celery_test_app")
@@ -207,26 +207,26 @@ def test_orchestrate_pipeline_step_done__J08(caplog: pytest.LogCaptureFixture) -
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_orchestrate_pipeline_step_done__J09(
-    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, cpu_queue: SyncRedis
+    db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, clean_queues: SyncRedis
 ) -> None:
     """Rollback sau `record_step`: không `pipeline.build.run` nào rời tiến trình (J09, BE-00 §7).
 
     Gọi thân giao dịch trực tiếp để điều khiển commit/rollback — đó đúng là bất biến cần kiểm:
     mọi việc gửi đi đều treo ở `on_after_commit`, không có `send_task` nào trong giao dịch.
     """
-    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, cpu_queue)
+    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, clean_queues)
     for family in (WALLS, OBJECTS):
         await deliver_ml(db_sessionmaker, local_storage, arranged, family, fake_clock)
     keys = await put_ml_artifacts(local_storage, arranged, TEXTS)
     payload = step_result(arranged, FAMILY_STEP[TEXTS], artifact_keys=keys)
-    cpu_queue.delete(CPU_QUEUE)
+    clean_queues.delete(CPU_QUEUE)
 
     async with db_sessionmaker() as db:
         assert await core._step_done(db, payload, fake_clock) is True
         await db.rollback()
     await after_commit_idle(db)
 
-    assert queued_payloads(cpu_queue, CPU_QUEUE) == []
+    assert queued_payloads(clean_queues, CPU_QUEUE) == []
     async with db_sessionmaker() as db:
         pins = await load_pins(db, arranged.run_id)
     assert pins is not None
@@ -238,7 +238,7 @@ async def test_orchestrate_pipeline_step_done__J10(
     db_sessionmaker: Maker,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
-    cpu_queue: SyncRedis,
+    clean_queues: SyncRedis,
     event_bus: EventBus,
 ) -> None:
     """Callback bị bỏ (`drop_after_commit`) → giao lại không gửi; lõi quét bù mới gửi `build`.
@@ -246,17 +246,17 @@ async def test_orchestrate_pipeline_step_done__J10(
     Đây là lý do `step_done` **không** gửi lại khi giao lặp: bước đã đẩy rồi, nên chỉ quét bù
     (sở hữu số đếm lùi) được phép xếp lại bước hiện tại.
     """
-    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, cpu_queue)
+    arranged = await open_run_at_ml(db_sessionmaker, local_storage, fake_clock, clean_queues)
     for family in (WALLS, OBJECTS):
         await deliver_ml(db_sessionmaker, local_storage, arranged, family, fake_clock)
-    cpu_queue.delete(CPU_QUEUE)
+    clean_queues.delete(CPU_QUEUE)
 
     with drop_after_commit():
         await deliver_ml(db_sessionmaker, local_storage, arranged, TEXTS, fake_clock)
-    assert queued_payloads(cpu_queue, CPU_QUEUE) == []
+    assert queued_payloads(clean_queues, CPU_QUEUE) == []
 
     await deliver_ml(db_sessionmaker, local_storage, arranged, TEXTS, fake_clock)
-    assert queued_payloads(cpu_queue, CPU_QUEUE) == []
+    assert queued_payloads(clean_queues, CPU_QUEUE) == []
 
     async with db_sessionmaker() as db:
         mark = (await db.execute(_IDLE_MARK, {"run_id": arranged.run_id})).scalar_one()
@@ -264,7 +264,7 @@ async def test_orchestrate_pipeline_step_done__J10(
     fake_clock.set(mark + timedelta(seconds=after_s + 1))
     await run_stuck_pipeline_sweep(db_sessionmaker, broker_redis(), fake_clock, batch=10)
 
-    assert [m["run_id"] for m in queued_payloads(cpu_queue, CPU_QUEUE)] == [arranged.run_id]
+    assert [m["run_id"] for m in queued_payloads(clean_queues, CPU_QUEUE)] == [arranged.run_id]
     events = await event_bus.read_after(upload_stream(arranged.upload_id), "0-0")
     last = events[-1].data
     assert (last["status"], last["step"], last["progressPercent"]) == ("running", BUILD_STEP, 70)

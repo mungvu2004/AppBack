@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy.pool import QueuePool
 
 from apps.worker.pipeline_steps.purge import run_pipeline_artifact_purge
-from apps.worker.pipeline_steps.tests.test_purge_cases import RETENTION_S, Maker, build_scene
+from apps.worker.pipeline_steps.tests.helpers import RETENTION_S, Maker, build_scene
 from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.settings import DatabaseSettings
 from packages.storage.local import LocalDiskStorage
