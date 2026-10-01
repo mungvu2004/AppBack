@@ -1,0 +1,13 @@
+# Bảng case bắt buộc thêm của cầu nối huấn luyện (B6-03a [8], CASE.md §2.3).
+#
+# Sáu route Loại A ở `apps/api/admin_ml_jobs` không khai gì thêm: case của Loại đủ (C10 riêng
+# của N33, N35 là test đặt tên theo việc). `require` chỉ khai case J (`_TEST_TASK_RE` của
+# `tools/case_gate.py` chỉ nhận `J\d{2}`, NO-294). Mọi task, lịch vẫn có `__J01`, `__J06`.
+
+[[task]]
+fn = "finish_training_job"
+require = ["J03", "J09"]
+
+[[task]]
+fn = "sweep_lost_training_jobs"
+require = ["J07"]
