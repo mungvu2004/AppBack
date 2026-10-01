@@ -8,7 +8,6 @@ checklist [8].
 import asyncio
 import json
 from datetime import timedelta
-from decimal import Decimal
 from typing import Final, cast
 
 import pytest
@@ -17,11 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.runs import reset_sync_bus_cache, start_run
 from apps.api.floors.settings import get_floors_settings
-from apps.worker.pipeline_build.build import BuiltLayer
-from apps.worker.pipeline_build.constants import DROPPED_KEYS
+from apps.api.spatial_read.codec import document_to_json
+from apps.api.spatial_read.documents import load_document
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
-from apps.worker.pipeline_persist.service import run_persist
-from apps.worker.pipeline_persist.tests.helpers import ai_layer, open_run_at_build, put_layer
+from apps.worker.pipeline_persist.tests.helpers import open_run_at_build
 from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
@@ -36,7 +34,6 @@ from packages.messaging.redis import broker_redis_sync
 from packages.messaging.tasks import PermanentError
 from packages.storage.keys import run_artifact
 from packages.storage.port import ObjectStorage
-from packages.testing.factories.spatial import sample_floor_dimensions
 from packages.testing.fixtures.clock import FakeClock
 
 CPU_QUEUE: Final = "pipeline.cpu"
@@ -63,29 +60,32 @@ def _quality_key(arranged: Arranged) -> str:
     )
 
 
-def _broken_built(level_id: str) -> BuiltLayer:
-    """Kết quả dựng mang một ô mở trỏ tới tường không tồn tại — lỗi `missingReference` `critical`."""
-    layer = ai_layer(level_id)
-    dangling = Opening(
-        id="D-DANGLE00000000001",
-        wall_id="W-GHOST00000000001",
-        kind="door",
-        offset_mm=0,
-        width_mm=800,
-        height_mm=2000,
-        sill_height_mm=0,
-        swing="left",
-        source="ai",
-        reviewed=False,
-        confidence=0.9,
-    )
-    return BuiltLayer(
-        layer=layer.model_copy(update={"openings": (*layer.openings, dangling)}),
-        dimensions=sample_floor_dimensions(0, level_id=level_id, id_suffix="AI"),
-        scale_mm_per_px=Decimal("12"),
-        scale_source="pipeline",
-        dropped=dict.fromkeys(DROPPED_KEYS, 0),
-    )
+async def _break_document_by_sql(maker: async_sessionmaker[AsyncSession], floor_pk: int) -> None:
+    """Ghi thẳng `floor_documents.document` bằng SQL: một ô mở trỏ tới tường không tồn tại.
+
+    Không qua `write_layer` (nó đã tự chặn `LAYER_INTEGRITY_BROKEN`) — đúng cách [8] mô tả
+    ("tài liệu ghi bằng SQL"), mô phỏng dữ liệu hỏng sẵn có trước khi B5-07 kiểm.
+    """
+    async with maker() as db:
+        document = await load_document(db, floor_pk)
+        assert document is not None
+        dangling = Opening(
+            id="D-DANGLE00000000001",
+            wall_id="W-GHOST00000000001",
+            kind="door",
+            offset_mm=0,
+            width_mm=800,
+            height_mm=2000,
+            sill_height_mm=0,
+            swing="left",
+            source="ai",
+            reviewed=False,
+            confidence=0.9,
+        )
+        broken = document.layer.model_copy(update={"openings": (*document.layer.openings, dangling)})
+        wire = document_to_json(broken, (), document.dimensions)
+        await db.execute(update(FloorDocumentRow).where(FloorDocumentRow.floor_pk == floor_pk).values(document=wire))
+        await db.commit()
 
 
 class _BlockingPut:
@@ -223,13 +223,8 @@ async def test_run_quality__completes_with_critical_issue_and_no_extra_notificat
 
     Không `notify` (K rule): bảng `notifications` chỉ có đúng dòng `aiCompleted` của B5-06b.
     """
-    arranged = await open_run_at_build(db_sessionmaker, fake_clock, storage=local_storage)
-    await put_layer(local_storage, arranged, _broken_built(arranged.level_id).to_json())
-    persist_outcome = await run_persist(
-        arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock
-    )
-    assert persist_outcome == "persisted"
-    broker_redis_sync().delete(CPU_QUEUE)
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+    await _break_document_by_sql(db_sessionmaker, arranged.floor_pk)
 
     outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
 
