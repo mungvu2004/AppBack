@@ -54,9 +54,7 @@ class TrainingJobRow(Base, TimestampMixin):
     epochs: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"))
     current_epoch: Mapped[int | None] = mapped_column(Integer, default=None)
-    result_model_version_id: Mapped[str | None] = mapped_column(
-        Text, ForeignKey(f"{MODEL_VERSIONS}.id"), default=None
-    )
+    result_model_version_id: Mapped[str | None] = mapped_column(Text, ForeignKey(f"{MODEL_VERSIONS}.id"), default=None)
     failure_code: Mapped[str | None] = mapped_column(Text, default=None)
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     ended_at: Mapped[datetime | None] = mapped_column(default=None)
