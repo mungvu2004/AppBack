@@ -5,13 +5,13 @@ Không chạm DB hay kho: `service` đọc lớp dưới session rồi gọi `bu
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
 from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, has_critical
-from packages.domain.spatial.model import SpatialLayer
+from packages.domain.spatial.model import Reviewed, SpatialLayer
 
 QUALITY_REPORT_MAX_BYTES: Final = 8 * 1024 * 1024
 """Trần `quality.json` khi `put` (B5-07 [5]): 8 MiB."""
@@ -56,7 +56,7 @@ def _issue_wire(issue: IntegrityIssue) -> dict[str, object]:
     return wire
 
 
-def _low_confidence_count(entities: object, threshold: float) -> int:
+def _low_confidence_count(entities: Iterable[Reviewed], threshold: float) -> int:
     """Số mục AI chưa duyệt có `confidence < threshold` (ngặt) trong một danh sách.
 
     Mọi thực thể của `SpatialLayer` có `confidence` bắt buộc (không `None` được, W1) —
@@ -64,9 +64,7 @@ def _low_confidence_count(entities: object, threshold: float) -> int:
     khỏi prompt" trong báo cáo.
     """
     return sum(
-        1
-        for entity in entities  # type: ignore[attr-defined] — entity là Reviewed, luôn có ba trường này
-        if entity.source == "ai" and entity.reviewed is False and entity.confidence < threshold
+        1 for entity in entities if entity.source == "ai" and entity.reviewed is False and entity.confidence < threshold
     )
 
 
@@ -76,9 +74,7 @@ def build_report(
     """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách."""
     issues = tuple(check_integrity(layer, level_id=level_id))
     threshold_f = float(threshold)
-    low_confidence = {
-        name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS
-    }
+    low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(
         run_id=run_id,
         revision=revision,

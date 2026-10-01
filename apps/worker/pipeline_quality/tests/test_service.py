@@ -9,7 +9,7 @@ import asyncio
 import json
 from datetime import timedelta
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 import pytest
 from sqlalchemy import delete, select, update
@@ -96,13 +96,14 @@ class _BlockingPut:
     """
 
     def __init__(self, inner: ObjectStorage, started: asyncio.Event, release: asyncio.Event) -> None:
+        """Giữ kho thật và hai cờ đồng bộ với test gọi `put`."""
         self._inner = inner
         self._started = started
         self._release = release
 
-    async def put(self, *args: object, **kwargs: object) -> object:
+    async def put(self, key: str, data: bytes, *, content_type: str, max_bytes: int) -> object:
         """`put` thật rồi báo đã bắt đầu và chờ tín hiệu tiếp tục."""
-        result = await self._inner.put(*args, **kwargs)  # type: ignore[arg-type]
+        result = await self._inner.put(key, data, content_type=content_type, max_bytes=max_bytes)
         self._started.set()
         await self._release.wait()
         return result
@@ -172,7 +173,7 @@ async def test_run_quality__superseded_before_closing_step_skips_safely(
     """
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     started, release = asyncio.Event(), asyncio.Event()
-    wrapped = _BlockingPut(local_storage, started, release)
+    wrapped = cast("ObjectStorage", _BlockingPut(local_storage, started, release))
     task = asyncio.create_task(
         run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=wrapped, clock=fake_clock)
     )

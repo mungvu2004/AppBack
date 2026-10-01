@@ -67,8 +67,10 @@ async def _last_event_is_settled(upload_id: str) -> bool:
     if not entries:
         return True
     _, fields = entries[0]
-    data = json.loads(fields[FIELD])
-    return data.get("status") == "completed"
+    if fields is None:
+        return True
+    data: dict[str, object] = json.loads(fields[FIELD])
+    return bool(data.get("status") == "completed")
 
 
 async def _reconcile_stale_progress(sessionmaker: async_sessionmaker[AsyncSession], upload_id: str) -> None:
@@ -80,9 +82,7 @@ async def _reconcile_stale_progress(sessionmaker: async_sessionmaker[AsyncSessio
     await after_commit_idle(db)
 
 
-async def _phase_one(
-    db: AsyncSession, run_id: str
-) -> tuple[PersistContext, FloorDocument, int, Decimal] | None:
+async def _phase_one(db: AsyncSession, run_id: str) -> tuple[PersistContext, FloorDocument, int, Decimal] | None:
     """Khoá lượt, đọc lớp đã ghi + cài đặt dự án; `None` khi không còn gì để kiểm.
 
     Lượt chưa `persisted_revision` (chưa qua B5-06b) → log `quality_before_persist`, `None`.

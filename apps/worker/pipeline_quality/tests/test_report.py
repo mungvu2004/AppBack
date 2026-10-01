@@ -11,7 +11,6 @@ from packages.domain.spatial.model import Opening, Point, Segment, SpatialLayer,
 
 _LEVEL = "L-LEVEL00000000001"
 _AI = {"source": "ai", "reviewed": False}
-_HUMAN = {"source": "human", "reviewed": False}
 
 
 def _wall(id_: str, *, confidence: float, extra: dict[str, object] | None = None) -> Wall:
@@ -32,27 +31,21 @@ def _wall(id_: str, *, confidence: float, extra: dict[str, object] | None = None
 def test_build_report__ai_below_threshold_counts_as_low_confidence() -> None:
     """Ngưỡng 0,7: một tường AI chưa duyệt với `confidence < 0.7` → `lowConfidence.walls == 1`."""
     layer = SpatialLayer(walls=(_wall("W-WALL0000000001", confidence=0.5),), openings=(), rooms=(), furniture=())
-    report = build_report(
-        run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7")
-    )
+    report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert report.low_confidence == {"walls": 1, "openings": 0, "rooms": 0, "furniture": 0}
 
 
 def test_build_report__confidence_equal_threshold_is_not_counted() -> None:
     """`confidence == threshold` không tính (luật ngặt `<`)."""
     layer = SpatialLayer(walls=(_wall("W-WALL0000000001", confidence=0.7),), openings=(), rooms=(), furniture=())
-    report = build_report(
-        run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7")
-    )
+    report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert report.low_confidence["walls"] == 0
 
 
 def test_build_report__empty_layer_has_no_issues_and_zero_counts() -> None:
     """Lớp rỗng: không lỗi toàn vẹn, bốn khoá `lowConfidence` đều 0."""
     layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=())
-    report = build_report(
-        run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7")
-    )
+    report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert report.issues == ()
     assert report.low_confidence == {"walls": 0, "openings": 0, "rooms": 0, "furniture": 0}
     assert report.has_critical is False
@@ -62,9 +55,7 @@ def test_build_report__issue_order_preserved_and_ref_id_absent_on_wire() -> None
     """Thứ tự `issues` giữ nguyên thứ tự `check_integrity`; `refId` vắng hẳn khoá khi `None`."""
     duplicated = _wall("W-WALL0000000001", confidence=0.9)
     layer = SpatialLayer(walls=(duplicated, duplicated), openings=(), rooms=(), furniture=())
-    report = build_report(
-        run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7")
-    )
+    report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert [issue.rule for issue in report.issues] == ["duplicateId", "duplicateId"]
     wire = json.loads(report.to_json_bytes())
     assert all("refId" not in item for item in wire["integrity"])
@@ -73,9 +64,7 @@ def test_build_report__issue_order_preserved_and_ref_id_absent_on_wire() -> None
 def test_build_report__to_json_bytes_is_deterministic_and_threshold_is_float() -> None:
     """Hai lần gọi cùng tài liệu ra cùng byte; `confidenceThreshold` là `float` trên dây."""
     layer = SpatialLayer(walls=(_wall("W-WALL0000000001", confidence=0.5),), openings=(), rooms=(), furniture=())
-    report = build_report(
-        run_id="run_01", revision=3, layer=layer, level_id=_LEVEL, threshold=Decimal("0.75")
-    )
+    report = build_report(run_id="run_01", revision=3, layer=layer, level_id=_LEVEL, threshold=Decimal("0.75"))
     first = report.to_json_bytes()
     second = report.to_json_bytes()
     assert first == second
@@ -99,8 +88,6 @@ def test_build_report__missing_reference_issue_marks_critical() -> None:
         **_AI,
     )
     layer = SpatialLayer(walls=(), openings=(opening,), rooms=(), furniture=())
-    report = build_report(
-        run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7")
-    )
+    report = build_report(run_id="run_01", revision=1, layer=layer, level_id=_LEVEL, threshold=Decimal("0.7"))
     assert report.has_critical is True
     assert report.issues[0].rule == "missingReference"
