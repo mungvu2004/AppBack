@@ -8,6 +8,7 @@ checklist [8].
 import asyncio
 import json
 from datetime import timedelta
+from pathlib import Path
 from typing import Final, cast
 
 import pytest
@@ -20,6 +21,7 @@ from apps.api.spatial_read.codec import document_to_json
 from apps.api.spatial_read.documents import load_document
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.tests.helpers import open_run_at_build
+from apps.worker.pipeline_quality import tasks
 from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
@@ -35,6 +37,7 @@ from packages.messaging.streams import EventBus, upload_stream
 from packages.messaging.tasks import PermanentError
 from packages.storage.keys import run_artifact
 from packages.storage.port import ObjectStorage
+from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.clock import FakeClock
 
 CPU_QUEUE: Final = "pipeline.cpu"
@@ -170,6 +173,24 @@ async def test_run_quality__missing_document_is_permanent_error(
 
 
 @pytest.mark.asyncio(loop_scope="function")
+async def test_run_quality__closed_but_not_completed_skips_without_redis(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: ObjectStorage,
+    fake_clock: FakeClock,
+    quality_env: None,
+) -> None:
+    """Lượt đã `closed` (bị thay) nhưng chưa từng `completed` → `skipped`, không soát Redis (F2)."""
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+    async with db_sessionmaker() as db:
+        await start_run(db, upload_id=arranged.upload_id, clock=fake_clock)
+        await db.commit()
+
+    outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+
+    assert outcome == "skipped"
+
+
+@pytest.mark.asyncio(loop_scope="function")
 async def test_run_quality__superseded_before_closing_step_skips_safely(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     local_storage: ObjectStorage,
@@ -272,6 +293,22 @@ async def test_fail_quality__records_failed_and_noops_when_run_gone(
     await fail_quality(arranged.payload, "QUALITY_BOOM_AGAIN", sessionmaker=db_sessionmaker, clock=fake_clock)
     status2, _, error_code2 = await _run_row(db_sessionmaker, arranged.run_id)
     assert (status2, error_code2) == ("failed", "QUALITY_BOOM")
+
+
+def test_tasks_storage__builds_local_backend_from_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, storage_env: None
+) -> None:
+    """`tasks._storage()` dựng kho thật từ `STORAGE_BACKEND=local` (K22 nhập trễ)."""
+    monkeypatch.setenv("STORAGE_BACKEND", "local")
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
+    reset_storage_settings_cache()
+    tasks.reset_quality_storage()
+    try:
+        storage = tasks._storage()
+        assert storage is not None
+    finally:
+        tasks.reset_quality_storage()
+        reset_storage_settings_cache()
 
 
 def test_boundary__pipeline_quality_imports_cleanly() -> None:
