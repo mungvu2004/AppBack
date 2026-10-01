@@ -21,6 +21,7 @@ from apps.worker.training_bridge.tests._helpers import (
     WEIGHTS_NAME,
     finished,
     put_weights,
+    read_job,
     seed_job,
     weights_key,
 )
@@ -58,14 +59,6 @@ class _BlockingStatStorage:
         return getattr(self._inner, name)
 
 
-async def _job(db: AsyncSession, job_id: str) -> TrainingJobRow:
-    """Đọc lại job bằng session của test."""
-    row = await db.get(TrainingJobRow, job_id)
-    assert row is not None
-    await db.refresh(row)
-    return row
-
-
 async def weighted_job(db: AsyncSession, storage: ObjectStorage, clock: FakeClock) -> tuple[TrainingJobRow, str]:
     """Một job `running` và object trọng số đúng mẫu đã nằm trong kho.
 
@@ -90,7 +83,7 @@ async def test_finish_training_job__J01(
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
-    row = await _job(db_session, job.id)
+    row = await read_job(db_session, job.id)
     version = await db_session.get(ModelVersionRow, trained_version_id(job.id))
     expected = ("succeeded", trained_version_id(job.id), fake_clock.now())
     assert (row.status, row.result_model_version_id, row.ended_at) == expected
@@ -128,7 +121,7 @@ async def test_finish_training_job__J03(
     result = celery_test_app.tasks[FINISHED_TASK].apply(args=({"schema_version": 1, "job_id": job.id},))
 
     assert result.successful()
-    assert (await _job(db_session, job.id)).status == "running"
+    assert (await read_job(db_session, job.id)).status == "running"
 
 
 @pytest.mark.asyncio
@@ -152,7 +145,7 @@ async def test_finish_training_job__J09(
         await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
     assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
-    assert (await _job(db_session, job.id)).status == "running"
+    assert (await read_job(db_session, job.id)).status == "running"
 
 
 @pytest.mark.asyncio
@@ -168,7 +161,7 @@ async def test_finish_succeeded_while_cancelling_records_cancelled(
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
 
-    assert (await _job(db_session, job.id)).status == "cancelled"
+    assert (await read_job(db_session, job.id)).status == "cancelled"
     assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
     assert await safe_redis().get(cancel_key(job.id)) is not None
 
@@ -187,7 +180,7 @@ async def test_finish_failed_from_queued_sets_both_timestamps(
         db_sessionmaker, local_storage, fake_clock, finished(job.id, status="failed", error_code="TRAINER_CRASHED")
     )
 
-    row = await _job(db_session, job.id)
+    row = await read_job(db_session, job.id)
     assert (row.status, row.failure_code) == ("failed", "TRAINER_CRASHED")
     assert row.started_at == row.ended_at == fake_clock.now()
 
@@ -204,7 +197,7 @@ async def test_finish_cancelled_from_cancelling_arms_the_cancel_key(
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, status="cancelled"))
 
-    assert (await _job(db_session, job.id)).status == "cancelled"
+    assert (await read_job(db_session, job.id)).status == "cancelled"
     assert await safe_redis().get(cancel_key(job.id)) is not None
 
 
@@ -239,7 +232,7 @@ async def test_finish_rejects_weights_keys_outside_the_contract(
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key))
 
-    row = await _job(db_session, job.id)
+    row = await read_job(db_session, job.id)
     assert (row.status, row.failure_code) == ("failed", MODEL_CHECKSUM_MISMATCH)
     assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
 
@@ -256,7 +249,7 @@ async def test_finish_rejects_a_missing_object(
 
     await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
 
-    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
+    assert (await read_job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -273,7 +266,7 @@ async def test_finish_rejects_a_checksum_mismatch(
         db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key, checksum="0" * 64)
     )
 
-    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
+    assert (await read_job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -294,7 +287,7 @@ async def test_finish_rejects_weights_above_the_size_cap(
         monkeypatch.delenv("TRAINING_WEIGHTS_MAX_BYTES")
         reset_training_settings_cache()
 
-    assert (await _job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
+    assert (await read_job(db_session, job.id)).failure_code == MODEL_CHECKSUM_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -316,7 +309,7 @@ async def test_finish_rejects_metrics_of_another_family(
         db_sessionmaker, local_storage, fake_clock, finished(job.id, key=key, metric_values={"iou": 0.5})
     )
 
-    row = await _job(db_session, job.id)
+    row = await read_job(db_session, job.id)
     assert (row.status, row.failure_code) == ("failed", TRAINING_METRICS_MISSING)
     assert await db_session.get(ModelVersionRow, trained_version_id(job.id)) is None
 
@@ -349,3 +342,25 @@ async def test_finish_does_not_hold_a_db_connection_while_statting_weights(
     await running
 
     assert checked_out == 0
+
+
+@pytest.mark.asyncio
+async def test_finish_succeeded_from_queued_sets_started_and_ended_together(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    db_session: AsyncSession,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+) -> None:
+    """`finished(succeeded)` tới **trước** nhịp tim đầu: job `queued` thành `succeeded`.
+
+    Runner có thể xong trước khi nhịp tim đầu tới ([8] "Cầu nối" gạch 3); job khi ấy chưa có
+    `started_at`, nên cầu nối đặt `started_at = ended_at = now` và bản model vẫn được ghi.
+    """
+    job = await seed_job(db_session, status="queued", clock=fake_clock)
+    await put_weights(local_storage, weights_key(job.id))
+
+    await run_finish_training_job(db_sessionmaker, local_storage, fake_clock, finished(job.id))
+
+    row = await read_job(db_session, job.id)
+    assert (row.status, row.result_model_version_id) == ("succeeded", trained_version_id(job.id))
+    assert row.started_at == row.ended_at == fake_clock.now()

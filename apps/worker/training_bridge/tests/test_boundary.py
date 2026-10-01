@@ -19,13 +19,13 @@ IMPORT_TIMEOUT_S: Final = 120.0
 
 _MODULES: Final = (
     "apps.worker.training_bridge.tasks",
+    "apps.worker.training_bridge.jobs",
     "apps.worker.training_bridge.settings",
     "apps.worker.training_bridge.errors",
     "apps.worker.training_bridge.messages",
 )
 
 _SCRIPT: Final = """
-import importlib.util
 import sys
 
 BLOCKED = {blocked!r}
@@ -46,25 +46,7 @@ sys.meta_path.insert(0, _BlockingFinder())
 
 for module in MODULES:
     __import__(module)
-
-if importlib.util.find_spec("apps.worker.training_bridge.jobs") is not None:
-    __import__("apps.worker.training_bridge.jobs")
 """
-
-
-def test_imports_without_web_or_crypto_packages() -> None:
-    """Nhập `tasks`, `settings`, `errors`, `messages` (và `jobs` nếu đã có) chặn được web/crypto."""
-    script = _SCRIPT.format(blocked=BLOCKED, modules=_MODULES)
-    result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
-        [sys.executable, "-c", script],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=IMPORT_TIMEOUT_S,
-    )
-
-    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("module", _MODULES)

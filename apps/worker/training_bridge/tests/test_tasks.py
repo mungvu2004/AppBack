@@ -29,6 +29,7 @@ from apps.worker.training_bridge.tests._helpers import (
     metric_point,
     metrics,
     ms,
+    read_job,
     seed_job,
 )
 from packages.db.models.admin_ml_jobs import TrainingJobRow, TrainingLogRow, TrainingMetricRow
@@ -47,14 +48,6 @@ def any_template() -> tuple[str, dict[str, str]]:
     """Một khoá mẫu log có thật + tham số đủ — `LOG_TEMPLATES` là hợp đồng của việc B."""
     template, spec = next(iter(LOG_TEMPLATES.items()))
     return template, {name: "x" for name in spec.params}
-
-
-async def _job(db: AsyncSession, job_id: str) -> TrainingJobRow:
-    """Đọc lại job bằng session của test (cầu nối ghi bằng session khác)."""
-    row = await db.get(TrainingJobRow, job_id)
-    assert row is not None
-    await db.refresh(row)
-    return row
 
 
 async def _count(db: AsyncSession, table: type[TrainingMetricRow] | type[TrainingLogRow], job_id: str) -> int:
@@ -81,7 +74,7 @@ async def test_record_training_heartbeat__J01(
 
     await run_training_heartbeat(db_sessionmaker, fake_clock, heartbeat(job.id, epoch=2))
 
-    row = await _job(db_session, job.id)
+    row = await read_job(db_session, job.id)
     assert (row.status, row.current_epoch) == ("running", 2)
     assert row.started_at == fake_clock.now()
     assert row.last_heartbeat_at == fake_clock.now()
@@ -98,7 +91,7 @@ async def test_record_training_heartbeat__J06(
     await run_training_heartbeat(db_sessionmaker, fake_clock, heartbeat(job.id, epoch=3))
     await run_training_heartbeat(db_sessionmaker, fake_clock, heartbeat(job.id, epoch=1))
 
-    assert (await _job(db_session, job.id)).current_epoch == 3
+    assert (await read_job(db_session, job.id)).current_epoch == 3
 
 
 @pytest.mark.asyncio
@@ -110,7 +103,7 @@ async def test_heartbeat_out_of_range_epoch_is_ignored(
 
     await run_training_heartbeat(db_sessionmaker, fake_clock, heartbeat(job.id, epoch=4))
 
-    row = await _job(db_session, job.id)
+    row = await read_job(db_session, job.id)
     assert (row.current_epoch, row.last_heartbeat_at) == (None, None)
 
 
@@ -131,7 +124,7 @@ async def test_heartbeat_after_finish_is_ignored_and_arms_cancel_key(
 
     await run_training_heartbeat(db_sessionmaker, fake_clock, heartbeat(job.id, epoch=1))
 
-    assert (await _job(db_session, job.id)).current_epoch is None
+    assert (await read_job(db_session, job.id)).current_epoch is None
     assert await _cancel_armed(job.id)
 
 

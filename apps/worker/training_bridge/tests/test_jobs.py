@@ -16,7 +16,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from testcontainers.redis import RedisContainer  # type: ignore[import-untyped] — gói không có stub kiểu
 
-from apps.api.admin_ml_jobs.settings import get_training_settings, reset_training_settings_cache
+from apps.api.admin_ml_jobs.settings import get_training_settings
 from apps.worker.training_bridge import jobs as jobs_module
 from apps.worker.training_bridge.errors import TRAINING_DISPATCH_STALLED, TRAINING_HEARTBEAT_LOST
 from apps.worker.training_bridge.jobs import (
@@ -35,10 +35,8 @@ from apps.worker.training_bridge.jobs import (
     run_sweep_lost_training_jobs,
     sweep_lost_training_jobs,
 )
-from packages.core.settings import reset_settings_cache
-from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.models.admin_ml_jobs import TrainingJobRow
-from packages.db.settings import get_database_settings, reset_database_settings_cache
+from packages.db.settings import reset_database_settings_cache
 from packages.messaging.celery_app import queue_for
 from packages.messaging.payloads.training import cancel_key, claim_key, trained_version_id
 from packages.messaging.redis import SyncRedis, broker_redis_sync, safe_redis_sync
@@ -46,8 +44,8 @@ from packages.messaging.schedules import schedule_entries
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.keys import model_artifact
 from packages.storage.local import LocalDiskStorage
-from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.factories.admin_ml_datasets import make_dataset, make_dataset_version
+from apps.worker.training_bridge.tests._helpers import process_maker, worker_process_env
 from packages.testing.factories.admin_ml_jobs import make_training_job
 from packages.testing.factories.admin_ml_registry import make_model_version
 from packages.testing.fixtures.clock import FakeClock
@@ -557,34 +555,14 @@ def test_training_job_schedules_are_registered_with_their_periods() -> None:
 
 @pytest.fixture
 def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Môi trường của một tiến trình lịch: DB test riêng, kho local trong `tmp_path`."""
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("STORAGE_BACKEND", "local")
-    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
-    monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
-    monkeypatch.setenv("SECRET_KEY", "fixture-secret-for-training-bridge-jobs-01")
-    caches = (
-        reset_settings_cache,
-        reset_database_settings_cache,
-        reset_storage_settings_cache,
-        reset_training_settings_cache,
-    )
-    for reset in caches:
-        reset()
-    yield
-    for reset in caches:
-        reset()
-
-
-def _process_maker() -> Maker:
-    """Sessionmaker trên DB mà biến môi trường của tiến trình đang trỏ tới."""
-    return create_sessionmaker(create_engine(get_database_settings()))
+    """Môi trường của một tiến trình lịch — cùng một bản với test khói của task (`_helpers`)."""
+    with worker_process_env(db_url, tmp_path, monkeypatch):
+        yield
 
 
 async def _seed_stale_running() -> str:
     """Một job `running` đã mất nhịp tim, trong DB của tiến trình."""
-    maker = _process_maker()
+    maker = process_maker()
     engine = maker.kw["bind"]
     try:
         clock = FakeClock(datetime.now(UTC))
@@ -603,7 +581,7 @@ async def _seed_stale_running() -> str:
 
 async def _seed_overdue_queued() -> str:
     """Một job `queued` đứng im quá hạn gửi lại, trong DB của tiến trình."""
-    maker = _process_maker()
+    maker = process_maker()
     engine = maker.kw["bind"]
     try:
         clock = FakeClock(datetime.now(UTC) - timedelta(seconds=get_training_settings().training_requeue_after_s + 60))
@@ -617,7 +595,7 @@ async def _seed_overdue_queued() -> str:
 
 async def _seed_purgeable_failed() -> tuple[str, str]:
     """Một job `failed` quá hạn dọn, trong DB của tiến trình; trả `(job_id, dataset_version_id)`."""
-    maker = _process_maker()
+    maker = process_maker()
     engine = maker.kw["bind"]
     try:
         clock = FakeClock(datetime.now(UTC))
@@ -634,7 +612,7 @@ async def _seed_purgeable_failed() -> tuple[str, str]:
 
 async def _read_status(job_id: str) -> tuple[str, str | None]:
     """`(status, failure_code)` đọc lại từ DB của tiến trình."""
-    maker = _process_maker()
+    maker = process_maker()
     engine = maker.kw["bind"]
     try:
         async with maker() as db:

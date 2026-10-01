@@ -5,14 +5,21 @@ Mọi test ở đây chạy trên dịch vụ thật (Postgres, Redis, kho `loca
 """
 
 import hashlib
-from collections.abc import Mapping
-from typing import Literal
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
+from typing import Literal
 
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.admin_ml_jobs.settings import reset_training_settings_cache
 from packages.core.clock import Clock
+from packages.core.settings import reset_settings_cache
+from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.models.admin_ml_jobs import TrainingJobRow
+from packages.db.settings import get_database_settings, reset_database_settings_cache
 from packages.messaging.payloads.training import trained_version_id
 from packages.ml_contracts.families import FAMILY_METRIC, TrainableFamily
 from packages.ml_contracts.payloads import (
@@ -24,6 +31,7 @@ from packages.ml_contracts.payloads import (
 )
 from packages.storage.keys import model_artifact
 from packages.storage.port import ObjectStorage
+from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.factories.admin_ml_datasets import make_dataset, make_dataset_version
 from packages.testing.factories.admin_ml_jobs import make_training_job
 
@@ -132,3 +140,45 @@ def finished(
 def ms(at: datetime) -> int:
     """Mốc gửi theo millis của một `datetime` (payload B5-01 dùng `*_at_ms`)."""
     return int(at.timestamp() * 1000)
+
+
+@contextmanager
+def worker_process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Biến môi trường của một tiến trình worker/beat: DB test riêng, kho local trong `tmp_path`.
+
+    Test khói của task (`test_smoke.py`) và của lịch (`test_jobs.py`) cần **cùng** môi trường
+    này, nên nó sống ở một chỗ; mỗi file chỉ bọc lại thành fixture của mình. Mọi cache cài đặt
+    được xoá cả hai đầu để giá trị của test không rò sang test sau.
+    """
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("STORAGE_BACKEND", "local")
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
+    monkeypatch.setenv("SECRET_KEY", "fixture-secret-for-training-bridge-01")
+    caches = (
+        reset_settings_cache,
+        reset_database_settings_cache,
+        reset_storage_settings_cache,
+        reset_training_settings_cache,
+    )
+    for reset in caches:
+        reset()
+    try:
+        yield
+    finally:
+        for reset in caches:
+            reset()
+
+
+def process_maker() -> async_sessionmaker[AsyncSession]:
+    """Sessionmaker trên DB mà biến môi trường của tiến trình đang trỏ tới (dùng trong test khói)."""
+    return create_sessionmaker(create_engine(get_database_settings()))
+
+
+async def read_job(db: AsyncSession, job_id: str) -> TrainingJobRow:
+    """Đọc lại một job và làm mới nó: cầu nối ghi bằng session khác, bản trong session test đã cũ."""
+    row = await db.get(TrainingJobRow, job_id)
+    assert row is not None
+    await db.refresh(row)
+    return row

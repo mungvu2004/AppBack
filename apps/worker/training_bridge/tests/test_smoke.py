@@ -17,7 +17,6 @@ from celery import Celery
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.admin_ml_jobs.settings import reset_training_settings_cache
 from apps.worker.training_bridge.tasks import FINISHED_TASK, HEARTBEAT_TASK, LOG_TASK, METRICS_TASK
 from apps.worker.training_bridge.tests._helpers import (
     METRIC,
@@ -26,18 +25,17 @@ from apps.worker.training_bridge.tests._helpers import (
     log_line,
     metric_point,
     metrics,
+    process_maker,
     put_weights,
     seed_job,
     weights_key,
+    worker_process_env,
 )
-from packages.core.settings import reset_settings_cache
-from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.models.admin_ml_jobs import TrainingJobRow, TrainingLogRow, TrainingMetricRow
 from packages.db.models.admin_ml_registry import ModelVersionRow
-from packages.db.settings import get_database_settings, reset_database_settings_cache
+from packages.db.settings import reset_database_settings_cache
 from packages.messaging.payloads.training import LOG_TEMPLATES, trained_version_id
 from packages.storage.local import LocalDiskStorage
-from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.messaging import WorkerFactory
 
 DEFAULT_QUEUE = "default"
@@ -47,34 +45,14 @@ POLL_S = 0.05
 
 @pytest.fixture
 def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Môi trường của tiến trình worker: DB test riêng, kho local cùng gốc với `local_storage`."""
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("STORAGE_BACKEND", "local")
-    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
-    monkeypatch.setenv("PUBLIC_BASE_URL", "https://appback.test")
-    monkeypatch.setenv("SECRET_KEY", "fixture-secret-for-training-bridge-01")
-    caches = (
-        reset_settings_cache,
-        reset_database_settings_cache,
-        reset_storage_settings_cache,
-        reset_training_settings_cache,
-    )
-    for reset in caches:
-        reset()
-    yield
-    for reset in caches:
-        reset()
-
-
-def _process_maker() -> async_sessionmaker[AsyncSession]:
-    """Sessionmaker trên DB mà biến môi trường của tiến trình đang trỏ tới."""
-    return create_sessionmaker(create_engine(get_database_settings()))
+    """Môi trường của tiến trình worker — cùng một bản với test khói của lịch (`_helpers`)."""
+    with worker_process_env(db_url, tmp_path, monkeypatch):
+        yield
 
 
 async def _with_process_db(work: object) -> object:
     """Chạy một hàm nhận sessionmaker trên DB của tiến trình, rồi đóng engine."""
-    maker = _process_maker()
+    maker = process_maker()
     try:
         return await work(maker)  # type: ignore[operator] — người gọi luôn truyền một callable async
     finally:
