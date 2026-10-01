@@ -9,7 +9,7 @@ Postgres, Redis, kho vẫn là thật (K23); `db_sessionmaker` của fixture **k
 
 import asyncio
 import time
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -50,11 +50,15 @@ def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         yield
 
 
-async def _with_process_db(work: object) -> object:
-    """Chạy một hàm nhận sessionmaker trên DB của tiến trình, rồi đóng engine."""
+async def _with_process_db[T](work: Callable[[async_sessionmaker[AsyncSession]], Awaitable[T]]) -> T:
+    """Chạy một hàm nhận sessionmaker trên DB của tiến trình, rồi đóng engine.
+
+    Engine phải đóng ngay: mỗi lượt `asyncio.run` của test dựng engine trên vòng sự kiện của
+    riêng nó, để lại thì lượt sau gặp "attached to a different loop".
+    """
     maker = process_maker()
     try:
-        return await work(maker)  # type: ignore[operator] — người gọi luôn truyền một callable async
+        return await work(maker)
     finally:
         await maker.kw["bind"].dispose()
 
@@ -69,7 +73,7 @@ async def _seed(storage: LocalDiskStorage) -> str:
         await put_weights(storage, weights_key(job.id))
         return job.id
 
-    return str(await _with_process_db(work))
+    return await _with_process_db(work)
 
 
 async def _snapshot(job_id: str) -> tuple[str, str | None, int, int, str | None]:
@@ -95,7 +99,7 @@ async def _snapshot(job_id: str) -> tuple[str, str | None, int, int, str | None]
                 None if version is None else version.evaluation_status,
             )
 
-    return await _with_process_db(work)  # type: ignore[return-value] — `work` trả đúng bộ năm giá trị
+    return await _with_process_db(work)
 
 
 def _await_status(job_id: str, status: str) -> tuple[str, str | None, int, int, str | None]:
@@ -121,7 +125,7 @@ def test_finish_training_job__J01_smoke(
     template, spec = next(iter(LOG_TEMPLATES.items()))
     messages = (
         (HEARTBEAT_TASK, heartbeat(job_id, epoch=1)),
-        (METRICS_TASK, metrics(job_id, metric_point(step=0, **{METRIC: 0.7}))),
+        (METRICS_TASK, metrics(job_id, metric_point(step=0, map50=0.7))),
         (LOG_TASK, log_line(job_id, template=template, params={name: "x" for name in spec.params})),
         (FINISHED_TASK, finished(job_id)),
     )

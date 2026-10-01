@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from testcontainers.redis import RedisContainer  # type: ignore[import-untyped] — gói không có stub kiểu
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # testcontainers chưa có py.typed
 
 from apps.api.admin_ml_jobs.settings import get_training_settings
 from apps.worker.training_bridge import jobs as jobs_module

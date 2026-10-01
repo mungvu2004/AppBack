@@ -142,7 +142,7 @@ async def test_record_training_metrics__J01(
     batch = metrics(
         job.id,
         metric_point(step=0, split="train", loss=0.4),
-        metric_point(step=0, split="validation", **{METRIC: 0.6}),
+        metric_point(step=0, split="validation", map50=0.6),
     )
 
     await run_training_metrics(db_sessionmaker, fake_clock, batch)

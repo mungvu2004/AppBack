@@ -93,10 +93,23 @@ def heartbeat(job_id: str, *, epoch: int = 1, sent_at_ms: int = 1) -> TrainingHe
     return TrainingHeartbeatPayload(job_id=job_id, epoch=epoch, sent_at_ms=sent_at_ms)
 
 
-def metric_point(*, step: int = 0, split: Split = "train", at_ms: int = 1, **values: float) -> MetricPoint:
-    """Một điểm số đo; không truyền số đo nào thì mặc định `loss`."""
-    measured = values or {"loss": 0.5}
-    return MetricPoint(step=step, epoch=1, split=split, recorded_at_ms=at_ms, **measured)
+def metric_point(
+    *,
+    step: int = 0,
+    split: Split = "train",
+    at_ms: int = 1,
+    loss: float | None = None,
+    iou: float | None = None,
+    map50: float | None = None,
+) -> MetricPoint:
+    """Một điểm số đo; không truyền số đo nào thì mặc định `loss`.
+
+    Ba số đo khai tường minh thay cho `**kwargs`: `MetricPoint` chỉ nhận đúng ba khoá này, và
+    một dict bung ra `**` làm mypy không còn khớp được tham số nào. `METRIC` của họ dùng ở đây
+    là `map50`; ca "số đo của họ khác" truyền `iou`.
+    """
+    measured = {name: value for name, value in (("loss", loss), ("iou", iou), ("map50", map50)) if value is not None}
+    return MetricPoint(step=step, epoch=1, split=split, recorded_at_ms=at_ms, **(measured or {"loss": 0.5}))
 
 
 def metrics(job_id: str, *points: MetricPoint) -> TrainingMetricsPayload:

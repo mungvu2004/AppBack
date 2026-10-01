@@ -28,9 +28,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Final, cast
+from typing import Any, Final, cast
 
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.library.assets import open_storage
@@ -256,7 +256,7 @@ async def _purge_one(
             .where(TrainingJobRow.id == job_id, TrainingJobRow.artifacts_purged_at.is_(None))
             .values(artifacts_purged_at=clock.now())
         )
-    return result.rowcount > 0
+    return cast("CursorResult[Any]", result).rowcount > 0
 
 
 async def run_purge_training_job_artifacts(
