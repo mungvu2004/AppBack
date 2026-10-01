@@ -18,6 +18,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from redis.exceptions import RedisError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.progress import LAST_STEP
@@ -32,6 +33,7 @@ from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT, QUALITY_REPORT
 from packages.core.clock import Clock
 from packages.db.engine import session_scope
 from packages.db.hooks import after_commit_idle
+from packages.db.models.drawings import PipelineRunRow
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.messaging.redis import streams_redis
 from packages.messaging.streams import FIELD, upload_stream
@@ -82,20 +84,31 @@ async def _reconcile_stale_progress(sessionmaker: async_sessionmaker[AsyncSessio
     await after_commit_idle(db)
 
 
-async def _phase_one(db: AsyncSession, run_id: str) -> tuple[PersistContext, FloorDocument, int, Decimal] | None:
-    """Khoá lượt, đọc lớp đã ghi + cài đặt dự án; `None` khi không còn gì để kiểm.
+async def _run_status(sessionmaker: async_sessionmaker[AsyncSession], run_id: str) -> str | None:
+    """`status` hiện tại của lượt, đọc không khoá (F2, K33 cấm ghi chứ không cấm đọc)."""
+    async with session_scope(sessionmaker) as db:
+        stmt = select(PipelineRunRow.status).where(PipelineRunRow.id == run_id)
+        return (await db.execute(stmt)).scalar_one_or_none()
 
-    Lượt chưa `persisted_revision` (chưa qua B5-06b) → log `quality_before_persist`, `None`.
-    """
+
+_EarlyExit = Literal["missing", "closed", "before_persist"]
+"""`missing`: không có lượt. `closed`: `lock_run` thấy lượt đã kết thúc/bị thay. `before_persist`:
+chưa qua B5-06b."""
+
+
+async def _phase_one(
+    db: AsyncSession, run_id: str
+) -> tuple[PersistContext, FloorDocument, int, Decimal] | tuple[_EarlyExit, PersistContext | None]:
+    """Khoá lượt, đọc lớp đã ghi + cài đặt dự án; thoát sớm kèm lý do khi không còn gì để kiểm."""
     ctx = await load_context(db, run_id)
     if ctx is None:
-        return None
+        return "missing", None
     if await lock_run(db, run_id=run_id) is None:
-        return None
+        return "closed", ctx
     pins = await load_pins(db, run_id)
     if pins is None or pins.persisted_revision is None:
         _log.info("quality_before_persist", extra={"run_id": run_id})
-        return None
+        return "before_persist", ctx
     try:
         document = await load_document(db, ctx.floor_pk)
     except DocumentCorruptError as exc:
@@ -104,6 +117,16 @@ async def _phase_one(db: AsyncSession, run_id: str) -> tuple[PersistContext, Flo
         raise PermanentError(PIPELINE_RESULT_INVALID)
     threshold = (await read_settings(db, ctx.project_id)).confidence_threshold
     return ctx, document, pins.persisted_revision, threshold
+
+
+async def _handle_early_exit(
+    sessionmaker: async_sessionmaker[AsyncSession], outcome: _EarlyExit, ctx: PersistContext | None
+) -> None:
+    """J10 chỉ cho lượt đã `completed` thật (F2); mọi lý do khác không chạm Redis (F3)."""
+    if outcome != "closed" or ctx is None:
+        return
+    if await _run_status(sessionmaker, ctx.run_id) == "completed":
+        await _reconcile_stale_progress(sessionmaker, ctx.upload_id)
 
 
 async def run_quality(
@@ -115,14 +138,11 @@ async def run_quality(
 ) -> QualityOutcome:
     """Kiểm chất lượng một lượt theo B5-07 [6] bước 1 tới 4; chủ: việc A."""
     async with session_scope(sessionmaker) as db:
-        early_ctx = await load_context(db, payload.run_id)
-        if early_ctx is None:
-            return "skipped"
         read = await _phase_one(db, payload.run_id)
         await db.rollback()
-        if read is None:
-            await _reconcile_stale_progress(sessionmaker, early_ctx.upload_id)
-            return "skipped"
+    if isinstance(read[0], str):
+        await _handle_early_exit(sessionmaker, *read)
+        return "skipped"
 
     ctx, document, revision, threshold = read
     report = build_report(
@@ -131,14 +151,18 @@ async def run_quality(
     key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, payload.run_id, STEP, QUALITY_ARTIFACT)
     await storage.put(key, report.to_json_bytes(), content_type="application/json", max_bytes=QUALITY_REPORT_MAX_BYTES)
 
+    completed = False
     async with session_scope(sessionmaker) as db:
         if await lock_run(db, run_id=payload.run_id) is None:
             await db.rollback()
-            return "skipped"
-        if await record_step(db, run_id=payload.run_id, step=STEP, status="completed", clock=clock) is None:
-            await db.rollback()
-            return "skipped"
+        else:
+            step_result = await record_step(db, run_id=payload.run_id, step=STEP, status="completed", clock=clock)
+            completed = step_result is not None
+            # `record_step` trả `None` sau khi đã tự `_abandon(FLOOR_DELETED)` khi tầng quá cửa sổ
+            # (F1): không `rollback` ở đây, để `session_scope` commit bản ghi hỏng đó thay vì xoá nó.
     await after_commit_idle(db)
+    if not completed:
+        return "skipped"
     if report.has_critical:
         _log.info("quality_critical_issues", extra={"run_id": payload.run_id, "issue_count": len(report.issues)})
     return "completed"

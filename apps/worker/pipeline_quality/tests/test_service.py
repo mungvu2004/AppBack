@@ -31,6 +31,7 @@ from packages.db.models.spatial import FloorDocumentRow
 from packages.domain.spatial.model import Opening
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.messaging.redis import broker_redis_sync
+from packages.messaging.streams import EventBus, upload_stream
 from packages.messaging.tasks import PermanentError
 from packages.storage.keys import run_artifact
 from packages.storage.port import ObjectStorage
@@ -129,10 +130,16 @@ async def test_run_quality__before_persist_skips_without_writing(
     local_storage: ObjectStorage,
     fake_clock: FakeClock,
     quality_env: None,
+    event_bus: EventBus,
 ) -> None:
-    """`persisted_revision` còn NULL (chưa qua B5-06b) → `skipped`, bước và kho không đổi."""
+    """`persisted_revision` còn NULL (chưa qua B5-06b) → `skipped`, bước/kho/stream không đổi.
+
+    F3: `_phase_one` trả `before_persist` riêng với `closed`, nên nhánh J10 (XREVRANGE + phát
+    lại) không chạy cho lượt còn đang `running` — số sự kiện `upload_stream` phải giữ nguyên.
+    """
     arranged = await open_run_at_build(db_sessionmaker, fake_clock, storage=local_storage)
     broker_redis_sync().delete(CPU_QUEUE)
+    before = len(await event_bus.read_after(upload_stream(arranged.upload_id), "0-0"))
 
     outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
 
@@ -140,6 +147,8 @@ async def test_run_quality__before_persist_skips_without_writing(
     status, step, _ = await _run_row(db_sessionmaker, arranged.run_id)
     assert (status, step) == ("running", "spatialDataBuild")
     assert await local_storage.stat(_quality_key(arranged)) is None
+    after = len(await event_bus.read_after(upload_stream(arranged.upload_id), "0-0"))
+    assert after == before
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -197,12 +206,11 @@ async def test_run_quality__floor_deleted_past_window_fails_run(
     fake_clock: FakeClock,
     quality_env: None,
 ) -> None:
-    """Tầng xoá mềm quá cửa sổ trước bước 4 → `skipped` (`record_step` tự `_abandon` nội bộ).
+    """Tầng xoá mềm quá cửa sổ trước bước 4 → `skipped`, lượt `failed` `FLOOR_DELETED` (F1).
 
-    `record_step` của `apps.api.drawings.runs` tự đánh `FLOOR_DELETED` khi phát hiện tầng quá
-    cửa sổ (cùng đường mà `pipeline_persist` dùng); `run_quality` chỉ cần coi `None` của nó là
-    `skipped`, không tự ghi `pipeline_runs` (K33). Lượt vẫn `running` ở đây vì `floor_pk` của
-    cảnh test chưa qua `_lock_floor` với `deleted_at` đã ghi — còn lệch, ghi "Nợ" trong báo cáo.
+    `record_step` tự `_abandon(FLOOR_DELETED)` rồi trả `None`; pha 3 không được `rollback` bản
+    ghi đó, chỉ coi `None` là `skipped` sau khi đã commit (K33: không tự ghi `pipeline_runs`,
+    chỉ qua `record_step`).
     """
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     window = get_floors_settings().floor_restore_window_s
@@ -214,6 +222,8 @@ async def test_run_quality__floor_deleted_past_window_fails_run(
     outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
 
     assert outcome == "skipped"
+    status, _, error_code = await _run_row(db_sessionmaker, arranged.run_id)
+    assert (status, error_code) == ("failed", "FLOOR_DELETED")
 
 
 @pytest.mark.asyncio(loop_scope="function")
