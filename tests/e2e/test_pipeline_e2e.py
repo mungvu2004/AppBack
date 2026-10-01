@@ -77,6 +77,8 @@ POLL_TIMEOUT_S: Final = 120.0
 """Trần hỏi #8 (spec [6]); không mang mã case nên không gắn `perf` (luật 14)."""
 
 SEED: Final = 7
+RESCALE_SEED: Final = 5
+"""Seed khác `SEED` có `mm_per_px` khác (12.5 so với 10.0) và `find_frame` cũng `None` (tra ở phút đầu)."""
 
 
 def test_synthetic_plan_has_no_frame() -> None:
@@ -432,6 +434,90 @@ async def test_pipeline_e2e_rerun_keeps_reviewed(
         kept.id,
         time.monotonic() - start,
     )
+    assert time.monotonic() - start < 120.0
+
+
+async def test_pipeline_e2e_rerun_rescales_page(
+    db_url: str,
+    e2e_worker: None,
+    e2e_client: httpx.AsyncClient,
+) -> None:
+    """Ca tỉ lệ gắn trang (spec [6]): #35 hiệu chỉnh tỉ lệ rồi tải trang khác → tỉ lệ cũ không áp.
+
+    Tỉ lệ gắn với **trang** đang có, không với tầng: sau khi người hiệu chỉnh tỉ lệ ở #35 (nguồn
+    `human`), tải một trang pipeline khác (seed `mm_per_px` khác) phải quay lại tỉ lệ pipeline của
+    trang mới (`scaleStatus: unresolved`), không giữ tỉ lệ người đặt của trang cũ (HOP-DONG-MOI §4
+    "Tỉ lệ gắn với trang").
+    """
+    start = time.monotonic()
+    user_id, project_id, level_id, floor_pk = await on_db(db_url, _engineer_scene)
+    user = await on_db(db_url, lambda maker: _user_row(maker, user_id))
+    signed: SignedIn = await sign_in(e2e_client, user)
+    headers = signed.headers
+
+    plan_one = render_plan(SEED)
+    upload_id, complete = await _upload_png(e2e_client, headers, project_id, level_id, plan_one.image_png)
+    assert complete.status_code == 200, complete.text
+    first = await _poll_progress(e2e_client, project_id, upload_id, headers)
+    assert first["status"] == "completed", first
+
+    async def _read_doc(maker: async_sessionmaker[AsyncSession]) -> Any:
+        async with maker() as db:
+            doc = await load_document(db, floor_pk)
+            assert doc is not None
+            return doc
+
+    doc_one = await on_db(db_url, _read_doc)
+    assert doc_one.layer.walls, "pipeline phải sinh ít nhất một tường để duyệt"
+    target = doc_one.layer.walls[0]
+    reviewed_wall = target.model_copy(update={"reviewed": True, "source": "human"})
+    layer_wire = {
+        "walls": [wire(reviewed_wall if w.id == target.id else w) for w in doc_one.layer.walls],
+        "openings": [wire(o) for o in doc_one.layer.openings],
+        "rooms": [wire(r) for r in doc_one.layer.rooms],
+        "furniture": [wire(f) for f in doc_one.layer.furniture],
+    }
+    human_scale = plan_one.mm_per_px * 2
+    put_response = await e2e_client.put(
+        write_layer_path(project_id, level_id),
+        json={"baseVersion": doc_one.revision, "body": {"layer": layer_wire, "scaleMillimetresPerPixel": human_scale}},
+        headers=headers,
+    )
+    assert put_response.status_code == 200, put_response.text
+
+    plan_two = render_plan(RESCALE_SEED)
+    assert plan_two.mm_per_px != plan_one.mm_per_px, "seed hiệu chỉnh phải khác mm_per_px với seed đầu"
+    upload_id_2, complete_2 = await _upload_png(e2e_client, headers, project_id, level_id, plan_two.image_png)
+    assert complete_2.status_code == 200, complete_2.text
+    second = await _poll_progress(e2e_client, project_id, upload_id_2, headers)
+    assert second["status"] == "completed", second
+
+    layer_response = await e2e_client.get(
+        f"/api/projects/{project_id}/floors/{level_id}/spatial/layer", headers=headers
+    )
+    assert layer_response.status_code == 200, layer_response.text
+    body = layer_response.json()
+    assert body.get("scaleStatus") == "unresolved"
+    scale = body["level"]["scaleMillimetresPerPixel"]
+    drift = abs(scale - plan_two.mm_per_px) / plan_two.mm_per_px
+
+    doc_two = await on_db(db_url, _read_doc)
+    assert doc_two.scale_source == "pipeline"
+    kept = next(w for w in doc_two.layer.walls if w.id == target.id)
+    assert kept == reviewed_wall, (kept, reviewed_wall)
+
+    _log.info(
+        "e2e rerun_rescales_page: mm_per_px seed=%d %.3f -> seed=%d %.3f;"
+        " scale đọc lại=%.3f lệch=%.4f%% thời gian=%.1fs",
+        SEED,
+        plan_one.mm_per_px,
+        RESCALE_SEED,
+        plan_two.mm_per_px,
+        scale,
+        drift * 100,
+        time.monotonic() - start,
+    )
+    assert drift <= 0.05
     assert time.monotonic() - start < 120.0
 
 
