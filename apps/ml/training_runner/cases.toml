@@ -1,0 +1,8 @@
+# Bảng case bắt buộc thêm của task khởi chạy huấn luyện (B6-03b [8], CASE.md §2.3).
+#
+# Cổng tự đòi J01 và J06 cho mọi task trong sổ; ở đây thêm J03 (Popen hỏng), J04 (huỷ giữa
+# epoch), J05 (quá TRAINING_MAX_WALL_S), J08 (payload độc). Chỉ khai mã J (NO-294).
+
+[[task]]
+fn = "start_training_runner"
+require = ["J03", "J04", "J05", "J08"]
