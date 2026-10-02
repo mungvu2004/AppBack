@@ -595,12 +595,31 @@ def probe_infer(payload: ProbePayload) -> None:
 '''
 
 
+def _drop_new_ml_modules(before: set[str]) -> None:
+    """Xoá khỏi `sys.modules` các tên `apps.ml`/`apps.ml.*` chưa có trong `before`.
+
+    Bất biến: module `apps.ml.*` đã nạp từ trước khi fixture chạy (ví dụ do một test
+    khác trong cùng tiến trình nhập trước) phải giữ nguyên danh tính; chỉ module do
+    chính lượt test này nạp (gồm gói thăm dò) mới bị xoá, nếu không lần nhập lại sau
+    sẽ chạy lại `define_task` và `register_task` ném `ValueError: task đã khai`.
+    """
+
+    def is_new_ml_module(name: str) -> bool:
+        """True nếu `name` là `apps.ml`/`apps.ml.*` chưa có trong `before`."""
+        return (name == "apps.ml" or name.startswith("apps.ml.")) and name not in before
+
+    for name in [name for name in sys.modules if is_new_ml_module(name)]:
+        del sys.modules[name]
+
+
 @pytest.fixture
 def ml_probe_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Một gói `apps.ml.probe.tasks` thật, nối vào `apps.__path__` (BE-00 §12).
 
     Trả sổ task về nguyên trạng khi xong: sổ là biến toàn tiến trình, để sót một dòng
-    là test sau thấy một task lạ.
+    là test sau thấy một task lạ. Chỉ xoá khỏi `sys.modules` các module do chính lượt
+    test này nạp (xem `_drop_new_ml_modules`), không đụng module `apps.ml.*` đã nạp
+    từ trước.
     """
     import apps.ml
     import packages.messaging.tasks as tasks_module
@@ -613,17 +632,38 @@ def ml_probe_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
     # Gói vừa được tạo sau khi tiến trình khởi động; không dọn cache thì bộ tìm module
     # không bao giờ thấy nó (đây cũng là việc `monkeypatch.syspath_prepend` tự làm).
     importlib.invalidate_caches()
+    before = set(sys.modules)
     saved = dict(tasks_module._TASKS)
     yield
     tasks_module._TASKS.clear()
     tasks_module._TASKS.update(saved)
-    for name in [name for name in sys.modules if name == "apps.ml" or name.startswith("apps.ml.")]:
-        del sys.modules[name]
+    _drop_new_ml_modules(before)
 
 
 def test_registered_tasks_finds_tasks_under_the_ml_app(ml_probe_package: None) -> None:
     """Sổ phải thấy task của `apps.ml` dù tiến trình worker không bao giờ nhập gói đó."""
     assert "probe_infer" in registered_tasks()
+
+
+def test_drop_new_ml_modules_keeps_modules_loaded_before_the_snapshot() -> None:
+    """FIX-115: module `apps.ml.*` nạp trước `before` phải sống sót; module nạp sau bị xoá."""
+    import apps.ml.objects.tasks as preloaded_module
+
+    before = set(sys.modules)
+    importlib.import_module("apps.ml.objects.tasks")
+    assert "apps.ml.objects.tasks" in before
+
+    fake_name = "apps.ml.__fix_115_probe__"
+    sys.modules[fake_name] = preloaded_module
+
+    _drop_new_ml_modules(before)
+
+    assert sys.modules["apps.ml.objects.tasks"] is preloaded_module
+    assert fake_name not in sys.modules
+
+    # Nhập lại module đã nạp từ trước không được ném `ValueError: task đã khai`
+    # (vì nó vẫn còn trong `sys.modules`, không chạy lại `define_task`).
+    assert importlib.import_module("apps.ml.objects.tasks") is preloaded_module
 
 
 @pytest.mark.parametrize(("retries", "countdown"), [(0, 10), (1, 60), (2, 300)])
