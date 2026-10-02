@@ -9,12 +9,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SCANNED = (REPO_ROOT / "apps" / "ml", REPO_ROOT / "packages" / "ml_contracts")
-ULTRALYTICS_ALLOWED = ("apps/ml/runtime/export_yolo.py", "apps/ml/training_yolo/")
+ULTRALYTICS_ALLOWED = (
+    "apps/ml/runtime/export_yolo.py",
+    "apps/ml/runtime/ultralytics_import.py",
+    "apps/ml/training_yolo/",
+)
 BANNED_MODULES = ("pickle", "joblib", "dill", "cloudpickle")
 
 
 def _findings(tree: ast.AST, rel: str) -> Iterator[str]:
-    """Vi phạm trong một module: `torch.load`, nhập pickle/joblib, `ultralytics` ngoài hai chỗ cho phép."""
+    """Vi phạm trong một module: `torch.load`, nhập pickle/joblib, `ultralytics` ngoài chỗ cho phép."""
     for node in ast.walk(tree):
         names: list[str] = []
         if isinstance(node, ast.Import):

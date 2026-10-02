@@ -40,6 +40,8 @@ def _refuse(*_args: object, **_kwargs: object) -> None:
 def _block_loaders(monkeypatch: pytest.MonkeyPatch) -> None:
     """Chặn `ultralytics.YOLO` và `torch.load`: ca kiểm đầu vào không được chạm bộ giải pickle (K12)."""
     import torch
+
+    prepare_ultralytics()
     import ultralytics
 
     monkeypatch.setattr(ultralytics, "YOLO", _refuse)
@@ -148,6 +150,7 @@ def test_cpu_run_leaves_only_onnx(trained: tuple[Any, RecordingReporter, Path]) 
 
 def test_cpu_run_stays_offline(trained: tuple[Any, RecordingReporter, Path], offline_calls: list[object]) -> None:
     """Lượt chạy xong với `connect` bị chặn; `settings["sync"]` tắt, `Arial.ttf` có sẵn, `requests.head` không gọi."""
+    prepare_ultralytics()
     from ultralytics import settings as yolo_settings
 
     assert yolo_settings["sync"] is False
@@ -249,6 +252,7 @@ def fake_run(
         target.write_bytes(payload)
         return "sha"
 
+    prepare_ultralytics()
     from ultralytics.engine import model as model_module
 
     from apps.ml.runtime import export_yolo as export_module
@@ -287,6 +291,7 @@ def test_missing_metrics_fails_the_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Không epoch nào cho `map50` → `TRAINING_METRICS_MISSING` và `out_dir` rỗng."""
+    prepare_ultralytics()
     from ultralytics.engine import model as model_module
 
     data_dir, out_dir, train_args, _export_args = fake_run

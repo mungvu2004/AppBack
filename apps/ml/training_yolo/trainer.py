@@ -61,6 +61,9 @@ def prepare_ultralytics() -> Path:
     config_dir.chmod(0o700)
     os.environ.update(_OFFLINE_ENV)
     os.environ["YOLO_CONFIG_DIR"] = str(config_dir)
+    from apps.ml.runtime.ultralytics_import import import_ultralytics
+
+    import_ultralytics()
     from ultralytics import settings as yolo_settings
     from ultralytics.engine import trainer as yolo_trainer
     from ultralytics.utils import checks

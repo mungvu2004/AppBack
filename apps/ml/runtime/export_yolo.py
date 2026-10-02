@@ -16,6 +16,7 @@ from typing import Final
 
 from apps.ml.runtime.errors import MODEL_CHECKSUM_MISMATCH
 from apps.ml.runtime.export import normalize_onnx, write_atomic
+from apps.ml.runtime.ultralytics_import import import_ultralytics
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.pinned import file_sha256
 
@@ -59,6 +60,7 @@ def export_yolo(
         if file_sha256(work_pt) != source_sha256:
             raise PermanentError(MODEL_CHECKSUM_MISMATCH)
         # Nhập sau khi đã so SHA và đặt cờ ngoại tuyến: ultralytics đọc cấu hình lúc nhập.
+        import_ultralytics()
         from ultralytics import YOLO  # type: ignore[attr-defined]  # ultralytics không khai __all__ cho YOLO
 
         exported = YOLO(str(work_pt)).export(
