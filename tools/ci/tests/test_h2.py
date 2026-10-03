@@ -37,6 +37,8 @@ from tools.ci import h2
 
 
 class _Out(BaseModel):
+    """Schema phản hồi mẫu của route giả."""
+
     value: int
 
 
@@ -119,6 +121,7 @@ def test_run_h2_flags_protected_operation_stuck_at_401(monkeypatch: pytest.Monke
 
     @app.get("/deny")
     def deny() -> None:
+        """Dependency giả luôn trả 401."""
         raise HTTPException(status_code=401, detail="no")
 
     fake_operation = Operation(

@@ -39,9 +39,9 @@ from schemathesis.specs.openapi.checks import response_schema_conformance
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # testcontainers 4.13 không có py.typed / gói stub (giống packages/testing/fixtures/services.py).
-from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
-from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
-from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
+from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # không có stub
 
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier
@@ -142,6 +142,7 @@ def _run_operation(
     @hypothesis_settings(max_examples=max_examples, derandomize=True, database=None, deadline=None)
     @given(case=operation.as_strategy())
     def _example(case: "schemathesis.Case[Any]") -> None:
+        """Một ví dụ schemathesis: gọi app và soát phản hồi."""
         state.examples += 1
         try:
             response = case.call(headers=auth_header, timeout=EXAMPLE_TIMEOUT_S)
