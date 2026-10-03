@@ -74,7 +74,9 @@ def _run(cmd: list[str], bin_dir: Path, cwd: Path) -> None:
     """Chạy `cmd` với shim đứng đầu `PATH`, không đặt `APPFRONT_REPO`; phải thoát 0."""
     env = {k: v for k, v in os.environ.items() if k != "APPFRONT_REPO"}
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
-    result = subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=True, check=False)  # noqa: S603 — bash + script repo tạm
+    result = subprocess.run(  # noqa: S603 — bash + script repo tạm
+        cmd, env=env, cwd=cwd, capture_output=True, text=True, check=False
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -88,7 +90,8 @@ def test_run_sh__appfront_mặc_định_là_anh_em_của_checkout_chính(checkou
 def test_run_sh__appfront_mặc_định_đúng_từ_worktree_phụ(checkout: Path, tmp_path: Path) -> None:
     """Worktree phụ nằm ngoài thư mục cha của checkout chính (Orca) vẫn tìm ra repo AppFront cạnh checkout chính."""
     extra = tmp_path / "nơi khác" / "wt"
-    subprocess.run([GIT, "-C", str(checkout), "worktree", "add", "-q", "--detach", str(extra)], check=True)  # noqa: S603 — repo tạm
+    add = [GIT, "-C", str(checkout), "worktree", "add", "-q", "--detach", str(extra)]
+    subprocess.run(add, check=True)  # noqa: S603 — repo tạm
     shutil.copytree(checkout / "tools", extra / "tools", dirs_exist_ok=True)
     seen = _git_shim(tmp_path / "bin")
     _run([BASH, str(extra / "tools/verify/run.sh"), "verify"], tmp_path / "bin", extra)

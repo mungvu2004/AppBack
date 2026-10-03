@@ -33,6 +33,7 @@ class FakeRun:
     calls: list[list[str]] = field(default_factory=list)
 
     def __call__(self, cmd: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        """Ghi lệnh vào `calls`, trả mã thoát và stdout của quy tắc đầu tiên có chuỗi con khớp (mặc định 0)."""
         self.calls.append(cmd)
         joined = " ".join(cmd)
         for needle, (rc, stdout) in self.rules.items():
@@ -41,11 +42,13 @@ class FakeRun:
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     def ran(self, needle: str) -> bool:
+        """Đúng nếu có lệnh đã ghi chứa chuỗi `needle`."""
         return any(needle in " ".join(c) for c in self.calls)
 
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Repo giả trong thư mục tạm: trỏ REPO_ROOT/OUT_DIR/WORK_DIR vào đó và xoá các biến môi trường của lượt thật."""
     root = tmp_path / "repo"
     root.mkdir()
     monkeypatch.setattr(steps, "REPO_ROOT", root)
@@ -62,12 +65,14 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _fake(monkeypatch: pytest.MonkeyPatch, **rules: tuple[int, str]) -> FakeRun:
+    """Thay `steps._run` bằng `FakeRun`; tên quy tắc đổi `__` thành khoảng trắng."""
     fake = FakeRun(rules={k.replace("__", " "): v for k, v in rules.items()})
     monkeypatch.setattr(steps, "_run", fake)
     return fake
 
 
 def _touch(root: Path, rel: str) -> None:
+    """Tạo file rỗng `rel` dưới `root` (kèm thư mục cha)."""
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("", encoding="utf-8")
@@ -94,6 +99,7 @@ def test_bước_1_đến_4_theo_mã_thoát(
     rc: int,
     status: str,
 ) -> None:
+    """Bước 1-4 đạt khi lệnh thoát 0, hỏng khi khác 0, kèm đúng số bước."""
     monkeypatch.setattr(steps, "_run", FakeRun(rules={"": (rc, "")}))
     outcome = fn()
     assert (outcome.number, outcome.status) == (number, status)
@@ -103,6 +109,7 @@ def test_bước_1_đến_4_theo_mã_thoát(
 
 
 def test_bước_5_đạt_gọi_đủ_chuỗi(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bước 5 đạt: gọi pytest, rồi coverage json, rồi coverage_gate."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
     fake = _fake(monkeypatch)
     assert steps.step_coverage().status == steps.STATUS_OK
@@ -129,6 +136,7 @@ def test_bước_5_chạy_song_song_dưới_cov(repo: Path, monkeypatch: pytest.
 
 
 def test_bước_5_pytest_hỏng_không_gọi_gate(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pytest hỏng thì bước 5 hỏng và không gọi coverage json hay coverage_gate."""
     fake = _fake(monkeypatch, pytest=(1, ""))
     assert steps.step_coverage().status == steps.STATUS_FAIL
     assert not fake.ran("tools.coverage_gate")
@@ -137,12 +145,14 @@ def test_bước_5_pytest_hỏng_không_gọi_gate(repo: Path, monkeypatch: pyte
 
 def test_bước_5_coverage_json_hỏng_không_bị_nuốt(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # vd cấu hình [paths] sai: coverage json hỏng thì bước 5 hỏng, không lặng lẽ đi tiếp
+    """`coverage json` hỏng thì bước 5 hỏng, không gọi coverage_gate."""
     fake = _fake(monkeypatch, coverage__json=(1, ""))
     assert steps.step_coverage().status == steps.STATUS_FAIL
     assert not fake.ran("tools.coverage_gate")
 
 
 def test_bước_5_gate_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """coverage_gate thoát khác 0 thì bước 5 hỏng."""
     _fake(monkeypatch, **{"tools.coverage_gate": (1, "")})
     assert steps.step_coverage().status == steps.STATUS_FAIL
 
@@ -166,6 +176,7 @@ def test_số_tiến_trình_bước_5_theo_env(monkeypatch: pytest.MonkeyPatch, 
 
 
 def test_số_tiến_trình_bước_5_mặc_định(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không đặt biến môi trường thì số tiến trình bước 5 là mặc định."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
     assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS
 
@@ -174,6 +185,7 @@ def test_số_tiến_trình_bước_5_mặc_định(monkeypatch: pytest.MonkeyPa
 
 
 def test_5b_không_đơn_vị_bị_chạm_bỏ_pytest_perf(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không có đơn vị bị chạm thì bước 5b không collect pytest perf nhưng vẫn chạy case_gate."""
     fake = _fake(monkeypatch)
     outcome = steps.step_perf()
     assert (outcome.status, outcome.detail) == (steps.STATUS_OK, "perf: 0 đơn vị bị chạm")
@@ -182,6 +194,7 @@ def test_5b_không_đơn_vị_bị_chạm_bỏ_pytest_perf(repo: Path, monkeypat
 
 
 def test_5b_đơn_vị_bị_chạm_có_perf_thì_chạy(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đơn vị bị chạm có test perf thì bước 5b chạy pytest perf giới hạn đúng đơn vị đó."""
     (repo / "packages" / "vision").mkdir(parents=True)
     monkeypatch.setenv("VERIFY_CHANGED", "packages/vision/x.py\ndocs/a.md")
     fake = _fake(monkeypatch, **{"--collect-only": (0, "packages/vision/tests/test_p.py::test_speed\n\n1 test\n")})
@@ -192,6 +205,7 @@ def test_5b_đơn_vị_bị_chạm_có_perf_thì_chạy(repo: Path, monkeypatch:
 
 
 def test_5b_đơn_vị_bị_chạm_không_có_perf_thì_bỏ(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đơn vị bị chạm không có test perf thì bước 5b bỏ qua lượt chạy perf."""
     (repo / "packages" / "vision").mkdir(parents=True)
     monkeypatch.setenv("VERIFY_CHANGED", "packages/vision/x.py")
     fake = _fake(monkeypatch, **{"--collect-only": (5, "no tests collected\n")})
@@ -200,6 +214,7 @@ def test_5b_đơn_vị_bị_chạm_không_có_perf_thì_bỏ(repo: Path, monkeyp
 
 
 def test_5b_integration_chạy_mọi_perf(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nhánh integration: bước 5b collect perf không giới hạn đường dẫn."""
     monkeypatch.setenv("VERIFY_BRANCH", "integration")
     fake = _fake(monkeypatch, **{"--collect-only": (0, "a/tests/test_p.py::test_speed\n")})
     assert steps.step_perf().status == steps.STATUS_OK
@@ -208,6 +223,7 @@ def test_5b_integration_chạy_mọi_perf(repo: Path, monkeypatch: pytest.Monkey
 
 
 def test_5b_perf_mang_tên_case_hỏng_trước_khi_chạy(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test perf mang tên case thì bước 5b hỏng, không chạy case_gate."""
     monkeypatch.setenv("VERIFY_BRANCH", "integration")
     fake = _fake(monkeypatch, **{"--collect-only": (0, "a/tests/test_p.py::test_x_create__C04\n")})
     outcome = steps.step_perf()
@@ -217,12 +233,14 @@ def test_5b_perf_mang_tên_case_hỏng_trước_khi_chạy(repo: Path, monkeypat
 
 
 def test_5b_perf_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pytest perf thoát khác 0 thì bước 5b hỏng."""
     monkeypatch.setenv("VERIFY_BRANCH", "integration")
     _fake(monkeypatch, **{"--collect-only": (0, "a/tests/test_p.py::test_speed\n"), "junit-perf": (1, "")})
     assert steps.step_perf().status == steps.STATUS_FAIL
 
 
 def test_5b_case_gate_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """case_gate thoát khác 0 thì bước 5b hỏng."""
     _fake(monkeypatch, **{"tools.case_gate": (1, "")})
     assert steps.step_perf().status == steps.STATUS_FAIL
 
@@ -245,6 +263,7 @@ def test_bước_6_8_không_áp_dụng_rồi_hỏng_rồi_chạy(
     cond: str,
     owner: str,
 ) -> None:
+    """Bước 6-8: không áp dụng khi thiếu file điều kiện, hỏng khi chủ đã hợp nhất, chạy khi có file."""
     fake = _fake(monkeypatch)
     assert fn().status == steps.STATUS_NA
     _touch(repo, f"changes/{owner}.md")
@@ -256,6 +275,7 @@ def test_bước_6_8_không_áp_dụng_rồi_hỏng_rồi_chạy(
 
 
 def test_bước_6_lint_hỏng_không_gọi_migrate_check(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """lint_migrations hỏng thì bước 6 hỏng và không gọi migrate_check."""
     _touch(repo, "packages/db/migrate_check.py")
     fake = _fake(monkeypatch, **{"tools.lint_migrations": (1, "")})
     assert steps.step_migrations().status == steps.STATUS_FAIL
@@ -263,12 +283,14 @@ def test_bước_6_lint_hỏng_không_gọi_migrate_check(repo: Path, monkeypatc
 
 
 def test_bước_6_migrate_check_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """migrate_check thoát khác 0 thì bước 6 hỏng."""
     _touch(repo, "packages/db/migrate_check.py")
     _fake(monkeypatch, **{"packages.db.migrate_check": (1, "")})
     assert steps.step_migrations().status == steps.STATUS_FAIL
 
 
 def test_bước_7_hỏng_theo_mã_thoát(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bước 7 hỏng khi tools.contract.check thoát khác 0."""
     _touch(repo, "tools/contract/check.py")
     _fake(monkeypatch, **{"tools.contract.check": (1, "")})
     assert steps.step_contract().status == steps.STATUS_FAIL
@@ -285,6 +307,7 @@ def test_bước_8_integration_so_với_bản_commit(repo: Path, monkeypatch: py
 
 
 def test_bước_8_worker_không_so(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nhánh worker: bước 8 không truyền `--compare`, và hỏng theo mã thoát."""
     _touch(repo, "apps/api/core/openapi.py")
     fake = _fake(monkeypatch, **{"apps.api.core.openapi": (1, "")})
     assert steps.step_openapi().status == steps.STATUS_FAIL
@@ -297,6 +320,7 @@ def test_bước_8_worker_không_so(repo: Path, monkeypatch: pytest.MonkeyPatch)
 def test_main_verify_in_bảng_và_mã_thoát(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`main verify` in bảng có dòng "chưa chạy" và thoát 1 khi một bước hỏng; `--steps` chọn đúng bước."""
     monkeypatch.setattr(
         steps,
         "_ALL_STEPS",
@@ -316,6 +340,7 @@ def test_main_verify_in_bảng_và_mã_thoát(
 
 
 def test_lock_chép_uv_lock_xoá_file_cũ(repo: Path) -> None:
+    """`lock` chép uv.lock ra thư mục ra và xoá file cũ ở đó."""
     (repo / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     old = steps.OUT_DIR / "lock" / "cũ.txt"
     old.parent.mkdir(parents=True)
@@ -332,6 +357,7 @@ def test_lock_thư_mục_ra_là_mount_point_không_gỡ_được(repo: Path, mon
     """
 
     def rmtree_giữ_gốc(path: Path | str, **_kw: Any) -> None:
+        """Giả `shutil.rmtree`: xoá nội dung nhưng giữ thư mục gốc, như mount point."""
         for child in Path(path).iterdir():
             child.unlink()
 
@@ -346,11 +372,13 @@ def test_lock_thư_mục_ra_là_mount_point_không_gỡ_được(repo: Path, mon
 
 
 def test_openapi_thiếu_module_nêu_b0_06(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`openapi` thiếu module thì thoát 1 và nêu B0-06 ở stderr."""
     assert steps.main(["openapi"]) == 1
     assert "B0-06" in capsys.readouterr().err
 
 
 def test_openapi_module_giả_ghi_đúng_file_xoá_file_cũ(repo: Path) -> None:
+    """`openapi` với module giả ghi đúng `openapi.json` và xoá file cũ trong thư mục ra."""
     for pkg in ("apps", "apps/api", "apps/api/core"):
         _touch(repo, f"{pkg}/__init__.py")
     (repo / "apps" / "api" / "core" / "openapi.py").write_text(
@@ -382,6 +410,7 @@ _MAKO = (
 
 
 def _alembic_repo(root: Path, *revisions: tuple[str, str | None]) -> Path:
+    """Dựng repo alembic tối thiểu (ini, mako, các revision) và trả thư mục `versions`."""
     db = root / "packages" / "db"
     versions = db / "migrations" / "versions"
     versions.mkdir(parents=True)
@@ -398,12 +427,14 @@ def _alembic_repo(root: Path, *revisions: tuple[str, str | None]) -> Path:
 
 
 def _no_subprocess(cmd: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+    """Thay `_run` để báo lỗi nếu có lệnh nào bị gọi."""
     raise AssertionError(f"không được gọi {cmd} trước khi kiểm xong tên")
 
 
 def test_merge_heads_sai_mẫu_hỏng_trước_alembic(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`merge-heads` sai mẫu tên thì thoát 1, không gọi alembic."""
     monkeypatch.setattr(steps, "_run", _no_subprocess)
     _alembic_repo(repo)
     assert steps.main(["merge-heads", "r20260919_merge_w00"]) == 1
@@ -411,6 +442,7 @@ def test_merge_heads_sai_mẫu_hỏng_trước_alembic(
 
 
 def test_merge_heads_thiếu_alembic_ini_nêu_b0_03(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`merge-heads` thiếu alembic.ini thì thoát 1 và nêu B0-03."""
     assert steps.main(["merge-heads", "r20260919_merge_w00_1"]) == 1
     assert "B0-03" in capsys.readouterr().err
 
@@ -418,6 +450,7 @@ def test_merge_heads_thiếu_alembic_ini_nêu_b0_03(repo: Path, capsys: pytest.C
 def test_merge_heads_trùng_revision_có_sẵn_hỏng_trước_alembic(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`merge-heads` trùng tên revision có sẵn thì thoát 1, không gọi alembic."""
     _alembic_repo(repo, ("r20260919_merge_w00_1", None))
     monkeypatch.setattr(steps, "_run", _no_subprocess)
     assert steps.main(["merge-heads", "r20260919_merge_w00_1"]) == 1
@@ -425,12 +458,14 @@ def test_merge_heads_trùng_revision_có_sẵn_hỏng_trước_alembic(
 
 
 def test_merge_heads_một_head_hỏng(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`merge-heads` chỉ có một head thì thoát 1."""
     _alembic_repo(repo, ("r20260919_b0_03", None))
     assert steps.main(["merge-heads", "r20260919_merge_w00_1"]) == 1
     assert "chỉ 1 head" in capsys.readouterr().err
 
 
 def test_merge_heads_hai_head_ra_đúng_một_file(repo: Path) -> None:
+    """Hai head thì `merge-heads` ra đúng một file revision merge, repo còn một head."""
     versions = _alembic_repo(repo, ("r20260919_b0_03", None), ("r20260919_b0_04", None))
     assert steps.main(["merge-heads", "r20260919_merge_w00_1"]) == 0
     out = sorted((steps.OUT_DIR / "merge-heads").iterdir())
@@ -444,6 +479,7 @@ _TWO_HEADS = (0, "a (head)\nb (head)\n")
 
 
 def test_merge_heads_alembic_merge_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`alembic merge` hỏng thì `merge-heads` thoát 1 và dừng ngay sau merge."""
     _alembic_repo(repo)
     fake = _fake(monkeypatch, **{"alembic.ini merge": (1, ""), "alembic.ini heads": _TWO_HEADS})
     assert steps.main(["merge-heads", "r20260919_merge_w00_1"]) == 1
@@ -453,6 +489,7 @@ def test_merge_heads_alembic_merge_hỏng(repo: Path, monkeypatch: pytest.Monkey
 def test_merge_heads_sau_merge_còn_hai_head_hỏng(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Sau merge vẫn còn hai head thì `merge-heads` thoát 1 và báo các head."""
     _alembic_repo(repo)
     _fake(monkeypatch, **{"alembic.ini heads": _TWO_HEADS})
     assert steps.main(["merge-heads", "r20260919_merge_w00_1"]) == 1
@@ -460,10 +497,12 @@ def test_merge_heads_sau_merge_còn_hai_head_hỏng(
 
 
 def test_merge_heads_lint_hỏng_không_chép(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """lint_migrations hỏng sau merge thì `merge-heads` thoát 1 và không chép file ra."""
     versions = _alembic_repo(repo)
     heads = iter(["a (head)\nb (head)\n", "r20260919_merge_w00_1 (head)\n"])
 
     def run(cmd: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        """Giả `_run`: trả head lần lượt cho lệnh `heads`, còn lại ghi một revision lỗi tên."""
         if cmd[-1] == "heads":
             return subprocess.CompletedProcess(cmd, 0, stdout=next(heads), stderr="")
         (versions / "bad.py").write_text('revision = "r20260919_merge_w00_0"\n', encoding="utf-8")
@@ -478,6 +517,7 @@ def test_merge_heads_lint_hỏng_không_chép(repo: Path, monkeypatch: pytest.Mo
 
 
 def test_gc_xoá_thư_mục_của_worktree_đã_mất(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`gc` chỉ xoá venv-*/mypy-* của worktree không còn trong danh sách sống."""
     for name in ("venv-a", "venv-b", "mypy-a", "mypy-c", "uv-cache"):
         (steps.WORK_DIR / name).mkdir(parents=True)
     monkeypatch.setenv("VERIFY_VALID_NAMES", "a")
@@ -486,6 +526,7 @@ def test_gc_xoá_thư_mục_của_worktree_đã_mất(repo: Path, monkeypatch: p
 
 
 def test_shell_exec_bash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`cmd_shell` gọi `os.execvp` chạy bash."""
     calls: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(os, "execvp", lambda file, args: calls.append((file, args)))
     steps.cmd_shell(argparse.Namespace())
@@ -493,11 +534,13 @@ def test_shell_exec_bash(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_touched_units_từ_verify_changed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_touched_units` suy đơn vị bị chạm từ `VERIFY_CHANGED`, bỏ file không thuộc đơn vị."""
     monkeypatch.setenv("VERIFY_CHANGED", "packages/core/a.py\napps/api/auth/r.py\ndocs/x.md\n")
     assert steps._touched_units() == {"packages/core", "apps/api/auth"}
 
 
 def test_run_thật_in_lệnh(capsys: pytest.CaptureFixture[str]) -> None:
+    """`_run` thật chạy tiến trình con, trả mã thoát/stdout và in dòng lệnh bắt đầu bằng `$ `."""
     r = steps._run([sys.executable, "-c", "print('ok')"], capture_output=True)
     assert (r.returncode, r.stdout.strip()) == (0, "ok")
     assert capsys.readouterr().out.startswith("$ ")
@@ -612,6 +655,7 @@ def _printing_step(number: str, status: str) -> tuple[str, Callable[[], steps.St
     """Bước giả in qua một tiến trình con thật (`steps._run`, như pytest hay `coverage_gate`): ghi thẳng fd 1, 2."""
 
     def fn() -> steps.StepOutcome:
+        """Chạy một tiến trình con in ra stdout và stderr rồi trả kết quả bước giả."""
         code = f"import sys; print('tóm tắt pytest {number}'); print('cảnh báo {number}', file=sys.stderr)"
         assert steps._run([sys.executable, "-c", code]).returncode == 0
         return steps.StepOutcome(number, f"bước {number}", status)
@@ -657,6 +701,7 @@ def test_verify_log_nối_thêm_không_đè_lượt_trước(log_file: Path, mon
 
 
 def _no_step() -> steps.StepOutcome:
+    """Bước giả: báo lỗi nếu bị chạy."""
     raise AssertionError("không được chạy bước nào khi chưa mở được log")
 
 
@@ -705,6 +750,7 @@ def test_verify_tiến_trình_con_mồ_côi_không_treo_cổng(
     orphans: list[subprocess.Popen[bytes]] = []
 
     def step() -> steps.StepOutcome:
+        """Bước giả: sinh tiến trình con ngủ lâu để giữ fd rồi trả kết quả đạt."""
         orphans.append(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]))
         return steps.StepOutcome("1", "a", steps.STATUS_OK)
 
@@ -727,6 +773,7 @@ def test_write_each_bỏ_đích_hỏng_giữ_đích_còn_lại() -> None:
         """Đích ghi luôn báo đĩa đầy."""
 
         def write(self, _b: Any) -> int:
+            """Ném `OSError` đĩa đầy mỗi lần ghi."""
             raise OSError(28, "No space left on device")
 
     full, good = DiskFull(), io.BytesIO()
@@ -750,6 +797,7 @@ def _warm(fake: FakeRun, error: Exception | None = None) -> Callable[[Path], Pat
     """
 
     def ensure(node_dir: Path) -> Path:
+        """Ghi lượt gọi vào sổ lệnh của `fake`, ném `error` nếu có, trả đường băm lock giả."""
         fake.calls.append(["ensure_node_modules", str(node_dir)])
         if error is not None:
             raise error

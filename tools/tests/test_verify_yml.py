@@ -14,6 +14,7 @@ VERIFY_YML = REPO_ROOT / "deploy" / "compose" / "verify.yml"
 
 
 def _load() -> dict[str, Any]:
+    """Đọc và parse `verify.yml` thành dict."""
     return cast(dict[str, Any], yaml.safe_load(VERIFY_YML.read_text(encoding="utf-8")))
 
 
