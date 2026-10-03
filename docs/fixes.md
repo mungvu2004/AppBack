@@ -105,15 +105,15 @@
 | FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | `1ada889` (gộp `15d1f53`, nhánh `feature/b3-02-spatial-read`) |
 | FIX-109 | 2026-09-28 | B2-02 | — | Test dò sink mời chốt "chưa module nào có `invite_sinks.py`", đỏ khi B4-02 cài `ProjectInviteNotifier` thật | (nhánh `feature/b4-02-notifications`) |
 | FIX-110 | 2026-09-28 | B4-01 | — | Test mặc định luồng thông báo giả định "chưa có B4-02", đỏ khi B4-02 cài provider `notifications` thật | (nhánh `feature/b4-02-notifications`) |
-| FIX-117 | 2026-10-03 | B0-01 | NO-205, NO-325, NO-299, NO-324, NO-185, NO-190, NO-306 | DEBT-02 W1/C01: `run.sh` (gc trên Git Bash, đường AppFront mặc định, stdin của `shell`, junit bước 5, cache ruff/mypy) và volume `appback-work` | `e462a86`, `2e23c58`, `bfc9451` (nhánh `fix/debt-02-w1`) |
+| FIX-117 | 2026-10-03 | B0-01 | NO-205, NO-325, NO-299, NO-324, NO-185, NO-190, NO-306 | DEBT-02 W1/C01: `run.sh` (gc trên Git Bash, đường AppFront mặc định, stdin của `shell`, junit bước 5, cache ruff/mypy) và volume `appback-work` | `e462a86`, `2e23c58`, `bfc9451`, `cd63213` (nhánh `fix/debt-02-w1`) |
 | FIX-118 | 2026-10-03 | B0-08 | NO-325 | DEBT-02 W1/C01: đường AppFront mặc định của `deploy/docker/web-context.sh` | `de9a61d` (nhánh `fix/debt-02-w1`) |
 | FIX-119 | 2026-10-03 | B3-05 | NO-325 | DEBT-02 W1/C01: đường AppFront trong `apps/api/rules/catalog.py` | `ef08b8f` (nhánh `fix/debt-02-w1`) |
-| FIX-120 | 2026-10-03 | B0-09 | NO-269, NO-181, NO-183, NO-191, NO-180 | DEBT-02 W1/C02: `tools/ci/job.sh` (xdist, sàn nginx theo nhánh, `cd` khi nạp) và test của nó | `59242c1` (nhánh `fix/debt-02-w1`) |
+| FIX-120 | 2026-10-03 | B0-09 | NO-269, NO-181, NO-183, NO-191, NO-180 | DEBT-02 W1/C02: `tools/ci/job.sh` (xdist, sàn nginx theo nhánh, `cd` khi nạp) và test của nó | `59242c1`, `dfdd92c`, `9150899` (nhánh `fix/debt-02-w1`) |
 | FIX-121 | 2026-10-03 | B0-08 | NO-180 | DEBT-02 W1/C02: cổng host `api` của `deploy/compose/ci.yml` | không dùng — `deploy/compose/ci.yml` trên `main` đã không còn publish cổng host `api` (C02 `quyet-dinh.md` P-5) |
-| FIX-122 | 2026-10-03 | B0-09 | NO-178, NO-182, NO-183, NO-330, NO-179 | DEBT-02 W1/C03: Dependabot, trigger `edited`, miễn trừ gitleaks, test ảnh ghim trùng | `b5a87ca`, `b395b97`, `07660d0` (nhánh `fix/debt-02-w1`) |
+| FIX-122 | 2026-10-03 | B0-09 | NO-178, NO-182, NO-183, NO-330, NO-179 | DEBT-02 W1/C03: Dependabot, trigger `edited`, miễn trừ gitleaks, test ảnh ghim trùng | `b5a87ca`, `b395b97`, `07660d0`, `dfdd92c` (nhánh `fix/debt-02-w1`) |
 | FIX-123 | 2026-10-03 | B0-01 | NO-184 | DEBT-02 W1/C03: `packages/testing` nhập `tools.pinned_images` (đảo chiều tầng) | `a857c9c`, `10091a5`, `f4339c5`, `c80faa5` (nhánh `fix/debt-02-w1`) |
 | FIX-124 | 2026-10-03 | B0-02 | NO-184 | DEBT-02 W1/C03: nơi mới của hằng ảnh ghim trong `packages/core` (nếu phương án chốt chọn) | `90e360f`, `19fc9e4` (nhánh `fix/debt-02-w1`) |
-| FIX-125 | 2026-10-03 | B0-01 | NO-294, NO-256, NO-257, NO-309 | DEBT-02 W1/C04: `case_gate` nhận case task J/U/M và task của `apps/ml` | `9181628`, `1a16885`, `5caf86f`, `8860fa8` (nhánh `fix/debt-02-w1`) |
+| FIX-125 | 2026-10-03 | B0-01 | NO-294, NO-256, NO-257, NO-309 | DEBT-02 W1/C04: `case_gate` nhận case task J/U/M và task của `apps/ml` | `9181628`, `1a16885`, `5caf86f`, `8860fa8`, `cd63213` (nhánh `fix/debt-02-w1`) |
 | FIX-126 | 2026-10-03 | B5-04 | NO-257, NO-256 | DEBT-02 W1/C04: khai lại `[[task]] text_read` trong `apps/ml/text/cases.toml` | `e8a6e77` (nhánh `fix/debt-02-w1`) |
 | FIX-127 | 2026-10-03 | B0-05 | NO-309 | DEBT-02 W1/C04: sổ case `docs/contracts.toml` biết task `apps/ml` (người điều phối sửa) | không dùng — sổ task đã dò `apps.ml` từ `3b7ebf4`, gốc NO-309 nằm ở `tools/case_gate.py` (C04 `quyet-dinh.md` P-5, P-6; FIX-125) |
 | FIX-128 | 2026-10-03 | B5-06a | NO-294 | DEBT-02 W1/C04: thêm lại `U01`, `U02`, `U04`, `U06` vào `require` của `apps/worker/pipeline_orchestrate/cases.toml` | `20cd8a6` (nhánh `fix/debt-02-w1`) |
@@ -124,6 +124,7 @@
 | FIX-133 | 2026-10-03 | B6-03a | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/training_bridge/cases.toml` | `d270199` (nhánh `fix/debt-02-w1`) |
 | FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | `dad3628` (nhánh `fix/debt-02-w1`); commit `dad3628` mang nhầm trailer `Fix: FIX-125` |
 | FIX-135 | 2026-10-03 | B0-03 | NO-184 | DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung | `5c6ddcd`, `f723d98` (nhánh `fix/debt-02-w1`) |
+| FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | `9738dab` (nhánh `fix/debt-02-w1`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -1216,3 +1217,16 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[5 SỬA NHỎ NHẤT]** nhập `POSTGRES_IMAGE` từ hằng ghim của `packages.core` (FIX-124) thay vì chuỗi chép tay.
 - **[6 TEST CHẶN TÁI PHÁT]** `packages/db/tests/test_migrate_check.py::test_migrate_check__uses_shared_pinned_image`.
 - **[7 NGHIỆM THU]** commit `5c6ddcd`, `f723d98` (docstring); cổng đầy đủ của nhánh gộp `fix/debt-02-w1`.
+
+## FIX-136 cho B0-10 — DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI)
+
+- **[1 TRIỆU CHỨNG]** Vòng sửa 1 tách job `commits` khỏi `CI` sang workflow `Commits` (chạy cả `push: main`); `notify.yml` chỉ nghe
+  `[CI, Deploy, "Restore drill"]` → `commits` hỏng trên `main` không còn tin cảnh báo. `CodeQL` (cũng `push: main`) chưa bao giờ được nghe.
+- **[2 TÁI HIỆN]** `deploy/scripts/tests/test_workflow_notify.py` mới chạy trên `notify.yml` cũ (`9150899`): đỏ (`M/pre-r1b.log`).
+- **[3 BẰNG CHỨNG]** `.github/workflows/notify.yml:8` (danh sách), `:31` (nhánh `case`); `.github/workflows/commits.yml`, `codeql.yml` có `push: main`.
+- **[4 KHOANH VÙNG]** `.github/workflows/notify.yml`, `deploy/scripts/tests/test_workflow_notify.py`.
+- **[5 SỬA NHỎ NHẤT]** thêm `Commits`, `CodeQL` vào `workflow_run.workflows`; nhánh `CI | Commits | CodeQL)` gửi tin khi `failure` trên `main`
+  (điều phối chọn thêm cả CodeQL: hỏng quét bảo mật trên `main` không được im lặng).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_notify_watches_every_workflow_running_on_push_to_main` (mọi workflow `push: main` ⊆ danh sách notify),
+  `test_notify_watches_exact_names_of_ci_deploy_restore_drill`, `test_notify_send_decision_matches_prompt_table[Commits-…|CodeQL-…]`.
+- **[7 NGHIỆM THU]** commit `9738dab`; cổng đầy đủ `M/gate-2.log` của nhánh `fix/debt-02-w1`.
