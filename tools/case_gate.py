@@ -54,6 +54,8 @@ class Operation:
 
 @dataclass(frozen=True)
 class TestResult:
+    """Một testcase đọc từ junit: tên, kết quả, lý do bỏ qua, cờ xfail, marker và file."""
+
     __test__ = False  # tên trùng "Test*" — báo pytest đây không phải lớp test
 
     name: str
@@ -66,6 +68,8 @@ class TestResult:
 
 @dataclass(frozen=True)
 class CaseTraceEntry:
+    """Một dòng vết case (`CASE_TRACE_FILE`): test nào gọi `op` nào, nhận status và mã lỗi gì."""
+
     test: str
     op: str
     status: int
@@ -74,18 +78,24 @@ class CaseTraceEntry:
 
 @dataclass
 class EndpointOverride:
+    """Phần `[[endpoint]]` của `cases.toml`: case đòi thêm (`extra`) và case được miễn kèm lý do (`waive`)."""
+
     extra: set[str] = field(default_factory=set)
     waive: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class TaskRequirement:
+    """Phần `[[task]]` của `cases.toml`: tên hàm task và case đòi thêm ngoài J01, J06."""
+
     fn: str
     require: set[str] = field(default_factory=set)
 
 
 @dataclass
 class OpResult:
+    """Kết quả một thao tác: case bắt buộc, case tìm thấy, case được miễn."""
+
     row_id: str
     op: str
     required: set[str]
@@ -94,22 +104,28 @@ class OpResult:
 
     @property
     def missing(self) -> set[str]:
+        """Case bắt buộc chưa có test đạt và không được miễn."""
         return self.required - self.found - set(self.waived)
 
     @property
     def ok(self) -> bool:
+        """Đúng khi không còn gì thiếu hay hỏng."""
         return not self.missing
 
 
 @dataclass
 class GateResult:
+    """Kết quả toàn cổng: bảng thao tác, task thiếu, phát hiện hỏng, cảnh báo thao tác chưa có dòng BE-BIND."""
+
     op_results: list[OpResult] = field(default_factory=list)
     task_missing: list[str] = field(default_factory=list)
+    task_rows: list[str] = field(default_factory=list)  # mỗi task một dòng, đạt cũng in (NO-309)
     findings: list[str] = field(default_factory=list)  # skipped/xfail/gpu/miễn sai/task lạ…
     unmounted_warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
+        """Đúng khi không còn gì thiếu hay hỏng."""
         return not self.task_missing and not self.findings and all(r.ok for r in self.op_results)
 
 
@@ -159,6 +175,7 @@ def _flag(value: bool | None) -> bool:
 
 
 def _gate(case_id: str, *, row: BindRow, op: Operation, loai: str) -> bool:
+    """Case có chú thích (CASE §2.3 bước 2) có áp cho thao tác này không, tính từ metadata và cột BE-BIND."""
     if case_id == "C07":
         return row.lock != "—"
     if case_id in ("C15",):
@@ -191,6 +208,7 @@ def _gate(case_id: str, *, row: BindRow, op: Operation, loai: str) -> bool:
 
 
 def required_cases_for(row: BindRow, op: Operation) -> set[str]:
+    """Tập case bắt buộc của một thao tác theo dòng BE-BIND và metadata (CASE §2.1, §2.2, case thêm cố định)."""
     loai = row.case_type
     candidates = set(_LOAI_CANDIDATES.get(loai, set()))
     required = {c for c in candidates if _gate(c, row=row, op=op, loai=loai)}
@@ -217,11 +235,12 @@ _EMPTY_PARAMS_RE = re.compile(r"empty parameter set", re.IGNORECASE)
 
 
 def parse_junit(*paths: Path) -> list[TestResult]:
+    """Đọc các file junit có thật thành `TestResult`; xfail ghi cờ riêng để cổng cấm, skipped giữ lý do."""
     out: list[TestResult] = []
     for path in paths:
         if not path.is_file():
             continue
-        root = ET.parse(path).getroot()  # noqa: S314 — junit.xml do chính pytest trong container sinh, không phải input ngoài
+        root = ET.parse(path).getroot()  # noqa: S314 — junit do chính pytest trong container sinh
         cases = root.iter("testcase") if root.tag != "testcase" else [root]
         for case in cases:
             name = case.get("name", "")
@@ -255,6 +274,7 @@ def parse_junit(*paths: Path) -> list[TestResult]:
 
 
 def parse_case_trace(path: Path | None) -> list[CaseTraceEntry]:
+    """Đọc vết case JSON Lines; không có file thì trả rỗng."""
     if path is None or not path.is_file():
         return []
     out = []
@@ -293,7 +313,9 @@ _FIXED_CODE: dict[str, str] = {
 # hậu tố `_<việc>` hoặc id tham số `[...]` sau mã case đều được
 _TEST_OP_CASE_RE = re.compile(r"^test_(?P<op>.+?)__(?P<case>[A-Z]\d{2}[a-z]?)(?:[_\[].*)?$")
 _TEST_COMMON_RE = re.compile(r"^test_common__(?P<case>[A-Z]\d{2}[a-z]?)\[(?P<op>.+)\]$")
-_TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>J\d{2})$")
+# task: J (CASE §4), U của task tiền xử lý (§2.2), M của task ML (§6); id tham số `[...]` được như op,
+# hậu tố `_<việc>` thì không (§2.3 chỉ đòi `test_<tên hàm>__J01`)
+_TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>[JUM]\d{2})(?:\[.*\])?$")
 
 
 class CaseTestName(NamedTuple):
@@ -321,6 +343,7 @@ def split_case_test_name(name: str) -> CaseTestName | None:
 
 
 def _case_matches_trace(case_id: str, op_id: str, test_name: str, trace: list[CaseTraceEntry]) -> bool:
+    """Test có ít nhất một response của đúng `op` trong vết, và khớp status/mã cố định của case nếu có."""
     hits = [t for t in trace if t.op == op_id and t.test == test_name]
     if not hits:
         return False
@@ -352,6 +375,7 @@ def _found_cases_by_op(
 
 
 def _task_found(tests: list[TestResult]) -> dict[str, set[str]]:
+    """Case task (J/U/M) theo tên hàm từ các test đạt tên đúng `test_<hàm>__<case>`."""
     found: dict[str, set[str]] = {}
     for t in tests:
         if t.outcome != "passed" or t.is_xfail:
@@ -368,6 +392,7 @@ def _task_found(tests: list[TestResult]) -> dict[str, set[str]]:
 
 
 def load_cases_toml(paths: list[Path]) -> tuple[dict[str, EndpointOverride], list[TaskRequirement]]:
+    """Gộp mọi `cases.toml`: override theo thao tác và danh sách yêu cầu task."""
     overrides: dict[str, EndpointOverride] = {}
     tasks: list[TaskRequirement] = []
     for path in paths:
@@ -387,6 +412,7 @@ def load_cases_toml(paths: list[Path]) -> tuple[dict[str, EndpointOverride], lis
 
 
 def check_skipped_xfail(tests: list[TestResult]) -> list[str]:
+    """Phát hiện test xfail (luôn cấm) và test skipped trừ trường hợp tham số rỗng."""
     findings = []
     for t in tests:
         if t.is_xfail:
@@ -444,6 +470,7 @@ def evaluate(
     task_names: list[str],
     task_requirements: list[TaskRequirement],
 ) -> GateResult:
+    """Áp CASE §2.3 lên dữ liệu đã nạp: bảng thao tác, miễn hợp lệ, task lạ/trùng/thiếu, mỗi task một dòng."""
     result = GateResult()
 
     rows_by_op = {r.operation_id: r for r in bind_rows if r.operation_id is not None}
@@ -495,6 +522,8 @@ def evaluate(
         need = {"J01", "J06"} | extra_require.get(fn, set())
         have = task_found.get(fn, set())
         missing = need - have
+        status = "thiếu " + ",".join(sorted(missing)) if missing else "đạt"
+        result.task_rows.append(f"{fn} | bắt buộc {sorted(need)} | tìm thấy {sorted(have & need)} | {status}")
         if missing:
             result.task_missing.append(f"{fn}: thiếu {sorted(missing)}")
 
@@ -515,6 +544,7 @@ def _optional_attr(module: str, attr: str) -> Any:
 
 
 def _real_operations() -> list[Operation]:
+    """Sổ thao tác thật của B0-06, chép sang gương `Operation`; chủ chưa hợp nhất → rỗng."""
     operations = _optional_attr("apps.api.core.openapi", "operations")
     if operations is None:
         return []
@@ -528,11 +558,13 @@ def _real_operations() -> list[Operation]:
 
 
 def _real_task_names() -> list[str]:
+    """Sổ task thật `packages.messaging.registered_tasks()`; chưa có → rỗng."""
     registered_tasks = _optional_attr("packages.messaging", "registered_tasks")
     return [] if registered_tasks is None else list(registered_tasks())
 
 
 def main() -> int:
+    """Nối dữ liệu thật, in bảng thao tác và task, trả 0 khi đạt, 1 khi hỏng."""
     bind_rows = load_bind_rows(REPO_ROOT / "docs" / "charter" / "BE-BIND.md")
     cases_toml_paths = sorted((REPO_ROOT / "apps").glob("*/*/cases.toml"))
     overrides, task_requirements = load_cases_toml(cases_toml_paths)
@@ -550,6 +582,9 @@ def main() -> int:
     for r in result.op_results:
         status = "đạt" if r.ok else "thiếu " + ",".join(sorted(r.missing))
         print(f"  {r.op} | bắt buộc {sorted(r.required)} | tìm thấy {sorted(r.found)} | {status}")
+    print(f"case_gate: {len(result.task_rows)} task/lịch trong sổ")
+    for row in result.task_rows:
+        print(f"  {row}")
     for w in result.unmounted_warnings:
         print(f"  CẢNH BÁO: {w} đã mount nhưng không có dòng BE-BIND")
     for f in result.findings:
