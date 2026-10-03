@@ -20,6 +20,9 @@ CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 RESTORE_DRILL_YML = REPO_ROOT / ".github" / "workflows" / "restore-drill.yml"
 NOTIFY_YML = REPO_ROOT / ".github" / "workflows" / "notify.yml"
+COMMITS_YML = REPO_ROOT / ".github" / "workflows" / "commits.yml"
+CODEQL_YML = REPO_ROOT / ".github" / "workflows" / "codeql.yml"
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
 
 def _load_yaml(path: Path) -> dict[Any, Any]:
@@ -57,9 +60,24 @@ def _workflow_names(*paths: Path) -> set[str]:
 
 
 def test_notify_watches_exact_names_of_ci_deploy_restore_drill() -> None:
+    """Danh sách `workflow_run.workflows` lấy đúng `name:` thật của từng workflow được báo (không chép tay)."""
     doc = _load_yaml(NOTIFY_YML)
     watched = set(_triggers(doc)["workflow_run"]["workflows"])
-    assert watched == _workflow_names(CI_YML, DEPLOY_YML, RESTORE_DRILL_YML)
+    assert watched == _workflow_names(CI_YML, DEPLOY_YML, RESTORE_DRILL_YML, COMMITS_YML, CODEQL_YML)
+
+
+def test_notify_watches_every_workflow_running_on_push_to_main() -> None:
+    """FIX-136: mọi workflow chạy trên `push: main` nằm trong danh sách của notify — tách một job ra workflow mới
+    (vd `commits` khỏi `CI`) không được làm lỗi trên `main` thành im lặng."""
+    watched = set(_triggers(_load_yaml(NOTIFY_YML))["workflow_run"]["workflows"])
+    on_main_push = set()
+    for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        doc = _load_yaml(path)
+        push = _triggers(doc).get("push") or {}
+        if "main" in push.get("branches", []):
+            on_main_push.add(doc["name"])
+    assert on_main_push, "không workflow nào chạy trên push: main"
+    assert on_main_push <= watched, on_main_push - watched
 
 
 def test_notify_permissions_empty_and_no_checkout() -> None:
@@ -124,6 +142,12 @@ def _run_decision(tmp_path: Path, *, workflow: str, conclusion: str, head_branch
         ("Deploy", "cancelled", "main", False),
         ("Restore drill", "failure", "main", True),
         ("Restore drill", "success", "main", False),
+        ("Commits", "failure", "main", True),
+        ("Commits", "failure", "feature/x", False),
+        ("Commits", "success", "main", False),
+        ("CodeQL", "failure", "main", True),
+        ("CodeQL", "failure", "feature/x", False),
+        ("CodeQL", "success", "main", False),
     ],
 )
 def test_notify_send_decision_matches_prompt_table(
