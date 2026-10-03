@@ -17,7 +17,8 @@ if [ -e "$dest" ]; then
   exit 1
 fi
 
-repo="${APPFRONT_REPO:-F:/AppFront}"
+source "$(dirname "${BASH_SOURCE[0]}")/../../tools/verify/appfront_repo.sh"
+repo="${APPFRONT_REPO:-$(appfront_repo_default "$(dirname "${BASH_SOURCE[0]}")")}"
 dest_parent="$(dirname "$dest")"
 mkdir -p "$dest_parent"
 
