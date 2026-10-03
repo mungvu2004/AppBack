@@ -51,6 +51,7 @@ Step = Callable[[], Awaitable[str]]
 
 
 def _say(text: str) -> None:
+    """In một dòng tiến trình của cổng migrate."""
     print(text)  # noqa: T201 — cổng in bảng con ra stdout
 
 
@@ -66,6 +67,7 @@ def alembic_config(script_location: Path | str | None = None) -> Config:
 
 
 async def _table_counts(session: AsyncSession) -> dict[str, int]:
+    """Đếm số hàng của mọi bảng ORM bằng một phiên."""
     rows = await session.execute(
         text(
             "SELECT table_name FROM information_schema.tables "
@@ -80,6 +82,7 @@ async def _table_counts(session: AsyncSession) -> dict[str, int]:
 
 
 def _compare(connection: Connection, metadata: MetaData) -> list[Any]:
+    """So metadata ORM với DB, trả danh sách khác biệt (autogenerate)."""
     context = MigrationContext.configure(connection, opts={"compare_type": True, "compare_server_default": True})
     return list(compare_metadata(context, metadata))
 
@@ -219,8 +222,9 @@ async def run_checks(
 
 
 def _start_postgres() -> tuple[str, Callable[[], None]]:
+    """Dựng Postgres tạm cho CLI, trả (URL, hàm dừng)."""
     # testcontainers 4.13 không có py.typed, cũng không có gói stub
-    from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
+    from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]  # không có stub
 
     container = PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")
     container.start()
@@ -228,6 +232,7 @@ def _start_postgres() -> tuple[str, Callable[[], None]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Điểm vào CLI: chạy các bước kiểm migration, trả mã thoát."""
     if argv:
         _say(f"migrate_check không nhận tham số: {' '.join(argv)}")
         return 2
