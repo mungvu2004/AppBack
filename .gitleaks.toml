@@ -1,6 +1,6 @@
 # Cấu hình gitleaks — B0-09 (hop-dong.md §2). Dùng nguyên bộ luật mặc định của
 # gitleaks (`[extend] useDefault = true`); miễn ĐÚNG đường dẫn `env.example`
-# (mẫu ví dụ) và ĐÚNG hai commit lịch sử đã có sẵn trên `main` (BE-04/B0-06)
+# (mẫu ví dụ) và ĐÚNG các commit lịch sử đã đóng băng (hai commit BE-04/B0-06 + mười hai commit của NO-330, SEC-043) trên `main` (BE-04/B0-06)
 # chứa bí mật giả trong test — không miễn theo đường dẫn cho các file test đó,
 # vì miễn theo đường sẽ bỏ qua VĨNH VIỄN, kể cả bí mật thật thêm vào sau này;
 # miễn theo `commits` (SHA cố định, không đổi) chỉ tắt đúng hai commit đã đóng
@@ -30,4 +30,16 @@ paths = [
 commits = [
   "eb40a3c513d685ffd48807986badb2a3dbcc2584", # apps/api/core/tests/test_common.py, rule jwt
   "1b97b24564d433c356d8d6385ab11b4a90fa8a69", # packages/storage/tests/{test_settings,test_local}.py, rule generic-api-key
+  "6cca3fdfaf9b1162c5849190d69fcf4fca840b01", # apps/api/admin_ml_datasets/tests/test_write.py, generic-api-key (NO-330)
+  "5d58fc8cfc0120df8e981ee3bc40a91a5148df42", # apps/api/admin_ml_datasets/tests/test_write.py, generic-api-key
+  "2bc59317990fb2310535d6aada27e425ec20c167", # apps/api/quality/tests/test_routes_straighten.py, generic-api-key
+  "95fe5545e493c23750ef7b055510f823a691b42e", # apps/api/quality/tests/test_routes_straighten.py, generic-api-key
+  "2857e22dc460f8a6f1b5c21c6993e7f33a73612b", # apps/api/users/tests/test_e2e.py, generic-api-key
+  "7587f462fd5a02173dd92f6dac45ad586a9aa748", # apps/api/users/tests/test_e2e.py, generic-api-key
+  "35c3020c21f63433237e88a0e4b6066056974189", # apps/api/me/tests/test_replace_avatar_route.py, generic-api-key
+  "ad3aa964a3443f946aa851efd5119987c7efaef8", # auth_recovery/tests/test_e2e.py + mail/tests/test_settings.py, generic-api-key
+  "09dc9d0efb74cfafff5fe0f977f417a5f7e4b4b6", # apps/api/auth_recovery/tests/test_e2e.py, generic-api-key
+  "ad7b5a060ac22728350fc714869087f3f4a0a9fb", # packages/mail/tests/test_settings.py, generic-api-key
+  "cce2a63c229f738afe8adb3101e589af70b9fd96", # docs/security/fixes/SEC-043.md trích chính các chuỗi giả trên
+  "1a22d90ee58ecfbdcae966fa3b2fee89fd17aedd", # docs/security/fixes/SEC-043.md (như trên)
 ]

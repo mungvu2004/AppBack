@@ -24,25 +24,25 @@ from contextlib import contextmanager, suppress
 from typing import Any, cast
 
 import pytest
-from docker.errors import NotFound  # type: ignore[import-untyped]
+from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
 from filelock import FileLock
 
 # testcontainers 4.13 (bản trong uv.lock) không có py.typed, cũng không có gói stub
-from testcontainers.core.config import (  # type: ignore[import-untyped]
+from testcontainers.core.config import (  # type: ignore[import-untyped]  # không có stub
     ConnectionMode,
     testcontainers_config,
 )
-from testcontainers.core.container import DockerContainer  # type: ignore[import-untyped]
-from testcontainers.core.docker_client import DockerClient  # type: ignore[import-untyped]
-from testcontainers.core.wait_strategies import HttpWaitStrategy  # type: ignore[import-untyped]
-from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
-from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
-from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
+from testcontainers.core.container import DockerContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.core.docker_client import DockerClient  # type: ignore[import-untyped]  # không có stub
+from testcontainers.core.wait_strategies import HttpWaitStrategy  # type: ignore[import-untyped]  # không có stub
+from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # không có stub
 
+from packages.core.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from packages.core.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 from packages.testing.fixtures.worker_id import xdist_worker_id
-from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
-from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
-from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
 
@@ -80,6 +80,7 @@ def _via_mapped_port(container: DockerContainer) -> DockerContainer:
 
 
 def _redis_url(container: RedisContainer) -> str:
+    """URL `redis://host:port/0` của container Redis đã chạy."""
     host = container.get_container_host_ip()
     port = container.get_exposed_port(6379)
     return f"redis://{host}:{port}/0"
@@ -163,6 +164,7 @@ def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Một Postgres cho cả lượt chạy; mỗi tiến trình xdist đã có database riêng (`db.py`)."""
 
     def start() -> tuple[DockerContainer, str]:
+        """Dựng container Postgres dùng chung và trả (container, URL)."""
         pg = PostgresContainer(POSTGRES_IMAGE, driver="asyncpg").start()
         return pg, str(pg.get_connection_url())
 
@@ -172,6 +174,7 @@ def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def redis_broker_url() -> Iterator[str]:
+    """URL Redis (chính sách `noeviction`) cho broker Celery, dùng chung cả phiên."""
     container = _redis("noeviction").start()
     try:
         yield _redis_url(container)
@@ -181,6 +184,7 @@ def redis_broker_url() -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def redis_cache_url() -> Iterator[str]:
+    """URL Redis (chính sách `allkeys-lru`) cho cache, dùng chung cả phiên."""
     container = _redis("allkeys-lru").start()
     try:
         yield _redis_url(container)
@@ -197,6 +201,7 @@ def minio_endpoint(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[s
     """
 
     def start() -> tuple[DockerContainer, list[str]]:
+        """Dựng container MinIO dùng chung và trả (container, cấu hình S3)."""
         minio = MinioContainer(MINIO_IMAGE).start()
         cfg = minio.get_config()
         # list chứ không tuple: giá trị đi qua JSON của `_shared_container`, mà JSON không có tuple
@@ -238,12 +243,15 @@ def refused_url(scheme: str) -> str:
 
 
 def ephemeral_postgres() -> PostgresContainer:
+    """Postgres tạm cho một test, đi qua cổng đã ánh xạ."""
     return _via_mapped_port(PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")).start()
 
 
 def ephemeral_redis(policy: str) -> RedisContainer:
+    """Redis tạm cho một test với chính sách `policy`, đi qua cổng đã ánh xạ."""
     return _via_mapped_port(_redis(policy)).start()
 
 
 def ephemeral_minio() -> MinioContainer:
+    """MinIO tạm cho một test, đi qua cổng đã ánh xạ."""
     return _via_mapped_port(MinioContainer(MINIO_IMAGE)).start()

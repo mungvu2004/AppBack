@@ -1,8 +1,8 @@
-"""Ảnh dịch vụ ghim dùng chung (K29, NO-106): nguồn duy nhất cho
+"""Ảnh dịch vụ ghim dùng chung (K29, NO-106, NO-184): nguồn duy nhất cho
 `packages/testing/fixtures/services.py` và `tools/ci/h2.py`.
 
-Không phải mã test — cả hai nơi trên đều được phép nhập module này (R-28 chỉ cấm nhập
-`packages.testing` từ mã không phải test; `tools/pinned_images` nằm ngoài gói đó).
+Hằng thuần, không nhập gì — nằm ở tầng thấp (`packages.core`) để cả gói test lẫn công cụ nhập
+xuôi chiều, không còn `packages.*` nhập ngược `tools.*`.
 """
 
 from __future__ import annotations

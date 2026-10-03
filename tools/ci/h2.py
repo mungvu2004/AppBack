@@ -39,15 +39,18 @@ from schemathesis.specs.openapi.checks import response_schema_conformance
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # testcontainers 4.13 không có py.typed / gói stub (giống packages/testing/fixtures/services.py).
-from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
-from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
-from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
+from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]  # không có stub
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # không có stub
 
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier
 from apps.api.core.openapi import operations
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
+from packages.core.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from packages.core.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 from packages.core.settings import reset_settings_cache
 from packages.core.text import nfc, normalize_email
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_sessionmaker, session_scope
@@ -59,9 +62,6 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.s3 import http_client
 from packages.storage.settings import reset_storage_settings_cache
-from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
-from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
-from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAX_EXAMPLES_ENV: Final = "H2_MAX_EXAMPLES"
 DEFAULT_MAX_EXAMPLES: Final = 25
@@ -142,6 +142,7 @@ def _run_operation(
     @hypothesis_settings(max_examples=max_examples, derandomize=True, database=None, deadline=None)
     @given(case=operation.as_strategy())
     def _example(case: "schemathesis.Case[Any]") -> None:
+        """Một ví dụ schemathesis: gọi app và soát phản hồi."""
         state.examples += 1
         try:
             response = case.call(headers=auth_header, timeout=EXAMPLE_TIMEOUT_S)

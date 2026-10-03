@@ -1,5 +1,6 @@
 """`migrate_check` — bước 6 của verify (BE-00 §6.1). Chạy Postgres thật (K23)."""
 
+import ast
 import os
 import shutil
 from collections.abc import Awaitable, Callable
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.schema import CreateTable
 from sqlalchemy.types import TypeEngine
 
+from packages.core import pinned_images
 from packages.db import migrate_check
 from packages.db.base import NAMING_CONVENTION
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config, run_checks
@@ -44,6 +46,7 @@ DROP_THING = 'op.execute("DROP TABLE thing")'
 
 
 def thing_metadata(extra_table: bool = False) -> MetaData:
+    """Metadata mẫu một bảng `thing` (thêm bảng phụ khi `extra_table`)."""
     metadata = MetaData()
     Table("thing", metadata, Column("id", Integer, primary_key=True), Column("code", Text))
     if extra_table:
@@ -52,11 +55,15 @@ def thing_metadata(extra_table: bool = False) -> MetaData:
 
 
 async def no_seed(session: AsyncSession, env: str) -> tuple[str, ...]:
+    """Seed rỗng."""
     return ()
 
 
 def insert_rows(count: int) -> Callable[[AsyncSession, str], Awaitable[tuple[str, ...]]]:
+    """Tạo seed chèn `count` hàng."""
+
     async def seed(session: AsyncSession, env: str) -> tuple[str, ...]:
+        """Seed chèn hàng vào `thing`."""
         for _ in range(count):
             await session.execute(text("INSERT INTO thing (id, code) SELECT coalesce(max(id), 0) + 1, 'x' FROM thing"))
         return ("thing",)
@@ -74,6 +81,7 @@ async def rows_with_note(session: AsyncSession, env: str) -> tuple[str, ...]:
 
 @pytest.fixture
 def migrations(tmp_path: Path) -> Path:
+    """Thư mục migrations tạm có `env.py` tối thiểu."""
     directory = tmp_path / "migrations"
     (directory / "versions").mkdir(parents=True)
     for name in ("env.py", "script.py.mako"):
@@ -83,6 +91,7 @@ def migrations(tmp_path: Path) -> Path:
 
 
 def add_revision(migrations: Path, rev: str, down: str | None, upgrade: str, downgrade: str = "pass") -> None:
+    """Ghi một revision alembic vào `migrations`."""
     body = REVISION.format(
         slug=rev, rev=rev, down=f'"{down}"' if down else "None", upgrade=upgrade, downgrade=downgrade
     )
@@ -90,16 +99,19 @@ def add_revision(migrations: Path, rev: str, down: str | None, upgrade: str, dow
 
 
 def failed_steps(results: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Lọc các bước đã hỏng khỏi kết quả."""
     return [(name, detail) for name, detail in results if detail]
 
 
 @pytest.fixture
 def url(blank_db_url: str, monkeypatch: pytest.MonkeyPatch) -> str:
+    """URL DB trống cho test, đặt vào môi trường."""
     monkeypatch.setenv("DATABASE_URL", blank_db_url)  # run_checks đặt lại; monkeypatch trả về sau test
     return blank_db_url
 
 
 async def test_good_migrations_pass(migrations: Path, url: str) -> None:
+    """Chuỗi migration hợp lệ qua mọi bước."""
     add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
     results = await run_checks(alembic_config(migrations), url, metadata=thing_metadata(), seed_runner=no_seed)
     assert failed_steps(results) == []
@@ -107,6 +119,7 @@ async def test_good_migrations_pass(migrations: Path, url: str) -> None:
 
 
 async def test_two_heads_fail_first_step(migrations: Path, url: str) -> None:
+    """Hai head làm hỏng bước đầu."""
     add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
     add_revision(migrations, "r20260921_b9_02", None, "pass")
     results = await run_checks(alembic_config(migrations), url, metadata=thing_metadata(), seed_runner=no_seed)
@@ -115,6 +128,7 @@ async def test_two_heads_fail_first_step(migrations: Path, url: str) -> None:
 
 
 async def test_downgrade_leaving_table_fails(migrations: Path, url: str) -> None:
+    """Downgrade để sót bảng thì hỏng."""
     # `IF NOT EXISTS` để lượt `upgrade head` sau khi downgrade vẫn chạy: bước hỏng phải là bước dọn.
     upgrade = 'op.execute("CREATE TABLE IF NOT EXISTS thing (id integer PRIMARY KEY, code text)")'
     add_revision(migrations, "r20260921_b9_01", BASELINE, upgrade, "pass")
@@ -125,6 +139,7 @@ async def test_downgrade_leaving_table_fails(migrations: Path, url: str) -> None
 
 
 async def test_model_without_migration_fails(migrations: Path, url: str) -> None:
+    """Model không có migration thì hỏng."""
     add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
     results = await run_checks(
         alembic_config(migrations), url, metadata=thing_metadata(extra_table=True), seed_runner=no_seed
@@ -175,6 +190,7 @@ def typed_thing(migrations: Path, code_check: str, kind: str) -> MetaData:
 
 
 async def test_check_names_matching_model_pass(migrations: Path, url: str) -> None:
+    """Tên check constraint khớp model thì qua."""
     add_revision(migrations, "r20260921_b9_01", BASELINE, checked_thing("ck_thing_code"), DROP_THING)
     results = await run_checks(alembic_config(migrations), url, metadata=checked_metadata(), seed_runner=no_seed)
     assert failed_steps(results) == []
@@ -223,6 +239,7 @@ async def test_column_check_with_ddl_if_is_still_expected(migrations: Path, url:
 
 
 async def test_non_idempotent_seed_fails(migrations: Path, url: str) -> None:
+    """Seed không idempotent thì hỏng."""
     add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
     results = await run_checks(alembic_config(migrations), url, metadata=thing_metadata(), seed_runner=insert_rows(1))
     failed = failed_steps(results)
@@ -246,6 +263,7 @@ async def test_revision_failing_on_existing_data(migrations: Path, url: str) -> 
 
 
 def test_main_on_repo_migrations(url: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """`main` chạy được trên migrations thật của repo."""
     assert migrate_check.main() == 0
     out = capsys.readouterr().out
     assert "migrate_check: đạt" in out
@@ -253,6 +271,7 @@ def test_main_on_repo_migrations(url: str, capsys: pytest.CaptureFixture[str]) -
 
 
 def test_main_rejects_arguments(capsys: pytest.CaptureFixture[str]) -> None:
+    """`main` từ chối đối số dòng lệnh."""
     assert migrate_check.main(["--fast"]) == 2
     assert "không nhận tham số" in capsys.readouterr().out
 
@@ -260,6 +279,7 @@ def test_main_rejects_arguments(capsys: pytest.CaptureFixture[str]) -> None:
 def test_main_starts_postgres_when_url_missing(
     blank_db_url: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`main` dựng Postgres tạm khi thiếu URL."""
     stopped: list[bool] = []
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(migrate_check, "_start_postgres", lambda: (blank_db_url, lambda: stopped.append(True)))
@@ -273,3 +293,11 @@ def test_alembic_upgrade_restores_previous_database_url(blank_db_url: str, monke
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://cũ:cũ@localhost:5432/cũ")
     db_fixtures._alembic_upgrade(blank_db_url)
     assert os.environ["DATABASE_URL"] == "postgresql+asyncpg://cũ:cũ@localhost:5432/cũ"
+
+
+def test_migrate_check__uses_shared_pinned_image() -> None:
+    """NO-184/FIX-135: ảnh Postgres lấy từ `packages.core.pinned_images`, không chép tay literal `postgres:`."""
+    tree = ast.parse(Path(migrate_check.__file__).read_text(encoding="utf-8"))
+    literals = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    assert not [v for v in literals if v.startswith("postgres:")]
+    assert migrate_check.POSTGRES_IMAGE == pinned_images.POSTGRES_IMAGE
