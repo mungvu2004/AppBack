@@ -1,5 +1,6 @@
 """`migrate_check` — bước 6 của verify (BE-00 §6.1). Chạy Postgres thật (K23)."""
 
+import ast
 import os
 import shutil
 from collections.abc import Awaitable, Callable
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.schema import CreateTable
 from sqlalchemy.types import TypeEngine
 
+from packages.core import pinned_images
 from packages.db import migrate_check
 from packages.db.base import NAMING_CONVENTION
 from packages.db.migrate_check import SCRIPT_LOCATION, alembic_config, run_checks
@@ -273,3 +275,11 @@ def test_alembic_upgrade_restores_previous_database_url(blank_db_url: str, monke
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://cũ:cũ@localhost:5432/cũ")
     db_fixtures._alembic_upgrade(blank_db_url)
     assert os.environ["DATABASE_URL"] == "postgresql+asyncpg://cũ:cũ@localhost:5432/cũ"
+
+
+def test_migrate_check__uses_shared_pinned_image() -> None:
+    """NO-184/FIX-135: ảnh Postgres lấy từ `packages.core.pinned_images`, không chép tay literal `postgres:`."""
+    tree = ast.parse(Path(migrate_check.__file__).read_text(encoding="utf-8"))
+    literals = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    assert not [v for v in literals if v.startswith("postgres:")]
+    assert migrate_check.POSTGRES_IMAGE == pinned_images.POSTGRES_IMAGE

@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateSchema
 
+from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
 from packages.db.base import Base
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.db.models import load_all_models
@@ -38,8 +39,6 @@ from packages.db.settings import reset_database_settings_cache
 ALEMBIC_INI: Final = Path(__file__).resolve().parent / "alembic.ini"
 SCRIPT_LOCATION: Final = Path(__file__).resolve().parent / "migrations"
 SEED_ENV: Final = "ci"
-# Cùng ảnh với packages/testing/fixtures/services.py (không nhập được từ mã không phải test).
-POSTGRES_IMAGE: Final = "postgres:16-alpine"
 # `to_regclass` phân giải tên bảng theo search_path, như DDL của model (không ghi schema) đã tạo.
 _DB_CHECK_NAMES: Final = text(
     "SELECT conname FROM pg_constraint WHERE contype = 'c' AND conrelid = ANY("
