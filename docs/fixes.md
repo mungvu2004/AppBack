@@ -125,6 +125,8 @@
 | FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | (nhánh `fix/debt-02-w1-case-gate`) |
 | FIX-135 | 2026-10-03 | B0-03 | NO-184 | DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung | (nhánh `fix/debt-02-w1-ci-github`) |
 | FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | (nhánh `fix/debt-02-w1`) |
+| FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | (nhánh `fix/debt-02-w1`) |
+| FIX-138 | 2026-10-04 | B5-01 | — | DEBT-02 W1 cổng 2 đỏ: phần `apps/ml/runtime` của cùng lỗi nếu gốc nằm ở `export_pinned`/`export_yolo` (dùng khi phương án chốt đòi) | (nhánh `fix/debt-02-w1`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
