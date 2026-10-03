@@ -198,7 +198,7 @@ def test_ci_yml_build_job_uploads_trivy_sarif() -> None:
 
 
 def test_job_sh_verify_steps_cover_1_to_8_and_5b() -> None:
-    """Hợp các `--steps` mà `job.sh` gọi phủ đủ bước 0–8 và 5b — CI không bỏ sót bước so với cổng local."""
+    """Hợp các `--steps` mà `job.sh` gọi phủ đủ bước 0 đến 8 và 5b — CI không bỏ sót bước so với cổng local."""
     text = JOB_SH.read_text(encoding="utf-8")
     found: set[str] = set()
     for m in _STEPS_ARG_RE.finditer(text):
