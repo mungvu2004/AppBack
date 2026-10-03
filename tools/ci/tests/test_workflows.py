@@ -20,13 +20,16 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+COMMITS_YML = REPO_ROOT / ".github" / "workflows" / "commits.yml"
 CODEQL_YML = REPO_ROOT / ".github" / "workflows" / "codeql.yml"
 DEPENDABOT_YML = REPO_ROOT / ".github" / "dependabot.yml"
 GITLEAKS_TOML = REPO_ROOT / ".gitleaks.toml"
 JOB_SH = REPO_ROOT / "tools" / "ci" / "job.sh"
 COMMIT_MSG_HOOK = REPO_ROOT / ".githooks" / "commit-msg"
 
-EXPECTED_JOBS = ["lint", "typecheck", "unit", "integration", "ml", "contract", "build", "commits", "coverage"]
+EXPECTED_JOBS = ["lint", "typecheck", "unit", "integration", "ml", "contract", "build", "coverage"]
+# Workflow của B0-09 chạy mã repo trên push/PR: luật chung (ghim SHA, quyền, không nội suy sự kiện…) áp cho cả hai.
+REPO_WORKFLOWS = [CI_YML, COMMITS_YML]
 
 _SHA_USES_RE = re.compile(r"^[\w.-]+/[\w.-]+(?:/[\w./-]+)?@[0-9a-f]{40}(?:\s*#.*)?$")
 _STEPS_ARG_RE = re.compile(r"--steps\s+([0-9,b]+)")
@@ -72,14 +75,20 @@ def _walk_key(node: Any, key: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def test_ci_yml_has_nine_jobs() -> None:
-    """Kiểm: test ci yml has nine jobs."""
+def test_ci_yml_has_eight_jobs() -> None:
+    """`ci.yml` đúng tám job của bảng [2] hop-dong.md; thêm hay bớt job phải sửa `job.sh` và required check cùng lúc."""
     doc = _load_yaml(CI_YML)
     assert set(doc["jobs"]) == set(EXPECTED_JOBS)
 
 
+def test_commits_yml_has_only_commits_job() -> None:
+    """`commits` ở workflow riêng (NO-182): `edited` chỉ sinh đúng một check run, không sinh bản `skipped` trùng tên."""
+    doc = _load_yaml(COMMITS_YML)
+    assert list(doc["jobs"]) == ["commits"]
+
+
 def test_ci_yml_only_coverage_has_needs() -> None:
-    """Kiểm: test ci yml only coverage has needs."""
+    """Chỉ `coverage` chờ job khác (cần `.coverage.*` của ba job test); nối chuỗi biến lỗi hạ tầng thành "skipped"."""
     doc = _load_yaml(CI_YML)
     for name, job in doc["jobs"].items():
         if name == "coverage":
@@ -88,13 +97,14 @@ def test_ci_yml_only_coverage_has_needs() -> None:
             assert "needs" not in job, name
 
 
-def test_ci_yml_no_continue_on_error() -> None:
-    """Kiểm: test ci yml no continue on error."""
-    assert "continue-on-error" not in CI_YML.read_text(encoding="utf-8")
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_no_continue_on_error(path: Path) -> None:
+    """Không bước nào nuốt lỗi bằng `continue-on-error` — job đỏ phải làm check đỏ (K24)."""
+    assert "continue-on-error" not in path.read_text(encoding="utf-8")
 
 
 def test_ci_yml_coverage_job_has_no_always() -> None:
-    """Kiểm: test ci yml coverage job has no always."""
+    """`coverage` không chạy bằng `always()`: gộp độ phủ khi một job test đã hỏng là tính ngưỡng trên dữ liệu thiếu."""
     doc = _load_yaml(CI_YML)
     coverage_job = doc["jobs"]["coverage"]
     assert "always()" not in str(coverage_job.get("if", ""))
@@ -102,53 +112,65 @@ def test_ci_yml_coverage_job_has_no_always() -> None:
         assert "always()" not in str(step.get("if", ""))
 
 
-def test_ci_yml_uses_pinned_by_sha() -> None:
-    """Kiểm: test ci yml uses pinned by sha."""
-    doc = _load_yaml(CI_YML)
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_uses_pinned_by_sha(path: Path) -> None:
+    """Mọi `uses:` ghim SHA 40 ký tự — tag di động cho phép action bị thay mã sau lưng (chuỗi cung ứng)."""
+    doc = _load_yaml(path)
     uses_values = _walk_key(doc["jobs"], "uses")
     assert uses_values, "không tìm thấy dòng uses: nào"
     for uses in uses_values:
         assert _SHA_USES_RE.match(uses), f"uses trôi hoặc thiếu SHA 40 ký tự: {uses}"
 
 
-def test_ci_yml_permissions_contents_read_only() -> None:
-    """Kiểm: test ci yml permissions contents read only."""
-    doc = _load_yaml(CI_YML)
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_permissions_contents_read_only(path: Path) -> None:
+    """Token của workflow chỉ đọc nội dung — job chạy mã của PR không được có quyền ghi repo."""
+    doc = _load_yaml(path)
     assert doc.get("permissions") == {"contents": "read"}
 
 
-def test_ci_yml_no_pull_request_target() -> None:
-    """Kiểm: test ci yml no pull request target."""
-    doc = _load_yaml(CI_YML)
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_no_pull_request_target(path: Path) -> None:
+    """Không `pull_request_target`: sự kiện đó chạy mã của fork với secret và token ghi."""
+    doc = _load_yaml(path)
     assert "pull_request_target" not in _triggers(doc)
 
 
-def test_ci_yml_pull_request_types_include_edited() -> None:
-    """NO-110: mặc định (`opened`, `synchronize`, `reopened`) không chạy lại khi tiêu đề PR đổi."""
-    doc = _load_yaml(CI_YML)
+def test_commits_yml_pull_request_types_include_edited() -> None:
+    """NO-110: mặc định (`opened`, `synchronize`, `reopened`) không chạy lại `commits` khi tiêu đề PR đổi."""
+    doc = _load_yaml(COMMITS_YML)
     types = _triggers(doc)["pull_request"]["types"]
-    assert set(types) >= {"opened", "synchronize", "reopened", "edited"}
+    assert set(types) == {"opened", "synchronize", "reopened", "edited"}
 
 
-def test_ci_yml_every_job_calls_job_sh() -> None:
-    """Kiểm: test ci yml every job calls job sh."""
-    doc = _load_yaml(CI_YML)
-    for name in EXPECTED_JOBS:
-        runs = _walk_key(doc["jobs"][name], "run")
+def test_ci_yml_pull_request_does_not_run_on_edited() -> None:
+    """NO-182: `ci.yml` không chạy trên `edited` — check run `skipped` trùng tên tính là thành công của required."""
+    pull_request = _triggers(_load_yaml(CI_YML))["pull_request"]
+    assert "edited" not in pull_request.get("types", [])
+
+
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_every_job_calls_job_sh(path: Path) -> None:
+    """Mỗi job gọi `job.sh <tên job>` — logic CI ở một chỗ chạy được cả local, YAML chỉ là vỏ."""
+    doc = _load_yaml(path)
+    for name, job in doc["jobs"].items():
+        runs = _walk_key(job, "run")
         assert any(f"tools/ci/job.sh {name}" in r for r in runs), name
 
 
-def test_ci_yml_run_steps_never_interpolate_event() -> None:
-    """Kiểm: test ci yml run steps never interpolate event."""
-    doc = _load_yaml(CI_YML)
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_run_steps_never_interpolate_event(path: Path) -> None:
+    """`run:` không nội suy `${{ github.event.* }}` (tiêu đề PR là đầu vào người dùng → chèn lệnh); đi qua `env:`."""
+    doc = _load_yaml(path)
     for run_body in _walk_key(doc["jobs"], "run"):
         assert "${{ github.event" not in run_body, run_body
 
 
-def test_ci_yml_checkout_steps_do_not_persist_credentials() -> None:
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_workflow_checkout_steps_do_not_persist_credentials(path: Path) -> None:
     """Không job nào push — token chỉ-đọc không cần sống trong `.git/config` suốt các bước sau
     (/merge-review lượt 1 #15)."""
-    doc = _load_yaml(CI_YML)
+    doc = _load_yaml(path)
     for name, job in doc["jobs"].items():
         for step in job.get("steps", []):
             if step.get("uses", "").startswith("actions/checkout@"):
@@ -176,7 +198,7 @@ def test_ci_yml_build_job_uploads_trivy_sarif() -> None:
 
 
 def test_job_sh_verify_steps_cover_1_to_8_and_5b() -> None:
-    """Kiểm: test job sh verify steps cover 1 to 8 and 5b."""
+    """Hợp các `--steps` mà `job.sh` gọi phủ đủ bước 0–8 và 5b — CI không bỏ sót bước so với cổng local."""
     text = JOB_SH.read_text(encoding="utf-8")
     found: set[str] = set()
     for m in _STEPS_ARG_RE.finditer(text):
@@ -210,7 +232,7 @@ def test_job_sh_smoke_uses_web_port_for_api_paths_not_api_host_port() -> None:
 
 
 def test_job_sh_pins_docker_images_by_digest() -> None:
-    """Kiểm: test job sh pins docker images by digest."""
+    """Ảnh gitleaks/trivy ghim digest `@sha256:` — tag có thể bị đẩy lại, digest thì không."""
     text = JOB_SH.read_text(encoding="utf-8")
     for var in ("GITLEAKS_IMAGE", "TRIVY_IMAGE"):
         m = re.search(rf'{var}="([^"]+)"', text)
@@ -324,7 +346,7 @@ def test_job_sh_import_all_passes_service_env_file() -> None:
 
 
 def test_job_sh_unknown_job_exits_2() -> None:
-    """Kiểm: test job sh unknown job exits 2."""
+    """Tên job lạ thoát 2 (lỗi dùng), không thoát 0 — workflow gõ sai tên job không được xanh giả."""
     result = subprocess.run(  # noqa: S603 — gọi script cục bộ của chính repo, không nhận input người dùng
         ["bash", str(JOB_SH), "nope"],  # noqa: S607 — "bash" cố ý không full path, có sẵn trên PATH runner
         cwd=REPO_ROOT,
@@ -373,7 +395,7 @@ def test_job_contract_exports_writable_verify_out_dir(tmp_path: Path) -> None:
 
 
 def _fake_command(bin_dir: Path, name: str, body: str) -> None:
-    """Kiểm: fake command."""
+    """Đặt một lệnh giả thực thi được vào `bin_dir` để chạy `job.sh` thật mà không gọi docker/git thật."""
     bin_dir.mkdir(exist_ok=True)
     command = bin_dir / name
     command.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
@@ -476,7 +498,7 @@ def test_job_build_trivy__without_runner_temp_mounts_repo_cache_dir(tmp_path: Pa
 
 
 def _run_check_nginx_version(tmp_path: Path, version_line: str) -> subprocess.CompletedProcess[str]:
-    """Kiểm: run check nginx version."""
+    """Chạy `job_build_check_nginx_version` thật của `job.sh` với `docker` giả in `version_line`."""
     bin_dir = tmp_path / "bin"
     _fake_command(bin_dir, "docker", f'echo "{version_line}"')
     script = tmp_path / "run.sh"
@@ -528,7 +550,7 @@ def test_job_build_check_nginx_version__unparsable_output_fails(tmp_path: Path) 
 
 
 def test_job_build_calls_nginx_version_check() -> None:
-    """Kiểm: test job build calls nginx version check."""
+    """`job_build` kiểm bản nginx theo bảng sàn từng dòng phát hành, không còn một hằng sàn chung (NO-183)."""
     text = JOB_SH.read_text(encoding="utf-8")
     assert "job_build_check_nginx_version" in text
     assert "NGINX_MIN_VERSION" not in text
@@ -553,9 +575,10 @@ def test_job_build_nginx_floor_matches_web_dockerfile_line() -> None:
     assert int(m.group(2)) >= floor_patch
 
 
-def test_job_sh_has_branch_for_every_ci_job() -> None:
-    """Kiểm: test job sh has branch for every ci job."""
-    doc = _load_yaml(CI_YML)
+@pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
+def test_job_sh_has_branch_for_every_ci_job(path: Path) -> None:
+    """Mỗi job của workflow có nhánh `case` trong `job.sh` — thiếu nhánh thì job rơi vào "job lạ" và hỏng ở CI."""
+    doc = _load_yaml(path)
     text = JOB_SH.read_text(encoding="utf-8")
     for name in doc["jobs"]:
         assert re.search(rf"^\s*{re.escape(name)}\)\s", text, re.MULTILINE), f"job.sh thiếu nhánh cho '{name}'"
@@ -567,7 +590,7 @@ def test_job_sh_has_branch_for_every_ci_job() -> None:
 
 
 def test_codeql_yml_uses_pinned_by_sha() -> None:
-    """Kiểm: test codeql yml uses pinned by sha."""
+    """Action của CodeQL cũng ghim SHA 40 ký tự, như mọi workflow khác."""
     doc = _load_yaml(CODEQL_YML)
     uses_values = _walk_key(doc["jobs"], "uses")
     assert uses_values
@@ -576,7 +599,7 @@ def test_codeql_yml_uses_pinned_by_sha() -> None:
 
 
 def test_codeql_yml_analyzes_python_and_actions() -> None:
-    """Kiểm: test codeql yml analyzes python and actions."""
+    """CodeQL quét đúng Python (mã nghiệp vụ) và Actions (nội suy nguy hiểm trong workflow), không thiếu không thừa."""
     doc = _load_yaml(CODEQL_YML)
     languages: set[str] = set()
     for job in doc["jobs"].values():
@@ -586,7 +609,7 @@ def test_codeql_yml_analyzes_python_and_actions() -> None:
 
 
 def test_codeql_yml_security_events_write_only_on_analyze_job() -> None:
-    """Kiểm: test codeql yml security events write only on analyze job."""
+    """`security-events: write` chỉ ở job `analyze` (tải SARIF), không ở mức workflow — quyền tối thiểu."""
     doc = _load_yaml(CODEQL_YML)
     assert doc.get("permissions", {}).get("security-events") is None
     for name, job in doc["jobs"].items():
@@ -601,7 +624,7 @@ def test_codeql_yml_security_events_write_only_on_analyze_job() -> None:
 
 
 def test_dependabot_yml_has_three_ecosystems() -> None:
-    """Kiểm: test dependabot yml has three ecosystems."""
+    """Dependabot theo dõi đủ ba hệ `uv`, `github-actions`, `docker` ở đúng thư mục chứa tệp khoá/Dockerfile."""
     doc = _load_yaml(DEPENDABOT_YML)
     by_eco = {u["package-ecosystem"]: u for u in doc["updates"]}
     assert set(by_eco) == {"uv", "github-actions", "docker"}
@@ -697,8 +720,8 @@ def test_gitleaks_toml_exempts_only_env_example_by_path() -> None:
     """Case thường: `paths` chỉ miễn đúng một file — không miễn file test nào theo đường (K24).
 
     Miễn vĩnh viễn theo đường sẽ bỏ qua cả bí mật thật thêm vào sau này; bí mật giả trong test
-    của B0-04/B0-06 được miễn hẹp hơn qua `commits` (xem
-    `test_gitleaks_toml_exempts_known_secrets_by_commit_only`).
+    của B0-04/B0-06 được miễn hẹp hơn qua `commits` (tập SHA so bằng ở
+    `test_github_config.py::test_gitleaks_toml__history_findings_allowlisted_by_commit`).
     """
     with GITLEAKS_TOML.open("rb") as f:
         data = tomllib.load(f)
@@ -714,23 +737,3 @@ def test_gitleaks_toml_exempts_only_env_example_by_path() -> None:
     assert pattern.match("deploy/compose/env.example")
     assert not pattern.match("deploy/compose/env.example.bak")
     assert not pattern.match("secrets/deploy/compose/env.example")
-
-
-def test_gitleaks_toml_exempts_known_secrets_by_commit_only() -> None:
-    """Case thường: bí mật giả trong test của B0-04/B0-06 miễn qua `commits` (SHA cố định), không qua `paths`.
-
-    Miễn theo commit cụ thể (đã đóng băng, không đổi) không bao giờ áp dụng cho một commit MỚI
-    thêm vào cùng file đó — khác miễn theo đường (áp dụng cho mọi commit, kể cả bí mật thật sau này).
-    """
-    with GITLEAKS_TOML.open("rb") as f:
-        data = tomllib.load(f)
-    allowlists = data.get("allowlist", [])
-    if isinstance(allowlists, dict):
-        allowlists = [allowlists]
-    all_commits = {sha for a in allowlists for sha in a.get("commits", [])}
-    assert all_commits >= {
-        "eb40a3c513d685ffd48807986badb2a3dbcc2584",
-        "1b97b24564d433c356d8d6385ab11b4a90fa8a69",
-    }  # NO-330: các commit thêm sau nằm ở `test_github_config.py`
-    for sha in all_commits:
-        assert re.fullmatch(r"[0-9a-f]{40}", sha), sha

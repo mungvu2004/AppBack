@@ -415,7 +415,7 @@ job_build_smoke() {
   export PUBLIC_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"
   run_step "compose up --wait" timeout "${NET_TIMEOUT_S}s" \
     docker compose -p "$project" "${compose_files[@]}" up -d --wait
-  # NO-118/NO-180: `api` không còn cổng host riêng (không còn `API_HOST_PORT`) (`deploy/compose/ci.yml`) — qua nginx của `web`, proxy
+  # NO-118/NO-180: `api` không publish cổng host (`deploy/compose/ci.yml`, không còn `API_HOST_PORT`) — qua nginx của `web`, proxy
   # `/api/` sang `api:8000` (đúng đường request thật, không tắt qua sau lưng nginx).
   run_step "smoke /api/health" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/health"
   run_step "smoke /api/ready" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/ready"

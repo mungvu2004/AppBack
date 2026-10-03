@@ -1,4 +1,4 @@
-"""Quét tĩnh cấu hình GitHub (DEBT-02 W1/C03, FIX-122): `dependabot.yml`, `ci.yml`, `.gitleaks.toml`.
+"""Quét tĩnh cấu hình GitHub (DEBT-02 W1/C03, FIX-122): `dependabot.yml`, `ci.yml`, `commits.yml`, `.gitleaks.toml`.
 
 Không mạng. Bổ sung `test_workflows.py` (chủ C02) cho các điều NO-178/NO-182/NO-183/NO-330.
 """
@@ -14,12 +14,14 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+COMMITS_YML = REPO_ROOT / ".github" / "workflows" / "commits.yml"
 DEPENDABOT_YML = REPO_ROOT / ".github" / "dependabot.yml"
 GITLEAKS_TOML = REPO_ROOT / ".gitleaks.toml"
 
 # Mười bốn commit lịch sử mang chuỗi giả (Idempotency-Key, mật khẩu e2e, SECRET_KEY) và đoạn trích
 # chính chuỗi đó trong SEC-043.md — `gitleaks detect --log-opts=--all` báo `generic-api-key` (NO-330).
-# Hai SHA đầu là hai commit đã miễn từ trước (B0-04, B0-06).
+# Hai SHA đầu là hai commit đã miễn từ trước (B0-04, B0-06). Nguồn DUY NHẤT của tập allowlist: so bằng, để một
+# SHA thừa (tắt gitleaks cho cả commit đó, kể cả bí mật thật) làm test đỏ.
 FROZEN_FAKE_SECRET_COMMITS = frozenset(
     {
         "eb40a3c513d685ffd48807986badb2a3dbcc2584",
@@ -72,27 +74,29 @@ def test_dependabot_docker__does_not_ignore_every_major() -> None:
         assert not (i.get("dependency-name") == "*" and "version-update:semver-major" in i.get("update-types", []))
 
 
-def test_ci_yml__only_commits_job_runs_on_edited() -> None:
-    """NO-182: sửa tiêu đề/thân PR (`edited`) chỉ cần job `commits`; tám job còn lại bỏ qua sự kiện đó."""
-    jobs = _load_yaml(CI_YML)["jobs"]
-    assert "edited" not in str(jobs["commits"].get("if", ""))
-    for name, job in jobs.items():
-        if name != "commits":
-            assert "github.event.action != 'edited'" in str(job.get("if", "")), name
+def test_ci_yml__no_job_gated_on_event_action() -> None:
+    """NO-182: `ci.yml` không có job nào lọc theo `github.event.action` — job bị bỏ qua vì điều kiện báo `skipped`,
+    mà GitHub tính `skipped` là thành công của required check; `edited` thuộc về `commits.yml`."""
+    for name, job in _load_yaml(CI_YML)["jobs"].items():
+        assert "github.event.action" not in str(job.get("if", "")), name
 
 
 def test_gitleaks_toml__history_findings_allowlisted_by_commit() -> None:
     """NO-330: mọi commit lịch sử chứa chuỗi giả đã đóng băng nằm trong `commits` (không miễn theo đường)."""
     with GITLEAKS_TOML.open("rb") as f:
         data = tomllib.load(f)
-    assert set(data["allowlist"]["commits"]) >= FROZEN_FAKE_SECRET_COMMITS
+    commits = data["allowlist"]["commits"]
+    assert len(commits) == len(set(commits))
+    assert set(commits) == FROZEN_FAKE_SECRET_COMMITS
     assert not any("tests" in p for p in data["allowlist"]["paths"])
 
 
-def test_ci_yml__edited_event_has_own_concurrency_group() -> None:
-    """NO-182: `edited` không được huỷ run đầy đủ đang chạy (tám job bị bỏ qua = xanh giả của required check)."""
-    group = _load_yaml(CI_YML)["concurrency"]["group"]
-    assert "github.event.action == 'edited'" in group
+def test_commits_yml__concurrency_group_separate_from_ci() -> None:
+    """NO-182: run `commits` của `edited` không được huỷ run `ci` đầy đủ đang chạy của cùng nhánh."""
+    ci_group = _load_yaml(CI_YML)["concurrency"]["group"]
+    commits_group = _load_yaml(COMMITS_YML)["concurrency"]["group"]
+    assert ci_group.startswith("ci-")
+    assert commits_group.startswith("commits-")
 
 
 def test_packages_sources__do_not_import_tools_pinned_images() -> None:

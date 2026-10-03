@@ -1,9 +1,10 @@
 # Cấu hình gitleaks — B0-09 (hop-dong.md §2). Dùng nguyên bộ luật mặc định của
 # gitleaks (`[extend] useDefault = true`); miễn ĐÚNG đường dẫn `env.example`
-# (mẫu ví dụ) và ĐÚNG các commit lịch sử đã đóng băng (hai commit BE-04/B0-06 + mười hai commit của NO-330, SEC-043) trên `main` (BE-04/B0-06)
+# (mẫu ví dụ) và ĐÚNG các commit lịch sử đã đóng băng (2 commit BE-04/B0-06 + 12 commit NO-330/SEC-043)
+# trên lịch sử mọi nhánh quét bằng `--all`
 # chứa bí mật giả trong test — không miễn theo đường dẫn cho các file test đó,
 # vì miễn theo đường sẽ bỏ qua VĨNH VIỄN, kể cả bí mật thật thêm vào sau này;
-# miễn theo `commits` (SHA cố định, không đổi) chỉ tắt đúng hai commit đã đóng
+# miễn theo `commits` (SHA cố định, không đổi) chỉ tắt đúng các commit đã đóng
 # băng đó, không ảnh hưởng bất kỳ commit nào sau (BE-KFM K24: không lách cổng
 # bằng cấu hình). `[allowlist]` (bảng số ít) là dạng CŨ, gitleaks 8.30.1 vẫn
 # đọc được — lỗi thật trước đó "AllowList expected a map, got 'slice'" là do
@@ -17,7 +18,7 @@ title = "AppBack gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Mẫu ví dụ (path) và bí mật giả đã đóng băng trong 2 commit lịch sử (commits) — không phải bí mật thật"
+description = "Mẫu ví dụ (path) và bí mật giả đã đóng băng trong 14 commit lịch sử (commits) — không phải bí mật thật"
 paths = [
   # Mẫu biến môi trường ví dụ để commit — không phải bí mật thật.
   '''^deploy/compose/env\.example$''',

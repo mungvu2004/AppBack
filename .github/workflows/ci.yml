@@ -8,27 +8,23 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    # NO-110: mặc định của `pull_request` (opened, synchronize, reopened) không chạy lại khi tiêu
-    # đề PR đổi (`edited`) — sửa tiêu đề (vd rút gọn PR Dependabot hệ docker về ≤ 72 ký tự trước
-    # squash) không tự chạy lại job `commits`, bấm re-run vẫn dùng payload cũ.
-    types: [opened, synchronize, reopened, edited]
-    # NO-182: chín job trừ `commits` có `if: github.event.action != 'edited'` — chỉ `commits` cần chạy lại khi sửa tiêu đề.
+    # Không có `edited`: job `commits` (cần chạy lại khi tiêu đề PR đổi, NO-110) ở `commits.yml` riêng —
+    # `edited` ở đây sẽ sinh check run trùng tên `skipped` cho tám job (NO-182, /merge-review DEBT-02 W1 #1).
   workflow_dispatch: {}
 
 concurrency:
-  # NO-182: `edited` (chỉ chạy `commits`) vào nhóm riêng — không huỷ run đầy đủ đang chạy của `synchronize`.
-  group: ci-${{ github.ref }}-${{ github.event.action == 'edited' }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  # Chỉ `coverage` có `needs:`. Tám job kia (lint, typecheck, unit, integration,
-  # ml, contract, build, commits) đọc cùng một commit và không job nào ăn đầu ra
+  # Chỉ `coverage` có `needs:`. Bảy job kia (lint, typecheck, unit, integration,
+  # ml, contract, build) đọc cùng một commit và không job nào ăn đầu ra
   # của job khác — nối chuỗi chỉ để "gọn" sẽ biến một job chậm hoặc hạ tầng hỏng
-  # (mạng, Docker) thành tám job "skipped", tức tám phán quyết bị che chứ không
-  # phải tám phán quyết xanh. `coverage` là ngoại lệ THẬT: nó cần `.coverage.*`
+  # (mạng, Docker) thành bảy job "skipped", tức bảy phán quyết bị che chứ không
+  # phải bảy phán quyết xanh. `coverage` là ngoại lệ THẬT: nó cần `.coverage.*`
   # của cả ba job test để gộp và tính ngưỡng — không thể tính trước khi cả ba
   # xong, đây là phụ thuộc dữ liệu, không phải quy ước.
   #
@@ -40,7 +36,6 @@ jobs:
   # ngược lại. Repo này public (K4): phút CI không tính phí, nên phí thời gian
   # máy nhỏ hơn giá trị của hai phán quyết độc lập.
   lint:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -57,7 +52,6 @@ jobs:
       - run: bash tools/ci/job.sh lint
 
   typecheck:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -76,7 +70,6 @@ jobs:
       - run: bash tools/ci/job.sh typecheck
 
   unit:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -102,7 +95,6 @@ jobs:
             trace-unit.jsonl
 
   integration:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -146,7 +138,6 @@ jobs:
             trace-integration.jsonl
 
   ml:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -172,7 +163,6 @@ jobs:
             trace-ml.jsonl
 
   contract:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -205,7 +195,6 @@ jobs:
       - run: bash tools/ci/job.sh contract
 
   build:
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -239,32 +228,7 @@ jobs:
           if-no-files-found: warn
           path: ${{ runner.temp }}/trivy/*.sarif
 
-  commits:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      # Không nội suy ${{ github.event.* }} vào `run:` (SEC — CodeQL bắt lỗi
-      # này): giá trị đi qua biến môi trường, `tools.ci.commits` tự đọc lại.
-      EVENT: ${{ github.event_name }}
-      PR_TITLE: ${{ github.event.pull_request.title }}
-      HEAD_REF: ${{ github.head_ref || github.ref_name }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false # job chỉ đọc lịch sử local, không push (/merge-review #15)
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          python-version: "3.12.12"
-          cache-dependency-glob: "uv.lock"
-      - run: uv sync --locked --all-packages --group dev
-      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      - run: bash tools/ci/job.sh commits
-
   coverage:
-    if: github.event.action != 'edited'
     needs: [unit, integration, ml]
     runs-on: ubuntu-latest
     timeout-minutes: 15
