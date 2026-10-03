@@ -105,6 +105,7 @@ class OpResult:
 class GateResult:
     op_results: list[OpResult] = field(default_factory=list)
     task_missing: list[str] = field(default_factory=list)
+    task_rows: list[str] = field(default_factory=list)  # mỗi task một dòng, đạt cũng in (NO-309)
     findings: list[str] = field(default_factory=list)  # skipped/xfail/gpu/miễn sai/task lạ…
     unmounted_warnings: list[str] = field(default_factory=list)
 
@@ -293,7 +294,8 @@ _FIXED_CODE: dict[str, str] = {
 # hậu tố `_<việc>` hoặc id tham số `[...]` sau mã case đều được
 _TEST_OP_CASE_RE = re.compile(r"^test_(?P<op>.+?)__(?P<case>[A-Z]\d{2}[a-z]?)(?:[_\[].*)?$")
 _TEST_COMMON_RE = re.compile(r"^test_common__(?P<case>[A-Z]\d{2}[a-z]?)\[(?P<op>.+)\]$")
-_TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>J\d{2})$")
+# task: J (CASE §4), U của task tiền xử lý (§2.2), M của task ML (§6); đúng tên, không hậu tố (§2.3)
+_TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>[JUM]\d{2})$")
 
 
 class CaseTestName(NamedTuple):
@@ -495,6 +497,8 @@ def evaluate(
         need = {"J01", "J06"} | extra_require.get(fn, set())
         have = task_found.get(fn, set())
         missing = need - have
+        status = "thiếu " + ",".join(sorted(missing)) if missing else "đạt"
+        result.task_rows.append(f"{fn} | bắt buộc {sorted(need)} | tìm thấy {sorted(have & need)} | {status}")
         if missing:
             result.task_missing.append(f"{fn}: thiếu {sorted(missing)}")
 
@@ -550,6 +554,9 @@ def main() -> int:
     for r in result.op_results:
         status = "đạt" if r.ok else "thiếu " + ",".join(sorted(r.missing))
         print(f"  {r.op} | bắt buộc {sorted(r.required)} | tìm thấy {sorted(r.found)} | {status}")
+    print(f"case_gate: {len(result.task_rows)} task/lịch trong sổ")
+    for row in result.task_rows:
+        print(f"  {row}")
     for w in result.unmounted_warnings:
         print(f"  CẢNH BÁO: {w} đã mount nhưng không có dòng BE-BIND")
     for f in result.findings:

@@ -230,6 +230,21 @@ def test_task_require_thêm_case() -> None:
     assert any("train" in m and "J03" in m for m in result.task_missing)
 
 
+@pytest.mark.parametrize("case_id", ["U01", "M03"])
+def test_evaluate__task_require_u_m(case_id: str) -> None:
+    """Task khai được case U (tiền xử lý, CASE §2.2) và M (ML, CASE §6), không chỉ J (NO-294, NO-256)."""
+    tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06", case_id)]
+    result = evaluate([], [], {}, tests, [], ["train"], [TaskRequirement(fn="train", require={case_id})])
+    assert not result.task_missing
+
+
+def test_evaluate__task_case_có_hậu_tố_không_được_tính() -> None:
+    """Task chỉ nhận `test_<hàm>__<case>` đúng tên (CASE §2.3), hậu tố sau mã U/M cũng trượt như J."""
+    tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06_x", "U01_x", "M01[a]")]
+    result = evaluate([], [], {}, tests, [], ["train"], [TaskRequirement(fn="train", require={"U01", "M01"})])
+    assert result.task_missing == ["train: thiếu ['J06', 'M01', 'U01']"]
+
+
 # --- skipped / xfail -----------------------------------------------------------
 
 
@@ -558,3 +573,22 @@ def test_main_hỏng_in_bảng(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, 
     assert "CẢNH BÁO: lạ_không_bind" in out
     assert "HỎNG: test bị bỏ qua" in out
     assert "HỎNG task: segment_walls" in out
+
+
+def test_main__in_dòng_task_đạt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Task đạt cũng có một dòng trong bảng, như thao tác — trước đây chỉ task thiếu được in (NO-309)."""
+    junit = tmp_path / "junit.xml"
+    junit.write_text(
+        '<testsuite><testcase name="test_train__J01"/><testcase name="test_train__J06"/>'
+        '<testcase name="test_train__M01"/></testsuite>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(case_gate, "JUNIT_PATHS", (junit,))
+    monkeypatch.setattr(case_gate, "_real_operations", list)
+    monkeypatch.setattr(case_gate, "_real_task_names", lambda: ["train"])
+    requirements = [TaskRequirement(fn="train", require={"M01"})]
+    monkeypatch.setattr(case_gate, "load_cases_toml", lambda _paths: ({}, requirements))
+    assert case_gate.main() == 0
+    assert "  train | bắt buộc ['J01', 'J06', 'M01'] | tìm thấy ['J01', 'J06', 'M01'] | đạt" in capsys.readouterr().out
