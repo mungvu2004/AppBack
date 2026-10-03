@@ -11,6 +11,8 @@
 > - ảnh verify có `curl`, `shellcheck`, `gitleaks`; container chạy root;
 > - biến `CONTRACT_SAMPLES_DIR`, `APPFRONT_DIR`, `CONTRACT_NODE_DIR`; mạng `bridge`; cache mypy trong volume; `run.sh gc`.
 >
+> **Bản 3 (2026-10-03):** repo chuyển sang `F:/App/` (`F:/App/AppBack`, `F:/App/AppFront`) — sửa mọi đường cũ (NO-325, DEBT-02; người dùng duyệt).
+>
 > **Bản 2:** thêm Node 20, AppFront xuất bằng `git archive`, `VERIFY_TOUCHED`, volume; N phải đo lại ở M1. Người điều phối cập nhật lại sau M1.
 
 ## 1. Máy thực thi
@@ -20,7 +22,7 @@
 - Worktree Orca nằm ở `C:\Users\mxuan\orca\workspaces\…`, ổ `C:` còn 127 GB.
 - Kho pnpm ở `F:\.pnpm-store`, khác ổ với worktree → mỗi worktree FE chép `node_modules` (~434 MB).
 - **Không có `just`, không có uv dùng được** (uv máy 0.4.18 quá cũ). Git cấu hình hệ thống `core.autocrlf=true`.
-- `F:\AppBack` do người điều phối `git init -b main` (một commit rỗng trên `main`) trước W00. Máy đặt `init.defaultBranch=master`: thiếu `-b main` thì ra `master` (kiểm áp phần 7, K7-7).
+- `F:\App\AppBack` do người điều phối `git init -b main` (một commit rỗng trên `main`) trước W00. Máy đặt `init.defaultBranch=master`: thiếu `-b main` thì ra `master` (kiểm áp phần 7, K7-7).
 
 ## 2. Chạy `just verify` (AppBack)
 
@@ -28,8 +30,8 @@
 
 **Trên máy chủ, trước khi gọi container:**
 1. `VERIFY_BRANCH=integration|worker` (nhánh `main` là `integration`).
-2. `VERIFY_CHANGED` = file đổi so với `git merge-base HEAD main`, cộng file chưa commit. Git chạy trên máy chủ, vì file `.git` của worktree Orca là **file** trỏ `gitdir: F:/AppBack/.git/worktrees/<tên>` (đường Windows), container không đọc được.
-3. Xuất AppFront @ `tools/contract/APPFRONT_SHA` bằng `git -c core.autocrlf=false -c core.eol=lf -C F:/AppFront archive <sha> src package.json` vào `${APPBACK_CACHE:-$HOME/.cache/appback}/appfront/<sha>` (giải vào thư mục tạm rồi `mv`). Chưa có file SHA → mount một thư mục rỗng.
+2. `VERIFY_CHANGED` = file đổi so với `git merge-base HEAD main`, cộng file chưa commit. Git chạy trên máy chủ, vì file `.git` của worktree Orca là **file** trỏ `gitdir: F:/App/AppBack/.git/worktrees/<tên>` (đường Windows), container không đọc được.
+3. Xuất AppFront @ `tools/contract/APPFRONT_SHA` bằng `git -c core.autocrlf=false -c core.eol=lf -C F:/App/AppFront archive <sha> src package.json` vào `${APPBACK_CACHE:-$HOME/.cache/appback}/appfront/<sha>` (giải vào thư mục tạm rồi `mv`). Chưa có file SHA → mount một thư mục rỗng.
 4. `VERIFY_NAME` chuẩn hoá về `[a-z0-9_-]` (tên project compose đòi chữ thường).
 
 **Container:**
@@ -87,6 +89,6 @@ Lượt verify **tích hợp** của người điều phối (sau mỗi lần h�
 | Trước | Việc | Ai |
 |---|---|---|
 | W00 | commit `docs/backend/` vào `master` của AppFront (B0-01 chép hiến chương từ đó) | người điều phối, sau khi người dùng đồng ý |
-| W00 | `git init -b main F:/AppBack` + commit rỗng trên `main`; khai repo với Orca (`00-SO-TRA.md` §6.1 mục 2) | người điều phối |
+| W00 | `git init -b main F:/App/AppBack` + commit rỗng trên `main`; khai repo với Orca (`00-SO-TRA.md` §6.1 mục 2) | người điều phối |
 | W05 | AppFront public trên GitHub có SHA ghim (job `contract` của CI checkout nó) | người điều phối kiểm |
 | lần CI đầu | đẩy AppBack lên GitHub | **hỏi người dùng** (việc ra bên ngoài) |
