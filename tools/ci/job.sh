@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/ci/job.sh <job> [--no-scan] — lệnh THẬT của mỗi job GitHub Actions (B0-09).
 #
-# `.github/workflows/ci.yml` chỉ gọi script này; không job nào gõ lệnh cổng trực
+# `.github/workflows/ci.yml` và `commits.yml` chỉ gọi script này; không job nào gõ lệnh cổng trực
 # tiếp, để chạy trên runner và trong container verify (`bash tools/verify/run.sh
 # shell`) cho cùng kết quả (BE-00 §12, hop-dong.md §2). Ngoại lệ: `build` còn chạy
 # được trên máy (Git Bash + Docker Desktop) vì cần build ảnh thật.
