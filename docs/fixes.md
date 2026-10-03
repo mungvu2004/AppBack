@@ -125,6 +125,7 @@
 | FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | `dad3628` (nhánh `fix/debt-02-w1`); commit `dad3628` mang nhầm trailer `Fix: FIX-125` |
 | FIX-135 | 2026-10-03 | B0-03 | NO-184 | DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung | `5c6ddcd`, `f723d98` (nhánh `fix/debt-02-w1`) |
 | FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | `9738dab` (nhánh `fix/debt-02-w1`) |
+| FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | `8e5cc8f` (nhánh `fix/debt-02-w1`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -1230,3 +1231,18 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[6 TEST CHẶN TÁI PHÁT]** `test_notify_watches_every_workflow_running_on_push_to_main` (mọi workflow `push: main` ⊆ danh sách notify),
   `test_notify_watches_exact_names_of_ci_deploy_restore_drill`, `test_notify_send_decision_matches_prompt_table[Commits-…|CodeQL-…]`.
 - **[7 NGHIỆM THU]** commit `9738dab`; cổng đầy đủ `M/gate-2.log` của nhánh `fix/debt-02-w1`.
+
+## FIX-137 cho B6-04b — DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `test_trainer.py` lọt sang `test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự
+
+- **[1 TRIỆU CHỨNG]** Cổng 2 (`VERIFY_PYTEST_WORKERS=4`, `M/gate-2.log`) đỏ bước 5: `apps/ml/runtime/tests/test_export.py::test_export_all_missing_source_exits_3`
+  — `ONNX của yolov8n lệch bản ghim: sha` (mong "thiếu tệp"). Cổng 1 (`-n 6`) không gặp vì hai tệp rơi vào hai worker khác nhau.
+- **[2 TÁI HIỆN]** `pytest apps/ml/training_yolo/tests/test_trainer.py apps/ml/runtime/tests/test_export.py` một tiến trình: mã thoát 1, cùng
+  thông điệp; `test_export.py` một mình: 14 passed (`M/repro-export.log`). Hai tệp và mã nguồn giống hệt `main` (lỗi có sẵn).
+- **[3 BẰNG CHỨNG]** `fake_run` vá `export_yolo`/`Model.train` bằng `pytest.MonkeyPatch.context()`; `test_missing_metrics_fails_the_run` (`:298`) và
+  `test_broken_export_is_rejected` (`:320`) vá đè cùng thuộc tính qua fixture `monkeypatch` — hai ngăn hoàn tác chạy lệch thứ tự, để lại
+  `fake_export` (trả `"sha"`) sau test.
+- **[4 KHOANH VÙNG]** `apps/ml/training_yolo/tests/test_trainer.py` (chỉ test; không đổi mã sản phẩm).
+- **[5 SỬA NHỎ NHẤT]** `fake_run` trả thêm `patch` (context của nó); hai test vá đè qua `patch`, bỏ fixture `monkeypatch` — một ngăn hoàn tác duy nhất.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_zz_fake_run_restores_originals` (sau mọi test dùng `fake_run`, `export_yolo` và `Model.train` là bản gốc chụp
+  trước lần vá đầu); lệnh hai tệp một tiến trình: đỏ (mã thoát 1) → xanh (31 passed, mã thoát 0, `M/fix137.log`); `pytest -n 4 apps/ml` 453 passed.
+- **[7 NGHIỆM THU]** commit `8e5cc8f`; cổng đầy đủ `M/gate-3.log` (`-n 4`).
