@@ -805,3 +805,60 @@ def test_verify_làm_ấm_hỏng_là_lỗi_hạ_tầng_của_cổng(
     assert steps.STATUS_FAIL in rows["0"]
     assert str(error).splitlines()[0] in rows["0"]
     assert steps.STATUS_SKIP in rows["5"]
+
+
+# --- junit bước 5 ra thư mục log (NO-324) -------------------------------------------
+
+
+@pytest.fixture
+def junit_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """`(junit.xml của pytest, file log cổng)` trong thư mục tạm; `steps.JUNIT_FILE` và `VERIFY_LOG_FILE` trỏ vào."""
+    junit = tmp_path / "junit.xml"
+    junit.write_text("<testsuites/>", encoding="utf-8")
+    log_dir = tmp_path / "verify-out"
+    log_dir.mkdir()
+    monkeypatch.setattr(steps, "JUNIT_FILE", junit)
+    monkeypatch.setenv("VERIFY_LOG_FILE", str(log_dir / "20261003T000000Z-abc.log"))
+    return junit, log_dir
+
+
+def test_bước_5__junit_chép_cạnh_log_cổng(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, junit_pair: tuple[Path, Path]
+) -> None:
+    """NO-324: xong pytest, `junit.xml` được chép thành `<tên log>.junit.xml` cạnh log trong thư mục mount."""
+    _fake(monkeypatch)
+    assert steps.step_coverage().status == steps.STATUS_OK
+    assert (junit_pair[1] / "20261003T000000Z-abc.junit.xml").read_text(encoding="utf-8") == "<testsuites/>"
+
+
+def test_bước_5__junit_vẫn_chép_khi_pytest_hỏng(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, junit_pair: tuple[Path, Path]
+) -> None:
+    """Lúc đỏ là lúc cần junit nhất: pytest hỏng vẫn chép."""
+    _fake(monkeypatch, pytest=(1, ""))
+    assert steps.step_coverage().status == steps.STATUS_FAIL
+    assert (junit_pair[1] / "20261003T000000Z-abc.junit.xml").is_file()
+
+
+def test_bước_5__không_log_hoặc_không_junit_thì_không_chép_và_không_hỏng(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, junit_pair: tuple[Path, Path]
+) -> None:
+    """Không `VERIFY_LOG_FILE` (chạy tay trong shell) hay pytest chưa kịp ghi junit: bỏ qua, bước vẫn theo mã thoát."""
+    _fake(monkeypatch)
+    monkeypatch.delenv("VERIFY_LOG_FILE")
+    assert steps.step_coverage().status == steps.STATUS_OK
+    assert list(junit_pair[1].iterdir()) == []
+    monkeypatch.setenv("VERIFY_LOG_FILE", str(junit_pair[1] / "x.log"))
+    junit_pair[0].unlink()
+    assert steps.step_coverage().status == steps.STATUS_OK
+    assert list(junit_pair[1].iterdir()) == []
+
+
+def test_bước_5__chép_junit_hỏng_chỉ_cảnh_báo(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, junit_pair: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Thư mục log không ghi được: một dòng cảnh báo ở stderr, bước 5 vẫn đạt (junit là bản sao, như log)."""
+    _fake(monkeypatch)
+    shutil.rmtree(junit_pair[1])
+    assert steps.step_coverage().status == steps.STATUS_OK
+    assert "junit" in capsys.readouterr().err

@@ -42,3 +42,9 @@ def test_verify_yml_truyền_số_tiến_trình_xdist_từ_host() -> None:
     """
     environment = _load()["services"]["verify"]["environment"]
     assert "VERIFY_PYTEST_WORKERS" in environment
+
+
+def test_verify_yml_volume_work_external_không_nhãn_project() -> None:
+    """NO-185: `external: true` (run.sh tạo volume) — không để compose so nhãn project của volume với
+    project của lượt này và in cảnh báo "already exists but was created for project" ở mọi lượt."""
+    assert _load()["volumes"]["appback-work"]["external"] is True

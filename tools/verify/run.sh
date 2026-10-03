@@ -3,6 +3,7 @@
 # liệu nghĩa là `bash tools/verify/run.sh verify`. BE-01 [6]A.
 #
 # Việc: verify [--steps 1,2,4] | lock | openapi | merge-heads <tên> | shell | gc
+# (`shell` làm trên bản chép /tmp/w, không phải worktree — xem tools/verify/README.md)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
@@ -58,6 +59,8 @@ mkdir -p "$CACHE_DIR"
 # đạt, đủ so lượt đỏ với vài lượt trước nó; log cần giữ lâu hơn thì chép ra ngoài (NO-090).
 VERIFY_LOG_KEEP=20
 
+source "$SCRIPT_DIR/appfront_repo.sh"
+
 # AppFront @ APPFRONT_SHA — ENV §2 bước 3. Chưa có file SHA → thư mục rỗng.
 APPFRONT_SHA_FILE="$REPO_ROOT/tools/contract/APPFRONT_SHA"
 if [[ -f "$APPFRONT_SHA_FILE" ]]; then
@@ -65,7 +68,7 @@ if [[ -f "$APPFRONT_SHA_FILE" ]]; then
   appfront_cache="$CACHE_DIR/appfront/$sha"
   if [[ ! -d "$appfront_cache" ]]; then
     tmp_dir="$(mktemp -d)"
-    git -c core.autocrlf=false -c core.eol=lf -C "${APPFRONT_REPO:-F:/AppFront}" archive "$sha" src package.json \
+    git -c core.autocrlf=false -c core.eol=lf -C "${APPFRONT_REPO:-$(appfront_repo_default "$REPO_ROOT")}" archive "$sha" src package.json \
       | tar -x -C "$tmp_dir"
     mkdir -p "$(dirname "$appfront_cache")"
     mv "$tmp_dir" "$appfront_cache"
@@ -85,8 +88,15 @@ export VERIFY_SRC_DIR VERIFY_CONTRACT_SAMPLES_DIR
 
 COMPOSE=(docker compose -p "appback-verify-$VERIFY_NAME" -f "$VERIFY_SRC_DIR/deploy/compose/verify.yml")
 
+# Volume `/work` dùng chung giữa mọi worktree (NO-108) là `external` trong verify.yml: tạo tường minh ở đây
+# (đã có thì không làm gì) để lượt đầu trên máy sạch chạy được và compose không cảnh báo nhãn project (NO-185).
+docker volume create appback-work > /dev/null
+
+# Build riêng, stdin đóng, rồi mới `run`: `compose run --build` đọc stdin cho `buildx bake -f -` và nuốt script
+# của `shell` (NO-299); mọi việc đi qua đây nên không việc nào bị nuốt.
 run_container() {
-  "${COMPOSE[@]}" run --rm --build "$@"
+  "${COMPOSE[@]}" build verify < /dev/null
+  "${COMPOSE[@]}" run --rm "$@"
 }
 
 # ---------------------------------------------------------------------------
@@ -101,7 +111,10 @@ case "$VERIFY_TASK" in
     # Dọn là việc phụ (NO-092): log cũ đang bị giữ trên Windows ("Device or resource busy") làm `rm` hỏng,
     # file biến mất giữa lúc `find` đọc thư mục làm `find` hỏng — cảnh báo rồi vẫn chạy cổng.
     { find "$log_dir" -maxdepth 1 -type f -name '*.log' -printf '%T@\t%p\n' \
-        | sort -rn | tail -n +"$VERIFY_LOG_KEEP" | cut -f2- | xargs -r -d '\n' rm --; } \
+        | sort -rn | tail -n +"$VERIFY_LOG_KEEP" | cut -f2- | xargs -r -d '\n' rm -- \
+      && # junit của bước 5 (NO-324) đi cùng log: log đã bị dọn thì junit của nó cũng đi
+      find "$log_dir" -maxdepth 1 -type f -name '*.junit.xml' \
+        | while IFS= read -r junit; do [[ -e "${junit%.junit.xml}.log" ]] || rm -- "$junit"; done; } \
       || echo "dọn log cổng cũ hỏng — bỏ qua, cổng vẫn chạy" >&2
     log_name="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short=12 HEAD).log"
     echo "log cổng: $(win_path "$log_dir")/$log_name"
@@ -139,19 +152,19 @@ case "$VERIFY_TASK" in
   shell)
     # có TTY → bash tương tác; không có (vd `run.sh shell <<< 'lệnh'`) → đọc lệnh từ stdin
     if [[ -t 0 ]]; then tty_flag=-it; else tty_flag=-T; fi
+    echo "shell: làm việc trên BẢN CHÉP /tmp/w của worktree — sửa file, ruff --fix, new_revision… ở đây KHÔNG về worktree (NO-190)." >&2
     run_container "$tty_flag" verify shell
     ;;
 
   gc)
     valid_names="$(
-      git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
+      git worktree list --porcelain \
         | awk '/^worktree /{print $2}' \
         | xargs -n1 -r basename \
         | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_\n-' '-' \
         | paste -sd, -
     )"
-    VERIFY_VALID_NAMES="$valid_names" "${COMPOSE[@]}" run --rm --build \
-      -e VERIFY_VALID_NAMES="$valid_names" verify gc
+    run_container -e VERIFY_VALID_NAMES="$valid_names" verify gc
     ;;
 
   *)

@@ -138,6 +138,27 @@ def step_lint_imports() -> StepOutcome:
     return StepOutcome("4", "lint-imports", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
+JUNIT_FILE = Path("/tmp/junit.xml")
+"""Nơi pytest ghi junit (`addopts` của `pyproject.toml`); `case_gate` đọc đúng đường này."""
+
+
+def export_junit() -> None:
+    """Chép `JUNIT_FILE` thành `<tên log>.junit.xml` cạnh log cổng khi lượt có `VERIFY_LOG_FILE` (NO-324).
+
+    Container `AutoRemove` nên junit ở `/tmp` mất theo; thư mục log là bind-mount ra host. Là bản sao
+    như log: không log, chưa có junit hay chép hỏng thì bỏ qua (hỏng thì cảnh báo ở stderr), không đổi
+    kết quả bước 5.
+    """
+    log_file = os.environ.get("VERIFY_LOG_FILE")
+    if not log_file or not JUNIT_FILE.is_file():
+        return
+    dest = Path(log_file).with_suffix(".junit.xml")
+    try:
+        shutil.copy2(JUNIT_FILE, dest)
+    except OSError as exc:
+        print(f"chép junit.xml -> {dest} hỏng: {exc}", file=sys.stderr)
+
+
 PYTEST_WORKERS_ENV = "VERIFY_PYTEST_WORKERS"
 DEFAULT_PYTEST_WORKERS = "6"
 
@@ -172,6 +193,8 @@ def step_coverage() -> StepOutcome:
     ]
     for cmd in steps:
         r = _run(cmd)
+        if cmd[0] == "pytest":
+            export_junit()  # cả khi pytest hỏng: lúc đỏ là lúc cần junit nhất
         if r.returncode != 0:
             return StepOutcome("5", "pytest -n (cov)", STATUS_FAIL, "pytest hoặc coverage hỏng")
     r = _run([sys.executable, "-m", "tools.coverage_gate"])
