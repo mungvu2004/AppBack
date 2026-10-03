@@ -33,7 +33,6 @@ from packages.db.models.auth import User
 from packages.db.settings import reset_database_settings_cache
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.settings import reset_storage_settings_cache
-from packages.testing.fixtures import services
 from tools.ci import h2
 
 
@@ -238,16 +237,6 @@ def test_report_fail_without_status_code(capsys: pytest.CaptureFixture[str]) -> 
 def test_main_rejects_extra_argv() -> None:
     """CLI không nhận tham số dòng lệnh (prompt B0-09 [8])."""
     assert h2.main(["--unexpected"]) == 2
-
-
-def test_pinned_service_images_match_packages_testing() -> None:
-    """Ảnh Postgres/Redis/MinIO của H2 phải khớp `packages.testing.fixtures.services` — h2.py chép
-    tay ba hằng này vì `R-28` cấm nhập `packages.testing` từ mã không phải test (chính `h2.py`), nên
-    không tự gom về một chỗ được; test này (được phép nhập `packages.testing`) chống lệch bản khi
-    `services.py` nâng ảnh mà quên sửa theo ở `h2.py` (/merge-review lượt 1 #10)."""
-    assert h2.POSTGRES_IMAGE == services.POSTGRES_IMAGE
-    assert h2.REDIS_IMAGE == services.REDIS_IMAGE
-    assert h2.MINIO_IMAGE == services.MINIO_IMAGE
 
 
 def test_main_returns_1_for_invalid_max_examples(monkeypatch: pytest.MonkeyPatch) -> None:

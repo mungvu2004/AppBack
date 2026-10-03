@@ -12,10 +12,12 @@ on:
     # đề PR đổi (`edited`) — sửa tiêu đề (vd rút gọn PR Dependabot hệ docker về ≤ 72 ký tự trước
     # squash) không tự chạy lại job `commits`, bấm re-run vẫn dùng payload cũ.
     types: [opened, synchronize, reopened, edited]
+    # NO-182: chín job trừ `commits` có `if: github.event.action != 'edited'` — chỉ `commits` cần chạy lại khi sửa tiêu đề.
   workflow_dispatch: {}
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # NO-182: `edited` (chỉ chạy `commits`) vào nhóm riêng — không huỷ run đầy đủ đang chạy của `synchronize`.
+  group: ci-${{ github.ref }}-${{ github.event.action == 'edited' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -38,6 +40,7 @@ jobs:
   # ngược lại. Repo này public (K4): phút CI không tính phí, nên phí thời gian
   # máy nhỏ hơn giá trị của hai phán quyết độc lập.
   lint:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -54,6 +57,7 @@ jobs:
       - run: bash tools/ci/job.sh lint
 
   typecheck:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -72,6 +76,7 @@ jobs:
       - run: bash tools/ci/job.sh typecheck
 
   unit:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -97,6 +102,7 @@ jobs:
             trace-unit.jsonl
 
   integration:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -140,6 +146,7 @@ jobs:
             trace-integration.jsonl
 
   ml:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -165,6 +172,7 @@ jobs:
             trace-ml.jsonl
 
   contract:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -197,6 +205,7 @@ jobs:
       - run: bash tools/ci/job.sh contract
 
   build:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -255,6 +264,7 @@ jobs:
       - run: bash tools/ci/job.sh commits
 
   coverage:
+    if: github.event.action != 'edited'
     needs: [unit, integration, ml]
     runs-on: ubuntu-latest
     timeout-minutes: 15

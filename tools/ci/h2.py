@@ -48,6 +48,9 @@ from apps.api.core.auth import FakeTokenVerifier
 from apps.api.core.openapi import operations
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
+from packages.core.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from packages.core.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 from packages.core.settings import reset_settings_cache
 from packages.core.text import nfc, normalize_email
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_sessionmaker, session_scope
@@ -59,9 +62,6 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.s3 import http_client
 from packages.storage.settings import reset_storage_settings_cache
-from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
-from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
-from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAX_EXAMPLES_ENV: Final = "H2_MAX_EXAMPLES"
 DEFAULT_MAX_EXAMPLES: Final = 25
