@@ -611,10 +611,13 @@ def test_dependabot_yml_has_three_ecosystems() -> None:
 
 
 def test_dependabot_yml_ignores_semver_major_for_every_ecosystem() -> None:
-    """NO-153: bản major (vd `redis` 6→8, PR #5) không được gộp thẳng — mỗi hệ phải có `ignore`
-    chặn `version-update:semver-major` cho mọi gói (`dependency-name: "*"`)."""
+    """NO-153: bản major (vd `redis` 6→8, PR #5) không được gộp thẳng — hệ `uv`/`github-actions` phải có
+    `ignore` chặn `version-update:semver-major` cho mọi gói (`dependency-name: "*"`). Hệ `docker` được
+    miễn (NO-183): không có kênh security-update, `test_github_config.py` giữ phần của nó."""
     doc = _load_yaml(DEPENDABOT_YML)
     for update in doc["updates"]:
+        if update["package-ecosystem"] == "docker":
+            continue
         ignores = update.get("ignore", [])
         assert any(
             i.get("dependency-name") == "*" and "version-update:semver-major" in i.get("update-types", [])
@@ -725,9 +728,9 @@ def test_gitleaks_toml_exempts_known_secrets_by_commit_only() -> None:
     if isinstance(allowlists, dict):
         allowlists = [allowlists]
     all_commits = {sha for a in allowlists for sha in a.get("commits", [])}
-    assert all_commits == {
+    assert all_commits >= {
         "eb40a3c513d685ffd48807986badb2a3dbcc2584",
         "1b97b24564d433c356d8d6385ab11b4a90fa8a69",
-    }
+    }  # NO-330: các commit thêm sau nằm ở `test_github_config.py`
     for sha in all_commits:
         assert re.fullmatch(r"[0-9a-f]{40}", sha), sha
