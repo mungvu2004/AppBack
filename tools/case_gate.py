@@ -313,8 +313,9 @@ _FIXED_CODE: dict[str, str] = {
 # hậu tố `_<việc>` hoặc id tham số `[...]` sau mã case đều được
 _TEST_OP_CASE_RE = re.compile(r"^test_(?P<op>.+?)__(?P<case>[A-Z]\d{2}[a-z]?)(?:[_\[].*)?$")
 _TEST_COMMON_RE = re.compile(r"^test_common__(?P<case>[A-Z]\d{2}[a-z]?)\[(?P<op>.+)\]$")
-# task: J (CASE §4), U của task tiền xử lý (§2.2), M của task ML (§6); đúng tên, không hậu tố (§2.3)
-_TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>[JUM]\d{2})$")
+# task: J (CASE §4), U của task tiền xử lý (§2.2), M của task ML (§6); id tham số `[...]` được như op,
+# hậu tố `_<việc>` thì không (§2.3 chỉ đòi `test_<tên hàm>__J01`)
+_TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>[JUM]\d{2})(?:\[.*\])?$")
 
 
 class CaseTestName(NamedTuple):
