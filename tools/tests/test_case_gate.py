@@ -264,10 +264,17 @@ def test_evaluate__task_require_u_m(case_id: str) -> None:
 
 
 def test_evaluate__task_case_có_hậu_tố_không_được_tính() -> None:
-    """Task chỉ nhận `test_<hàm>__<case>` đúng tên (CASE §2.3), hậu tố sau mã U/M cũng trượt như J."""
-    tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06_x", "U01_x", "M01[a]")]
+    """Hậu tố `_xxx` sau mã case task không được tính (bẫy `__J03_missing`), kể cả khi theo sau là id tham số."""
+    tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06_x", "U01_x", "M01_x[a]")]
     result = evaluate([], [], {}, tests, [], ["train"], [TaskRequirement(fn="train", require={"U01", "M01"})])
     assert result.task_missing == ["train: thiếu ['J06', 'M01', 'U01']"]
+
+
+def test_evaluate__task_case_có_id_tham_số_được_tính() -> None:
+    """Test task parametrize (`__M01[<id>]`) được tính như test op (`_TEST_OP_CASE_RE` nhận `[...]`)."""
+    tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06", "M01[iou-1.0]")]
+    result = evaluate([], [], {}, tests, [], ["train"], [TaskRequirement(fn="train", require={"M01"})])
+    assert not result.task_missing
 
 
 # --- skipped / xfail -----------------------------------------------------------
