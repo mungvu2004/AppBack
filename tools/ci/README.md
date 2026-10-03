@@ -142,3 +142,9 @@ bash tools/ci/job.sh build --no-scan   # bỏ trivy — B0-10 dùng cho diễn t
 
 Bảng trạng thái từng bước con in ra stdout; job đọc `$GITHUB_STEP_SUMMARY` khi
 biến này có (trên runner) và tự bỏ qua khi chạy tại chỗ.
+
+Job `unit`/`integration`/`ml` chạy `pytest -n <N> --dist loadfile --cov` (xdist, như bước 5 của
+verify), ghi độ phủ vào `.coverage.<nhóm>`. `N` mặc định 3 (`ml`: 2); đặt `CI_PYTEST_WORKERS=<số>`
+để đổi. Bước `build` kiểm `nginx -v` của ảnh `web` với sàn bản vá **theo dòng phát hành**
+(`nginx_floor_for_line` trong `job.sh`); đổi dòng nginx của `web.Dockerfile` thì tra
+nginx.org/en/security_advisories.html rồi thêm dòng sàn mới, nếu không job `build` hỏng kín.
