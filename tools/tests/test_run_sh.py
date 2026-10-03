@@ -248,3 +248,16 @@ def test_mọi_việc_build_riêng_trước_run_không_còn_run_build(worktree: 
     build = next(i for i, c in enumerate(calls) if c.endswith(" build verify"))
     run = next(i for i, c in enumerate(calls) if " run --rm" in c)
     assert build < run
+
+
+def test_verify__junit_perf_mồ_côi_bị_dọn_cùng_log(worktree: Path, tmp_path: Path) -> None:
+    """NO-324: `<log>.perf.junit.xml` đi cùng log như `<log>.junit.xml`: còn log thì giữ, mất log thì dọn."""
+    log_dir = worktree / ".cache" / "src-out" / "verify"
+    names = _old_logs(log_dir, LOG_KEEP + 2)
+    for name in names:
+        (log_dir / name.replace(".log", ".perf.junit.xml")).write_text("<testsuites/>", encoding="utf-8")
+
+    _run_verify(worktree, tmp_path / "bin")
+
+    kept = [n.replace(".log", ".perf.junit.xml") for n in names[3:]]
+    assert sorted(p.name for p in log_dir.glob("*.perf.junit.xml")) == sorted(kept)

@@ -114,7 +114,7 @@ case "$VERIFY_TASK" in
         | sort -rn | tail -n +"$VERIFY_LOG_KEEP" | cut -f2- | xargs -r -d '\n' rm -- \
       && # junit của bước 5 (NO-324) đi cùng log: log đã bị dọn thì junit của nó cũng đi
       find "$log_dir" -maxdepth 1 -type f -name '*.junit.xml' \
-        | while IFS= read -r junit; do [[ -e "${junit%.junit.xml}.log" ]] || rm -- "$junit"; done; } \
+        | while IFS= read -r junit; do base="${junit%.junit.xml}"; [[ -e "${base%.perf}.log" ]] || rm -- "$junit"; done; } \
       || echo "dọn log cổng cũ hỏng — bỏ qua, cổng vẫn chạy" >&2
     log_name="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short=12 HEAD).log"
     echo "log cổng: $(win_path "$log_dir")/$log_name"

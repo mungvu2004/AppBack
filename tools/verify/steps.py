@@ -151,21 +151,25 @@ JUNIT_FILE = Path("/tmp/junit.xml")
 """Nơi pytest ghi junit (`addopts` của `pyproject.toml`); `case_gate` đọc đúng đường này."""
 
 
-def export_junit() -> None:
-    """Chép `JUNIT_FILE` thành `<tên log>.junit.xml` cạnh log cổng khi lượt có `VERIFY_LOG_FILE` (NO-324).
+JUNIT_PERF_FILE = Path("/tmp/junit-perf.xml")
+"""Nơi bước 5b ghi junit của pytest perf (`--junitxml` ở `step_perf`); `case_gate` đọc đúng đường này."""
+
+
+def export_junit(source: Path, suffix: str) -> None:
+    """Chép `source` thành `<tên log><suffix>` cạnh log cổng khi lượt có `VERIFY_LOG_FILE` (NO-324).
 
     Container `AutoRemove` nên junit ở `/tmp` mất theo; thư mục log là bind-mount ra host. Là bản sao
     như log: không log, chưa có junit hay chép hỏng thì bỏ qua (hỏng thì cảnh báo ở stderr), không đổi
     kết quả bước 5.
     """
     log_file = os.environ.get("VERIFY_LOG_FILE")
-    if not log_file or not JUNIT_FILE.is_file():
+    if not log_file or not source.is_file():
         return
-    dest = Path(log_file).with_suffix(".junit.xml")
+    dest = Path(log_file).with_suffix(suffix)
     try:
-        shutil.copy2(JUNIT_FILE, dest)
+        shutil.copy2(source, dest)
     except OSError as exc:
-        print(f"chép junit.xml -> {dest} hỏng: {exc}", file=sys.stderr)
+        print(f"chép junit {source} -> {dest} hỏng: {exc}", file=sys.stderr)
 
 
 PYTEST_WORKERS_ENV = "VERIFY_PYTEST_WORKERS"
@@ -203,7 +207,7 @@ def step_coverage() -> StepOutcome:
     for cmd in steps:
         r = _run(cmd)
         if cmd[0] == "pytest":
-            export_junit()  # cả khi pytest hỏng: lúc đỏ là lúc cần junit nhất
+            export_junit(JUNIT_FILE, ".junit.xml")  # cả khi pytest hỏng: lúc đỏ là lúc cần junit nhất
         if r.returncode != 0:
             return StepOutcome("5", "pytest -n (cov)", STATUS_FAIL, "pytest hoặc coverage hỏng")
     r = _run([sys.executable, "-m", "tools.coverage_gate"])
@@ -243,7 +247,8 @@ def step_perf() -> StepOutcome:
 
     detail = f"perf: {len(perf_ids)} test"
     if perf_ids:
-        r = _run(["pytest", "-m", _PERF_EXPR, "--junitxml=/tmp/junit-perf.xml", *paths])
+        r = _run(["pytest", "-m", _PERF_EXPR, f"--junitxml={JUNIT_PERF_FILE}", *paths])
+        export_junit(JUNIT_PERF_FILE, ".perf.junit.xml")  # cả khi perf hỏng
         if r.returncode != 0:
             return StepOutcome("5b", name, STATUS_FAIL, "test perf hỏng")
     elif not integration:

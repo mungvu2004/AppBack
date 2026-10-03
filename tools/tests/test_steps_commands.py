@@ -910,3 +910,40 @@ def test_bước_5__chép_junit_hỏng_chỉ_cảnh_báo(
     shutil.rmtree(junit_pair[1])
     assert steps.step_coverage().status == steps.STATUS_OK
     assert "junit" in capsys.readouterr().err
+
+
+# --- junit bước 5b ra thư mục log (NO-324) ------------------------------------------
+
+
+@pytest.fixture
+def perf_junit(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Thư mục log cổng; `steps.JUNIT_PERF_FILE` trỏ vào một junit perf có sẵn, đơn vị `packages/vision` bị chạm."""
+    junit = tmp_path / "junit-perf.xml"
+    junit.write_text("<testsuites/>", encoding="utf-8")
+    log_dir = tmp_path / "verify-out"
+    log_dir.mkdir()
+    monkeypatch.setattr(steps, "JUNIT_PERF_FILE", junit)
+    monkeypatch.setenv("VERIFY_LOG_FILE", str(log_dir / "20261003T000000Z-abc.log"))
+    (repo / "packages" / "vision").mkdir(parents=True)
+    monkeypatch.setenv("VERIFY_CHANGED", "packages/vision/x.py")
+    return log_dir
+
+
+def test_bước_5b__junit_perf_chép_cạnh_log_cổng(perf_junit: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-324: xong pytest perf, junit thành `<tên log>.perf.junit.xml` cạnh log (không đè junit bước 5)."""
+    _fake(monkeypatch, **{"--collect-only": (0, "packages/vision/tests/test_p.py::test_speed\n")})
+    assert steps.step_perf().status == steps.STATUS_OK
+    assert (perf_junit / "20261003T000000Z-abc.perf.junit.xml").read_text(encoding="utf-8") == "<testsuites/>"
+
+
+def test_bước_5b__junit_perf_vẫn_chép_khi_perf_hỏng(perf_junit: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Perf hỏng vẫn chép junit — lúc đỏ là lúc cần nó nhất."""
+    _fake(
+        monkeypatch,
+        **{
+            "--collect-only": (0, "packages/vision/tests/test_p.py::test_speed\n"),
+            "-m perf and not gpu --junitxml": (1, ""),
+        },
+    )
+    assert steps.step_perf().status == steps.STATUS_FAIL
+    assert (perf_junit / "20261003T000000Z-abc.perf.junit.xml").is_file()
