@@ -105,6 +105,17 @@
 | FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | `1ada889` (gộp `15d1f53`, nhánh `feature/b3-02-spatial-read`) |
 | FIX-109 | 2026-09-28 | B2-02 | — | Test dò sink mời chốt "chưa module nào có `invite_sinks.py`", đỏ khi B4-02 cài `ProjectInviteNotifier` thật | (nhánh `feature/b4-02-notifications`) |
 | FIX-110 | 2026-09-28 | B4-01 | — | Test mặc định luồng thông báo giả định "chưa có B4-02", đỏ khi B4-02 cài provider `notifications` thật | (nhánh `feature/b4-02-notifications`) |
+| FIX-117 | 2026-10-03 | B0-01 | NO-205, NO-325, NO-299, NO-324, NO-185, NO-190, NO-306 | DEBT-02 W1/C01: `run.sh` (gc trên Git Bash, đường AppFront mặc định, stdin của `shell`, junit bước 5, cache ruff/mypy) và volume `appback-work` | (nhánh `fix/debt-02-w1-verify-run`) |
+| FIX-118 | 2026-10-03 | B0-08 | NO-325 | DEBT-02 W1/C01: đường AppFront mặc định của `deploy/docker/web-context.sh` | (nhánh `fix/debt-02-w1-verify-run`) |
+| FIX-119 | 2026-10-03 | B3-05 | NO-325 | DEBT-02 W1/C01: đường AppFront trong `apps/api/rules/catalog.py` | (nhánh `fix/debt-02-w1-verify-run`) |
+| FIX-120 | 2026-10-03 | B0-09 | NO-269, NO-181, NO-183, NO-191, NO-180 | DEBT-02 W1/C02: `tools/ci/job.sh` (xdist, sàn nginx theo nhánh, `cd` khi nạp) và test của nó | (nhánh `fix/debt-02-w1-ci-job`) |
+| FIX-121 | 2026-10-03 | B0-08 | NO-180 | DEBT-02 W1/C02: cổng host `api` của `deploy/compose/ci.yml` | (nhánh `fix/debt-02-w1-ci-job`) |
+| FIX-122 | 2026-10-03 | B0-09 | NO-178, NO-182, NO-183, NO-330, NO-179 | DEBT-02 W1/C03: Dependabot, trigger `edited`, miễn trừ gitleaks, test ảnh ghim trùng | (nhánh `fix/debt-02-w1-ci-github`) |
+| FIX-123 | 2026-10-03 | B0-01 | NO-184 | DEBT-02 W1/C03: `packages/testing` nhập `tools.pinned_images` (đảo chiều tầng) | (nhánh `fix/debt-02-w1-ci-github`) |
+| FIX-124 | 2026-10-03 | B0-02 | NO-184 | DEBT-02 W1/C03: nơi mới của hằng ảnh ghim trong `packages/core` (nếu phương án chốt chọn) | (nhánh `fix/debt-02-w1-ci-github`) |
+| FIX-125 | 2026-10-03 | B0-01 | NO-294, NO-256, NO-257, NO-309 | DEBT-02 W1/C04: `case_gate` nhận case task J/U/M và task của `apps/ml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-126 | 2026-10-03 | B5-04 | NO-257, NO-256 | DEBT-02 W1/C04: khai lại `[[task]] text_read` trong `apps/ml/text/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-127 | 2026-10-03 | B0-05 | NO-309 | DEBT-02 W1/C04: sổ case `docs/contracts.toml` biết task `apps/ml` (người điều phối sửa) | (nhánh `fix/debt-02-w1-case-gate`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
