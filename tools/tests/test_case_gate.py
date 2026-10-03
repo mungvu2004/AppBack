@@ -29,6 +29,7 @@ from tools.charter import BindRow
 
 
 def _row(**kw: Any) -> BindRow:
+    """Dòng BE-BIND mẫu, đè trường theo đối số."""
     base: dict[str, Any] = dict(
         row_id="1",
         method="POST",
@@ -45,6 +46,7 @@ def _row(**kw: Any) -> BindRow:
 
 
 def _op(**kw: Any) -> Operation:
+    """Thao tác mẫu (bảo vệ), đè trường theo đối số."""
     base: dict[str, Any] = dict(op="x_create", method="POST", path="/api/x", protected=True)
     base.update(kw)
     return Operation(**base)
@@ -54,6 +56,7 @@ def _op(**kw: Any) -> Operation:
 
 
 def test_case_chung_chỉ_khi_protected() -> None:
+    """Case chung C04/C05/C25 chỉ đòi khi thao tác được bảo vệ."""
     row = _row(case_type="C", lock="—")
     req_public = required_cases_for(row, _op(protected=False))
     req_protected = required_cases_for(_row(case_type="G"), _op(protected=True))
@@ -62,6 +65,7 @@ def test_case_chung_chỉ_khi_protected() -> None:
 
 
 def test_c10_c22_chỉ_khi_ghi_và_có_idempotency() -> None:
+    """C10, C22 chỉ đòi với thao tác ghi có idempotency."""
     row = _row(case_type="G")
     req = required_cases_for(row, _op(protected=True, idempotency="default", versioned=False))
     assert {"C10", "C22"} <= req
@@ -72,6 +76,7 @@ def test_c10_c22_chỉ_khi_ghi_và_có_idempotency() -> None:
 
 
 def test_c07_miễn_khi_khoá_trống() -> None:
+    """Khoá `—` thì không đòi C07."""
     req = required_cases_for(_row(case_type="G", lock="—"), _op(protected=True))
     assert "C07" not in req
     req2 = required_cases_for(_row(case_type="G", lock="layer.edit"), _op(protected=True))
@@ -79,12 +84,14 @@ def test_c07_miễn_khi_khoá_trống() -> None:
 
 
 def test_c15_chỉ_khi_returns_list() -> None:
+    """C15 chỉ khi thao tác trả danh sách."""
     row = _row(case_type="Đ")
     assert "C15" in required_cases_for(row, _op(method="GET", protected=True, returns_list=True))
     assert "C15" not in required_cases_for(row, _op(method="GET", protected=True, returns_list=False))
 
 
 def test_c02_khi_has_body_hoặc_has_query() -> None:
+    """C02 đòi khi có thân hoặc query."""
     row = _row(case_type="G")
     assert "C02" in required_cases_for(row, _op(protected=True, has_body=True, has_query=False))
     assert "C02" in required_cases_for(row, _op(protected=True, has_body=False, has_query=True))
@@ -92,23 +99,27 @@ def test_c02_khi_has_body_hoặc_has_query() -> None:
 
 
 def test_c21_cần_has_body_và_body_mirrors_path() -> None:
+    """C21 cần thân mang id trùng nghĩa với đường."""
     row = _row(case_type="G")
     assert "C21" in required_cases_for(row, _op(protected=True, has_body=True, body_mirrors_path=True))
     assert "C21" not in required_cases_for(row, _op(protected=True, has_body=True, body_mirrors_path=False))
 
 
 def test_c18_chỉ_khi_nhật_ký_có() -> None:
+    """C18 chỉ khi cột Nhật ký là `có`."""
     assert "C18" in required_cases_for(_row(case_type="G", logged=True), _op(protected=True))
     assert "C18" not in required_cases_for(_row(case_type="G", logged=False), _op(protected=True))
 
 
 def test_loại_a_c09_c14_khi_versioned() -> None:
+    """Loại A có phiên bản thì đòi C09, C09b, C14."""
     row = _row(case_type="A")
     assert {"C09", "C09b", "C14"} <= required_cases_for(row, _op(protected=True, versioned=True))
     assert not ({"C09", "C09b", "C14"} & required_cases_for(row, _op(protected=True, versioned=False)))
 
 
 def test_g_sao_c08_c23_chỉ_khi_đường_có_ngoặc() -> None:
+    """Loại G* chỉ đòi C08, C23 khi đường có `{`."""
     row_id = _row(case_type="G*", path="/api/x/{id}")
     row_noid = _row(case_type="G*", path="/api/x")
     assert {"C08", "C23"} <= required_cases_for(row_id, _op(protected=True))
@@ -116,6 +127,7 @@ def test_g_sao_c08_c23_chỉ_khi_đường_có_ngoặc() -> None:
 
 
 def test_c27_chỉ_login_và_n8_c26_chỉ_n9_n10() -> None:
+    """C27 chỉ login và N8; C26 chỉ N9, N10."""
     login = required_cases_for(_row(row_id="1", case_type="C", lock="—"), _op(protected=False))
     n8 = required_cases_for(_row(row_id="N8", case_type="C", lock="—"), _op(protected=False))
     n9 = required_cases_for(_row(row_id="N9", case_type="C", lock="—"), _op(protected=False))
@@ -129,6 +141,7 @@ def test_c27_chỉ_login_và_n8_c26_chỉ_n9_n10() -> None:
 
 
 def test_case_thêm_cố_định() -> None:
+    """Case thêm cố định của CASE §2.2 được cộng vào đúng dòng."""
     row10 = _row(row_id="10", case_type="G")
     assert "C14" in required_cases_for(row10, _op(protected=True))
     row_n3 = _row(row_id="N3", case_type="G")
@@ -137,6 +150,7 @@ def test_case_thêm_cố_định() -> None:
 
 
 def test_trường_thiếu_coi_là_áp_dụng() -> None:
+    """Metadata thiếu (None) coi là áp dụng."""
     row = _row(case_type="Đ")
     # returns_list=None (chưa có B0-06) -> coi là True -> C15 vẫn bắt buộc
     req = required_cases_for(row, _op(method="GET", protected=True, returns_list=None))
@@ -147,6 +161,7 @@ def test_trường_thiếu_coi_là_áp_dụng() -> None:
 
 
 def test_miễn_chỉ_c16_được_phép() -> None:
+    """Miễn C16 với lý do đủ dài được chấp nhận."""
     row = _row(row_id="1", case_type="G")
     op = _op(protected=True)
     overrides = {"x_create": EndpointOverride(waive={"C16": "thân không có chuỗi người nhập nào cả"})}
@@ -157,6 +172,7 @@ def test_miễn_chỉ_c16_được_phép() -> None:
 
 
 def test_miễn_case_khác_c16_bị_cấm() -> None:
+    """Miễn case khác C16 là hỏng."""
     row = _row(row_id="1", case_type="G")
     op = _op(protected=True)
     overrides = {"x_create": EndpointOverride(waive={"C06": "lý do dài đủ mười ký tự abc"})}
@@ -165,6 +181,7 @@ def test_miễn_case_khác_c16_bị_cấm() -> None:
 
 
 def test_miễn_lý_do_ngắn_bị_cấm() -> None:
+    """Lý do miễn dưới 10 ký tự là hỏng."""
     row = _row(row_id="1", case_type="G")
     op = _op(protected=True)
     overrides = {"x_create": EndpointOverride(waive={"C16": "ngắn"})}
@@ -173,6 +190,7 @@ def test_miễn_lý_do_ngắn_bị_cấm() -> None:
 
 
 def test_found_qua_junit_và_trace() -> None:
+    """Case được tính khi test đạt và vết có response của đúng thao tác."""
     row = _row(row_id="1", case_type="C", lock="—")
     op = _op(protected=False, has_body=False, has_query=False)
     tests = [TestResult(name="test_x_create__C01", outcome="passed")]
@@ -182,6 +200,7 @@ def test_found_qua_junit_và_trace() -> None:
 
 
 def test_found_cần_status_khớp_mã_cố_định() -> None:
+    """Case có status cố định chỉ được tính khi vết khớp status đó."""
     row = _row(row_id="1", case_type="C", lock="—")
     op = _op(protected=False)
     tests = [TestResult(name="test_x_create__C06", outcome="passed")]
@@ -191,6 +210,7 @@ def test_found_cần_status_khớp_mã_cố_định() -> None:
 
 
 def test_op_mounted_không_có_be_bind_cảnh_báo() -> None:
+    """Thao tác đã mount mà không có dòng BE-BIND chỉ cảnh báo, không vào bảng."""
     op = _op(op="lạ_không_có_trong_bind")
     result = evaluate([op], [], {}, [], [], [], [])
     assert "lạ_không_có_trong_bind" in result.unmounted_warnings
@@ -198,11 +218,13 @@ def test_op_mounted_không_có_be_bind_cảnh_báo() -> None:
 
 
 def test_task_thiếu_j01_j06_hỏng() -> None:
+    """Task trong sổ không có J01, J06 là thiếu."""
     result = evaluate([], [], {}, [], [], ["segment_walls"], [])
     assert any("segment_walls" in m for m in result.task_missing)
 
 
 def test_task_đủ_j01_j06_đạt() -> None:
+    """Task có đủ J01, J06 thì đạt."""
     tests = [
         TestResult(name="test_segment_walls__J01", outcome="passed"),
         TestResult(name="test_segment_walls__J06", outcome="passed"),
@@ -212,16 +234,19 @@ def test_task_đủ_j01_j06_đạt() -> None:
 
 
 def test_task_lạ_trong_cases_toml_hỏng() -> None:
+    """`[[task]]` khai hàm không có trong sổ là hỏng."""
     result = evaluate([], [], {}, [], [], [], [TaskRequirement(fn="không_tồn_tại", require=set())])
     assert any("task lạ" in f for f in result.findings)
 
 
 def test_hai_task_trùng_tên_hàm_hỏng() -> None:
+    """Hai task trùng tên hàm là hỏng."""
     result = evaluate([], [], {}, [], [], ["segment_walls", "segment_walls"], [])
     assert any("trùng tên hàm" in f for f in result.findings)
 
 
 def test_task_require_thêm_case() -> None:
+    """`require` của `[[task]]` được cộng vào J01, J06."""
     tests = [
         TestResult(name="test_train__J01", outcome="passed"),
         TestResult(name="test_train__J06", outcome="passed"),
@@ -249,12 +274,14 @@ def test_evaluate__task_case_có_hậu_tố_không_được_tính() -> None:
 
 
 def test_skipped_thường_hỏng() -> None:
+    """Test skipped thường là hỏng."""
     tests = [TestResult(name="test_x__C01", outcome="skipped", skip_reason="tạm tắt")]
     findings = check_skipped_xfail(tests)
     assert findings
 
 
 def test_skipped_tham_số_rỗng_được_miễn() -> None:
+    """Skipped vì tập tham số rỗng thì được miễn."""
     tests = [
         TestResult(
             name="test_x__C01",
@@ -266,6 +293,7 @@ def test_skipped_tham_số_rỗng_được_miễn() -> None:
 
 
 def test_xfail_luôn_hỏng() -> None:
+    """xfail luôn bị cấm."""
     tests = [TestResult(name="test_x__C01", outcome="passed", is_xfail=True)]
     assert check_skipped_xfail(tests)
 
@@ -274,6 +302,7 @@ def test_xfail_luôn_hỏng() -> None:
 
 
 def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
+    """Junit: skipped giữ lý do, xfail thành cờ riêng."""
     junit = tmp_path / "junit.xml"
     junit.write_text(
         """<?xml version="1.0"?>
@@ -296,6 +325,7 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
 
 
 def test_parse_case_trace_jsonl(tmp_path: Path) -> None:
+    """Vết case JSON Lines đọc đúng từng trường."""
     p = tmp_path / "trace.jsonl"
     p.write_text(
         '{"test": "t1", "op": "x_create", "status": 200, "code": null}\n'
@@ -308,10 +338,12 @@ def test_parse_case_trace_jsonl(tmp_path: Path) -> None:
 
 
 def test_parse_case_trace_thiếu_file_trả_rỗng(tmp_path: Path) -> None:
+    """Không có file vết thì trả rỗng."""
     assert parse_case_trace(tmp_path / "không-có.jsonl") == []
 
 
 def test_load_cases_toml(tmp_path: Path) -> None:
+    """`cases.toml` gộp override thao tác và yêu cầu task."""
     p = tmp_path / "cases.toml"
     p.write_text(
         '[[endpoint]]\nop = "floors_create_floor"\nextra = ["C14"]\n'
@@ -329,12 +361,14 @@ def test_load_cases_toml(tmp_path: Path) -> None:
 
 
 def _write_test(root: Path, rel: str, body: str) -> None:
+    """Viết một file test vào cây tạm để quét marker."""
     p = root / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(body, encoding="utf-8")
 
 
 def test_gpu_ngoài_apps_ml_hỏng(tmp_path: Path) -> None:
+    """Marker gpu ở decorator ngoài `apps/ml` là hỏng."""
     _write_test(
         tmp_path,
         "packages/vision/tests/test_a.py",
@@ -344,11 +378,13 @@ def test_gpu_ngoài_apps_ml_hỏng(tmp_path: Path) -> None:
 
 
 def test_gpu_qua_pytestmark_ngoài_apps_ml_hỏng(tmp_path: Path) -> None:
+    """Marker gpu qua `pytestmark` ngoài `apps/ml` là hỏng."""
     _write_test(tmp_path, "apps/api/x/tests/test_b.py", "import pytest\n\npytestmark = [pytest.mark.gpu]\n")
     assert len(check_gpu_markers(tmp_path)) == 1
 
 
 def test_gpu_trong_apps_ml_đạt(tmp_path: Path) -> None:
+    """Marker gpu trong `apps/ml` hợp lệ."""
     _write_test(
         tmp_path,
         "apps/ml/training/tests/test_c.py",
@@ -358,6 +394,7 @@ def test_gpu_trong_apps_ml_đạt(tmp_path: Path) -> None:
 
 
 def test_marker_khác_không_bị_nhầm_là_gpu(tmp_path: Path) -> None:
+    """Marker khác (perf) không bị nhầm là gpu."""
     _write_test(
         tmp_path,
         "packages/vision/tests/test_d.py",
@@ -370,11 +407,13 @@ def test_marker_khác_không_bị_nhầm_là_gpu(tmp_path: Path) -> None:
 
 
 def _outside_setup() -> tuple[BindRow, Operation]:
+    """Dòng BE-BIND `+ngoài` và thao tác bảo vệ dùng chung cho nhóm test `+ngoài`."""
     row = _row(row_id="44", case_type="A", outside=True, lock="user.manage")
     return row, _op(protected=True, idempotency="default", versioned=False)
 
 
 def test_ngoài_không_được_thoả_bằng_test_common_c10() -> None:
+    """Route `+ngoài` không được thoả C10 bằng test chung."""
     row, op = _outside_setup()
     tests = [TestResult(name="test_common__C10[x_create]", outcome="passed")]
     trace = [CaseTraceEntry(test="test_common__C10[x_create]", op="x_create", status=200)]
@@ -383,6 +422,7 @@ def test_ngoài_không_được_thoả_bằng_test_common_c10() -> None:
 
 
 def test_ngoài_thoả_bằng_test_riêng_c10() -> None:
+    """Route `+ngoài` thoả C10 bằng test riêng."""
     row, op = _outside_setup()
     tests = [TestResult(name="test_x_create__C10_không_lặp_thư", outcome="passed")]
     trace = [CaseTraceEntry(test="test_x_create__C10_không_lặp_thư", op="x_create", status=200)]
@@ -391,6 +431,7 @@ def test_ngoài_thoả_bằng_test_riêng_c10() -> None:
 
 
 def test_ngoài_với_idempotency_off_hỏng() -> None:
+    """Route bảo vệ `+ngoài` mà idempotency off là hỏng."""
     row, _ = _outside_setup()
     op = _op(protected=True, idempotency="off")
     result = evaluate([op], [row], {}, [], [], [], [])
@@ -398,6 +439,7 @@ def test_ngoài_với_idempotency_off_hỏng() -> None:
 
 
 def test_case_chung_thoả_bằng_test_common() -> None:
+    """Case chung thoả bằng `test_common__<case>[<op>]`."""
     row = _row(case_type="Đ", method="GET")
     op = _op(method="GET", protected=True)
     tests = [TestResult(name="test_common__C04[x_create]", outcome="passed")]
@@ -407,6 +449,7 @@ def test_case_chung_thoả_bằng_test_common() -> None:
 
 
 def test_id_tham_số_sau_mã_case_được_tính() -> None:
+    """Id tham số `[...]` sau mã case vẫn được tính cho thao tác."""
     row = _row(case_type="G")
     op = _op(protected=True)
     tests = [TestResult(name="test_x_create__C02[name]", outcome="passed")]
@@ -433,6 +476,7 @@ def test_tách_tên_test_case(name: str, expected: tuple[str, str, str, bool] | 
 
 
 def test_đường_be_bind_có_query_khớp_thao_tác() -> None:
+    """Đường BE-BIND kèm query vẫn khớp thao tác (so không kèm query)."""
     from tools.charter import load_bind_rows
 
     rows = load_bind_rows(case_gate.REPO_ROOT / "docs" / "charter" / "BE-BIND.md")
@@ -443,12 +487,14 @@ def test_đường_be_bind_có_query_khớp_thao_tác() -> None:
 
 
 def test_task_có_j01_thiếu_j06_hỏng() -> None:
+    """Task có J01 mà thiếu J06 vẫn thiếu."""
     tests = [TestResult(name="test_segment_walls__J01", outcome="passed")]
     result = evaluate([], [], {}, tests, [], ["segment_walls"], [])
     assert result.task_missing == ["segment_walls: thiếu ['J06']"]
 
 
 def test_test_chỉ_có_trong_junit_perf_vẫn_được_tính(tmp_path: Path) -> None:
+    """Test chỉ có trong junit của bước perf vẫn được tính."""
     junit = tmp_path / "junit.xml"
     junit.write_text("<testsuites><testsuite></testsuite></testsuites>", encoding="utf-8")
     perf = tmp_path / "junit-perf.xml"
@@ -463,6 +509,7 @@ def test_test_chỉ_có_trong_junit_perf_vẫn_được_tính(tmp_path: Path) ->
 
 
 def test_parse_junit_failure_error(tmp_path: Path) -> None:
+    """Junit: failure và error đọc thành kết quả tương ứng."""
     junit = tmp_path / "junit.xml"
     junit.write_text(
         "<testsuite>"
@@ -476,6 +523,7 @@ def test_parse_junit_failure_error(tmp_path: Path) -> None:
 
 
 def test_test_hỏng_không_được_tính() -> None:
+    """Test hỏng không thoả case."""
     row = _row(case_type="C", lock="—")
     op = _op(protected=False)
     tests = [TestResult(name="test_x_create__C01", outcome="failed")]
@@ -499,11 +547,13 @@ def test_dạng_chung_với_case_riêng_và_tên_lạ_không_được_tính() ->
 
 
 def test_optional_attr_module_thiếu_trả_none() -> None:
+    """Module chưa có thì `_optional_attr` trả None."""
     assert case_gate._optional_attr("apps.api.core.khong_ton_tai", "operations") is None
     assert case_gate._optional_attr("json", "dumps") is json.dumps
 
 
 def test_real_operations_chép_đúng_trường_bỏ_trường_lạ(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sổ thao tác thật chỉ chép trường gương biết, bỏ trường lạ."""
     fake_op = types.SimpleNamespace(op="x_create", method="POST", path="/api/x", protected=True, body_limit=1024)
     fake = types.SimpleNamespace(operations=lambda: [fake_op])
     monkeypatch.setitem(sys.modules, "apps.api.core.openapi", fake)
@@ -549,6 +599,7 @@ def test_main_đạt_khi_chưa_có_thao_tác(monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_main_hỏng_in_bảng(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`main()` hỏng in bảng thao tác, cảnh báo, test bỏ qua và task thiếu."""
     junit = tmp_path / "junit.xml"
     junit.write_text(
         '<testsuite><testcase name="test_a"><skipped message="tạm tắt"/></testcase></testsuite>',
