@@ -1,8 +1,6 @@
 # Bảng case bắt buộc thêm của task đánh giá (B6-04b [8], CASE.md §2.3, §6).
-# Cổng tự đòi J01, J06; dưới là phần [8] đòi thêm, gồm M02–M04, M06 (NO-256).
-# M01 chưa khai: `test_ml_eval_evaluate_version__M01` được parametrize nên junit ghi
-# `__M01[<tham số>]`, mà case task chỉ tính tên đúng `test_<hàm>__<case>` (CASE.md §2.3).
+# Cổng tự đòi J01, J06; dưới là phần [8] đòi thêm, gồm M01–M04, M06 (NO-256).
 
 [[task]]
 fn = "ml_eval_evaluate_version"
-require = ["J02", "J03", "J05", "J08", "M02", "M03", "M04", "M06"]
+require = ["J02", "J03", "J05", "J08", "M01", "M02", "M03", "M04", "M06"]
