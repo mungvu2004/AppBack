@@ -122,6 +122,7 @@
 | FIX-131 | 2026-10-03 | B6-04b | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04`, `M06` trong `apps/ml/ml_eval/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
 | FIX-132 | 2026-10-03 | B5-06c | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/pipeline_steps/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
 | FIX-133 | 2026-10-03 | B6-03a | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/training_bridge/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | (nhánh `fix/debt-02-w1-case-gate`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
