@@ -233,13 +233,21 @@ def _fake_train(
     return run
 
 
-# Bản gốc của hai thuộc tính `fake_run` vá, chụp trước lần vá đầu — `test_zz_fake_run_restores_originals` so lại.
-_ORIGINALS: dict[str, object] = {}
+@pytest.fixture(scope="module")
+def originals() -> dict[str, object]:
+    """Bản gốc của hai thuộc tính `fake_run` vá, chụp lần đầu fixture được dùng trong module — với `fake_run` là
+    trước lần vá đầu; `test_zz_fake_run_restores_originals` chạy lẻ thì chụp ngay lúc đó."""
+    prepare_ultralytics()
+    from ultralytics.engine import model as model_module
+
+    from apps.ml.runtime import export_yolo as export_module
+
+    return {"export_yolo": export_module.export_yolo, "Model.train": model_module.Model.train}
 
 
 @pytest.fixture
 def fake_run(
-    tmp_path: Path, trained: tuple[Any, RecordingReporter, Path]
+    tmp_path: Path, trained: tuple[Any, RecordingReporter, Path], originals: dict[str, object]
 ) -> Iterator[tuple[Path, Path, dict[str, Any], dict[str, Any], pytest.MonkeyPatch]]:
     """Vá `Model.train` và `export_yolo` (chỉ hai chỗ này, khối [8]); `export_yolo` chép ONNX đã xuất thật.
 
@@ -266,8 +274,7 @@ def fake_run(
 
     from apps.ml.runtime import export_yolo as export_module
 
-    _ORIGINALS.setdefault("export_yolo", export_module.export_yolo)
-    _ORIGINALS.setdefault("Model.train", model_module.Model.train)
+    assert export_module.export_yolo is originals["export_yolo"]
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(export_module, "export_yolo", fake_export)
         patch.setattr(model_module.Model, "train", _fake_train(out_dir, 0.5, train_args))
@@ -368,14 +375,13 @@ def test_discover_trainers_finds_this_trainer() -> None:
     assert discover_trainers()[_FAMILY] is TRAINER
 
 
-def test_zz_fake_run_restores_originals() -> None:
-    """FIX-137: sau mọi test dùng `fake_run` (chạy trước test này trong cùng tệp — pytest đi theo thứ tự tệp, xdist
-    `--dist loadfile` giữ cả tệp trong một tiến trình), `export_yolo` và `Model.train` là bản gốc, không bản giả rò."""
+def test_zz_fake_run_restores_originals(originals: dict[str, object]) -> None:
+    """FIX-137: `export_yolo` và `Model.train` là bản gốc — chạy cả tệp thì so với bản chụp trước lần vá đầu của
+    `fake_run` (không bản giả nào rò qua các test trước); chạy lẻ thì bản chụp là chính giá trị hiện tại."""
     prepare_ultralytics()
     from ultralytics.engine import model as model_module
 
     from apps.ml.runtime import export_yolo as export_module
 
-    assert set(_ORIGINALS) == {"export_yolo", "Model.train"}
-    assert export_module.export_yolo is _ORIGINALS["export_yolo"]
-    assert model_module.Model.train is _ORIGINALS["Model.train"]
+    assert export_module.export_yolo is originals["export_yolo"]
+    assert model_module.Model.train is originals["Model.train"]
