@@ -39,10 +39,10 @@ from testcontainers.minio import MinioContainer  # type: ignore[import-untyped]
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
 
+from packages.core.pinned_images import MINIO_IMAGE as MINIO_IMAGE
+from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
+from packages.core.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 from packages.testing.fixtures.worker_id import xdist_worker_id
-from tools.pinned_images import MINIO_IMAGE as MINIO_IMAGE
-from tools.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
-from tools.pinned_images import REDIS_IMAGE as REDIS_IMAGE
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
 
