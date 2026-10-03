@@ -117,6 +117,11 @@
 | FIX-126 | 2026-10-03 | B5-04 | NO-257, NO-256 | DEBT-02 W1/C04: khai lại `[[task]] text_read` trong `apps/ml/text/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
 | FIX-127 | 2026-10-03 | B0-05 | NO-309 | DEBT-02 W1/C04: sổ case `docs/contracts.toml` biết task `apps/ml` (người điều phối sửa) | (nhánh `fix/debt-02-w1-case-gate`) |
 | FIX-128 | 2026-10-03 | B5-06a | NO-294 | DEBT-02 W1/C04: thêm lại `U01`, `U02`, `U04`, `U06` vào `require` của `apps/worker/pipeline_orchestrate/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-129 | 2026-10-03 | B5-02 | NO-256 | DEBT-02 W1/C04: khai `M01`, `M02` trong `apps/ml/walls/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-130 | 2026-10-03 | B5-03 | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04` trong `apps/ml/objects/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-131 | 2026-10-03 | B6-04b | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04`, `M06` trong `apps/ml/ml_eval/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-132 | 2026-10-03 | B5-06c | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/pipeline_steps/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
+| FIX-133 | 2026-10-03 | B6-03a | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/training_bridge/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
