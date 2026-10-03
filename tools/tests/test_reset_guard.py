@@ -90,7 +90,7 @@ def _top_level_modules() -> set[str]:
     """Nguồn của hợp đồng: mọi gói một cấp dưới `packages/` và `apps/`, cộng chính `tools`.
 
     `tools` là một gói (`tools/__init__.py`) chứ không phải thư mục chứa nhiều gói, và mã không
-    phải test của nó (`coverage_gate.py`, `case_gate.py`, `pinned_images.py`) cũng là mã sản phẩm
+    phải test của nó (`coverage_gate.py`, `case_gate.py`) cũng là mã sản phẩm
     — bỏ nó ra ngoài là lưới không phủ hết ý của hợp đồng (review F-4). `packages.testing` đứng
     ngoài vì nó chính là thứ đang bị cấm nhập.
     """
