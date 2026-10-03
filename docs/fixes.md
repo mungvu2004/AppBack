@@ -1229,7 +1229,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[5 SỬA NHỎ NHẤT]** thêm `Commits`, `CodeQL` vào `workflow_run.workflows`; nhánh `CI | Commits | CodeQL)` gửi tin khi `failure` trên `main`
   (điều phối chọn thêm cả CodeQL: hỏng quét bảo mật trên `main` không được im lặng).
 - **[6 TEST CHẶN TÁI PHÁT]** `test_notify_watches_every_workflow_running_on_push_to_main` (mọi workflow `push: main` ⊆ danh sách notify),
-  `test_notify_watches_exact_names_of_ci_deploy_restore_drill`, `test_notify_send_decision_matches_prompt_table[Commits-…|CodeQL-…]`.
+  `test_notify_watches_exact_names_of_watched_workflows`, `test_notify_send_decision_matches_prompt_table[Commits-…|CodeQL-…]`.
 - **[7 NGHIỆM THU]** commit `9738dab`; cổng đầy đủ `M/gate-2.log` của nhánh `fix/debt-02-w1`.
 
 ## FIX-137 cho B6-04b — DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `test_trainer.py` lọt sang `test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự
