@@ -2,8 +2,9 @@ name: Notify
 
 # B0-10 [6]: một tin cảnh báo khi CI hỏng trên main, khi Deploy xong hoặc hỏng, khi
 # Restore drill hỏng. FIX-136: Commits (tách khỏi CI) và CodeQL hỏng trên main cũng báo như CI —
-# mọi workflow chạy trên `push: main` phải nằm trong danh sách dưới. Không checkout, không chạy mã của lượt được báo (lượt từ PR
-# fork vẫn kích hoạt workflow_run, có secret) — mọi giá trị sự kiện đi qua env:.
+# mọi workflow chạy trên `push: main` phải nằm trong danh sách dưới. Không checkout, không chạy mã
+# của lượt được báo (lượt từ PR fork vẫn kích hoạt workflow_run, có secret) — mọi giá trị sự kiện
+# đi qua env:.
 on:
   workflow_run:
     workflows: [CI, Commits, CodeQL, Deploy, "Restore drill"]

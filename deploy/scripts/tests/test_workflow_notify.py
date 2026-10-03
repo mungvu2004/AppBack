@@ -59,7 +59,7 @@ def _workflow_names(*paths: Path) -> set[str]:
     return {_load_yaml(p)["name"] for p in paths}
 
 
-def test_notify_watches_exact_names_of_ci_deploy_restore_drill() -> None:
+def test_notify_watches_exact_names_of_watched_workflows() -> None:
     """Danh sách `workflow_run.workflows` lấy đúng `name:` thật của từng workflow được báo (không chép tay)."""
     doc = _load_yaml(NOTIFY_YML)
     watched = set(_triggers(doc)["workflow_run"]["workflows"])
