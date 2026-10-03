@@ -81,6 +81,7 @@ def test_notify_watches_every_workflow_running_on_push_to_main() -> None:
 
 
 def test_notify_permissions_empty_and_no_checkout() -> None:
+    """Job notify không quyền token và không checkout: lượt được báo có thể từ PR fork, không được chạy mã của nó."""
     doc = _load_yaml(NOTIFY_YML)
     assert doc.get("permissions") == {}
     uses_values = _walk_key(doc["jobs"], "uses")
@@ -153,6 +154,7 @@ def _run_decision(tmp_path: Path, *, workflow: str, conclusion: str, head_branch
 def test_notify_send_decision_matches_prompt_table(
     tmp_path: Path, workflow: str, conclusion: str, head_branch: str, expected_send: bool
 ) -> None:
+    """Điều kiện gửi chạy thật bằng bash khớp bảng B0-10 [6] (CI/Commits/CodeQL: failure trên main)."""
     assert _run_decision(tmp_path, workflow=workflow, conclusion=conclusion, head_branch=head_branch) is expected_send
 
 
@@ -174,6 +176,7 @@ def _send_script() -> str:
 
 
 def _run_send(tmp_path: Path, *, webhook_url: str) -> Any:
+    """Chạy thật bước gửi của notify.yml với biến `env:` của một lượt Deploy hỏng và webhook cho trước."""
     script = tmp_path / "send.sh"
     script.write_text("set -euo pipefail\n" + _send_script(), encoding="utf-8")
     return run_script(
@@ -191,6 +194,7 @@ def _run_send(tmp_path: Path, *, webhook_url: str) -> Any:
 
 
 def test_notify_send_posts_json_with_matching_text_and_content(tmp_path: Path) -> None:
+    """Tin gửi là JSON có `text` = `content`, một dòng, mang tên workflow, sha 12 ký tự và đường dẫn run."""
     with HttpStub() as stub:
         result = _run_send(tmp_path, webhook_url=stub.url)
         assert result.returncode == 0, result.stdout + result.stderr
@@ -206,12 +210,14 @@ def test_notify_send_posts_json_with_matching_text_and_content(tmp_path: Path) -
 
 
 def test_notify_send_missing_webhook_url_skips_without_posting(tmp_path: Path) -> None:
+    """Chưa cấu hình webhook thì bỏ qua bằng `::notice::` và thoát 0 — không làm đỏ workflow notify."""
     result = _run_send(tmp_path, webhook_url="")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "::notice::" in result.stdout
 
 
 def test_notify_send_server_error_warns_but_exits_zero(tmp_path: Path) -> None:
+    """Webhook trả 500 thì cảnh báo `::warning::` và thoát 0 — lỗi kênh báo không che kết quả workflow gốc."""
     with HttpStub(post_reply=Reply(status=500)) as stub:
         result = _run_send(tmp_path, webhook_url=stub.url)
     assert result.returncode == 0, result.stdout + result.stderr
