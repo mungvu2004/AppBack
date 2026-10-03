@@ -138,13 +138,12 @@ def _gc_section() -> str:
     return text[start : text.index(";;", start)]
 
 
-def test_gc__git_nhận_đường_win_path_không_phải_đường_msys() -> None:
-    """NO-205: `MSYS_NO_PATHCONV=1` giữ nguyên `/f/...` của `$REPO_ROOT`; git Windows không hiểu → thoát 128
-    ngay ở phép gán `valid_names`. Nhánh `gc` phải đưa cho `git -C` đường `win_path` (`$VERIFY_SRC_DIR`).
+def test_gc__git_chạy_ở_cwd_không_truyền_đường() -> None:
+    """NO-205: `run.sh` đã `cd "$REPO_ROOT"`, nên nhánh `gc` gọi `git` ở thư mục hiện tại, không truyền đường nào.
 
-    Test này quét tĩnh vì chạy được cả trong container Linux (`git -C <đường>` là cách duy nhất gây lỗi);
-    lỗi thật chỉ ra trên Git Bash Windows
-    (`PATH=<docker giả> bash tools/verify/run.sh gc` thoát 128 trước khi sửa, 0 sau khi sửa).
+    Truyền `git -C "$REPO_ROOT"` là chính lỗi cũ: dưới `MSYS_NO_PATHCONV=1`, `$REPO_ROOT` giữ dạng `/f/...` mà git
+    Windows không hiểu → thoát 128 ngay ở phép gán `valid_names`. Test quét tĩnh vì lỗi thật chỉ ra trên Git Bash
+    Windows (`PATH=<docker giả> bash tools/verify/run.sh gc` thoát 128 trước khi sửa, 0 sau khi sửa).
     """
     section = _gc_section()
     assert "git -C" not in section  # `run.sh` đã `cd` vào gốc repo: git dùng thư mục hiện tại, không cần đường nào

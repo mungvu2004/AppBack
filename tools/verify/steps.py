@@ -224,8 +224,8 @@ def perf_case_named(node_ids: list[str]) -> list[str]:
 
 
 def _collect_perf(paths: list[str]) -> list[str]:
-    # --junitxml riêng: addopts ghi /tmp/junit.xml, collect-only không được đè junit của bước 5
     """Collect test `perf` (không gpu) trong `paths`, trả danh sách node id."""
+    # --junitxml riêng: addopts ghi /tmp/junit.xml, collect-only không được đè junit của bước 5
     r = _run(
         ["pytest", "--collect-only", "-q", "-m", _PERF_EXPR, "--junitxml=/tmp/junit-collect.xml", *paths],
         capture_output=True,
@@ -499,8 +499,8 @@ def export_contract_samples() -> None:
 
 
 def cmd_lock(_args: argparse.Namespace) -> int:
-    # in_container.sh đã chạy `uv lock` (không --upgrade) rồi `uv sync --locked`.
     """Việc `lock`: chép `uv.lock` ra thư mục ra sau khi xoá nội dung cũ."""
+    # in_container.sh đã chạy `uv lock` (không --upgrade) rồi `uv sync --locked`.
     dest = _clean_dir(OUT_DIR / "lock")
     shutil.copy2(REPO_ROOT / "uv.lock", dest / "uv.lock")
     print(f"đã ghi {dest / 'uv.lock'}")
