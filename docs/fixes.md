@@ -125,7 +125,7 @@
 | FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | `dad3628` (nhánh `fix/debt-02-w1`); commit `dad3628` mang nhầm trailer `Fix: FIX-125` |
 | FIX-135 | 2026-10-03 | B0-03 | NO-184 | DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung | `5c6ddcd`, `f723d98` (nhánh `fix/debt-02-w1`) |
 | FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | `9738dab` (nhánh `fix/debt-02-w1`) |
-| FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | `8e5cc8f` (nhánh `fix/debt-02-w1`) |
+| FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | `8e5cc8f`, `a84f143` (nhánh `fix/debt-02-w1`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -1243,6 +1243,8 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
   `fake_export` (trả `"sha"`) sau test.
 - **[4 KHOANH VÙNG]** `apps/ml/training_yolo/tests/test_trainer.py` (chỉ test; không đổi mã sản phẩm).
 - **[5 SỬA NHỎ NHẤT]** `fake_run` trả thêm `patch` (context của nó); hai test vá đè qua `patch`, bỏ fixture `monkeypatch` — một ngăn hoàn tác duy nhất.
+  Bản gốc chụp bằng fixture `originals` (`scope="module"`), không dict toàn cục — test chặn chạy lẻ vẫn đúng.
 - **[6 TEST CHẶN TÁI PHÁT]** `test_zz_fake_run_restores_originals` (sau mọi test dùng `fake_run`, `export_yolo` và `Model.train` là bản gốc chụp
-  trước lần vá đầu); lệnh hai tệp một tiến trình: đỏ (mã thoát 1) → xanh (31 passed, mã thoát 0, `M/fix137.log`); `pytest -n 4 apps/ml` 453 passed.
-- **[7 NGHIỆM THU]** commit `8e5cc8f`; cổng đầy đủ `M/gate-3.log` (`-n 4`).
+  trước lần vá đầu; chạy lẻ `-k test_zz` xanh); lệnh hai tệp một tiến trình: với `test_trainer.py` cũ đỏ (mã thoát 1) → xanh (31 passed,
+  mã thoát 0, `M/fix137b.log`); `pytest -n 4 apps/ml` 453 passed (`M/fix137.log`).
+- **[7 NGHIỆM THU]** commit `8e5cc8f`, `a84f143`; cổng đầy đủ `M/gate-3.log` (`-n 4`).
