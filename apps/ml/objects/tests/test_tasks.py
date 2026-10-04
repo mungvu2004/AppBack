@@ -456,7 +456,6 @@ def test_objects_detect_sends_one_failed_message_not_two(
         send_task(TASK, timeout_payload)
         wait_for(lambda: len(results(broker, family_payload.run_id)) >= 1, "family mismatch failed")
         wait_for(lambda: len(results(broker, timeout_payload.run_id)) >= 1, "timeout failed")
-        time.sleep(0.2)
     family_results = results(broker, family_payload.run_id)
     timeout_results = results(broker, timeout_payload.run_id)
     assert len(family_results) == 1

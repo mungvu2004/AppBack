@@ -321,6 +321,8 @@ def _union_round(candidates: _Candidates, groups: NDArray[np.int64]) -> _Candida
     Nhóm đã nối (≥ 2 ứng viên) không còn thuộc một lát duy nhất: đặt `NaN`, để `!=` trong
     `_merge_adjacency` luôn coi nó "khác lát" với bất kỳ ứng viên nào ở vòng sau — quyết định
     này là phần "định nghĩa rõ lát nguồn của hộp nối" mà review lượt 1 yêu cầu.
+    `NaN` cũng làm `_cut_edge_touches` trả `False` ở cả bốn mép (so sánh với `NaN` luôn sai), nên
+    điều kiện (b) tắt cho hộp đã nối: ở các vòng sau nó chỉ còn nối được qua điều kiện (a).
     """
     unique_groups, inverse, counts = np.unique(groups, return_inverse=True, return_counts=True)
     g = unique_groups.shape[0]
