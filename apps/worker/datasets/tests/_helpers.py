@@ -9,7 +9,7 @@ Lớp nhãn dựng tay (`wall_layer`) thay vì `sample_floor_layer`: mẫu A14 �
 bất kỳ, còn test cần biết **chắc** pixel nào là tâm tường trên trang 800 x 600.
 """
 
-from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -37,7 +37,7 @@ from packages.domain.spatial.model import (
     Wall,
 )
 from packages.messaging import safe_redis
-from packages.storage.port import CHUNK_SIZE, Disposition, ObjectInfo, ObjectStorage, SignedUrl
+from packages.storage.port import CHUNK_SIZE, Disposition, ObjectInfo, ObjectStorage, SignedUrl, SignRequest
 from packages.storage.sniff import ImageKind
 from packages.testing.factories.admin_ml_datasets import make_dataset
 from packages.testing.factories.auth import make_user
@@ -370,6 +370,10 @@ class AtPutStorage:
     ) -> SignedUrl:
         """Uỷ cho kho thật (lượt dựng không ký URL; có ở đây để đủ cổng `ObjectStorage`)."""
         return await self._inner.signed_url(key, disposition=disposition, filename=filename, kind=kind)
+
+    async def signed_urls(self, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Uỷ cho kho thật (như `signed_url`)."""
+        return await self._inner.signed_urls(requests)
 
 
 async def set_failed(maker: async_sessionmaker[AsyncSession], version_id: str, *, clock: FakeClock) -> None:
