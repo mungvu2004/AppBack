@@ -19,12 +19,14 @@ from apps.api.drawings.runs import start_run
 from apps.api.drawings.scales import load_scales
 from apps.api.drawings.tests._drawing_helpers import test_signer as test_signer
 from apps.api.drawings.tests._helpers import Scene, make_scene
+from apps.api.drawings.urls import reset_signer_cache, use_signer
 from apps.api.drawings.view_parts import PARTS, load
 from apps.api.projects.parts import FLOOR_DRAWINGS
 from apps.api.projects.tests.sql_count import count_sql
 from apps.api.projects.wire import DrawingOut
 from packages.db.models.drawings import DrawingRow
 from packages.storage.local import LocalDiskStorage
+from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.factories.drawings import make_complete_upload, make_drawing, png_bytes
 from packages.testing.fixtures.clock import FakeClock
 
@@ -61,6 +63,22 @@ async def _outs(db: AsyncSession, pks: Sequence[int], *, app: object | None) -> 
     """`load` rồi ép kiểu về `DrawingOut` (cổng khai `WireModel` cho mọi `ViewPart`)."""
     loaded = await load(db, [str(pk) for pk in pks], app=app)
     return {key: [item for item in value if isinstance(item, DrawingOut)] for key, value in loaded.items()}
+
+
+async def test_load__floors_without_drawings_need_no_signer(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tầng chưa có bản vẽ: `load` trả `{}` mà không dựng kho ký URL (NO-265, review W2 #19).
+
+    Gỡ kho của test và bỏ `STORAGE_BACKEND`: nếu `load` còn gọi `signer()` thì kho theo môi trường
+    không dựng được và test đỏ.
+    """
+    scene = await make_scene(db_session)
+    use_signer(None)
+    reset_signer_cache()
+    monkeypatch.delenv("STORAGE_BACKEND", raising=False)
+    reset_storage_settings_cache()
+    assert await load(db_session, [str(scene.floor.pk)], app=None) == {}
 
 
 def test_parts_declares_floor_drawings() -> None:

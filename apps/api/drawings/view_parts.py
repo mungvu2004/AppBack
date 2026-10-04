@@ -36,6 +36,8 @@ async def load(
     if not pks:
         return {}
     rows = list((await db.execute(select(DrawingRow).where(DrawingRow.floor_pk.in_(pks)))).scalars().all())
+    if not rows:  # không bản vẽ nào → không cần kho ký URL (NO-265: liệt kê tầng trống không phụ thuộc kho)
+        return {}
     scales = await load_scales(db, [row.floor_pk for row in rows], app=app)
     storage = signer()
     out: dict[str, Sequence[WireModel]] = {}
