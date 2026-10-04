@@ -15,6 +15,7 @@ from apps.api.project_members.sinks import invite_sink
 from apps.api.project_members.tests.support import SINKS_SUBMODULE, RecordingSink
 from packages.core.clock import SystemClock
 from packages.core.settings import reset_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = PACKAGE_DIR.parent.parent.parent
@@ -103,10 +104,10 @@ def test_override_only_in_test_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_boundary__sinks_import_without_web_libraries() -> None:
-    """Nhập `sinks` và gọi `invite_sink()` khi `fastapi`, `jwt`, `argon2` bị chặn → không lỗi (B4-02 nhập nó)."""
+    """Nhập `sinks` và gọi `invite_sink()` khi gói web/mật mã (`WORKER_BLOCKED`) bị chặn → không lỗi."""
     code = (
         "import sys\n"
-        "for name in ('fastapi', 'jwt', 'argon2'):\n"
+        f"for name in {WORKER_BLOCKED!r}:\n"
         "    sys.modules[name] = None\n"
         "from apps.api.project_members.sinks import invite_sink\n"
         "invite_sink()\n"
