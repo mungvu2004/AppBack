@@ -241,23 +241,11 @@ def test_nginx_files_location_disables_access_log() -> None:
     map phải đoán mọi dạng méo bằng regex và vẫn bỏ lọt `/api/./files/…`,
     `/api/x/../files/…`, `/%61pi/files/…` (NO-095 — vá triệu chứng, R-19). Nay
     quyết định ở mức location, trên `$uri` đã chuẩn hoá, còn chuyển hướng nội bộ
-    được xử bằng đích riêng `/__errors/{413,503}-files`. Map phải biến mất hẳn —
-    còn nó là còn một nguồn quyết định thứ hai."""
+    được xử bằng đích riêng `/__errors/{413,503}-files`. Map `$request_uri` nay chỉ còn
+    làm lớp thứ hai ở mức server cho lỗi tiền-location (NO-197, test `…__no197`)."""
     files = _all_nginx_files()
     matches = _locations_matching(files, lambda loc: bool(loc.args) and loc.args[-1] == "/api/files/")
     assert matches, "không tìm thấy location /api/files/"
-
-    leftover_maps = [
-        m for nodes in files.values() for m in find_directive(nodes, "map") if m.args[:1] == ["$request_uri"]
-    ]
-    assert not leftover_maps, "vẫn còn map $request_uri (quyết định log phải nằm ở mức location)"
-    leftover_if = [
-        n
-        for nodes in files.values()
-        for n in find_directive(nodes, "access_log")
-        if any("$appback_access_log" in a for a in n.args)
-    ]
-    assert not leftover_if, "vẫn còn access_log … if=$appback_access_log"
 
     for path, loc in matches:
         assert any(n.directive == "access_log" and n.args == ["off"] for n in loc.children), (
