@@ -18,17 +18,27 @@ BANNED_MODULES = ("pickle", "joblib", "dill", "cloudpickle")
 ULTRALYTICS_GATES = ("prepare_ultralytics", "import_ultralytics")
 
 
+def _module_level(node: ast.AST) -> Iterator[ast.AST]:
+    """Mọi nút chạy lúc nhập module: đi vào if/try/with/class cấp module, bỏ qua thân hàm."""
+    for child in ast.iter_child_nodes(node):
+        if not isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            yield child
+            yield from _module_level(child)
+
+
 def _findings(tree: ast.AST, rel: str) -> Iterator[str]:
     """Vi phạm trong một module.
 
     Mã sản phẩm: `torch.load`, nhập pickle/joblib, `ultralytics` ngoài chỗ cho phép. Tệp test chỉ chịu
     luật `ultralytics` (test được nhập pickle), và được nhập nó khi tệp đó nhập một cổng
-    (`ULTRALYTICS_GATES`) — nhập trần vá `PIL.Image.open` toàn tiến trình (NO-322, NO-323).
+    (`ULTRALYTICS_GATES`), nhưng chỉ trong thân hàm: nhập cấp module chạy trước mọi cổng nên vẫn bị bắt
+    — nhập trần vá `PIL.Image.open` toàn tiến trình (NO-322, NO-323).
     """
     in_tests = "/tests/" in rel
-    ultralytics_ok = rel.startswith(ULTRALYTICS_ALLOWED) or (
-        in_tests and any(isinstance(node, ast.alias) and node.name in ULTRALYTICS_GATES for node in ast.walk(tree))
-    )
+    allowed_path = rel.startswith(ULTRALYTICS_ALLOWED)
+    gated = in_tests and any(isinstance(node, ast.alias) and node.name in ULTRALYTICS_GATES for node in ast.walk(tree))
+    ultralytics_ok = allowed_path or gated
+    module_level = {id(node) for node in _module_level(tree)} if gated and not allowed_path else set()
     for node in ast.walk(tree):
         names: list[str] = []
         if isinstance(node, ast.Import):
@@ -48,6 +58,8 @@ def _findings(tree: ast.AST, rel: str) -> Iterator[str]:
                 yield f"{rel}: nhập {name}"
             if top == "ultralytics" and not ultralytics_ok:
                 yield f"{rel}: nhập ultralytics ngoài chỗ cho phép"
+            elif top == "ultralytics" and id(node) in module_level:
+                yield f"{rel}: nhập ultralytics cấp module trong tệp test"
 
 
 def scan(root: Path) -> list[str]:
@@ -87,10 +99,26 @@ def test_scan__flags_bare_ultralytics_in_test_files(tmp_path: Path) -> None:
     (tmp_path / "packages" / "ml_contracts").mkdir(parents=True)
     (tests / "test_bare.py").write_text("import ultralytics\nimport pickle\n", encoding="utf-8")
     (tests / "test_gated.py").write_text(
-        "from apps.ml.runtime.ultralytics_import import import_ultralytics\nimport_ultralytics()\nimport ultralytics\n",
+        "from apps.ml.runtime.ultralytics_import import import_ultralytics\n"
+        "def test_x():\n    import_ultralytics()\n    import ultralytics\n",
         encoding="utf-8",
     )
-    assert scan(tmp_path) == ["apps/ml/evil/tests/test_bare.py: nhập ultralytics ngoài chỗ cho phép"]
+    (tests / "test_module_level.py").write_text(
+        "from apps.ml.runtime.ultralytics_import import import_ultralytics\n"
+        "import ultralytics\ndef test_x():\n    import_ultralytics()\n",
+        encoding="utf-8",
+    )
+    (tests / "test_module_try.py").write_text(
+        "from apps.ml.runtime.ultralytics_import import import_ultralytics\n"
+        "try:\n    from ultralytics import YOLO\nexcept ImportError:\n    YOLO = None\n",
+        encoding="utf-8",
+    )
+    assert scan(tmp_path) == [
+        "apps/ml/evil/tests/test_bare.py: nhập ultralytics ngoài chỗ cho phép",
+        "apps/ml/evil/tests/test_module_level.py: nhập ultralytics cấp module trong tệp test",
+        "apps/ml/evil/tests/test_module_try.py: nhập ultralytics cấp module trong tệp test",
+        "apps/ml/evil/tests/test_module_try.py: nhập ultralytics cấp module trong tệp test",
+    ]
 
 
 def test_runtime_imports_without_torch_or_forbidden_packages() -> None:
