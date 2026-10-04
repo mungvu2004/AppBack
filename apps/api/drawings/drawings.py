@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import lock_run
 from packages.core.clock import Clock
-from packages.core.ids import new_id
+from packages.core.ids import new_id, new_ulid
 from packages.core.object_keys import upload_prefix_of
 from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.db.models.floors import FloorRow
@@ -38,10 +38,7 @@ def new_page_key(*, project_id: str, level_id: str, upload_id: str, page_index: 
     """
     if page_index < 0:
         raise ValueError(f"page_index phải >= 0, nhận {page_index}")
-    # Không có hàm ULID trần công khai (`new_id` luôn kèm tiền tố) — cắt tiền tố là đường
-    # rẻ nhất; nâng cấp là thêm `new_ulid()` vào `packages/core/ids.py` (ngoài whitelist).
-    ulid = new_id("drw", clock).removeprefix("drw_")
-    return upload_page_revision(project_id, level_id, upload_id, page_index, ulid)
+    return upload_page_revision(project_id, level_id, upload_id, page_index, new_ulid(clock))
 
 
 async def drawing_url(storage: ObjectStorage, page_key: str) -> str:
