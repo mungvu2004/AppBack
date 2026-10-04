@@ -32,8 +32,8 @@ class Blocker:
 
 
 sys.meta_path.insert(0, Blocker())
-import apps.api.core.extensions  # noqa: E402
-import apps.api.core.wire  # noqa: E402
+import apps.api.core.extensions  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
+import apps.api.core.wire  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
 
 print("ok")
 """
