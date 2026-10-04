@@ -645,12 +645,26 @@ def test_registered_tasks_finds_tasks_under_the_ml_app(ml_probe_package: None) -
     assert "probe_infer" in registered_tasks()
 
 
-def test_drop_new_ml_modules_keeps_modules_loaded_before_the_snapshot() -> None:
+@pytest.fixture
+def restored_task_ledger() -> Iterator[None]:
+    """Trả sổ task toàn tiến trình về nguyên trạng khi test xong.
+
+    Nhập một module `apps.ml.*` lần đầu chạy `define_task` và thêm dòng vào sổ; không trả lại thì
+    test sau thấy task lạ.
+    """
+    import packages.messaging.tasks as tasks_module
+
+    saved = dict(tasks_module._TASKS)
+    yield
+    tasks_module._TASKS.clear()
+    tasks_module._TASKS.update(saved)
+
+
+def test_drop_new_ml_modules_keeps_modules_loaded_before_the_snapshot(restored_task_ledger: None) -> None:
     """FIX-115: module `apps.ml.*` nạp trước `before` phải sống sót; module nạp sau bị xoá."""
     import apps.ml.objects.tasks as preloaded_module
 
     before = set(sys.modules)
-    importlib.import_module("apps.ml.objects.tasks")
     assert "apps.ml.objects.tasks" in before
 
     fake_name = "apps.ml.__fix_115_probe__"
