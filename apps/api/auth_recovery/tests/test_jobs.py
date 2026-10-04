@@ -45,6 +45,7 @@ from packages.messaging.payloads.auth_recovery import SendTokenMailPayload
 from packages.messaging.redis import broker_redis_sync
 from packages.messaging.schedules import schedule_entries
 from packages.messaging.tasks import PermanentError, TransientError
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.mail import MailpitInbox, extract_token
@@ -53,7 +54,6 @@ from packages.testing.fixtures.services import refused_url
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 ROTATED_SECRET: Final = "khoa-moi-sau-khi-xoay-0000000000000"  # noqa: S105 — khoá giả của test
 OTHER_SECRET: Final = "khoa-hoan-toan-khac-vong-xoay-000000"  # noqa: S105 — khoá giả của test
 
