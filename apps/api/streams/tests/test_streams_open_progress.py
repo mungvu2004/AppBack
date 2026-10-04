@@ -28,6 +28,7 @@ from packages.messaging.redis import AsyncRedis
 from packages.messaging.streams import EventBus, upload_stream
 from packages.testing.fixtures.auth import ORIGIN, REFRESH_PATH
 from packages.testing.fixtures.clock import FakeClock
+from packages.testing.fixtures.messaging import db_client_count
 from packages.testing.fixtures.streams import (
     SseOpen,
     StreamAppFactory,
@@ -234,12 +235,12 @@ async def test_streams_open_progress__S05(
             await stream.disconnect()
         assert await cache_client.zcard(key) == 0
 
-        before = len(await streams_client.client_list())
+        before = await db_client_count(streams_client)
         for _ in range(20):
             async with sse_open(app, progress_path(), cookies=owner.cookies) as loop_stream:
                 await loop_stream.next_frames(1, WAIT_S)
                 await loop_stream.disconnect()
-        after = len(await streams_client.client_list())
+        after = await db_client_count(streams_client)
         with capsys.disabled():
             print(f"\n[S05] CLIENT LIST trước={before} sau={after} (20 lượt mở-đóng)")
         assert after - before <= 1

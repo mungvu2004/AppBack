@@ -1,6 +1,8 @@
 """Client Redis: chọn đúng DB, đặt đúng trần, và dịch đúng lỗi phụ thuộc."""
 
 import os
+import subprocess
+import sys
 from collections.abc import Callable
 
 import pytest
@@ -43,6 +45,7 @@ from packages.messaging.redis import (
 )
 from packages.messaging.settings import MessagingSettings
 from packages.testing.fixtures.messaging import ephemeral_broker
+from packages.testing.fixtures.services import ephemeral_redis
 
 
 @pytest.mark.parametrize(
@@ -50,14 +53,17 @@ from packages.testing.fixtures.messaging import ephemeral_broker
     [
         ("redis://host:6379/0", 2, "redis://host:6379/2"),
         ("redis://host:6379", 1, "redis://host:6379/1"),
-        ("rediss://user:pw@host:6379/9?ssl_cert_reqs=none", 1, "rediss://user:pw@host:6379/1?ssl_cert_reqs=none"),
+        ("redis://host:6379/", 2, "redis://host:6379/2"),
+        ("rediss://user:pw@host:6379/9?ssl_cert_reqs=none", 1, "rediss://user:pw@host:6379/10?ssl_cert_reqs=none"),
     ],
 )
-def test_with_db_replaces_only_the_database_number(url: str, db: int, expected: str) -> None:
+def test_with_db_offsets_the_url_database_by_the_role(url: str, db: int, expected: str) -> None:
+    """Số vai cộng lên DB gốc của URL (vắng = 0); scheme, đăng nhập, query giữ nguyên (NO-270)."""
     assert with_db(url, db) == expected
 
 
 def conf() -> MessagingSettings:
+    """Cấu hình hai instance giả `broker`/`cache` ở DB 0 — chỉ để soi tham số client, không nối."""
     return MessagingSettings(redis_broker_url="redis://broker:6379/0", redis_cache_url="redis://cache:6379/0")
 
 
@@ -73,6 +79,7 @@ def conf() -> MessagingSettings:
 def test_async_clients_pick_their_own_instance_and_database(
     factory: Callable[[MessagingSettings], AsyncRedis], host: str, db: int
 ) -> None:
+    """Mỗi client async trỏ đúng instance và đúng DB vai, với trần nối tường minh."""
     kwargs = factory(conf()).connection_pool.connection_kwargs
 
     assert (kwargs["host"], kwargs["db"]) == (host, db)
@@ -95,6 +102,7 @@ def test_stream_client_reads_longer_than_it_blocks() -> None:
 def test_sync_clients_use_the_half_second_budget(
     factory: Callable[[MessagingSettings], SyncRedis], host: str, db: int
 ) -> None:
+    """Client đồng bộ trỏ đúng instance/DB và dùng trần 0,5 s cho cả nối lẫn đọc."""
     kwargs = factory(conf()).connection_pool.connection_kwargs
 
     assert (kwargs["host"], kwargs["db"]) == (host, db)
@@ -186,6 +194,7 @@ def counting_local() -> ProcessLocal[int]:
     calls: list[int] = []
 
     def factory() -> int:
+        """Ghi một lần gọi, trả số lần đã gọi — mỗi lần dựng cho một giá trị mới."""
         calls.append(1)
         return len(calls)
 
@@ -193,6 +202,7 @@ def counting_local() -> ProcessLocal[int]:
 
 
 def test_process_local_builds_once_per_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`ProcessLocal` dựng tài nguyên một lần rồi trả lại đúng bản đó trong cùng tiến trình."""
     local = counting_local()
 
     assert local.get() == 1
@@ -203,6 +213,7 @@ def test_process_local_builds_once_per_process(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_process_local_reset_forgets_the_value() -> None:
+    """`reset()` trả tài nguyên đang giữ và lần `get()` sau dựng bản mới."""
     local = counting_local()
 
     assert local.get() == 1
@@ -249,10 +260,12 @@ def test_cluster_down_stays_in_the_dependency_list() -> None:
 
 
 def test_command_errors_are_not_dependency_failures() -> None:
+    """Lỗi lệnh (`ResponseError`) là lỗi người gọi, không thành 503."""
     assert translate_redis_error(ResponseError("WRONGTYPE")) is None
 
 
 def test_redis_errors_passes_through_when_nothing_fails() -> None:
+    """Không lỗi thì `redis_errors()` không đổi gì."""
     with redis_errors():
         value = 1
 
@@ -260,6 +273,7 @@ def test_redis_errors_passes_through_when_nothing_fails() -> None:
 
 
 def test_redis_errors_wraps_connection_failures() -> None:
+    """Lỗi kết nối Redis → `AppError` `DEPENDENCY_UNAVAILABLE`."""
     with pytest.raises(AppError) as caught, redis_errors():
         raise RedisConnectionError("nối hỏng")
 
@@ -267,11 +281,13 @@ def test_redis_errors_wraps_connection_failures() -> None:
 
 
 def test_redis_errors_reraises_other_failures() -> None:
+    """Lỗi không phải lỗi phụ thuộc nổi lên nguyên trạng."""
     with pytest.raises(ResponseError), redis_errors():
         raise ResponseError("WRONGTYPE")
 
 
 def test_broker_policy_is_accepted_when_noeviction(redis_broker_url: str) -> None:
+    """Instance broker `noeviction` qua được kiểm chính sách lúc khởi động."""
     client = redis.Redis.from_url(redis_broker_url, decode_responses=True)
     try:
         assert_broker_policy(client)
@@ -287,3 +303,29 @@ def test_broker_policy_rejects_an_evicting_instance(redis_cache_url: str) -> Non
             assert_broker_policy(client)
     finally:
         client.close()
+
+
+def test_with_db__two_processes_on_one_redis_keep_their_own_roles() -> None:
+    """NO-270: hai tiến trình chung **một** Redis, URL khác số DB gốc, không `FLUSHDB` lên nhau.
+
+    Đây là điều kiện để mọi tiến trình `pytest -n` dùng chung một container Redis (như Postgres/MinIO):
+    vai (`STREAM_DB`…) phải là độ lệch **trên** số DB của URL, không phải số DB tuyệt đối. Tiến trình
+    thứ hai là tiến trình Python thật, chỉ biết `REDIS_BROKER_URL` của nó.
+    """
+    container = ephemeral_redis("noeviction")
+    try:
+        base = f"redis://{container.get_container_host_ip()}:{container.get_exposed_port(6379)}"
+        mine = streams_redis_sync(MessagingSettings(redis_broker_url=f"{base}/0"))
+        try:
+            mine.set("NO-270", "của tiến trình 0")
+            other = "from packages.messaging.redis import streams_redis_sync; streams_redis_sync().flushdb()"
+            env = os.environ | {"REDIS_BROKER_URL": f"{base}/{SAFE_DB + 1}"}
+            subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
+                [sys.executable, "-c", other], env=env, check=True, timeout=60
+            )
+
+            assert mine.get("NO-270") == "của tiến trình 0"
+        finally:
+            mine.close()
+    finally:
+        container.stop()
