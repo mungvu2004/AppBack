@@ -23,6 +23,9 @@ from packages.storage.sniff import ImageKind
 
 MAX_ITEM_LEN: Final = 64
 
+DATASETS_PREFIX: Final = "ml/datasets/"
+"""Gốc khoá mọi phiên bản dataset: `ml/datasets/{dsv}/…` (BE-00 §8)."""
+
 _ITEM_RE: Final = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}")
 _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
@@ -106,9 +109,14 @@ def model_artifact(model: str, name: str) -> str:
     return check_key(f"{model_prefix(model)}{_name(name)}")
 
 
+def dataset_version_prefix(dataset_version: str) -> str:
+    """Tiền tố object của một phiên bản dataset: `ml/datasets/{dsv}/` (id sai mẫu → `ValueError`)."""
+    return f"{DATASETS_PREFIX}{check_id('dsv', dataset_version)}/"
+
+
 def dataset_object(dataset_version: str, name: str) -> str:
     """Khoá object của một phiên bản tập dữ liệu ML; `name` một hay nhiều đoạn (`train/s1/image.png`)."""
-    return check_key(f"ml/datasets/{check_id('dsv', dataset_version)}/{_path(name)}")
+    return check_key(f"{dataset_version_prefix(dataset_version)}{_path(name)}")
 
 
 def avatar(user: str, ulid: str, ext: str) -> str:

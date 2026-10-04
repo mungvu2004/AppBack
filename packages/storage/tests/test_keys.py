@@ -208,3 +208,12 @@ def test_upload_page_revision__is_a_server_chosen_png() -> None:
         keys.upload_page_revision(PROJECT, FLOOR, UPLOAD, -1, ULID)
     with pytest.raises(ValueError, match="ULID"):
         keys.upload_page_revision(PROJECT, FLOOR, UPLOAD, 0, "x")
+
+
+def test_dataset_version_prefix__is_the_prefix_of_every_dataset_object() -> None:
+    """NO-263: tiền tố phiên bản dataset là một nguồn với `dataset_object`; id sai mẫu → `ValueError`."""
+    prefix = keys.dataset_version_prefix(DATASET_VERSION)
+    assert prefix == f"{keys.DATASETS_PREFIX}{DATASET_VERSION}/"
+    assert keys.dataset_object(DATASET_VERSION, "train/s1/image.png").startswith(prefix)
+    with pytest.raises(ValueError, match="dsv_"):
+        keys.dataset_version_prefix(MODEL)
