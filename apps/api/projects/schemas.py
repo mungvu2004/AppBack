@@ -59,13 +59,13 @@ type CleanStr = Annotated[str, BeforeValidator(clean_text)]
 type ProjectName = Annotated[CleanStr, StringConstraints(min_length=NAME_MIN, max_length=NAME_MAX)]
 type ProjectCode = Annotated[CleanStr, StringConstraints(min_length=1, max_length=CODE_MAX)]
 type ProjectAddress = Annotated[CleanStr, StringConstraints(min_length=1, max_length=ADDRESS_MAX)]
-type FloorName = Annotated[CleanStr, StringConstraints(min_length=1)]
+type FloorDraftName = Annotated[CleanStr, StringConstraints(min_length=1)]
 
 
 class FloorDraftIn(WireRequest):
     """Một tầng nháp kèm #25 (`toFloorWirePayload`): FE **không** gửi `id`, nhưng gửi thừa."""
 
-    name: FloorName
+    name: FloorDraftName
     order: int
     elevation_mm: int
     height_mm: int
