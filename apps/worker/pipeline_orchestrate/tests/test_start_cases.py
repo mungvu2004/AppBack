@@ -83,8 +83,9 @@ async def _run_row(maker: Maker, run_id: str) -> PipelineRunRow:
 async def _only_drawing(maker: Maker, floor_pk: int) -> DrawingRow:
     """Bản vẽ duy nhất của tầng — task ghi đúng một dòng `drawings`."""
     async with maker() as db:
-        [drawing] = await floor_drawings(db, floor_pk)
-    return drawing
+        rows = await floor_drawings(db, floor_pk)
+    assert len(rows) == 1, rows
+    return rows[0]
 
 
 class _FlakyPut(LocalDiskStorage):
