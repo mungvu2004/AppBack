@@ -178,7 +178,7 @@ def test_số_tiến_trình_bước_5_theo_env(monkeypatch: pytest.MonkeyPatch, 
 def test_số_tiến_trình_bước_5_mặc_định(monkeypatch: pytest.MonkeyPatch) -> None:
     """Không đặt biến môi trường thì số tiến trình bước 5 là mặc định."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
-    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS
+    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS == "6"  # số đo NO-280: 6 nhanh nhất, 8 hết chỗ RAM
 
 
 # --- bước 5b ------------------------------------------------------------------------
