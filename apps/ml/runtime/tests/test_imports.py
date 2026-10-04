@@ -56,9 +56,12 @@ def _findings(tree: ast.AST, rel: str) -> Iterator[str]:
             top = name.split(".")[0]
             if not in_tests and (top in BANNED_MODULES or name == "torch.load"):
                 yield f"{rel}: nhập {name}"
-            if top == "ultralytics" and not ultralytics_ok:
+        # Luật `ultralytics` xét **một lần mỗi nút**: `from ultralytics import YOLO` cho cả `ultralytics`
+        # lẫn `ultralytics.YOLO` trong `names`, không được thành hai vi phạm (review W2 lượt 2, N1).
+        if any(name.split(".")[0] == "ultralytics" for name in names):
+            if not ultralytics_ok:
                 yield f"{rel}: nhập ultralytics ngoài chỗ cho phép"
-            elif top == "ultralytics" and id(node) in module_level:
+            elif id(node) in module_level:
                 yield f"{rel}: nhập ultralytics cấp module trong tệp test"
 
 
@@ -86,7 +89,6 @@ def test_ml_imports_m03_ast(tmp_path: Path) -> None:
         "apps/ml/evil/x.py: nhập pickle",
         "apps/ml/evil/x.py: nhập joblib",
         "apps/ml/evil/x.py: nhập joblib.load",
-        "apps/ml/evil/x.py: nhập ultralytics ngoài chỗ cho phép",
         "apps/ml/evil/x.py: nhập ultralytics ngoài chỗ cho phép",
         "apps/ml/evil/x.py: torch.load",
     ]
@@ -116,7 +118,6 @@ def test_scan__flags_bare_ultralytics_in_test_files(tmp_path: Path) -> None:
     assert scan(tmp_path) == [
         "apps/ml/evil/tests/test_bare.py: nhập ultralytics ngoài chỗ cho phép",
         "apps/ml/evil/tests/test_module_level.py: nhập ultralytics cấp module trong tệp test",
-        "apps/ml/evil/tests/test_module_try.py: nhập ultralytics cấp module trong tệp test",
         "apps/ml/evil/tests/test_module_try.py: nhập ultralytics cấp module trong tệp test",
     ]
 
