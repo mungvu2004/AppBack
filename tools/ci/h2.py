@@ -302,7 +302,7 @@ def _set_env(infra: _Infra) -> None:
 
 
 async def _seed(env: str) -> None:
-    """Seed `env` (gồm admin cố định `SEED_ADMIN_ID`, NO-107) trong một session riêng; seed idempotent (BE-00 §6.1, R-14)."""
+    """Seed `env` (gồm admin cố định `SEED_ADMIN_ID`, NO-107) trong session riêng; seed idempotent (R-14)."""
     engine = create_engine(get_database_settings())
     try:
         async with session_scope(create_sessionmaker(engine)) as session:
