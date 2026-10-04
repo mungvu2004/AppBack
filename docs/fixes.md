@@ -157,6 +157,23 @@
 | FIX-172 | 2026-10-04 | B2-03 | NO-265 | DEBT-02 W2/C08: test đếm SQL của `view_parts` chỉ xanh nhờ `_default_signer` do test khác làm ấm | `d3c8838` (nhánh `fix/debt-02-w2-cache`) |
 | FIX-173 | 2026-10-04 | B5-06a | NO-218, NO-295, NO-339 | DEBT-02 W2/C14: đo RSS sai tiến trình (NO-339), J01 không qua đường gửi thật (NO-218), J06 khẳng định rỗng và dọn test | `fce473e`, `c2489b7` (nhánh `fix/debt-02-w2-pipeline`); vòng sửa review W2 lượt 1: `a97ed0a` (nhánh `fix/debt-02-w2`) |
 | FIX-174 | 2026-10-04 | B5-06a | NO-339 | DEBT-02 W2/M cổng 1 đỏ (5b): con `spawn` đo `RUSAGE_SELF.ru_maxrss` mang theo RSS của cha pytest qua `execve` | `84ad46c` (nhánh `fix/debt-02-w2`); vòng sửa review W2 lượt 1: `eddb457` (nhánh `fix/debt-02-w2`) |
+| FIX-175 | 2026-10-04 | B5-04 | NO-254, NO-255, NO-343 | DEBT-02 W3/C09: bộ đọc OCR sàn rộng 80 px hụt chữ kích thước, test width nói ngược, trần bộ dò chưa `perf` | `6fd8dbf`, `a5b83e0`, `71a44e6` (nhánh `fix/debt-02-w3-ml-text`) |
+| FIX-176 | 2026-10-04 | B5-01 | NO-349 | DEBT-02 W3/C09: thước chữ kích thước chép ở ba test OCR → `packages/testing/ocr_metrics.py` | `acc5669`, `c0bde6f` (nhánh `fix/debt-02-w3-ml-text`) |
+| FIX-177 | 2026-10-04 | B5-02 | NO-283, NO-284, NO-286, NO-287, NO-288 | DEBT-02 W3/C10: ranh giới nhập, ca Khung, mặt nạ cổ điển k chẵn/cửa sổ, vectorize cắt vách mảnh ngắn | `e832f16`, `72a1ffb` (nhánh `fix/debt-02-w3-vision-walls`) |
+| FIX-178 | 2026-10-04 | B5-02 | NO-348 | DEBT-02 W3/C10: mô tả đường lùi cổ điển; cụm nét song song cách đều không còn thành tường | `6db3829`, `5e86272` (nhánh `fix/debt-02-w3-vision-walls`) |
+| FIX-179 | 2026-10-04 | B6-04a | NO-316, NO-317, NO-318, NO-333 | DEBT-02 W3/C11: test GPU segformer chạy được, tách `export_and_check`, seed mỗi epoch, ctor kw_only, `HF_HUB_OFFLINE` | `a99e642` (nhánh `fix/debt-02-w3-segformer`) |
+| FIX-180 | 2026-10-04 | B6-04b | NO-318 | DEBT-02 W3/C11: ctor `YoloTrainer` keyword-only, `family` cố định | `391aafb` (nhánh `fix/debt-02-w3-segformer`) |
+| FIX-181 | 2026-10-04 | B6-04b | NO-319, NO-320, NO-321 | DEBT-02 W3/C12: metric YOLO gắn theo tên, kết quả sandbox có khung, epoch nhịp tim không lùi | `5b23e15`, `b67e448` (nhánh `fix/debt-02-w3-yolo-eval`) |
+| FIX-182 | 2026-10-04 | B5-01 | NO-319 | DEBT-02 W3/C12: `_read_object` riêng tư bị `ml_eval` nhập → `read_model_object` | `6e6e32c`, `b0fbeb9` (nhánh `fix/debt-02-w3-yolo-eval`) |
+| FIX-184 | 2026-10-04 | B0-05 | NO-270 | DEBT-02 W3/C05c: `with_db` cộng độ lệch vai vào DB của URL để nhiều tiến trình chung một Redis | `24f1d11`, `6bf27cf`, `0d023e7` (nhánh `fix/debt-02-w3-redis-shared`) |
+| FIX-185 | 2026-10-04 | B0-01 | NO-270 | DEBT-02 W3/C05c: Redis test một bản mỗi chính sách cho cả lượt xdist, mỗi tiến trình một khối DB | `adc1cd9`, `ac93def`, `0274d6f`, `e3fd234`, `bc52e86` (nhánh `fix/debt-02-w3-redis-shared`) |
+| FIX-186 | 2026-10-04 | B4-01 | NO-270 | DEBT-02 W3/C05c: S05 đếm kết nối Redis theo DB Streams thay vì cả máy chủ | `026c5d6` (nhánh `fix/debt-02-w3-redis-shared`) |
+| FIX-189 | 2026-10-04 | B5-07 | NO-343 | DEBT-02 W3/C34: trần 2 s của `test_quality_replay_redis_hang_skips` gắn `perf` | `5c34815` (nhánh `fix/debt-02-w3-perf-docs`) |
+| FIX-190 | 2026-10-04 | B5-06c | NO-343 | DEBT-02 W3/C34: trần 2 s của `test_sweep_survives_unreadable_queue` gắn `perf`, docstring theo BE-00 §12 | `1a9bd7d` (nhánh `fix/debt-02-w3-perf-docs`) |
+| FIX-191 | 2026-10-04 | B2-06 | NO-343 | DEBT-02 W3/C34: trần 1 s của `test_build_all_assets_under_one_second` gắn `perf` | `8830c4e` (nhánh `fix/debt-02-w3-perf-docs`) |
+| FIX-192 | 2026-10-04 | B6-03b | NO-343 | DEBT-02 W3/C34: trần 10 s của `test_run_training_job_cancel_while_waiting` gắn `perf` | `5983d8f` (nhánh `fix/debt-02-w3-perf-docs`) |
+| FIX-193 | 2026-10-04 | B0-10 | NO-343 | DEBT-02 W3/C34: assert đồng hồ của test script triển khai → hạn `timeout` subprocess | `2c81e69` (nhánh `fix/debt-02-w3-perf-docs`) |
+| FIX-194 | 2026-10-04 | B0-01 | NO-343 | DEBT-02 W3/C34: `SCANNED` của `test_perf_marks` thêm bảy tệp có trần đồng hồ tường | `036e9e7` (nhánh `fix/debt-02-w3-perf-docs`), `e52aab4` (nhánh `fix/debt-02-w3`) |
 | FIX-200 | 2026-10-04 | B5-07 | NO-312 | DEBT-02 W2 vòng sửa review #14: `tests/e2e/test_pipeline_e2e.py` còn gọi tay `reset_ml_settings_cache()` dù fixture autouse `ml_settings_cache` đã dọn | `df7baa5` (nhánh `fix/debt-02-w2`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
@@ -1615,3 +1632,173 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[5 SỬA NHỎ NHẤT]** Bỏ hai lời gọi và lệnh nhập; `e2e_env` chỉ còn `reset_infer_context()`; docstring trỏ fixture autouse.
 - **[6 TEST CHẶN TÁI PHÁT]** Không đổi hành vi; chính các test e2e chạy qua `e2e_env` (cổng đầy đủ, không `gpu`).
 - **[7 NGHIỆM THU]** commit `df7baa5`; cổng đầy đủ lần 3 ở việc gộp M (`W2/M/gate-3.log`).
+
+## FIX-175 cho B5-04 — bộ đọc OCR hụt 9 chữ kích thước so với wheel, test width nói ngược, trần bộ dò chưa `perf` (NO-254, NO-255, NO-343 phần `apps/ml/text`)
+
+- **[1 TRIỆU CHỨNG]** `RapidOcrReader` đọc đúng 105/122 chữ kích thước seed 100-109, `RapidOCR()` wheel `use_cls=False` 114/122; không test giữ số (NO-254). `test_width_rounding_does_not_change_any_string` khẳng định ≥ 90 % giữ chuỗi, 1 seed (NO-255). `test_real_detector_finds_the_answer_boxes` khẳng định `elapsed < 20 s` mà không `perf` (NO-343, BE-00 §12).
+- **[2 TÁI HIỆN]** `run.sh shell < W3/C09/red.sh` trên 77d7180: `assert 105 >= 114`, `assert 40 == 41`, pytest mã thoát 1 (`red.log`). Thí nghiệm bật/tắt `exp.sh`/`exp2.sh` (`tai-hien-NO-254.md`).
+- **[3 BẰNG CHỨNG]** `apps/ml/text/reader.py:251-255` `_rec_widths` sàn 80 < `rec_img_shape [3, 48, 320]` của wheel; Otsu/xoay/INTER_CUBIC/lát không đổi số (105/122); sàn 320 → 114/122. `test_reader_real.py:109-134` (base).
+- **[4 KHOANH VÙNG]** `apps/ml/text/reader.py`, `apps/ml/text/tests/test_reader.py`, `apps/ml/text/tests/test_reader_real.py` (B5-04). Thước trùng ở `apps/ml/runtime/**` chuyển FIX-176.
+- **[5 SỬA NHỎ NHẤT]** `REC_MIN_WIDTH_PX = 320`; `padded = min(max(bội 80, 320), REC_MAX_WIDTH_PX)`. Test: ghim tỉ lệ 10 seed ≥ 0,90; đổi tên/docstring test width, 3 seed, so với `max(resized, 320)`; tách trần bộ dò sang `perf`. Lệch [6]/[8] của B5-04 ghi ở `W3/C09/quyet-dinh.md`.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_reader_reads_dimension_texts` (đỏ 105 < 110 trên base → xanh 114); `test_width_rounding_keeps_most_strings` (tên cũ đỏ 40/41 ≠ 41 → xanh 41/41); `test_real_detector_page_time` (perf, 0,95–1,42 s / trần 20 s).
+- **[7 NGHIỆM THU]** `xanh2.log`: `apps/ml/text/tests` 48 passed, perf 1 passed (mã thoát 0); độ phủ `reader.py` 98 % dòng; `steps1234.log` bước 1–4; commit `6fd8dbf`, `a5b83e0`, `71a44e6`. Cổng đầy đủ ở việc gộp `W3/M`.
+
+## FIX-176 cho B5-01 — thước chữ kích thước (regex + 25 px) chép ở ba test OCR (NO-349)
+
+- **[1 TRIỆU CHỨNG]** `DIMENSION_RE` định nghĩa ở `apps/ml/runtime/tests/test_ocr.py:16`, `apps/ml/text/tests/test_reader_real.py:43`, `packages/ml_contracts/tests/test_synthetic.py:36`; `NEAR` 25 px + vòng đếm chép ở hai tệp đầu (R-07).
+- **[2 TÁI HIỆN]** `git grep -n 'DIMENSION_RE *=' -- apps packages` trên 6fd8dbf → 3 dòng (`W3/C09/tai-hien-NO-349.md`).
+- **[3 BẰNG CHỨNG]** Ba dòng trên; phản biện P-10 lượt FIX-175.
+- **[4 KHOANH VÙNG]** `packages/testing/ocr_metrics.py` (mới), `apps/ml/runtime/tests/test_ocr.py`, `packages/ml_contracts/tests/test_synthetic.py` (B5-01); phía `apps/ml/text/tests/test_reader_real.py` đi cùng FIX-175 (B5-04). Không chạm mã sản phẩm.
+- **[5 SỬA NHỎ NHẤT]** Một tệp dùng cho test (`packages.testing`, import-linter cho `**.tests.** -> packages.testing.**`): `dimension_hits(found, answers) -> (đúng, tổng)`; ba test nhập lại.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_render_plan_ocr_readable`, `test_reader_reads_dimension_texts`, các test `test_synthetic` dùng thước chung xanh; `git grep` chỉ còn một định nghĩa.
+- **[7 NGHIỆM THU]** `xanh349.log` (pytest + độ phủ `ocr_metrics.py`), `steps1234.log` bước 1–4; commit `acc5669`, `c0bde6f`.
+
+## FIX-177 cho B5-02 — ranh giới nhập thiếu `ml_contracts`, thiếu ca Khung, mặt nạ cổ điển lệch khi k chẵn và mất cửa sổ, vectorize cắt nhầm vách mảnh ngắn (NO-283, NO-284, NO-286, NO-287, NO-288)
+
+- **[1 TRIỆU CHỨNG]** NO-283: `test_boundary.py` không chặn `packages.ml_contracts` (chèn import vào `metrics.py`, test vẫn `9 passed`). NO-284: không test nào khẳng định `find_frame(render_plan(s)) is None`. NO-286: IoU trung bình 10 seed đầu 0,8152 (ngưỡng 0,80), seed 106 = 0,6999. NO-287: `classic_wall_mask` với k chẵn dời mặt nạ 1 px (5/5 ca đỏ). NO-288: vách 110 mm chạm tường 220 mm, ngắn ≤ 2·J, bị cắt như râu; vách ngắn qua bước 4 vẫn mất ở `_drop_short` (9/18 ca tay đỏ).
+- **[2 TÁI HIỆN]** Cây 77d7180, `bash tools/verify/run.sh shell < W3/C10/red.sh | red2.sh`; lệnh, mã thoát: `W3/C10/tai-hien-NO-283/284/286/287/288.md`.
+- **[3 BẰNG CHỨNG]** `packages/vision/walls/tests/test_boundary.py:14` `_BLOCKED` 4 tên; `classic.py:47-48` (cũ) `MORPH_OPEN` co/giãn cùng neo `k//2`; `packages/ml_contracts/synthetic.py:258-269` `_window`: 100 % FN của 40 seed nằm trong hộp cửa sổ; `vectorize.py:34,227-239` (cũ) `_SPUR_TIP_RATIO = 0.5` (vách thật T/J 0,40–0,417), `:455-476` `_drop_short` so `length < thickness` trước `_extend_leaves`.
+- **[4 KHOANH VÙNG]** `packages/vision/walls/classic.py`, `vectorize.py`, `tests/*` (B5-02). Không chạm `packages/ml_contracts/synthetic.py`, không đổi ngưỡng test.
+- **[5 SỬA NHỎ NHẤT]** `_open_square` neo phản chiếu cho k chẵn; `_bridge_windows` + `_closed_runs` đóng 1D vuông góc tường, chỉ giữ đoạn có tường ở cả hai đầu, mở lại k×k; `_SPUR_TIP_PX = 1.7` tuyệt đối; `_drop_short(segs, graph)` cộng `_leaf_reach`. Cùng chủ: docstring 18 test cũ, lý do sau `noqa`/`type: ignore`. Không đổi chữ ký công khai, không đổi `VectorizeResult`.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_boundary.py::test_module_imports_with_ml_and_db_blocked[*]`, `::test_blocking_really_raises[packages.ml_contracts]`; `test_frame.py::test_find_frame__none_on_synthetic_page[seed]`; `test_classic.py::test_classic_wall_mask__even_kernel_keeps_band_in_place[k]`, `__window_gap_bridged_door_gap_kept`, `__single_line_between_walls_is_not_wall`; `test_quality.py::test_classic_wall_mask__window_gap_stays_wall[seed]`; `test_vectorize.py::test_vectorize__short_thin_wall_on_thick_wall_is_kept[...]`, `__very_thin_wall_on_very_thick_wall_is_kept[...]`. `test_spur_branch_is_pruned` đổi mẫu râu sang nét 1 px (lý do `W3/C10/vong1-*.md`), assert giữ nguyên.
+- **[7 NGHIỆM THU]** Commit `e832f16`, `72a1ffb`. `fix2.log`: 204 passed, `classic.py` 100 % dòng/nhánh, `vectorize.py` 99 %. IoU mean10 0,8152 → 0,9843, không seed nào tụt. Bước 1–4: `verify14.log`.
+
+## FIX-178 cho B5-02 — mô tả đường lùi cổ điển sau FIX-177 và cụm nét song song cách đều bị lấp thành tường (NO-348)
+
+- **[1 TRIỆU CHỨNG]** Sau FIX-177 `classic_wall_mask` lấp khe cửa sổ nên mặt nạ có thể chứa điểm không có mực; tiêu đề `classic.py` và `apps/ml/walls/step.py:82` chưa nói. Đo trên CubiCasa5K thật: cầu thang, sàn ván, hatch vẽ nét dày ≥ k sống qua phép mở và bị `_bridge_windows` lấp (NO-348).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < W3/C10/cc-measure.sh` (24 mẫu CubiCasa5K có Stairs/Railing, `cc-prep.py`) — `cc-measure.log`, mã thoát 0; C10c: ca tổng hợp ≥ 3 nét song song cách đều giữa hai vách đỏ trên `6db3829` (`c10c*.log`).
+- **[3 BẰNG CHỨNG]** IoU tường 0,3793 → 0,4831 (tăng 21/24 mẫu) nhưng FP mới vùng cầu thang/lan can 491.717 px, 428.415 px ở 2 mẫu sàn ván (`look-hqa-10498.png`); bảng phương án `W3/C10/quyet-dinh.md` §C10b, §C10c.
+- **[4 KHOANH VÙNG]** `apps/ml/walls/step.py` (docstring), `packages/vision/walls/classic.py` và test (B5-02). Không đổi `packages/ml_contracts/payloads.py` (B5-01), hợp đồng dữ liệu.
+- **[5 SỬA NHỎ NHẤT]** C10b: sửa lời `step.py`/`classic.py`, ghi giới hạn đã đo vào docstring `_bridge_windows`. C10c (phương án C): dãy ≥ 4 nét dày cách đều rời mặt nạ tường; không bắc cầu qua các dãy đó hay dãy ≥ 5 nét mực cách đều.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_classic.py::test_classic_wall_mask__evenly_spaced_strokes_between_walls_are_not_wall`, `::test_classic_wall_mask__four_evenly_spaced_strokes_between_walls_are_not_wall`, `::test_classic_wall_mask__hollow_two_line_wall_is_filled` — đỏ trên `6db3829` → xanh.
+- **[7 NGHIỆM THU]** Commit `6db3829`, `5e86272`. 24 mẫu CubiCasa: FP cầu thang/lan can −63 %, IoU tường 0,483 → 0,481; 40 seed tổng hợp IoU trung bình 0,9845 không đổi. `verify14b.log`, `verify14c.log`, `c10b-test.log`.
+
+## FIX-179 cho B6-04a — `training_segformer`: test GPU không chạy được, `export_and_check` dài và nhánh chết, seed mỗi epoch, ctor, quét AST lọt, `HF_HUB_OFFLINE` chưa đặt (NO-316, NO-317, NO-318, NO-333)
+
+- **[1 TRIỆU CHỨNG]** `test_gpu.py` không chạy được trên máy CUDA (đường model + khổ ảnh sai); `export_and_check` 71 dòng, nhánh `has_external_data` chết; lệch P3 (seed mỗi epoch, ctor, quét AST K12 lọt, 2 `type: ignore` tự gây, reset cache tay); `HF_HUB_OFFLINE` (BE-00 §9) không được đặt.
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < W3/C11/red.sh` trên cây chưa sửa: 5 failed, 11 passed, 1 error collect (mã thoát 1); `W3/C11/tai-hien-NO-316/317/318/333.md`.
+- **[3 BẰNG CHỨNG]** `test_gpu.py:129-130` (`Path(name).parent == '.'`); `support.py:84` (800×600 cứng); `export.py:76-86` (nhánh chết sau checker, hàm 71 dòng); `loop.py:92` (cùng seed); `trainer.py:48-61`; `model.py:14` (`transformers` nhập mức module, không env).
+- **[4 KHOANH VÙNG]** `apps/ml/training_segformer/{__init__,export,loop,trainer}.py` và `tests/{support,test_gpu,test_export,test_model,test_trainer,test_support}.py` (B6-04a). Lệch cùng loại của `YoloTrainer` ở FIX-180.
+- **[5 SỬA NHỎ NHẤT]** NO-333: `os.environ.update` `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE` trong `__init__.py` của gói (lệch SEC-062 [5]: update thay setdefault vì BE-00 §9 là lệnh). NO-317: tách `_check_exported_format`/`_parity_agreement`, `has_external_data` trước `check_model`. NO-316: `write_split(width_px, height_px)` + `support.load_pinned_base` dùng `trainer._settings_models_dir()`. NO-318: `kw_only` + property `family`, `manual_seed(seed + epoch)`, `optimizer_cls: Callable[..., AdamW]`, `_violations` quét AST, bỏ reset cache tay.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_support.py::{test_write_split__custom_size, test_write_split__default_size_unchanged, test_load_pinned_base__reads_ml_models_dir}`; `test_export.py::{test_export_external_data__rejected_by_has_external_data, test_export_and_check__within_length_limit, test_export_rejects_invalid_graph}`; `test_trainer.py::{test_loader__generator_seed_differs_per_epoch, test_trainer__keyword_only_and_family_fixed}`; `test_model.py::{test_ast_scan__flags_every_unsafe_form, test_load_base_model__hf_offline_env_forced}`.
+- **[7 NGHIỆM THU]** Đỏ → xanh theo `tai-hien-*.md`; `verify --steps 1,2,3,4` và độ phủ từng tệp (`W3/C11/cov.log`, `verify14.log`); commit `a99e642`. `test_train_gpu_mitb1_fits_6gb` chưa chạy — máy không CUDA.
+
+## FIX-180 cho B6-04b — ctor `YoloTrainer` không keyword-only, `family` tiêm được (NO-318, cùng lệch P3-10 của segformer)
+
+- **[1 TRIỆU CHỨNG]** `YoloTrainer("...")` theo vị trí và `YoloTrainer(family=...)` dựng được; hợp đồng [2] đòi ctor keyword-only, `family` cố định.
+- **[2 TÁI HIỆN]** `W3/C11/red-yolo.log`: `run.sh shell < red-yolo.sh` → 1 failed (`test_trainer__keyword_only_and_family_fixed`), mã thoát 1.
+- **[3 BẰNG CHỨNG]** `apps/ml/training_yolo/trainer.py:250-262` (`@dataclass(frozen=True, slots=True)`, `family: TrainableFamily = _FAMILY`); mọi caller đều keyword (`tests/test_gpu.py:39`, `tests/test_trainer.py:89`, `trainer.py:412`).
+- **[4 KHOANH VÙNG]** `apps/ml/training_yolo/trainer.py` (chỉ ctor/decorator — khác hunk với `_tick`/`_emit` của FIX-181), `tests/test_trainer.py` (B6-04b).
+- **[5 SỬA NHỎ NHẤT]** `kw_only=True` + `@property family` trả `_FAMILY` (khớp `Trainer.family` ở `ports.py:79-80`).
+- **[6 TEST CHẶN TÁI PHÁT]** `apps/ml/training_yolo/tests/test_trainer.py::test_trainer__keyword_only_and_family_fixed`.
+- **[7 NGHIỆM THU]** `green-yolo.log`: 38 passed, `trainer.py` 97 % dòng+nhánh, mã thoát 0; `verify14-yolo.log` `--steps 1,2,3,4` mã thoát 0; commit `391aafb`.
+
+## FIX-181 cho B6-04b — `_emit` suy split từ giá trị, `last_map50` gác theo loss, stdout con đọc cả luồng, epoch nhịp tim lùi, test yếu (NO-319 phía gọi, NO-320, NO-321)
+
+- **[1 TRIỆU CHỨNG]** NO-320: epoch không validate log `training_metric_skipped metric="loss"` hai lần; loss NaN + map50 hợp lệ ⇒ `TRAINING_METRICS_MISSING`. NO-321: một dòng lạ trên stdout con ⇒ `MODEL_FORMAT_UNSUPPORTED`. NO-319 (phía gọi): `ml_eval/tasks.py` nhập `_read_object`. C12b: nhịp tim pha final_eval báo epoch = epochs+1 rồi `_export` báo `spec.epochs` → số epoch lùi.
+- **[2 TÁI HIỆN]** `W3/C12/tai-hien-NO-320-321-319.md`; `red.log`, `red2.log` (3 + 7 đỏ) trên 77d7180; `red3.log` (thoát 1): `test_heartbeat_epochs_never_decrease_nor_exceed_spec_epochs` FAILED.
+- **[3 BẰNG CHỨNG]** `apps/ml/training_yolo/trainer.py` `_emit`/`on_fit_epoch_end`/`_tick`; `apps/ml/ml_eval/tasks.py` `_result`; `sandbox.py` `main`.
+- **[4 KHOANH VÙNG]** `apps/ml/training_yolo/{trainer.py,tests/test_trainer_units.py}`, `apps/ml/ml_eval/{tasks.py,sandbox.py,tests/test_sandbox.py,tests/test_evaluate.py}` (B6-04b). `loader.py` thuộc FIX-182.
+- **[5 SỬA NHỎ NHẤT]** `_emit(epoch, name, value, *, high)`; `last_map50` theo map50; `RESULT_PREFIX` + `_result` chỉ đọc dòng có tiền tố; assert RLIMIT_AS; expected AP tính tay 0,665; test nhịp tim pha val; `tasks.py` gọi `read_model_object`; `_tick` báo `min(epochs_done + 1, epochs)`. Không đổi hợp đồng (giao thức cha–con nội bộ).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_on_fit_epoch_end__epoch_without_validation_skips_map50_not_loss`, `test_on_fit_epoch_end__nan_loss_keeps_the_valid_map50`, `test_on_val_batch_end__sends_heartbeat_once_interval_passed`, `test_heartbeat_epochs_never_decrease_nor_exceed_spec_epochs`, `test_ml_eval_sandbox_result_ignores_foreign_stdout_lines`, `test_ml_eval_sandbox_result_without_metrics[...]`, `test_evaluate_family_object_detection_matches_hand_computed_ap`.
+- **[7 NGHIỆM THU]** Đỏ → xanh (tệp tái hiện); `cov2.log` thoát 0, 41 passed, `trainer.py` 97 % dòng+nhánh; `verify --steps 1,2,3,4` thoát 0 (`verify14b.log`); commit `5b23e15`, `b67e448`.
+
+## FIX-182 cho B5-01 — `_read_object` riêng tư bị `ml_eval` nhập; công khai thành `read_model_object` (NO-319)
+
+- **[1 TRIỆU CHỨNG]** `apps/ml/ml_eval/tasks.py:28` nhập `_read_object` của `apps.ml.runtime.loader`.
+- **[2 TÁI HIỆN]** `W3/C12/red.log`: `test_read_model_object__returns_bytes_and_maps_missing_to_model_not_found` đỏ (AttributeError).
+- **[3 BẰNG CHỨNG]** `git grep _read_object`: chỉ `loader.py:193,249` và `tasks.py:28,161`.
+- **[4 KHOANH VÙNG]** `apps/ml/runtime/loader.py`, `apps/ml/runtime/tests/test_loader.py` (B5-01); phía gọi `ml_eval` ở FIX-181.
+- **[5 SỬA NHỎ NHẤT]** Đổi tên, giữ chữ ký, trần `MODEL_MAX_BYTES` và mã lỗi; không alias.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_read_model_object__returns_bytes_and_maps_missing_to_model_not_found`.
+- **[7 NGHIỆM THU]** Đỏ → xanh; `loader.py` 99 %; commit `6e6e32c`, `b0fbeb9` (đứng trước commit FIX-181; nhánh gộp squash nên `main` không có điểm giữa đỏ).
+
+## FIX-184 cho B0-05 — `with_db` ghi đè số DB của URL nên nhiều tiến trình không chung được một Redis (NO-270)
+
+- **[1 TRIỆU CHỨNG]** `pytest -n 4`: mỗi tiến trình xdist dựng 2 Redis riêng — đỉnh 12 container, 9 Redis (`W3/C05c/n4-truoc-sau.log`); cổng xdist phải chạy một mình.
+- **[2 TÁI HIỆN]** 1308068 + test mới: `bash tools/verify/run.sh shell < W3/C05c/do-n4.sh` → `test_with_db__two_processes_on_one_redis_keep_their_own_roles` FAILED, mã 1 (`n4-truoc.log`).
+- **[3 BẰNG CHỨNG]** `packages/messaging/redis.py:115-118` (gốc) đặt path `/{db}` tuyệt đối, `:33-36` BROKER 0/STREAM 1/SAFE 2/CACHE 0; `celery_app.py:90,168` dùng URL nguyên trạng; `settings.py:23` (gốc) "đường dẫn bị bỏ qua".
+- **[4 KHOANH VÙNG]** `packages/messaging/{redis.py,settings.py}`, `packages/messaging/tests/{test_redis.py,test_settings.py,test_streams.py}`, `packages/testing/fixtures/messaging.py` (`db_client_count`). Không chạm `deploy/*`, `celery_app.py`.
+- **[5 SỬA NHỎ NHẤT]** `with_db` = DB gốc của URL (vắng = 0) + độ lệch vai — URL triển khai `/0` ⇒ hành vi production không đổi; validator từ chối path không phải số, có tên biến (R-17); `db_client_count` đếm `CLIENT LIST` theo DB.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_redis.py::test_with_db__two_processes_on_one_redis_keep_their_own_roles` (Redis thật + tiến trình thật), `::test_with_db_offsets_the_url_database_by_the_role`; `test_settings.py::test_redis_url__non_numeric_database_path_is_rejected_with_its_variable`, `::test_redis_url__empty_or_numeric_database_path_is_accepted` — đỏ → xanh.
+- **[7 NGHIỆM THU]** Commit `24f1d11`, `6bf27cf`, `0d023e7`; `W3/C05c/verify14.log`, `cov.log`.
+
+## FIX-185 cho B0-01 — Redis test dựng một bản mỗi tiến trình xdist (NO-270)
+
+- **[1 TRIỆU CHỨNG]** `-n 4`: 9 container Redis ở đỉnh (2/tiến trình + ephemeral), tổng 12 container, 96 s.
+- **[2 TÁI HIỆN]** `W3/C05c/n4-truoc-sau.log` phần TRƯỚC (`redis.py` + `services.py` gốc), mã pytest 1.
+- **[3 BẰNG CHỨNG]** `packages/testing/fixtures/services.py:251-268` (gốc) `redis_broker_url`/`redis_cache_url` `_start` thẳng; docstring `_shared_container` `:193-197` (gốc) loại Redis vì vai = số DB.
+- **[4 KHOANH VÙNG]** `packages/testing/fixtures/services.py`, `tools/tests/test_shared_services.py` (B0-01). Không đổi `deploy/compose/verify.yml` (`--databases` ở lệnh container của fixture).
+- **[5 SỬA NHỎ NHẤT]** Hai fixture qua `_shared_container` (`redis-<policy>`), URL `/<gwN × REDIS_ROLE_DBS>` (`redis_db_base`, dùng `with_db` của FIX-184); `--databases max(16, 3 × PYTEST_XDIST_WORKER_COUNT × 5)` — 5 mã `gwN` mỗi chỗ vì xdist thay tiến trình chết bằng mã tăng dần; ephemeral giữ 16. Gộp W3 giữ sửa NO-347 của `main` (`sweep_orphans`).
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_shared_services.py::test_redis_db_base__each_worker_gets_its_own_block`, `::test_shared_redis__two_workers_share_one_container_on_their_own_blocks`; số đo `-n 4` sau: 5 container (2 Redis), 70 s, 3004 passed.
+- **[7 NGHIỆM THU]** Commit `adc1cd9`, `ac93def`, `0274d6f`, `e3fd234`, `bc52e86`; cổng đầy đủ ở việc gộp `W3/M`.
+
+## FIX-186 cho B4-01 — S05 đếm `CLIENT LIST` cả máy chủ, flaky khi Redis test dùng chung (NO-270)
+
+- **[1 TRIỆU CHỨNG]** Sau FIX-185 mọi tiến trình xdist chung một Redis: `len(client_list())` gồm kết nối của tiến trình khác → `after - before <= 1` có thể đỏ ngẫu nhiên.
+- **[2 TÁI HIỆN]** Không dựng được đỏ tất định (phụ thuộc lịch tiến trình khác); rủi ro chỉ bằng mã: `apps/api/streams/tests/test_streams_open_progress.py:236-244` đếm toàn máy chủ.
+- **[3 BẰNG CHỨNG]** `CLIENT LIST` là lệnh phạm vi máy chủ; mỗi mục có trường `db`.
+- **[4 KHOANH VÙNG]** `apps/api/streams/tests/test_streams_open_progress.py` (B4-01, 3 dòng; điều phối duyệt ngoài whitelist).
+- **[5 SỬA NHỎ NHẤT]** Dùng `db_client_count(streams_client)` (FIX-184) — chỉ kết nối vào DB Streams của chính tiến trình.
+- **[6 TEST CHẶN TÁI PHÁT]** Chính `test_streams_open_progress__S05` (đếm theo DB); `-n 4` sau sửa xanh.
+- **[7 NGHIỆM THU]** Commit `026c5d6`.
+
+## FIX-189 cho B5-07 — trần đồng hồ tường của `test_quality_replay_redis_hang_skips` chưa `perf` (NO-343)
+
+- **[1 TRIỆU CHỨNG]** NO-343: `apps/worker/pipeline_quality/tests/test_runtime.py` khẳng định trần 2 s mà không `perf` (BE-00 §12); thêm tệp vào `SCANNED` của `tools/tests/test_perf_marks.py` → đỏ.
+- **[2 TÁI HIỆN]** `run.sh shell < W3/C34/red.sh` trên 5ec9edb: 6 failed (một mỗi tệp mới quét), mã thoát 1 (`W3/C34/tai-hien-NO-343.md`, `red.log`).
+- **[3 BẰNG CHỨNG]** `W3/C34/quyet-dinh.md` bảng P-1…P-8; số đo 1,009 s.
+- **[4 KHOANH VÙNG]** `apps/worker/pipeline_quality/tests/test_runtime.py` (B5-07), chỉ test.
+- **[5 SỬA NHỎ NHẤT]** Gắn `@pytest.mark.perf`, log số đo. Trần 2,0 s giữ nguyên dù < 3× số đo: đó là trần thiết kế = timeout nội bộ 1 s (`service.py:52`) + mép, không phải trần đo (P-6, "Lệch khỏi prompt" của C34; reviewer phán).
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/worker/pipeline_quality/tests/test_runtime.py]` đỏ → xanh.
+- **[7 NGHIỆM THU]** Commit `5c34815`; bước 1–4 đạt (`W3/C34/verify-1-4.log`, mã thoát 0); cổng đầy đủ ở việc gộp `W3/M`.
+
+## FIX-190 cho B5-06c — trần đồng hồ tường của `test_sweep_survives_unreadable_queue` chưa `perf`, docstring mâu thuẫn BE-00 §12 (NO-343)
+
+- **[1 TRIỆU CHỨNG]** NO-343: `apps/worker/pipeline_steps/tests/test_sweep_rules.py` khẳng định trần 2 s mà không `perf`; docstring nói ngược BE-00 §12.
+- **[2 TÁI HIỆN]** Như FIX-189 (`W3/C34/red.log`, mã thoát 1).
+- **[3 BẰNG CHỨNG]** `W3/C34/quyet-dinh.md` P-1…P-8; số đo ~1,01 s.
+- **[4 KHOANH VÙNG]** `apps/worker/pipeline_steps/tests/test_sweep_rules.py` (B5-06c), chỉ test.
+- **[5 SỬA NHỎ NHẤT]** Gắn `perf`, sửa docstring. Trần 2,0 s giữ nguyên (sàn thiết kế 1 s ở `sweep.py:46`, P-6), như FIX-189.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_scanned_files_mark_wall_clock_ceilings_perf[apps/worker/pipeline_steps/tests/test_sweep_rules.py]` đỏ → xanh.
+- **[7 NGHIỆM THU]** Commit `1a9bd7d`; bước 1–4 đạt (`verify-1-4.log`).
+
+## FIX-191 cho B2-06 — trần đồng hồ tường của `test_build_all_assets_under_one_second` chưa `perf` (NO-343)
+
+- **[1 TRIỆU CHỨNG]** NO-343: `packages/domain/library/tests/test_catalogue.py` khẳng định trần 1 s mà không `perf`.
+- **[2 TÁI HIỆN]** Như FIX-189 (`W3/C34/red.log`, mã thoát 1).
+- **[3 BẰNG CHỨNG]** `W3/C34/quyet-dinh.md` P-1…P-8; số đo 0,009 s.
+- **[4 KHOANH VÙNG]** `packages/domain/library/tests/test_catalogue.py` (B2-06), chỉ test.
+- **[5 SỬA NHỎ NHẤT]** Gắn `perf`, log số đo.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_scanned_files_mark_wall_clock_ceilings_perf[packages/domain/library/tests/test_catalogue.py]` đỏ → xanh.
+- **[7 NGHIỆM THU]** Commit `8830c4e`; bước 1–4 đạt (`verify-1-4.log`).
+
+## FIX-192 cho B6-03b — trần đồng hồ tường của `test_run_training_job_cancel_while_waiting` chưa `perf` (NO-343)
+
+- **[1 TRIỆU CHỨNG]** NO-343: `apps/ml/training_runner/tests/test_runtime.py` khẳng định trần 10 s mà không `perf`.
+- **[2 TÁI HIỆN]** Như FIX-189 (`W3/C34/red.log`, mã thoát 1).
+- **[3 BẰNG CHỨNG]** `W3/C34/quyet-dinh.md` P-1…P-8; số đo 0,006 s.
+- **[4 KHOANH VÙNG]** `apps/ml/training_runner/tests/test_runtime.py` (B6-03b), chỉ test.
+- **[5 SỬA NHỎ NHẤT]** Gắn `perf`, log số đo.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_scanned_files_mark_wall_clock_ceilings_perf[apps/ml/training_runner/tests/test_runtime.py]` đỏ → xanh.
+- **[7 NGHIỆM THU]** Commit `5983d8f`; bước 1–4 đạt (`verify-1-4.log`).
+
+## FIX-193 cho B0-10 — assert đồng hồ tường trong test script triển khai thay bằng hạn `timeout` của subprocess (NO-343)
+
+- **[1 TRIỆU CHỨNG]** NO-343: `deploy/scripts/tests/test_smoke.py`, `test_deploy.py` khẳng định thời gian chạy bằng đồng hồ tường, không `perf`.
+- **[2 TÁI HIỆN]** Như FIX-189 (`W3/C34/red.log`, mã thoát 1).
+- **[3 BẰNG CHỨNG]** `W3/C34/quyet-dinh.md` P-1…P-8: `tools/coverage_gate.py::unit_of` bỏ `deploy/`, nên test `perf` ở đây không được bước 5c chạy — `perf` không phải chỗ đúng.
+- **[4 KHOANH VÙNG]** `deploy/scripts/tests/test_smoke.py`, `deploy/scripts/tests/test_deploy.py` (B0-10).
+- **[5 SỬA NHỎ NHẤT]** Bỏ assert đồng hồ; hạn `timeout=` của subprocess (smoke 8 s, deploy 15 s) giữ cận trên.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_scanned_files_mark_wall_clock_ceilings_perf[deploy/scripts/tests/test_smoke.py]`, `[deploy/scripts/tests/test_deploy.py]` đỏ → xanh.
+- **[7 NGHIỆM THU]** Commit `2c81e69`; bước 1–4 đạt (`verify-1-4.log`).
+
+## FIX-194 cho B0-01 — `SCANNED` của `test_perf_marks` thiếu bảy tệp có trần đồng hồ tường (NO-343)
+
+- **[1 TRIỆU CHỨNG]** NO-343: quét `perf` (`tools/tests/test_perf_marks.py`) chỉ phủ các tệp C07 đã rà; bảy tệp có trần đồng hồ tường nằm ngoài `SCANNED`.
+- **[2 TÁI HIỆN]** Thêm sáu tệp của FIX-189…193 vào `SCANNED` trên 5ec9edb → 6 failed, mã thoát 1 (`W3/C34/red.log`).
+- **[3 BẰNG CHỨNG]** `W3/C34/quyet-dinh.md` P-1…P-8; tệp thứ bảy `apps/ml/text/tests/test_reader_real.py` sửa ở FIX-175 (C09).
+- **[4 KHOANH VÙNG]** `tools/tests/test_perf_marks.py` (B0-01).
+- **[5 SỬA NHỎ NHẤT]** Thêm sáu tệp vào `SCANNED` (C34); việc gộp W3 thêm `apps/ml/text/tests/test_reader_real.py` sau khi gộp C09 → NO-343 đủ 7/7.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[*]` cho cả bảy tệp.
+- **[7 NGHIỆM THU]** Commit `036e9e7` (nhánh `fix/debt-02-w3-perf-docs`), `e52aab4` (nhánh `fix/debt-02-w3`); cổng đầy đủ ở việc gộp `W3/M`.
