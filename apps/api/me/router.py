@@ -32,7 +32,7 @@ from apps.api.me.schemas import ChangePasswordBody, MeSchema, ReplaceAvatarBody,
 from packages.core.clock import Clock
 from packages.core.error_codes import SESSION_REVOKED
 from packages.core.errors import ERRORS, ErrorCode
-from packages.core.ids import new_id
+from packages.core.ids import new_ulid
 from packages.db.models.auth import RefreshSession, User
 from packages.storage.keys import avatar as avatar_key_of
 from packages.storage.port import ObjectStorage
@@ -249,15 +249,6 @@ _avatar_limit: Final = rate_limit(
 )
 
 
-def _new_ulid(clock: Clock) -> str:
-    """ULID trần cho tên object ảnh đại diện — mượn bộ sinh Crockford của `new_id` (BE-00 §8).
-
-    `packages.core.ids` không phơi hàm sinh ULID trần riêng; tiền tố `tpl` bị bỏ ngay, chỉ
-    thân 26 ký tự được dùng làm tên object (không phải id `tpl_…` thật nào tồn tại).
-    """
-    return new_id("tpl", clock).split("_", 1)[1]
-
-
 async def _apply_avatar_key(db: AsyncSession, *, user_id: str, key: str) -> None:
     """`UPDATE users SET avatar_key` sau khi object đã ghi bền vững (bước 7); không thấy người → 401."""
     result = await db.execute(
@@ -276,7 +267,7 @@ async def me_replace_avatar(
 ) -> MeSchema:
     """N14: giải mã, kiểm, mã hoá lại ảnh; `storage.put` trước giao dịch ghi `avatar_key` (K22)."""
     processed: ProcessedAvatar = await process_avatar(body.content_base64, body.mime_type)
-    key = avatar_key_of(principal.user_id, _new_ulid(clock), processed.ext)
+    key = avatar_key_of(principal.user_id, new_ulid(clock), processed.ext)
     await storage.put(key, processed.data, content_type=processed.content_type, max_bytes=MAX_STORED_BYTES)
     await _apply_avatar_key(db, user_id=principal.user_id, key=key)
     return await _me_schema(db, storage, principal.user_id)

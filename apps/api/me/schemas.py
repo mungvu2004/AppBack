@@ -1,12 +1,9 @@
 """Schema dây của `/api/me` (B1-04 [2], HOP-DONG-MOI §3, BE-00 §3.1).
 
 `fullName`/`jobTitle` cấm ký tự điều khiển (Cc) và ký tự đảo chiều song hướng
-U+202A-202E/U+2066-2069 (K01, W2). Không dùng lại `_validate_full_name` riêng của
-`apps/api/auth_recovery/router.py` (module đó cấm sửa, hàm là private) — bản sao ở đây
-là chủ đích, không phải trùng lặp bỏ sót (R-07 chỉ áp trong phạm vi file mình sở hữu).
+(K01, W2) — luật nằm ở `packages.core.text.clean_text`, dùng chung với mọi module (NO-169).
 """
 
-import unicodedata
 from typing import Annotated, Final, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -14,17 +11,11 @@ from pydantic import Field, field_validator, model_validator
 from apps.api.auth.passwords import MIN_PASSWORD_LENGTH
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.me.avatar import MAX_BASE64_LEN
-from packages.core.text import nfc
+from packages.core.text import clean_text, nfc
 
 FULL_NAME_MAX: Final = 120
 PHONE_MAX: Final = 32
 _UPDATE_KEYS: Final = frozenset({"full_name", "job_title", "phone", "language"})
-_BIDI_OVERRIDE: Final = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
-
-
-def _has_forbidden_chars(value: str) -> bool:
-    """Ký tự điều khiển (Cc) hay ký tự đảo chiều song hướng — cấm ở `fullName`/`jobTitle`."""
-    return any(unicodedata.category(ch) == "Cc" or ch in _BIDI_OVERRIDE for ch in value)
 
 
 class MeSchema(WireModel):
@@ -57,8 +48,8 @@ class UpdateMeBody(WireRequest):
         """
         if value is None:
             raise ValueError("fullName không được null")
-        normalized = nfc(value).strip()
-        if not (1 <= len(normalized) <= FULL_NAME_MAX) or _has_forbidden_chars(normalized):
+        normalized = clean_text(value)
+        if not 1 <= len(normalized) <= FULL_NAME_MAX:
             raise ValueError("fullName sai định dạng")
         return normalized
 
@@ -68,8 +59,8 @@ class UpdateMeBody(WireRequest):
         """NFC + trim; toàn khoảng trắng coi như `''` (xoá cột); > 120 ký tự hay ký tự cấm → 422."""
         if value is None:
             return None
-        normalized = nfc(value).strip()
-        if len(normalized) > FULL_NAME_MAX or _has_forbidden_chars(normalized):
+        normalized = clean_text(value)
+        if len(normalized) > FULL_NAME_MAX:
             raise ValueError("jobTitle sai định dạng")
         return normalized
 
