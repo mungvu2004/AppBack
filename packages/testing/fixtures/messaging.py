@@ -49,7 +49,7 @@ WORKER_SHUTDOWN_TIMEOUT_S = 20.0
 
 
 def _envelopes(client: SyncRedis, queue: str) -> list[dict[str, Any]]:
-    """Phong bì kombu (JSON) của mọi thông điệp trên một hàng, **mới nhất trước** (kombu `LPUSH`, `LRANGE` đọc ngược)."""
+    """Phong bì kombu (JSON) của mọi thông điệp trên một hàng, mới nhất trước (kombu `LPUSH`, `LRANGE` đọc ngược)."""
     return [json.loads(raw) for raw in sync_result(client.lrange(queue, 0, -1), list)]
 
 
