@@ -4,7 +4,6 @@ import hashlib
 import itertools
 import logging
 import math
-import re
 import subprocess
 import sys
 import textwrap
@@ -30,18 +29,20 @@ from packages.ml_contracts.synthetic import (
     read_marker,
     render_plan,
 )
+from packages.testing.ocr_metrics import DIMENSION_RE
 
 _log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DIMENSION_RE = re.compile(r"[0-9]{1,3}(\.[0-9]{3})*")
 SEEDS = (0, 1, 7, 100, 123, 139, 4_000_000_000)
 
 
 def ink(plan: SyntheticPlan) -> NDArray[np.bool_]:
+    """Điểm mực của trang: kênh đỏ bằng 0 (nét đen)."""
     return np.asarray(plan.pixels[:, :, 0] == 0, dtype=np.bool_)
 
 
 def horizontal(wall: WallPx) -> bool:
+    """Tường nằm ngang khi hai đầu cùng toạ độ `y`."""
     return wall.start.y == wall.end.y
 
 
@@ -65,10 +66,12 @@ def refill(plan: SyntheticPlan) -> NDArray[np.bool_]:
 
 
 def region(box: BoxPx) -> tuple[slice, slice]:
+    """Lát `(hàng, cột)` của mảng ảnh ứng với hộp, cắt về số nguyên."""
     return slice(int(box.y_min), int(box.y_max)), slice(int(box.x_min), int(box.x_max))
 
 
 def trimmed(block: NDArray[np.bool_]) -> NDArray[np.bool_]:
+    """Cắt bỏ hàng và cột trống bao quanh khối điểm mực."""
     rows = np.flatnonzero(block.any(axis=1))
     cols = np.flatnonzero(block.any(axis=0))
     return block[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
@@ -224,6 +227,7 @@ def test_render_plan_ink_outside() -> None:
 
 @pytest.mark.perf
 def test_render_plan_performance() -> None:
+    """Vẽ đủ 40 seed của `EVAL_SET_SEEDS` dưới 8 s; số đo in bằng `logging`."""
     started = time.perf_counter()
     for seed in EVAL_SET_SEEDS:
         render_plan(seed)
@@ -233,6 +237,7 @@ def test_render_plan_performance() -> None:
 
 
 def _fingerprint(plan: SyntheticPlan) -> str:
+    """SHA-256 của ảnh, mặt nạ tường và PNG — dấu vân tay từng byte của một trang."""
     return hashlib.sha256(plan.pixels.tobytes() + plan.walls_mask.tobytes() + plan.image_png).hexdigest()
 
 
@@ -258,6 +263,7 @@ def test_eval_set_m06_fixed() -> None:
 
 
 def test_read_marker() -> None:
+    """`read_marker` đọc lại seed của trang, trả `None` khi dấu bị cắt hay trang trắng."""
     plan = render_plan(MAX_SEED, width_px=900, height_px=800)
     assert read_marker(plan.pixels) == MAX_SEED
     assert read_marker(render_plan(0).pixels) == 0
@@ -279,6 +285,7 @@ def test_read_marker() -> None:
     ],
 )
 def test_render_plan_rejects(seed: int, width: int, height: int, match: str) -> None:
+    """Seed hay khổ trang ngoài miền → `ValueError` mang đúng thông điệp."""
     with pytest.raises(ValueError, match=match):
         render_plan(seed, width_px=width, height_px=height)
 
@@ -294,6 +301,7 @@ def test_can_render_matches_render_plan() -> None:
 
 
 def test_render_plan_large_page() -> None:
+    """Trang 4000x3000 vẽ được, ảnh và mặt nạ trả ra chỉ đọc."""
     plan = render_plan(5, width_px=4000, height_px=3000)
     assert plan.pixels.shape == (3000, 4000, 3)
     assert not plan.pixels.flags.writeable
@@ -301,6 +309,7 @@ def test_render_plan_large_page() -> None:
 
 
 def test_format_and_font() -> None:
+    """`format_mm` chèn dấu chấm nghìn; phông có đủ ký tự, khổ đúng, ký tự lạ → `ValueError`."""
     assert [format_mm(value) for value in (900, 3600, 12500)] == ["900", "3.600", "12.500"]
     assert {"0", "9", ".", "A", "Z", " "} <= CHARSET
     assert glyph("8").shape == (TEXT_HEIGHT_PX, 10)
