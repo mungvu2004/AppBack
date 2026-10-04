@@ -1,5 +1,6 @@
 """Danh mục 16 mục: id, nhóm, tên, số liệu, `is_item_id` và hiệu năng dựng cả danh mục."""
 
+import logging
 import time
 import unicodedata
 
@@ -14,6 +15,8 @@ from packages.domain.library import (
     build_preview_png,
     is_item_id,
 )
+
+_log = logging.getLogger(__name__)
 
 TABLE_ORDER = [
     ("table-dining-6", "bàn ăn sáu chỗ", "table"),
@@ -110,10 +113,13 @@ def test_is_item_id_boundaries(value: str, expected: bool) -> None:
     assert is_item_id(value) is expected
 
 
+@pytest.mark.perf
 def test_build_all_assets_under_one_second() -> None:
-    """16 mục dựng GLB + PNG dưới 1 s tổng (lịch gọi mỗi lượt)."""
+    """16 mục dựng GLB + PNG dưới 1 s tổng (lịch gọi mỗi lượt); số đo in bằng `logging`."""
     start = time.perf_counter()
     for item in CATALOGUE:
         build_glb(item)
         build_preview_png(item)
-    assert time.perf_counter() - start < 1.0
+    elapsed = time.perf_counter() - start
+    _log.info("catalogue_build_elapsed_s=%.3f", elapsed)
+    assert elapsed < 1.0
