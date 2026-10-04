@@ -22,7 +22,7 @@ import json
 import os
 import secrets
 import shutil
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Final, cast
@@ -37,6 +37,7 @@ from packages.storage.port import (
     FileGrant,
     ObjectInfo,
     SignedUrl,
+    SignRequest,
     disk_errors,
     expiry,
     iter_chunks,
@@ -183,6 +184,12 @@ class LocalDiskStorage:
         mac = hmac.new(current_key("file"), _message(body), hashlib.sha256).digest()
         token = f"{_b64(raw)}.{_b64(mac)}"
         return SignedUrl(url=f"{self._public_base_url}{FILES_ROUTE}{token}", expires_at=expires_at)
+
+    async def signed_urls(self, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Ký cả lô; HMAC cục bộ nhẹ nên không cần luồng, chỉ gom về một hàm cho người gọi (NO-207)."""
+        return [
+            await self.signed_url(r.key, disposition=r.disposition, filename=r.filename, kind=r.kind) for r in requests
+        ]
 
     def verify_token(self, token: str) -> FileGrant:
         """Token hỏng, giả mạo hay hết hạn → 404 `NOT_FOUND` (không lộ lý do)."""

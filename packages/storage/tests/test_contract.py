@@ -11,7 +11,7 @@ import pytest
 
 from packages.core.errors import AppError
 from packages.storage import keys
-from packages.storage.port import SIGNED_URL_TTL, ObjectInfo, ObjectStorage
+from packages.storage.port import SIGNED_URL_TTL, ObjectInfo, ObjectStorage, SignRequest
 from packages.storage.sniff import ImageKind
 from packages.testing.fixtures.clock import FakeClock
 
@@ -288,3 +288,32 @@ async def test_list_prefix_orders_by_full_key(object_storage: ObjectStorage) -> 
         await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
 
     assert [info.key for info in await listed(object_storage, f"{base}/")] == sorted(names)
+
+
+async def test_signed_urls_match_signed_url_one_by_one(object_storage: ObjectStorage, fake_clock: FakeClock) -> None:
+    """NO-207: ký lô ra đúng URL và hạn của từng `signed_url`, cùng thứ tự, lô rỗng ra rỗng."""
+    fake_clock.set(datetime(2026, 1, 1, 9, 5, tzinfo=UTC))
+    first, second = page_key(), page_key()
+    requests = [
+        SignRequest(first, "attachment", filename="a.png"),
+        SignRequest(second, "inline", kind="png"),
+        SignRequest(first, "attachment"),
+    ]
+
+    batch = await object_storage.signed_urls(requests)
+    single = [
+        await object_storage.signed_url(r.key, disposition=r.disposition, filename=r.filename, kind=r.kind)
+        for r in requests
+    ]
+
+    assert batch == single
+    assert await object_storage.signed_urls([]) == []
+
+
+async def test_signed_urls_reject_inline_non_image(object_storage: ObjectStorage) -> None:
+    """NO-207: một phần tử sai luật `inline` làm hỏng cả lô, như `signed_url` đơn."""
+    key = page_key()
+    await object_storage.put(key, PDF, content_type="application/pdf", max_bytes=MAX_BYTES)
+
+    with pytest.raises(ValueError, match="inline"):
+        await object_storage.signed_urls([SignRequest(key, "inline")])
