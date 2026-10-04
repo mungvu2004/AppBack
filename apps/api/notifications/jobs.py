@@ -100,15 +100,25 @@ async def run_notification_trim(sessionmaker: async_sessionmaker[AsyncSession], 
     settings = get_notifications_settings()
     cutoff = clock.now() - timedelta(seconds=settings.notifications_hidden_purge_after_s)
     hidden = select(NotificationRow.id).where(NotificationRow.created_at < cutoff, ~visible_to_owner())
-    ranked = select(
-        NotificationRow.id,
-        func.row_number()
-        .over(
-            partition_by=NotificationRow.user_id,
-            order_by=(NotificationRow.created_at.desc(), NotificationRow.id.desc()),
+    # R-05: chỉ xếp hạng người vượt trần (index `(user_id, created_at, id)` phục vụ `GROUP BY`), không cả bảng mỗi lô.
+    over_cap = (
+        select(NotificationRow.user_id)
+        .group_by(NotificationRow.user_id)
+        .having(func.count() > settings.notifications_keep_max)
+    )
+    ranked = (
+        select(
+            NotificationRow.id,
+            func.row_number()
+            .over(
+                partition_by=NotificationRow.user_id,
+                order_by=(NotificationRow.created_at.desc(), NotificationRow.id.desc()),
+            )
+            .label("rn"),
         )
-        .label("rn"),
-    ).subquery()
+        .where(NotificationRow.user_id.in_(over_cap))
+        .subquery()
+    )
     overflow = select(ranked.c.id).where(ranked.c.rn > settings.notifications_keep_max)
     removed = await _delete_batches(sessionmaker, hidden, batch)
     removed += await _delete_batches(sessionmaker, overflow, batch)

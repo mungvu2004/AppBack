@@ -1,6 +1,7 @@
 """Lịch `publish_library_assets`, CLI `publish` và ranh giới nhập (B2-06 [6], [8])."""
 
 import asyncio
+import configparser
 import errno
 import subprocess
 import sys
@@ -97,6 +98,7 @@ def test_cli_publish_exits_one_when_storage_is_down(
     """Đĩa đầy (ENOSPC → `DEPENDENCY_UNAVAILABLE`): mọi mục `failed`, lỗi ra stderr, thoát 1."""
 
     def full_disk(_path: Path) -> NoReturn:
+        """Giả lập đĩa đầy."""
         raise OSError(errno.ENOSPC, "no space left")
 
     broken = LocalDiskStorage(tmp_path / "broken", SystemClock(), "https://appback.test", _open=full_disk)
@@ -107,6 +109,18 @@ def test_cli_publish_exits_one_when_storage_is_down(
     captured = capsys.readouterr()
     assert captured.out == "published=0 verified=0 skipped=0 failed=16\n"
     assert "16" in captured.err
+
+
+def test_blocked_covers_importlinter_jobs_contract() -> None:
+    """NO-240: bộ chặn của test phủ đủ gói mà hợp đồng `apps.api.*.jobs` của `.importlinter` cấm (BE-00 §7)."""
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read(REPO_ROOT / ".importlinter", encoding="utf-8")
+    forbidden: set[str] = set()
+    for section in parser.sections():
+        if parser[section].get("name", "").startswith("apps.api.*.jobs"):
+            forbidden.update(parser[section]["forbidden_modules"].split())
+    assert forbidden
+    assert forbidden <= set(BLOCKED), sorted(forbidden - set(BLOCKED))
 
 
 @pytest.mark.parametrize(
