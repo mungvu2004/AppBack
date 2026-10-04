@@ -9,7 +9,8 @@ def test_document_to_json_writes_layer_and_dimensions_but_no_axes() -> None:
     layer = sample_layer(0)
     document = document_to_json(layer, (), ())
     assert set(document) == {"layer", "axes", "dimensions"}
-    assert document["axes"] == [] and document["dimensions"] == []
+    assert document["axes"] == []
+    assert document["dimensions"] == []
     assert document["layer"] == layer.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
