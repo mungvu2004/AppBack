@@ -1,7 +1,8 @@
 """Tiến trình con của hộp cát đánh giá: nạp model người dùng và chạy vòng đánh giá, cách ly.
 
 Chạy bằng `python -m apps.ml.ml_eval.sandbox`. Giao thức: **một** object JSON vào stdin,
-**một** dòng JSON ra stdout — `{"metrics": {...}}` hay `{"code": "<mã>"}`; mọi thứ khác
+**một** dòng kết quả ra stdout — `RESULT_PREFIX` rồi `{"metrics": {...}}` hay `{"code": "<mã>"}`;
+cha chỉ đọc dòng có tiền tố nên dòng lạ do thư viện in không phá lượt đạt. Mọi thứ khác
 (thoát ≠ 0, tín hiệu) do tiến trình cha diễn giải.
 
 Bất biến: `RLIMIT_AS` đặt **trước** lần nhập `onnxruntime`/`apps.ml.runtime` đầu tiên —
@@ -18,7 +19,10 @@ import resource
 import sys
 from typing import IO, Any, Final
 
-__all__ = ["main"]
+__all__ = ["RESULT_PREFIX", "main"]
+
+RESULT_PREFIX: Final = "ML_EVAL_RESULT "
+"""Khung của dòng kết quả trên stdout: chuỗi này không thể là đầu một JSON hợp lệ."""
 
 MODEL_FORMAT_UNSUPPORTED: Final = "MODEL_FORMAT_UNSUPPORTED"
 """Lặp lại hằng của `apps.ml.runtime.errors`: module ấy kéo `onnxruntime` vào."""
@@ -73,14 +77,14 @@ def _reply(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def main(stdin: IO[str], stdout: IO[str]) -> None:
-    """Đọc yêu cầu, đặt trần bộ nhớ, ghi đúng một dòng JSON ra `stdout`.
+    """Đọc yêu cầu, đặt trần bộ nhớ, ghi đúng một dòng `RESULT_PREFIX` + JSON ra `stdout`.
 
     Nhận luồng làm tham số để test gọi thẳng được (không cần dựng tiến trình).
     """
     request = json.load(stdin)
     max_bytes = int(request["max_bytes"])
     resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
-    stdout.write(json.dumps(_reply(request)) + "\n")
+    stdout.write(RESULT_PREFIX + json.dumps(_reply(request)) + "\n")
     stdout.flush()
 
 

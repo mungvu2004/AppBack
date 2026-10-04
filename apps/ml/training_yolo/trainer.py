@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from apps.ml.training_segformer import errors
 from apps.ml.training_yolo.settings import YoloTrainSettings
@@ -153,8 +153,9 @@ class _RunCallbacks:
     def on_fit_epoch_end(self, trainer: Any) -> None:
         """Một điểm `train` (loss) và một điểm `validation` (`map50`) cho mỗi epoch đã xong.
 
-        Số ngoài miền `MetricPoint` hay không hữu hạn thì bỏ điểm đó và log `training_metric_skipped`:
-        gửi lên sẽ làm cầu nối B6-03a từ chối cả lô.
+        Số ngoài miền `MetricPoint` hay không hữu hạn thì bỏ điểm đó và log `training_metric_skipped`
+        đúng tên số đo bị bỏ: gửi lên sẽ làm cầu nối B6-03a từ chối cả lô. `last_map50` chỉ theo
+        `map50` (loss hỏng không xoá điểm validation đã gửi); log `training_epoch_finished` cần cả hai.
         """
         self.epochs_done += 1
         epoch = self.epochs_done
@@ -162,32 +163,32 @@ class _RunCallbacks:
             return
         loss = _loss_total(getattr(trainer, "tloss", None))
         map50 = _map50_of(getattr(trainer, "metrics", None))
-        self._emit(epoch, loss=loss)
-        self._emit(epoch, map50=map50)
-        if _in_domain(loss, None) and _in_domain(map50, 1.0):
+        self._emit(epoch, "loss", loss, high=None)
+        self._emit(epoch, "map50", map50, high=1.0)
+        if _in_domain(map50, 1.0):
             self.last_map50 = map50
-            self.reporter.log(
-                "info",
-                "training_epoch_finished",
-                {"epoch": epoch, "loss": float(loss or 0.0), "metric": "map50", "value": float(map50 or 0.0)},
-            )
+            if _in_domain(loss, None):
+                self.reporter.log(
+                    "info",
+                    "training_epoch_finished",
+                    {"epoch": epoch, "loss": float(loss or 0.0), "metric": "map50", "value": float(map50 or 0.0)},
+                )
         self.reporter.heartbeat(epoch)
 
-    def _emit(self, epoch: int, *, loss: float | None = None, map50: float | None = None) -> None:
-        """Gửi điểm của một split (đúng một trong `loss`/`map50`), hay log bỏ điểm khi số không dùng được."""
-        train = map50 is None
-        if not _in_domain(loss if train else map50, None if train else 1.0):
-            name = "loss" if train else "map50"
+    def _emit(self, epoch: int, name: Literal["loss", "map50"], value: float | None, *, high: float | None) -> None:
+        """Gửi điểm `name` (`loss` → split train, `map50` → validation), hay log bỏ điểm khi số không dùng được."""
+        if not _in_domain(value, high):
             self.reporter.log("warning", "training_metric_skipped", {"epoch": epoch, "metric": name})
             return
+        train = name == "loss"
         self.reporter.metric(
             MetricPoint(
                 step=self.batches,
                 epoch=epoch,
                 split="train" if train else "validation",
                 recorded_at_ms=int(self.clock.now().timestamp() * 1000),
-                loss=loss,
-                map50=map50,
+                loss=value if train else None,
+                map50=None if train else value,
             )
         )
 
