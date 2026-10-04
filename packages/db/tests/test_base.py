@@ -113,14 +113,16 @@ def test_timestamps_and_soft_delete_columns() -> None:
 
 
 @pytest.mark.parametrize(
-    ("column", "problem"),
+    ("name", "kind", "problem"),
     [
-        (mapped_column("when_at", DateTime()), "thiếu timezone=True"),
-        (mapped_column("width_mm", Float()), "mm phải là số nguyên"),
-        (mapped_column("score", Float()), "float_reason"),
+        ("when_at", DateTime, "thiếu timezone=True"),
+        ("width_mm", Float, "mm phải là số nguyên"),
+        ("score", Float, "float_reason"),
     ],
 )
-def test_conventions_catch_bad_columns(column: Any, problem: str) -> None:
+def test_conventions_catch_bad_columns(name: str, kind: type[Any], problem: str) -> None:
+    """Cột sai quy ước bị `check_conventions` bắt; cột dựng mới mỗi lượt (một `Column` chỉ gắn được một bảng, NO-341)."""
+    column = mapped_column(name, kind())
     md = MetaData(naming_convention=NAMING_CONVENTION)
 
     class Bad(DeclarativeBase):
