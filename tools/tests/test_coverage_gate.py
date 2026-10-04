@@ -39,6 +39,7 @@ def _fake_repo(tmp_path: Path) -> Path:
 
 class TestUnitOf:
     """`unit_of`: ánh xạ đường tương đối sang đơn vị."""
+
     def test_package(self) -> None:
         """Tệp dưới `packages/<gói>/` thuộc đơn vị `packages/<gói>`."""
         assert cg.unit_of("packages/core/errors.py") == "packages/core"
@@ -74,6 +75,7 @@ class TestUnitOf:
 
 class TestThresholds:
     """`check_thresholds`: biên 90%, nhánh worker, tập tệp bị chạm."""
+
     def _run(
         self, tmp_path: Path, files: dict[str, Any], totals: dict[str, int], branch: str, changed: list[str]
     ) -> cg.Report:
@@ -144,6 +146,7 @@ class TestThresholds:
 
 class TestForbiddenStructure:
     """Các kiểm cấu trúc: tệp cấm, chú thích né cổng, pyproject, vị trí test, `__init__.py`, `addopts`."""
+
     def test_coveragerc_bị_cấm(self, tmp_path: Path) -> None:
         """`.coveragerc` bị cấm."""
         root = _fake_repo(tmp_path)

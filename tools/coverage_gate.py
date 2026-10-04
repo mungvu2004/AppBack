@@ -58,6 +58,7 @@ SCAN_DIRS = ("packages", "apps", "tools", "deploy", "docs", "tests")
 @dataclass
 class Finding:
     """Một vi phạm: tên luật và chi tiết để in ra."""
+
     rule: str
     detail: str
 
@@ -65,6 +66,7 @@ class Finding:
 @dataclass
 class Report:
     """Kết quả cổng: các vi phạm (`findings`) và số đo in kèm (`numbers`)."""
+
     findings: list[Finding] = field(default_factory=list)
     numbers: list[str] = field(default_factory=list)  # số đo in kèm, không ảnh hưởng đạt/hỏng
 
@@ -221,6 +223,7 @@ def unit_of(rel_path: str) -> str | None:
 @dataclass
 class Totals:
     """Tổng dòng/nhánh đã phủ và tổng số, tính % cho một đơn vị hoặc toàn bộ."""
+
     covered_lines: int = 0
     num_statements: int = 0
     covered_branches: int = 0
@@ -245,7 +248,7 @@ class Totals:
 
 
 def _norm(p: str) -> str:
-    """Đổi dấu `\` thành `/` để so đường tương đối giữa Windows và Linux."""
+    """Đổi dấu gạch chéo ngược thành `/` để so đường tương đối giữa Windows và Linux."""
     return p.replace("\\", "/")
 
 
