@@ -1,5 +1,6 @@
 """Test `export.export_and_check`: từ chối dữ liệu ngoài, bất khớp tương đương, ca thật (khối [6])."""
 
+import ast
 import copy
 import logging
 import time
@@ -9,8 +10,9 @@ from typing import cast
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 import pytest
 import torch
-from onnx import TensorProto, helper
+from onnx import ModelProto, TensorProto, helper
 
+from apps.ml.runtime.loader import has_external_data
 from apps.ml.training_runner.errors import TrainingStopped
 from apps.ml.training_segformer import export as segformer_export
 from apps.ml.training_segformer import model as segformer_model
@@ -32,24 +34,31 @@ def _tiny_model(tmp_path: Path) -> torch.nn.Module:
     return segformer_model.load_pretrained(models_dir, "mitB0", write_pinned_tiny_model(models_dir))
 
 
-def test_export_rejects_external_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`export_onnx` giả ghi ONNX có tensor ngoài + tệp phụ → `MODEL_FORMAT_UNSUPPORTED`."""
+def _write_external_data_onnx(path: Path, *, opset: int, with_companion: bool) -> str:
+    """Ghi ONNX hợp lệ cấu trúc nhưng có một initializer trỏ dữ liệu ngoài (`weights.bin`, tuỳ chọn có kèm)."""
+    value_in = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])
+    value_out = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])
+    weight = helper.make_tensor("w", TensorProto.FLOAT, [1], [1.0])
+    weight.data_location = TensorProto.EXTERNAL
+    entry = weight.external_data.add()
+    entry.key = "location"
+    entry.value = "weights.bin"
+    node = helper.make_node("Add", ["x", "w"], ["y"])
+    graph = helper.make_graph([node], "g", [value_in], [value_out], [weight])
+    onnx_model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+    path.write_bytes(onnx_model.SerializeToString())
+    if with_companion:
+        (path.parent / "weights.bin").write_bytes(b"\x00\x00\x80?")
+    return "unused"
+
+
+@pytest.mark.parametrize("with_companion", [True, False])
+def test_export_rejects_external_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_companion: bool) -> None:
+    """ONNX có tensor ngoài (kèm hay không kèm tệp phụ) → `MODEL_FORMAT_UNSUPPORTED`."""
 
     def _fake_export_onnx(_model: object, _sample: object, path: Path, *, opset: int) -> str:
-        """Dựng ONNX hợp lệ về cấu trúc nhưng có một initializer trỏ dữ liệu ngoài."""
-        value_in = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])
-        value_out = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])
-        weight = helper.make_tensor("w", TensorProto.FLOAT, [1], [1.0])
-        weight.data_location = TensorProto.EXTERNAL
-        entry = weight.external_data.add()
-        entry.key = "location"
-        entry.value = "weights.bin"
-        node = helper.make_node("Add", ["x", "w"], ["y"])
-        graph = helper.make_graph([node], "g", [value_in], [value_out], [weight])
-        onnx_model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
-        path.write_bytes(onnx_model.SerializeToString())
-        (path.parent / "weights.bin").write_bytes(b"\x00\x00\x80?")
-        return "unused"
+        """Dựng ONNX dữ liệu ngoài qua helper chung."""
+        return _write_external_data_onnx(path, opset=opset, with_companion=with_companion)
 
     monkeypatch.setattr(segformer_export, "export_onnx", _fake_export_onnx)
     model = _tiny_model(tmp_path)
@@ -57,12 +66,79 @@ def test_export_rejects_external_data(tmp_path: Path, monkeypatch: pytest.Monkey
     write_dataset(data_dir)
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    reporter = RecordingReporter()
     with pytest.raises(PermanentError) as excinfo:
         segformer_export.export_and_check(
-            model, out_dir, data_dir / "validation", config=SegformerTrainConfig(), reporter=reporter
+            model, out_dir, data_dir / "validation", config=SegformerTrainConfig(), reporter=RecordingReporter()
         )
     assert excinfo.value.code == MODEL_FORMAT_UNSUPPORTED
+
+
+def test_export_external_data__rejected_by_has_external_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ca một-tệp-duy-nhất phải do chính `has_external_data` chặn, không phải `onnx.checker` (NO-317, P3-4)."""
+    calls: list[bool] = []
+    real = has_external_data
+
+    def _spy(onnx_model: ModelProto) -> bool:
+        """Ghi kết quả thật của `has_external_data`."""
+        result = real(onnx_model)
+        calls.append(result)
+        return result
+
+    def _fake_export_onnx(_model: object, _sample: object, path: Path, *, opset: int) -> str:
+        """Dựng ONNX dữ liệu ngoài, không tệp phụ."""
+        return _write_external_data_onnx(path, opset=opset, with_companion=False)
+
+    monkeypatch.setattr(segformer_export, "export_onnx", _fake_export_onnx)
+    monkeypatch.setattr(segformer_export, "has_external_data", _spy)
+    data_dir = tmp_path / "data"
+    write_dataset(data_dir)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(PermanentError):
+        segformer_export.export_and_check(
+            _tiny_model(tmp_path),
+            out_dir,
+            data_dir / "validation",
+            config=SegformerTrainConfig(),
+            reporter=RecordingReporter(),
+        )
+    assert calls == [True]
+
+
+def test_export_rejects_invalid_graph(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đồ thị sai (node đọc tên không có, không dữ liệu ngoài) → `onnx.checker` chặn → `MODEL_FORMAT_UNSUPPORTED`."""
+
+    def _fake_export_onnx(_model: object, _sample: object, path: Path, *, opset: int) -> str:
+        """Ghi ONNX có node tham chiếu đầu vào `missing` chưa khai báo."""
+        value_in = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])
+        value_out = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])
+        node = helper.make_node("Add", ["x", "missing"], ["y"])
+        graph = helper.make_graph([node], "g", [value_in], [value_out])
+        path.write_bytes(helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)]).SerializeToString())
+        return "unused"
+
+    monkeypatch.setattr(segformer_export, "export_onnx", _fake_export_onnx)
+    data_dir = tmp_path / "data"
+    write_dataset(data_dir)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(PermanentError) as excinfo:
+        segformer_export.export_and_check(
+            _tiny_model(tmp_path),
+            out_dir,
+            data_dir / "validation",
+            config=SegformerTrainConfig(),
+            reporter=RecordingReporter(),
+        )
+    assert excinfo.value.code == MODEL_FORMAT_UNSUPPORTED
+
+
+def test_export_and_check__within_length_limit() -> None:
+    """`export_and_check` ≤ 50 dòng (R-08, NO-317)."""
+    tree = ast.parse(Path(segformer_export.__file__).read_text(encoding="utf-8"))
+    func = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "export_and_check")
+    assert func.end_lineno is not None
+    assert func.end_lineno - func.lineno + 1 <= 50
 
 
 def test_export_rejects_garbage_onnx_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,38 +216,6 @@ def test_export_and_check_real_model(tmp_path: Path) -> None:
     parity = next(params for level, template, params in reporter.logs if template == "training_parity")
     assert render_log("training_exported", exported) is not None
     assert render_log("training_parity", parity) is not None
-
-
-def test_export_rejects_external_data_without_extra_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """ONNX hợp lệ cấu trúc, một tệp duy nhất, nhưng tensor trỏ dữ liệu ngoài → `MODEL_FORMAT_UNSUPPORTED`."""
-
-    def _fake_export_onnx(_model: object, _sample: object, path: Path, *, opset: int) -> str:
-        """Ghi đúng một tệp `model.onnx` nhưng initializer đánh dấu `EXTERNAL` (dữ liệu không kèm theo)."""
-        value_in = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])
-        value_out = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])
-        weight = helper.make_tensor("w", TensorProto.FLOAT, [1], [1.0])
-        weight.data_location = TensorProto.EXTERNAL
-        entry = weight.external_data.add()
-        entry.key = "location"
-        entry.value = "weights.bin"
-        node = helper.make_node("Add", ["x", "w"], ["y"])
-        graph = helper.make_graph([node], "g", [value_in], [value_out], [weight])
-        onnx_model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
-        path.write_bytes(onnx_model.SerializeToString())
-        return "unused"
-
-    monkeypatch.setattr(segformer_export, "export_onnx", _fake_export_onnx)
-    model = _tiny_model(tmp_path)
-    data_dir = tmp_path / "data"
-    write_dataset(data_dir)
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-    reporter = RecordingReporter()
-    with pytest.raises(PermanentError) as excinfo:
-        segformer_export.export_and_check(
-            model, out_dir, data_dir / "validation", config=SegformerTrainConfig(), reporter=reporter
-        )
-    assert excinfo.value.code == MODEL_FORMAT_UNSUPPORTED
 
 
 def test_export_onnx_runtime_error_is_format_unsupported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

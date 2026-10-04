@@ -385,3 +385,13 @@ def test_zz_fake_run_restores_originals(originals: dict[str, object]) -> None:
 
     assert export_module.export_yolo is originals["export_yolo"]
     assert model_module.Model.train is originals["Model.train"]
+
+
+def test_trainer__keyword_only_and_family_fixed() -> None:
+    """Ctor chỉ nhận keyword và không cho tiêm `family` (khối [2], cùng lệch P3-10 của segformer)."""
+    ctor: Any = YoloTrainer
+    with pytest.raises(TypeError):
+        ctor(YoloTrainSettings())
+    with pytest.raises(TypeError):
+        ctor(family="wallSegmentation")
+    assert YoloTrainer().family == _FAMILY
