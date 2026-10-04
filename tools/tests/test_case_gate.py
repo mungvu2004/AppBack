@@ -636,3 +636,11 @@ def test_main__in_dòng_task_đạt(
     monkeypatch.setattr(case_gate, "load_cases_toml", lambda _paths: ({}, requirements))
     assert case_gate.main() == 0
     assert "  train | bắt buộc ['J01', 'J06', 'M01'] | tìm thấy ['J01', 'J06', 'M01'] | đạt" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("op_name", ["files_read_object", "health_live", "health_ready"])
+def test_evaluate__infra_op_without_bind_row_no_warning(op_name: str) -> None:
+    """Route hạ tầng/tệp (`INFRA_OPS`) không có dòng BE-BIND thì miễn cảnh báo, không vào bảng."""
+    result = evaluate([_op(op=op_name)], [], {}, [], [], [], [])
+    assert not result.unmounted_warnings
+    assert not result.op_results
