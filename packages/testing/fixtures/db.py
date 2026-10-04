@@ -358,7 +358,15 @@ async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[Async
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_session(db_sessionmaker: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
-    """Một `AsyncSession` của test, đóng sau test."""
+    """Một `AsyncSession` của test, đóng sau test.
+
+    Đọc lại sau khi request (phiên khác) đã ghi (NO-235): kết thúc giao dịch của phiên bằng
+    `await db_session.commit()` — sessionmaker đặt `expire_on_commit=False` nên đối tượng ORM đang
+    giữ vẫn đọc được — rồi `await db_session.refresh(obj)` hoặc truy vấn lại để thấy giá trị mới.
+    **Không** `rollback()`: nó luôn làm hết hạn mọi instance (cờ trên không áp dụng), lần chạm thuộc
+    tính kế tiếp (`obj.pk`) nạp lười trong async và nổ `MissingGreenlet`
+    (`packages/db/tests/test_db_session_fixture.py`).
+    """
     async with db_sessionmaker() as session:
         yield session
 

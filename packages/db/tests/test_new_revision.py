@@ -75,7 +75,7 @@ def test_creates_revision_with_charter_name(
     assert [path.name for path in created] == [f"{rev}_add_projects.py"]
     body = created[0].read_text(encoding="utf-8")
     assert f'revision: str = "{rev}"' in body
-    assert f'down_revision: str | None = "{head_before}"' in body
+    assert f'down_revision: str | Sequence[str] | None = "{head_before}"' in body
     assert rev in capsys.readouterr().out
     assert lint_migrations(versions).violations == []
 
@@ -91,6 +91,7 @@ def test_revision_date_read_from_clock_at_call_time(versions: Path, fake_clock: 
 
 
 def test_second_revision_for_same_prompt_is_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Mỗi prompt tối đa một revision: lần thứ hai thoát 2, không tạo file."""
     assert new_revision.main(["--code", CODE, "--slug", "add_projects"]) == 0
     assert new_revision.main(["--code", CODE, "--slug", "add_more"]) == 2
     assert "đã có revision" in capsys.readouterr().out
@@ -98,6 +99,7 @@ def test_second_revision_for_same_prompt_is_rejected(versions: Path, capsys: pyt
 
 
 def test_fix_revision_allowed_once(versions: Path, fake_clock: FakeClock) -> None:
+    """Revision `_fix<nnn>` tạo được một lần cho mỗi số FIX, qua lint."""
     assert new_revision.main(["--code", CODE, "--slug", "add_projects"], clock=fake_clock) == 0
     assert new_revision.main(["--code", CODE, "--slug", "fix_index", "--fix", "001"], clock=fake_clock) == 0
     assert list(versions.glob(f"r{fake_clock.now():%Y%m%d}_{CODE_LOWER}_fix001_fix_index.py"))
@@ -107,16 +109,19 @@ def test_fix_revision_allowed_once(versions: Path, fake_clock: FakeClock) -> Non
 
 @pytest.mark.parametrize("slug", ["AddProjects", "add projects", "2_projects", "add-projects", ""])
 def test_bad_slug_rejected(versions: Path, slug: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """Slug không phải snake_case thì thoát 2."""
     assert new_revision.main(["--code", CODE, "--slug", slug]) == 2
     assert "snake_case" in capsys.readouterr().out
 
 
 def test_bad_fix_number_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`--fix` không đủ ba chữ số thì thoát 2."""
     assert new_revision.main(["--code", CODE, "--slug", "x", "--fix", "1"]) == 2
     assert "ba chữ số" in capsys.readouterr().out
 
 
 def test_too_long_revision_id_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Id revision dài hơn 32 ký tự thì thoát 2, không để file rác."""
     code = f"{CODE_LOWER}_" + "x" * 20  # r<8> + _ + 26 = 36 ký tự
     assert new_revision.main(["--code", code, "--slug", "x"]) == 2
     out = capsys.readouterr().out
@@ -125,15 +130,18 @@ def test_too_long_revision_id_rejected(versions: Path, capsys: pytest.CaptureFix
 
 
 def test_two_heads_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Cây có hai head thì từ chối tạo revision (không tạo revision merge)."""
     (versions / "r20260920_b9_99_second_head.py").write_text(SECOND_HEAD, encoding="utf-8")
     assert new_revision.main(["--code", CODE, "--slug", "add_projects"]) == 2
     assert "2 head" in capsys.readouterr().out
 
 
 def test_bad_code_rejected(versions: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Mã prompt sai mẫu thì thoát 2."""
     assert new_revision.main(["--code", "2B*01", "--slug", "x"]) == 2
     assert "mã prompt sai mẫu" in capsys.readouterr().out
 
 
 def test_baseline_revision_passes_lint() -> None:
+    """Revision gốc của repo qua `lint_migrations`."""
     assert lint_migrations(SCRIPT_LOCATION / "versions").violations == []
