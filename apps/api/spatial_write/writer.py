@@ -21,11 +21,13 @@ import json
 import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from hashlib import sha256
 from typing import Final, Literal, Protocol
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import BigInteger, DateTime, Insert, Text, cast, func, insert, literal, select, update
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.drawings import current_drawing
@@ -76,6 +78,25 @@ _TOUCH_FIELD: Final[Mapping[ChangeEntityType, str]] = {
     "furniture": "kind",
 }
 """Trường đại diện của dấu chạm (HOP-DONG-MOI §1.3): một dòng cho thay đổi ngoài bảng diff."""
+
+_LOG_CHUNK_ROWS: Final = 20_000
+"""Dòng nhật ký mỗi câu `INSERT`: ~1 s một câu trên máy cổng, xa `statement_timeout` 10 s."""
+
+_LOG_COLUMNS: Final = (
+    "floor_pk",
+    "revision",
+    "entity_type",
+    "entity_id",
+    "field",
+    "value",
+    "removed",
+    "changed_at",
+    "changed_by",
+    "changed_by_name",
+    "created_at",
+    "updated_at",
+)
+"""Cột của câu chèn nhật ký, đúng thứ tự cột `select` trong `_log_insert`."""
 
 
 class MergeOutcome(Protocol):
@@ -578,31 +599,50 @@ async def _write_log(
     new: SpatialLayer,
     touched: tuple[Dimension, ...],
 ) -> None:
-    """Bước 13: một lô `INSERT` vào `floor_change_log`; không có gì đổi thì không câu nào."""
+    """Bước 13: nhật ký theo trường vào `floor_change_log`; không có gì đổi thì không câu nào.
+
+    Mỗi khúc `_LOG_CHUNK_ROWS` dòng là **một** câu `INSERT … SELECT FROM unnest(…)`: lô
+    `executemany` cũ tốn ~80 µs/dòng, 12 s cho 140.000 dòng của lớp 20.000 tường dưới khoá tầng
+    (NO-296). Chia khúc để mỗi câu xa `statement_timeout`; `id` vẫn tăng theo thứ tự `changes`.
+    """
     changes = diff_layers(old, new)
     if not changes and has_untracked_changes(old, new):
         changes = _touch_marks(old, new)
     changes += [FieldChange(item.id, "dimension", "reference_ids", list(item.reference_ids)) for item in touched]
-    if not changes:
-        return
     now = request.clock.now()
-    await db.execute(
-        insert(FloorChangeLogRow),
-        [
-            {
-                "floor_pk": request.floor_pk,
-                "revision": revision,
-                "entity_type": change.entity_type,
-                "entity_id": change.entity_id,
-                "field": change.field,
-                "value": None if change.value is MISSING else change.value,
-                "removed": change.value is MISSING,
-                "changed_at": now,
-                "changed_by": request.actor_id,
-                "changed_by_name": request.actor_name,
-                "created_at": now,
-                "updated_at": now,
-            }
-            for change in changes
-        ],
+    for start in range(0, len(changes), _LOG_CHUNK_ROWS):
+        await db.execute(_log_insert(request, revision, now, changes[start : start + _LOG_CHUNK_ROWS]))
+
+
+def _log_insert(request: _Request, revision: int, now: datetime, changes: Sequence[FieldChange]) -> Insert:
+    """Một câu chèn một khúc nhật ký: bốn mảng song song, `WITH ORDINALITY` giữ thứ tự `id` identity.
+
+    `value` đi dạng chuỗi JSON rồi `::jsonb` (jsonb chuẩn hoá nên bằng hệt đường ORM cũ); `MISSING`
+    là phần tử `NULL` → SQL NULL và `removed = true`, đúng CHECK `removed_matches_value`.
+    """
+    rows = (
+        func.unnest(
+            literal([change.entity_type for change in changes], ARRAY(Text)),
+            literal([change.entity_id for change in changes], ARRAY(Text)),
+            literal([change.field for change in changes], ARRAY(Text)),
+            literal([None if change.value is MISSING else json.dumps(change.value) for change in changes], ARRAY(Text)),
+        )
+        .table_valued("entity_type", "entity_id", "field", "value", with_ordinality="position")
+        .render_derived()
     )
+    at = literal(now, DateTime(timezone=True))
+    source = select(
+        literal(request.floor_pk, BigInteger),
+        literal(revision, BigInteger),
+        rows.c.entity_type,
+        rows.c.entity_id,
+        rows.c.field,
+        cast(rows.c.value, JSONB),
+        rows.c.value.is_(None),
+        at,
+        literal(request.actor_id, Text),
+        literal(request.actor_name, Text),
+        at,
+        at,
+    ).order_by(rows.c.position)
+    return insert(FloorChangeLogRow).from_select(_LOG_COLUMNS, source)

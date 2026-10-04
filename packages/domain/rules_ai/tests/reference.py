@@ -72,7 +72,10 @@ def ref_apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
             openings.append(op)
         else:
             openings.append(op.model_copy(update=_cap(op)))
-    walls = tuple(w.model_copy(update={"kind": "envelope", **_cap(w)}) if w.id in promoted else w for w in layer.walls)
+    walls = tuple(
+        w.model_copy(update={"kind": "envelope", **_cap(w)}) if w.id in promoted and _can_edit(w) else w
+        for w in layer.walls
+    )
     return SpatialLayer(walls=walls, openings=tuple(openings), rooms=layer.rooms, furniture=furniture)
 
 
