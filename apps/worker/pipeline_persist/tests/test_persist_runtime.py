@@ -99,6 +99,13 @@ def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         reset()
 
 
+@pytest.fixture
+def storage_override(local_storage: LocalDiskStorage) -> Iterator[None]:
+    """Task chạy trên `local_storage` của test (đã mồi `layer.json`) thay vì kho dựng từ môi trường."""
+    with tasks._STORAGE.override(lambda: local_storage):
+        yield
+
+
 def on_own_loop[T](db_url: str, work: Callable[[Maker], Coroutine[object, object, T]]) -> T:
     """Chạy `work` trên engine dựng riêng cho vòng `asyncio.run` này; trả kết quả của nó.
 
@@ -161,14 +168,13 @@ def _wait_failed(db_url: str, upload_id: str, deadline: float) -> dict[str, obje
     return wire
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_persist_pipeline_result__J01_smoke(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     broker: SyncRedis,
     celery_test_app: Celery,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Task thật qua `task.apply`, **không** gọi `after_commit_idle`: đúng một `pipeline.quality.run`.
 
@@ -177,11 +183,10 @@ def test_persist_pipeline_result__J01_smoke(
     đặt `DB_AFTER_COMMIT_INLINE=1` như tiến trình worker, nên `on_after_commit` chạy tại chỗ trong
     lượt commit và test không phải chờ gì.
 
-    Kho vẫn trỏ qua `_STORAGE._factory` để dùng chung `local_storage` đã mồi `layer.json`; DB thì
+    Kho vẫn trỏ qua fixture `storage_override` để dùng chung `local_storage` đã mồi `layer.json`; DB thì
     task tự dựng từ `DATABASE_URL` của `process_env`. Không mang marker `perf`: test mang mã case
     không được là test `perf` (cổng bước 5b), số đo thời gian ghi bằng `logging`.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     arranged = on_own_loop(db_url, lambda maker: arrange(maker, local_storage, fake_clock))
 
     start = time.monotonic()
@@ -192,14 +197,13 @@ def test_persist_pipeline_result__J01_smoke(
     assert on_own_loop(db_url, lambda maker: _progress(maker, arranged.upload_id))["status"] == "running"
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_persist_pipeline_result__J03(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     broker: SyncRedis,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ba ca hỏng qua worker thật: `Progress` `failed` + đúng mã, không `endedAt`, không ghi gì.
 
@@ -210,7 +214,6 @@ def test_persist_pipeline_result__J03(
     có. Mỗi ca một lượt chạy riêng vì lượt đã `failed` không nhận kết quả nữa. Worker nghe
     `pipeline.cpu` được: ca hỏng không gửi thông điệp nào nên không có gì bị nuốt.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     cases: tuple[tuple[str, Callable[[Arranged], bytes | None], str], ...] = (
         ("artifact vắng", lambda _a: None, PIPELINE_ARTIFACT_MISSING),
         ("json hỏng", lambda _a: b"{khong-phai-json", PIPELINE_ARTIFACT_INVALID),
