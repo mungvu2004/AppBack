@@ -20,6 +20,7 @@ import asyncio
 import functools
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
@@ -60,6 +61,7 @@ from packages.storage.local import LocalDiskStorage
 from packages.testing.fixtures.messaging import WorkerFactory
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
 
+_log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[4]
 QUEUE = "default"
 WAIT_S = 90.0
@@ -256,6 +258,7 @@ liệu** của test, không phải logic. Dấu ngoặc nhọn của chính scri
 """
 
 
+@pytest.mark.perf
 def test_run_training_job_cancel_while_waiting(
     claim_client: SyncRedis,
     local_storage: LocalDiskStorage,
@@ -283,6 +286,7 @@ def test_run_training_job_cancel_while_waiting(
     outcome = json.loads(result.stdout.strip().splitlines()[-1])
     assert outcome["finished"], result.stderr
     assert outcome["finished"][-1]["status"] == "cancelled"
+    _log.info("cancel_wait_elapsed_s=%.3f", outcome["elapsed"])
     assert outcome["elapsed"] <= 10
     assert outcome["torch"] is False
 

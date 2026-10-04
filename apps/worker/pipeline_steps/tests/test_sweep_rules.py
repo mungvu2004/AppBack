@@ -7,9 +7,9 @@ bản, không hai bản lệch nhau (R-02); `__all__` khai lại hai fixture đ�
 
 "Hàng treo" dùng một `redis.asyncio.Redis` **lớp con** có `llen` chờ `asyncio.Event` không bao giờ đặt: đó
 là cách duy nhất dựng cảnh broker treo mà không mock Redis (K23 — client vẫn thật, chỉ một lệnh bị
-chặn). Trần "≤ 2 s" là trần của prompt chứ không phải hợp đồng hiệu năng, nên không gắn marker
-`perf` (test ở đây không mang mã case, và `HANG_BUDGET_S` chỉ là `LLEN_TIMEOUT_S` + mép); số đo in
-bằng `logging`.
+chặn). Trần "≤ 2 s" là cận trên đồng hồ tường (`HANG_BUDGET_S` = `LLEN_TIMEOUT_S` + mép) nên
+`test_sweep_survives_unreadable_queue` gắn marker `perf` (BE-00 §12; test không mang mã case); số đo
+in bằng `logging`.
 """
 
 import asyncio
@@ -243,6 +243,7 @@ async def test_sweep_fails_run_without_matching_drawing(
     assert sweep_env.llen(ML_QUEUE) == 0
 
 
+@pytest.mark.perf
 @pytest.mark.parametrize("fail", [False, True], ids=["treo", "connection_error"])
 async def test_sweep_survives_unreadable_queue(
     sweep_env: SyncRedis,

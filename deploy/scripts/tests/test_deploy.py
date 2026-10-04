@@ -245,12 +245,10 @@ def test_deploy_scale2_creates_no_new_container_fails_fast_without_touching_old(
         "DOCKER_SCALE2_NO_NEW": "1",
         "FAKE_LOG": str(log),
     }
-    start = time.monotonic()
+    # `timeout=15` là hạn chờ: chờ đủ 120s thì TimeoutExpired → test đỏ; không có `assert` đồng hồ.
     result = run_script(SCRIPT, ["sha-new00000001"], env=env, bin_dir=bin_dir, timeout=15)
-    elapsed = time.monotonic() - start
 
     assert result.returncode != 0
-    assert elapsed < 10, f"đợi hết {elapsed:.1f}s — chưa chặn new_id rỗng"
     lines = list(read_log(log))
     assert not any(ln.startswith("docker stop") and "old1" in ln for ln in lines)
     assert not (appback_dir / "current_tag").exists()

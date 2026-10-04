@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, run_script
@@ -63,11 +62,9 @@ def test_smoke_max_time_uses_remaining_budget_not_fixed_10s() -> None:
     routes = dict(FULL_ROUTES)
     routes["/api/health"] = Reply(200, delay_s=5.0)  # dài hơn cả SMOKE_DEADLINE_S=2 bên dưới
     with HttpStub(routes) as stub:
-        start = time.monotonic()
-        result = run_script(SCRIPT, [stub.url], env={"SMOKE_DEADLINE_S": "2"}, timeout=20)
-        elapsed = time.monotonic() - start
+        # `timeout=8` là hạn chờ (TimeoutExpired nếu `--max-time` vẫn cố định 10s), không phải `assert` đồng hồ
+        result = run_script(SCRIPT, [stub.url], env={"SMOKE_DEADLINE_S": "2"}, timeout=8)
     assert result.returncode == 1
-    assert elapsed < 8, f"elapsed={elapsed:.1f}s — --max-time vẫn cố định 10s thay vì ngân sách còn lại"
 
 
 def test_smoke_missing_argument_exits_2(tmp_path: Path) -> None:

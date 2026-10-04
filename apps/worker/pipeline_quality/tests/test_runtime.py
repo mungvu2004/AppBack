@@ -288,6 +288,7 @@ class _FailingXrevrange:
         raise redis.exceptions.RedisError("redis-broker giả lập hỏng")
 
 
+@pytest.mark.perf
 @pytest.mark.asyncio(loop_scope="function")
 @pytest.mark.usefixtures("messaging_env")
 async def test_quality_replay_redis_hang_skips(
