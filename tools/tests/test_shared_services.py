@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pytest
 from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # không có stub
 
 from packages.testing.fixtures import services
 from packages.testing.fixtures.services import SHARED_STATE_PREFIX, _shared_container
@@ -184,7 +185,7 @@ def test_shared_redis__two_workers_share_one_container_on_their_own_blocks(
     starter = _Starter()
     commands: list[str] = []
 
-    def fake_start(container: services.RedisContainer) -> _FakeContainer:
+    def fake_start(container: RedisContainer) -> _FakeContainer:
         """Thay `_start`: ghi lệnh khởi động và một lần dựng, không chạm Docker."""
         commands.append(container._command)
         return starter()[0]
