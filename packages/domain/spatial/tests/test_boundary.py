@@ -25,8 +25,8 @@ class Blocker:
 
 
 sys.meta_path.insert(0, Blocker())
-import packages.domain.scale  # noqa: E402
-import packages.domain.spatial  # noqa: E402
+import packages.domain.scale  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
+import packages.domain.spatial  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
 
 packages.domain.spatial.sample_building()
 print("ok")
