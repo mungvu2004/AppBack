@@ -11,6 +11,7 @@ from packages.core.clock import Clock
 from packages.core.ids import new_id
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.datasets import SampleMeta, parse_manifest
+from packages.storage.keys import dataset_object
 from packages.storage.local import LocalDiskStorage
 
 pytestmark = pytest.mark.usefixtures("storage_env")
@@ -35,8 +36,6 @@ async def _chunks(*parts: bytes) -> AsyncIterator[bytes]:
 
 
 async def _read_manifest(storage: LocalDiskStorage, version_id: str) -> bytes:
-    from packages.storage.keys import dataset_object
-
     key = dataset_object(version_id, "manifest.jsonl")
     body = b""
     async for chunk in storage.open_read(key):
@@ -69,6 +68,8 @@ async def test_add_sample_and_finish__manifest_matches_objects(
         "train/prj1_lvl1/objects.json",
         "train/prj1_lvl1/meta.json",
     }
+    for path in entries:  # NO-263: khoá mẫu là đúng `dataset_object` của đường mẫu
+        assert await local_storage.stat(dataset_object(version_id, path)) is not None
     assert entries["train/prj1_lvl1/image.png"].sha256 == hashlib.sha256(image).hexdigest()
     assert entries["train/prj1_lvl1/image.png"].bytes == len(image)
     assert entries["train/prj1_lvl1/walls.png"].sha256 == hashlib.sha256(walls).hexdigest()
