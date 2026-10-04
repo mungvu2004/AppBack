@@ -174,6 +174,7 @@ def celery_worker_factory(celery_test_app: Celery) -> WorkerFactory:
 
     @contextmanager
     def factory(queues: Sequence[str]) -> Iterator[None]:
+        """Worker thật nghe `queues` trong khối `with`; hàng lạ → `ValueError`."""
         unknown = set(queues) - set(QUEUES)
         if unknown:
             raise ValueError(f"hàng lạ: {sorted(unknown)}")
