@@ -88,6 +88,7 @@ class ProcessLocal[ResourceT]:
     """
 
     def __init__(self, factory: Callable[[], ResourceT]) -> None:
+        """Ghi nhớ `factory`; tài nguyên chưa dựng tới lần `get()` đầu."""
         self._factory = factory
         self._lock = threading.Lock()
         self._value: ResourceT | None = None
@@ -145,6 +146,7 @@ def _retry(retries: int) -> Retry:
 # này. Upstream ghi `legacy_responses=False` là đích di trú, nên dựa mặc định là để một
 # lượt bump thư viện đổi hình dạng dữ liệu của mọi luồng SSE mà không ai thấy.
 def _async_client(url: str, db: int, read_timeout_s: float, retries: int) -> AsyncRedis:
+    """Client async của một vai: DB `db` trên URL, trần đọc và ngân sách thử lại của vai."""
     client: AsyncRedis = redis.asyncio.Redis.from_url(
         with_db(url, db),
         socket_connect_timeout=CONNECT_TIMEOUT_S,
@@ -158,6 +160,7 @@ def _async_client(url: str, db: int, read_timeout_s: float, retries: int) -> Asy
 
 
 def _sync_client(url: str, db: int) -> SyncRedis:
+    """Client đồng bộ của một vai: DB `db` trên URL, trần 0,5 s cho cả nối lẫn đọc."""
     return redis.Redis.from_url(
         with_db(url, db),
         socket_connect_timeout=SYNC_TIMEOUT_S,
@@ -189,34 +192,41 @@ def broker_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
 
 
 def streams_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
+    """Client async tới DB Streams sự kiện; trần đọc dài hơn trần chặn `XREAD`."""
     return _async_client(
         (settings or get_messaging_settings()).redis_broker_url, STREAM_DB, STREAM_READ_TIMEOUT_S, STREAM_RETRIES
     )
 
 
 def safe_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
+    """Client async tới DB an toàn (khoá đăng nhập, khoá GPU, hạn mức `store="safe"`)."""
     return _async_client(
         (settings or get_messaging_settings()).redis_broker_url, SAFE_DB, READ_TIMEOUT_S, ASYNC_RETRIES
     )
 
 
 def cache_redis(settings: MessagingSettings | None = None) -> AsyncRedis:
+    """Client async tới `redis-cache` (cache, rate limit); thiếu `REDIS_CACHE_URL` → `RuntimeError`."""
     return _async_client(_cache_url(settings or get_messaging_settings()), CACHE_DB, READ_TIMEOUT_S, ASYNC_RETRIES)
 
 
 def broker_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
+    """Bản đồng bộ của `broker_redis` — cho tín hiệu Celery và callback sau commit."""
     return _sync_client((settings or get_messaging_settings()).redis_broker_url, BROKER_DB)
 
 
 def streams_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
+    """Bản đồng bộ của `streams_redis` — đường ghi sự kiện sau commit."""
     return _sync_client((settings or get_messaging_settings()).redis_broker_url, STREAM_DB)
 
 
 def safe_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
+    """Bản đồng bộ của `safe_redis`."""
     return _sync_client((settings or get_messaging_settings()).redis_broker_url, SAFE_DB)
 
 
 def cache_redis_sync(settings: MessagingSettings | None = None) -> SyncRedis:
+    """Bản đồng bộ của `cache_redis`; thiếu `REDIS_CACHE_URL` → `RuntimeError`."""
     return _sync_client(_cache_url(settings or get_messaging_settings()), CACHE_DB)
 
 

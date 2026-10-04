@@ -35,6 +35,8 @@ def _check_redis_url(name: str, value: str) -> str:
 
 
 class MessagingSettings(BaseSettings):
+    """Cấu hình hàng đợi và Redis đọc từ biến môi trường (`REDIS_*`, `CELERY_*`, `TASK_*`)."""
+
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
     redis_broker_url: str
@@ -54,6 +56,7 @@ class MessagingSettings(BaseSettings):
     @field_validator("redis_broker_url")
     @classmethod
     def _broker_url(cls, value: str) -> str:
+        """`REDIS_BROKER_URL` bắt buộc và phải là URL Redis hợp lệ."""
         return _check_redis_url("REDIS_BROKER_URL", value)
 
     @field_validator("redis_cache_url")
@@ -65,6 +68,7 @@ class MessagingSettings(BaseSettings):
     @field_validator("task_retry_backoff_s", mode="before")
     @classmethod
     def _split_backoff(cls, value: object) -> object:
+        """Chuỗi `"10,60,300"` từ biến môi trường → tuple số; giá trị khác để nguyên cho pydantic."""
         if isinstance(value, str):
             return tuple(int(item) for item in value.split(",") if item.strip())
         return value
@@ -91,6 +95,7 @@ class MessagingSettings(BaseSettings):
 
 @cache
 def get_messaging_settings() -> MessagingSettings:
+    """Cấu hình của tiến trình, đọc một lần rồi nhớ; test xoá bằng `reset_messaging_settings_cache`."""
     return MessagingSettings()
 
 
