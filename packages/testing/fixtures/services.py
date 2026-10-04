@@ -22,13 +22,15 @@ import os
 import re
 import socket
 import sys
+import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from functools import cache
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
+from docker.errors import APIError, NotFound  # type: ignore[import-untyped]  # không có stub
 from filelock import FileLock
 
 # testcontainers 4.13 (bản trong uv.lock) không có py.typed, cũng không có gói stub
@@ -66,6 +68,10 @@ OWNER_LABEL = "appback.test-owner"
 # Hostname mặc định của một container Docker là 12 ký tự hex đầu của id nó (container verify-run).
 _CONTAINER_HOSTNAME = re.compile(r"[0-9a-f]{12}")
 
+# Phiên (chủ) đã quét gần nhất trên máy này; gốc tạm chung của mọi tiến trình xdist (cùng gốc với basetemp
+# của pytest), không phải basetemp — `_start` còn được gọi từ `ephemeral_*` không có `tmp_path_factory`.
+_SWEEP_STATE = Path(tempfile.gettempdir()) / "appback-orphan-sweep.owner"
+
 
 def session_owner() -> str:
     """Chủ của container dịch vụ: máy + tiến trình **điều khiển** của lượt pytest.
@@ -94,7 +100,8 @@ def _owner_alive(owner: str, client: Any) -> bool:
     if host == socket.gethostname():
         try:
             # Nhãn hỏng (pid không phải số) → không biết chủ → giữ, như mọi trường hợp không chắc
-            with suppress(PermissionError, ValueError):
+            # Pid quá lớn với `pid_t` (`OverflowError`) cũng là nhãn hỏng (review DEBT-02 #17)
+            with suppress(PermissionError, ValueError, OverflowError):
                 os.kill(int(pid), 0)
         except ProcessLookupError:
             return False
@@ -117,8 +124,19 @@ def sweep_orphans() -> list[str]:
 
 @cache
 def _sweep_once() -> None:
-    """`sweep_orphans` một lần mỗi tiến trình, ngay trước container đầu tiên nó dựng."""
-    sweep_orphans()
+    """`sweep_orphans` một lần mỗi **phiên**, ngay trước container đầu tiên của phiên được dựng.
+
+    `@cache` chặn lặp trong một tiến trình; `FileLock` + `_SWEEP_STATE` (chủ đã quét) chặn sáu tiến trình
+    xdist của cùng phiên quét lại sau nhau — trước đây cả sáu cùng `remove(force=True)` trên cùng
+    container mồ côi (review DEBT-02 #2). Phiên khác ghi đè chủ thì phiên này có thể quét thêm một lượt:
+    vô hại, `_remove_container` coi xoá trùng là đích đã đạt.
+    """
+    owner = session_owner()
+    with FileLock(f"{_SWEEP_STATE}.lock"):
+        if _SWEEP_STATE.exists() and _SWEEP_STATE.read_text(encoding="utf-8") == owner:
+            return
+        sweep_orphans()
+        _SWEEP_STATE.write_text(owner, encoding="utf-8")
 
 
 def _start[ContainerT: DockerContainer](container: ContainerT) -> ContainerT:
@@ -167,10 +185,17 @@ def _remove_container(container_id: str) -> None:
 
     `NotFound` là đích đã đạt chứ không phải lỗi: container có thể đã biến mất (Docker khởi động
     lại, ai đó dọn tay). Để nó nổi lên là một lượt chạy sạch hoá thành lỗi teardown của fixture
-    phiên, ngay lúc đang giữ `FileLock` (review F-2). Mọi lỗi Docker khác vẫn nổi lên (R-16).
+    phiên, ngay lúc đang giữ `FileLock` (review F-2). 409 "removal … already in progress" cũng vậy: một
+    người dọn khác (phiên verify khác cùng daemon đang `sweep_orphans`) đang xoá đúng container này, kết
+    cục như nhau (review DEBT-02 #2). Mọi lỗi Docker khác vẫn nổi lên (R-16).
     """
-    with suppress(NotFound):
+    try:
         DockerClient().client.containers.get(container_id).remove(force=True)
+    except NotFound:
+        pass
+    except APIError as exc:
+        if exc.status_code != 409:
+            raise
 
 
 @contextmanager
