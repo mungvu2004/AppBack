@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.core.deps import DbSession
 from apps.api.core.pagination import PageParams, decode_cursor, encode_cursor, page_params
 from apps.api.core.routing import protected_router
-from apps.api.drawings.drawings import drawing_url
+from apps.api.drawings.drawings import drawing_urls
 from apps.api.drawings.schemas import LatestFloorUploadOut, LatestFloorUploadPage
 from apps.api.drawings.urls import signer
 from apps.api.projects.access import require_project
@@ -96,12 +96,13 @@ async def list_latest_uploads(db: AsyncSession, project_id: str, page: PageParam
     has_more = len(rows) > page.limit
     rows = rows[: page.limit]
     storage = signer()
+    signed = iter(await drawing_urls(storage, [row.page_key for row in rows if row.page_key is not None]))
     items = [
         LatestFloorUploadOut(
             floor_id=row.floor_id,
             floor_name=row.floor_name,
             upload_id=row.upload_id,
-            source_image_url=await drawing_url(storage, row.page_key) if row.page_key is not None else None,
+            source_image_url=next(signed) if row.page_key is not None else None,
         )
         for row in rows
     ]

@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.drawings.drawings import current_drawing, drawing_url, new_page_key, upsert_drawing
+from apps.api.drawings.drawings import current_drawing, drawing_url, drawing_urls, new_page_key, upsert_drawing
 from apps.api.drawings.runs import start_run
 from apps.api.drawings.tests._helpers import Scene, make_scene
 from apps.api.drawings.urls import signer, use_signer
@@ -389,6 +389,21 @@ async def test_use_signer_refuses_outside_test_env(
     reset_settings_cache()
     with pytest.raises(RuntimeError, match="APP_ENV=test"):
         use_signer(local_storage)
+
+
+async def test_drawing_urls__mixed_keys_follow_drawing_url_rules_in_order(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """NO-207: lô trộn khoá trang (`inline`) và khoá ngoài (`attachment`) đúng thứ tự, từng URL y hệt `drawing_url`."""
+    scene = await make_scene(db_session)
+    upload, _ = await _upload_with_run(db_session, local_storage, scene, fake_clock)
+    page = _page_key(scene, upload, fake_clock)
+    foreign = f"{project_prefix('prj_' + '0' * 26)}floors/L-ABCDEFGHIJ/uploads/x/a.png"
+
+    batch = await drawing_urls(local_storage, [foreign, page, foreign])
+
+    assert batch == [await drawing_url(local_storage, key) for key in (foreign, page, foreign)]
+    assert await drawing_urls(local_storage, []) == []
 
 
 async def test_drawing_url__page_is_signed_inline_png(

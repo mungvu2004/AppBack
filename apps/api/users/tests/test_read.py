@@ -4,6 +4,7 @@ Loại A: C01 C07 C17 (+ C15 khai `extra` cho #38) và C08 cho #39/#40. Trần �
 môi trường (`users_limits`). Số truy vấn SQL của #38 đếm bằng `count_sql` dùng chung.
 """
 
+from collections.abc import Sequence
 from datetime import timedelta
 
 import httpx
@@ -18,6 +19,8 @@ from apps.api.projects.tests.sql_count import count_sql
 from apps.api.users.tests.support import USERS, make_admin, send, users_limits
 from packages.db.models.auth import User
 from packages.storage.keys import avatar as avatar_key_of
+from packages.storage.local import LocalDiskStorage
+from packages.storage.port import SignedUrl, SignRequest
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.clock import FakeClock
@@ -124,6 +127,32 @@ async def test_users_list_users__C15(
         over = (await send(api_client, admin, "GET", USERS)).json()
         assert (over["total"], len(over["users"])) == (5, 3)
         assert [row["id"] for row in over["users"]] == [row["id"] for row in exact["users"]]
+
+
+async def test_users_list_users__signs_all_avatars_in_one_batch(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-207: 5 người có ảnh đại diện → đúng **một** lượt `signed_urls` cho cả lô, mọi `avatarUrl` có mặt."""
+    admin = await make_admin(db_session)
+    for _ in range(5):
+        user = await make_user(db_session, password=None)
+        key = avatar_key_of(user.id, "01JABCDEFGHJKMNPQRSTVWXYZ0", "png")
+        await db_session.execute(update(User).where(User.id == user.id).values(avatar_key=key))
+    await db_session.commit()
+    calls: list[int] = []
+    original = LocalDiskStorage.signed_urls
+
+    async def _counting(self: LocalDiskStorage, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Ghi cỡ lô mỗi lần gọi rồi chuyển cho bản thật."""
+        calls.append(len(requests))
+        return await original(self, requests)
+
+    monkeypatch.setattr(LocalDiskStorage, "signed_urls", _counting)
+
+    rows = (await send(api_client, admin, "GET", USERS)).json()["users"]
+
+    assert calls == [5]
+    assert sum("avatarUrl" in row for row in rows) == 5
 
 
 async def test_users_list_users_sql_count_is_flat(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

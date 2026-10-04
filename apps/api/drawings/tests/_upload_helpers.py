@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.drawings.settings import get_drawings_settings
 from apps.api.drawings.tests._helpers import Scene, make_scene
 from apps.api.projects.tests.test_routes_common import headers_of as headers_of
-from packages.storage.port import CHUNK_SIZE, Disposition, ObjectInfo, ObjectStorage, SignedUrl
+from packages.storage.port import CHUNK_SIZE, Disposition, ObjectInfo, ObjectStorage, SignedUrl, SignRequest
 from packages.storage.sniff import ImageKind
 from packages.testing.factories.drawings import png_bytes
 from packages.vision.preprocess.tests.synthetic import Encryption, make_pdf
@@ -238,3 +238,7 @@ class GatedStorage:
     ) -> SignedUrl:
         """Chuyển tiếp."""
         return await self._inner.signed_url(key, disposition=disposition, filename=filename, kind=kind)
+
+    async def signed_urls(self, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Chuyển tiếp."""
+        return await self._inner.signed_urls(requests)
