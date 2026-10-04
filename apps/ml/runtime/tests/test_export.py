@@ -41,18 +41,23 @@ EXPORT_SCRIPT = textwrap.dedent(
 
 def test_export_onnx_deterministic(tmp_path: Path) -> None:
     """Hai tiến trình xuất cùng model → cùng SHA-256; tệp đúng là SHA trả về, không metadata giờ xuất."""
-    digests = []
-    for index in range(2):
-        out = tmp_path / f"run{index}.onnx"
-        result = subprocess.run(  # noqa: S603 — lệnh cố định, chạy chính Python của venv
+    outs = [tmp_path / f"run{index}.onnx" for index in range(2)]
+    # hai tiến trình chạy song song: mỗi cái nhập torch lạnh nên chạy tuần tự tốn gấp đôi thời gian tường
+    procs = [
+        subprocess.Popen(  # noqa: S603 — lệnh cố định, chạy chính Python của venv
             [sys.executable, "-c", EXPORT_SCRIPT, str(out)],
             cwd=REPO_ROOT,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=True,
-            timeout=300,
         )
-        digests.append(result.stdout.strip().splitlines()[-1])
+        for out in outs
+    ]
+    digests = []
+    for proc, out in zip(procs, outs, strict=True):
+        stdout, stderr = proc.communicate(timeout=300)
+        assert proc.returncode == 0, stderr
+        digests.append(stdout.strip().splitlines()[-1])
         assert digests[-1] == sha(out.read_bytes())
     assert digests[0] == digests[1]
     exported = onnx.load_model_from_string((tmp_path / "run0.onnx").read_bytes())

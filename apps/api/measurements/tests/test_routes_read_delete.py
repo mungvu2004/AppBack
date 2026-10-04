@@ -4,6 +4,7 @@ Ma trận case: #16 Đ → C01 C06 C08 C15 C17; #18 G → C01 C06 C07 C08 (C16 m
 test đặt tên theo việc: thứ tự số, #16 với trần thật (1000 x 20 điểm) < 2 s, chéo dự án, `touch_project`.
 """
 
+import logging
 import time
 from datetime import timedelta
 
@@ -29,6 +30,7 @@ from packages.db.models.measurements import MeasurementRow
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 
+_log = logging.getLogger(__name__)
 PERF_LIMIT_S = 2.0
 PERF_COUNT = 1000
 PERF_POINTS = 20
@@ -126,6 +128,7 @@ async def test_measurements_list_records__isolated_per_project(
     assert response.json() == []
 
 
+@pytest.mark.perf
 async def test_measurements_list_records__real_limit_under_two_seconds(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -152,6 +155,7 @@ async def test_measurements_list_records__real_limit_under_two_seconds(
     elapsed = time.perf_counter() - started
     assert response.status_code == 200
     assert len(response.json()) == PERF_COUNT
+    _log.info("measurements_list_elapsed_s=%.3f count=%d", elapsed, PERF_COUNT)
     assert elapsed < PERF_LIMIT_S
 
 

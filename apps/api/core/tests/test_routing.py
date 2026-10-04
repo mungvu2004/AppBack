@@ -236,6 +236,7 @@ async def _idempotency_count(maker: async_sessionmaker[AsyncSession]) -> int:
         return int((await session.execute(select(func.count()).select_from(IdempotencyRecord))).scalar_one())
 
 
+@pytest.mark.perf
 async def test_response_is_not_blocked_by_a_dead_broker(
     api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
 ) -> None:

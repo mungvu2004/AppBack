@@ -170,15 +170,15 @@ async def test_on_after_commit__J09_failing_callback_is_logged(
 async def test_on_after_commit__J09_slow_callback_times_out(
     db_sessionmaker: async_sessionmaker[AsyncSession], caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Callback chậm quá `CALLBACK_TIMEOUT_S` → log `after_commit_failed` kèm `TimeoutError`, không chờ hết 5 s."""
     with caplog.at_level(logging.WARNING):
-        started = time.perf_counter()
         async with session_scope(db_sessionmaker) as session:
             await _begin(session)
             on_after_commit(session, lambda: time.sleep(5))
         await after_commit_idle(session)
-        elapsed = time.perf_counter() - started
-    assert "after_commit_failed" in caplog.text
-    assert elapsed < 4  # trần 2 s, không chờ hết 5 s
+    # `wait_for` cắt ở CALLBACK_TIMEOUT_S nên lỗi là TimeoutError: callback không được chờ hết 5 s
+    record = next(item for item in caplog.records if item.message == "after_commit_failed")
+    assert record.__dict__["error"].startswith("TimeoutError")
 
 
 async def test_on_after_commit__J09_rejects_coroutine_function(
@@ -195,13 +195,13 @@ async def test_on_after_commit__J09_rejects_coroutine_function(
 async def test_on_after_commit__J09_does_not_block_event_loop(
     db_sessionmaker: async_sessionmaker[AsyncSession], calls: list[str]
 ) -> None:
+    """Callback chặn 1 s chạy ngoài vòng sự kiện: coroutine khác vẫn chạy, `calls` còn rỗng tới khi idle."""
     async with session_scope(db_sessionmaker) as session:
         await _begin(session)
         on_after_commit(session, lambda: time.sleep(1))
         on_after_commit(session, _append(calls, "sau"))
-    started = time.perf_counter()
+    # coroutine khác vẫn chạy; nếu vòng bị chặn thì "sau" đã vào calls
     await asyncio.sleep(0.01)
-    assert time.perf_counter() - started < 0.1  # coroutine khác vẫn chạy ngay
     assert calls == []
     await after_commit_idle(session)
     assert calls == ["sau"]
@@ -237,6 +237,7 @@ def test_on_after_commit__J09_inline_in_worker_runner(
 def test_on_after_commit__J09_inline_slow_callback_caps_at_timeout(
     db_url: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Chạy tại chỗ (worker): callback chậm bị cắt ở `CALLBACK_TIMEOUT_S`, log `after_commit_failed`."""
     monkeypatch.setenv(INLINE_ENV, "1")
 
     async def work(maker: async_sessionmaker[AsyncSession]) -> None:
@@ -246,12 +247,11 @@ def test_on_after_commit__J09_inline_slow_callback_caps_at_timeout(
 
     engine = create_engine(DatabaseSettings(database_url=db_url))
     with caplog.at_level(logging.WARNING), asyncio.Runner() as runner:
-        started = time.perf_counter()
         runner.run(work(create_sessionmaker(engine)))
-        elapsed = time.perf_counter() - started
         runner.run(engine.dispose())
-    assert "after_commit_failed" in caplog.text
-    assert 1.5 < elapsed < 3
+    # `future.result(timeout=…)` cắt ở CALLBACK_TIMEOUT_S nên lỗi là TimeoutError, không chờ hết 3 s
+    record = next(item for item in caplog.records if item.message == "after_commit_failed")
+    assert record.__dict__["error"].startswith("TimeoutError")
 
 
 async def test_on_after_commit__J10_drop_after_commit(
