@@ -38,13 +38,14 @@ from packages.messaging.schedules import schedule_entries
 from packages.storage.keys import model_artifact
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.factories.admin_ml_registry import make_model_version
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 BASELINE_IDS: Final = ("mdl_01KB6010000000000000000001", "mdl_01KB6010000000000000000002")
-BLOCKED: Final = ("fastapi", "starlette", "uvicorn", "jwt", "argon2", "torch", "onnxruntime", "onnx", "ultralytics")
+BLOCKED: Final = (*WORKER_BLOCKED, "torch", "onnxruntime", "onnx", "ultralytics")
 WORKER_WAIT_S: Final = 2.0
 
 
