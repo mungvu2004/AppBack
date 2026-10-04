@@ -73,12 +73,14 @@ WRITERS = 6
 @dataclass
 class _FakeUrl:
     """URL tối thiểu mà `trace_case` đọc (`path`)."""
+
     path: str = "/v1/things"
 
 
 @dataclass
 class _FakeRequest:
     """Request tối thiểu mà `trace_case` đọc (`method`, `url`)."""
+
     method: str = "GET"
     url: _FakeUrl = field(default_factory=_FakeUrl)
 
