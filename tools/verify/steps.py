@@ -15,7 +15,7 @@ import sys
 import threading
 import traceback
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -337,13 +337,36 @@ def run_steps(steps: Sequence[tuple[str, Callable[[], StepOutcome]]], wanted: se
     return outcomes
 
 
+@contextmanager
+def _cold_mypy_cache() -> Iterator[None]:
+    """Trong khối, `MYPY_CACHE_DIR` là `os.devnull` (mypy chạy nguội); ra khối trả môi trường như cũ (NO-306).
+
+    Cache ấm `/work/mypy-${VERIFY_NAME}` đổi kết quả: băm nguồn khớp meta thì mypy coi module tươi và
+    phát lại lỗi (hay "Success") đã lưu, dù đầu vào hiện tại không còn sinh ra nó — `main` @ 30b78ae
+    đỏ bước 3 giả. Đo: cả repo nguội 212 s, ấm 5 s.
+    """
+    saved = os.environ.copy()
+    os.environ["MYPY_CACHE_DIR"] = os.devnull
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
 def _run_verify(args: argparse.Namespace) -> int:
-    """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng"."""
+    """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng".
+
+    Cổng đầy đủ (không `--steps`) chạy mypy nguội — kết quả của nó quyết định gộp; `--steps` của worker
+    giữ cache ấm cho nhanh (xem trước, cổng mới là kết luận — NO-306).
+    """
     wanted = set(args.steps.split(",")) if args.steps else None
     # Không ai gõ bước "0": nó đi kèm khi lượt có bước cần runner Node.
     if wanted is not None and wanted & _RUNNER_STEPS:
         wanted.add("0")
-    outcomes = run_steps(_ALL_STEPS, wanted)
+    mypy_cache: AbstractContextManager[None] = _cold_mypy_cache() if wanted is None else nullcontext()
+    with mypy_cache:
+        outcomes = run_steps(_ALL_STEPS, wanted)
     # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất. Chép hỏng
     # là một dòng bảng "hỏng" (thoát 1), không phải traceback thay chỗ cả bảng (NO-075).
     try:

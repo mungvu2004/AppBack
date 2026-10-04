@@ -21,8 +21,9 @@ import tomllib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
+from packages.core.case_names import split_case_test_name
 from tools.charter import BindRow, load_bind_rows
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -310,36 +311,9 @@ _FIXED_CODE: dict[str, str] = {
     "C24": "ORIGIN_MISMATCH",
 }
 
-# hậu tố `_<việc>` hoặc id tham số `[...]` sau mã case đều được
-_TEST_OP_CASE_RE = re.compile(r"^test_(?P<op>.+?)__(?P<case>[A-Z]\d{2}[a-z]?)(?:[_\[].*)?$")
-_TEST_COMMON_RE = re.compile(r"^test_common__(?P<case>[A-Z]\d{2}[a-z]?)\[(?P<op>.+)\]$")
 # task (CASE.md §2.3 bản 7): `test_<tên hàm>__<case>`, case J (§4), U của task tiền xử lý (§2.2), M của task ML
 # (§6); id tham số `[...]` được như op, hậu tố `_<việc>` thì không
 _TEST_TASK_RE = re.compile(r"^test_(?P<fn>.+)__(?P<case>[JUM]\d{2})(?:\[.*\])?$")
-
-
-class CaseTestName(NamedTuple):
-    """Tên test case đã tách: `tail` là phần sau mã case (`_missing`, `[tham-số]`), rỗng ở dạng chung."""
-
-    op: str
-    case: str
-    tail: str
-    common: bool
-
-
-def split_case_test_name(name: str) -> CaseTestName | None:
-    """Tách `test_<op>__<case>[_…|[…]]` hay `test_common__<case>[<op>]` (CASE §2.3); `None` khi không khớp.
-
-    Nguồn duy nhất cho cổng này và bộ ghi golden (`packages/testing/golden/recorder.py`, R-07).
-    Mẫu chung xét trước: `test_common__C04[op]` cũng khớp mẫu riêng với op="common".
-    """
-    m = _TEST_COMMON_RE.match(name)
-    if m:
-        return CaseTestName(m.group("op"), m.group("case"), "", common=True)
-    m = _TEST_OP_CASE_RE.match(name)
-    if m is None:
-        return None
-    return CaseTestName(m.group("op"), m.group("case"), name[m.end("case") :], common=False)
 
 
 def _case_matches_trace(case_id: str, op_id: str, test_name: str, trace: list[CaseTraceEntry]) -> bool:

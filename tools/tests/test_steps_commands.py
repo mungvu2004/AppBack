@@ -336,6 +336,26 @@ def test_main_verify_in_bảng_và_mã_thoát(
     assert steps.main(["verify", "--steps", "1"]) == 0
 
 
+@pytest.mark.parametrize(("argv", "seen"), [([], os.devnull), (["--steps", "3"], "/work/mypy-x")])
+def test_verify__full_gate_runs_mypy_cold(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str], seen: str
+) -> None:
+    """NO-306: cổng đầy đủ chạy bước 3 với `MYPY_CACHE_DIR=os.devnull`, `--steps` giữ cache; sau lượt env như cũ."""
+    monkeypatch.setenv("MYPY_CACHE_DIR", "/work/mypy-x")
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    cache_dirs: list[str] = []
+
+    def fake_mypy() -> steps.StepOutcome:
+        """Bước 3 giả: ghi lại `MYPY_CACHE_DIR` mà mypy sẽ thấy."""
+        cache_dirs.append(os.environ["MYPY_CACHE_DIR"])
+        return steps.StepOutcome("3", "mypy --strict", steps.STATUS_OK)
+
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("3", fake_mypy)])
+    assert steps.main(["verify", *argv]) == 0
+    assert cache_dirs == [seen]
+    assert os.environ["MYPY_CACHE_DIR"] == "/work/mypy-x"
+
+
 # --- lock / openapi -----------------------------------------------------------------
 
 
