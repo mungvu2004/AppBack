@@ -199,7 +199,10 @@ async def _persist(db: AsyncSession, ctx: PersistContext, built: BuiltLayer, clo
         clock=clock,
     )
     if not await mark_persisted(db, run_id=ctx.run_id, revision=result.revision):
-        raise RuntimeError(f"persisted_revision của lượt {ctx.run_id} đã có tuy đang giữ khoá tầng")
+        raise RuntimeError(
+            f"không ghi được persisted_revision của lượt {ctx.run_id}: đã có, hoặc lượt không có dòng "
+            "pipeline_run_models, tuy đang giữ khoá tầng"
+        )
     await record_step(db, run_id=ctx.run_id, step=STEP, status="completed", clock=clock)
 
 
@@ -269,3 +272,4 @@ async def fail_step(
     """
     async with session_scope(sessionmaker) as db:
         await record_step(db, run_id=payload.run_id, step=STEP, status="failed", clock=clock, error_code=code)
+    await after_commit_idle(db)

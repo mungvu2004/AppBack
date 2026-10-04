@@ -5,13 +5,16 @@ import sys
 from pathlib import Path
 from typing import Final
 
+from packages.testing.boundary import PURE_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
+_BLOCKED: Final = (*PURE_BLOCKED, "numpy")
 
 # Tiến trình con chặn thư viện hạ tầng rồi nhập hai gói; in "ok" nếu cả hai vào được.
 _BOUNDARY_CODE: Final = """
 import sys
 
-BLOCKED = {"sqlalchemy", "fastapi", "celery", "numpy", "torch"}
+BLOCKED = __BLOCKED__
 
 
 class Blocker:
@@ -22,8 +25,8 @@ class Blocker:
 
 
 sys.meta_path.insert(0, Blocker())
-import packages.domain.scale  # noqa: E402
-import packages.domain.spatial  # noqa: E402
+import packages.domain.scale  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
+import packages.domain.spatial  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
 
 packages.domain.spatial.sample_building()
 print("ok")
@@ -33,7 +36,7 @@ print("ok")
 def test_domain_packages_import_without_infrastructure() -> None:
     """`packages.domain.spatial`, `packages.domain.scale` không kéo `sqlalchemy`, `fastapi`, `celery`, `numpy`."""
     result = subprocess.run(  # noqa: S603 — lệnh cố định, chạy chính Python của venv
-        [sys.executable, "-c", _BOUNDARY_CODE],
+        [sys.executable, "-c", _BOUNDARY_CODE.replace("__BLOCKED__", repr(set(_BLOCKED)))],
         cwd=REPO_ROOT,
         env={"PYTHONPATH": str(REPO_ROOT), "PATH": "/usr/bin:/bin"},
         capture_output=True,

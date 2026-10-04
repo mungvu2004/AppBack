@@ -1,10 +1,12 @@
 """Bảng đếm theo tầng trên Postgres thật (K23): rollup, dòng ẩn, `ValueError`, số truy vấn."""
 
+import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
 import pytest
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.projects.summaries import (
@@ -27,6 +29,8 @@ from packages.testing.fixtures.clock import FakeClock
 
 FLOOR: Final = "L-0000000001"
 OTHER: Final = "L-0000000002"
+WAIT_ROUNDS: Final = 40  # 40 lượt 0,1 s: dư cho Docker chậm, vẫn dưới `lock_timeout` 5 s của B
+WAIT_STEP_S: Final = 0.1
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,6 +270,50 @@ async def test_touch_projects_locks_then_updates_ids_in_sorted_order(
     for project in (a, b):
         await db_session.refresh(project)
         assert project.updated_at == fake_clock.now()
+
+
+async def test_touch_projects__reverse_order_sessions_do_not_deadlock(
+    db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock
+) -> None:
+    """NO-193: hai giao dịch xin khoá hai dự án theo thứ tự ngược nhau không khoá chéo.
+
+    A giữ `low`. B gọi `touch_projects([high, low])`; khi B đã **chờ** khoá (`pg_stat_activity`),
+    A khoá `high` bằng `NOWAIT` — chỉ thành công nếu B chưa giữ `high`, tức B xin `low` trước.
+    Rồi A commit, B chạy xong. Đây là test chứng minh không khoá chéo ở một thứ tự id; đột biến
+    bỏ `ORDER BY` do test hình dạng SQL phía trên bắt.
+    """
+    async with db_sessionmaker() as setup:
+        first, second = await _project(setup, []), await _project(setup, [])
+    low, high = sorted([first.id, second.id])
+
+    async with db_sessionmaker() as holder, db_sessionmaker() as toucher:
+        await holder.execute(select(Project.id).where(Project.id == low).with_for_update())
+        toucher_pid = (await toucher.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+        task = asyncio.create_task(touch_projects(toucher, project_ids=[high, low], clock=fake_clock))
+        try:
+            for _ in range(WAIT_ROUNDS):
+                waiting = await holder.execute(
+                    text("SELECT 1 FROM pg_stat_activity WHERE pid = :pid AND wait_event_type = 'Lock'"),
+                    {"pid": toucher_pid},
+                )
+                if waiting.first() is not None or task.done():
+                    break
+                await asyncio.wait({task}, timeout=WAIT_STEP_S)
+            assert not task.done()  # B đang chờ khoá `low` của A
+
+            await holder.execute(select(Project.id).where(Project.id == high).with_for_update(nowait=True))
+            await holder.commit()
+            await asyncio.wait_for(task, timeout=10)
+            await toucher.commit()
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async with db_sessionmaker() as check:
+        for project_id in (low, high):
+            row = await check.get(Project, project_id)
+            assert row is not None
+            assert row.updated_at == fake_clock.now()
 
 
 @pytest.mark.parametrize(

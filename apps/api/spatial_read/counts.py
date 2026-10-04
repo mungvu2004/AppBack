@@ -10,9 +10,6 @@ tầng → tài liệu của BE-00 §7: khoá chia sẻ đủ để chặn ngư�
 việc sửa sổ sách trong nhà, không phải một thay đổi người dùng thấy.
 """
 
-from dataclasses import dataclass
-from decimal import Decimal
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,29 +19,14 @@ from packages.core.clock import Clock
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import ProjectFloorSummary
 from packages.db.models.spatial import FloorDocumentRow
-from packages.domain.spatial import SpatialLayer, total_area_m2
+from packages.domain.spatial import LayerCounts, layer_counts
 
-
-@dataclass(frozen=True)
-class LayerCounts:
-    """Ba con số của một tầng; `area_m2=None` là "tầng chưa có phòng nào", khác với 0 m²."""
-
-    walls_total: int
-    walls_reviewed: int
-    area_m2: Decimal | None
+__all__ = ["LayerCounts", "layer_counts", "recount_floor"]
+"""`LayerCounts` và `layer_counts` sống ở `packages.domain.spatial.document` (NO-220); đây chỉ chuyển tiếp."""
 
 
 _EMPTY_COUNTS = LayerCounts(walls_total=0, walls_reviewed=0, area_m2=None)
 """Tầng chưa có tài liệu — cùng con số với một tài liệu có lớp rỗng."""
-
-
-def layer_counts(layer: SpatialLayer) -> LayerCounts:
-    """Số tường, số tường đã duyệt và tổng diện tích các phòng (cộng mm² rồi làm tròn một lần)."""
-    return LayerCounts(
-        walls_total=len(layer.walls),
-        walls_reviewed=sum(1 for wall in layer.walls if wall.reviewed),
-        area_m2=total_area_m2([room.outline for room in layer.rooms]) if layer.rooms else None,
-    )
 
 
 async def recount_floor(db: AsyncSession, *, floor_pk: int, clock: Clock) -> bool:

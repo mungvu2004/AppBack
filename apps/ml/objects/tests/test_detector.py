@@ -138,7 +138,7 @@ def test_init__rejects_unknown_label() -> None:
     # cố ý sai kiểu để test check_labels ở runtime
     bad_labels: tuple[str, ...] = ("not_a_real_label",)
     with pytest.raises(ValueError, match="nhãn ngoài"):
-        YoloOnnxDetector(_session(data), bad_labels)  # type: ignore[arg-type]
+        YoloOnnxDetector(_session(data), bad_labels)  # type: ignore[arg-type]  # cố ý truyền nhãn sai để kiểm lúc chạy
 
 
 def test_init__input_px_matches_declared_size() -> None:

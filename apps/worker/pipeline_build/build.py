@@ -130,7 +130,9 @@ class BuiltLayer:
 def _checked(raw: np.ndarray, what: str) -> None:
     """Mảng `[toạ độ…, confidence]`: NaN, vô cực hay `confidence` ngoài `[0, 1]` → `ValueError`.
 
-    Đối số có thể dựng bằng `model_construct` nên không tin ràng buộc của B5-01 (bước 1).
+    Chỉ kiểm phần chung của mọi mảng (hữu hạn, `confidence`); hai phép kiểm riêng của tường
+    (`thickness_px > 0`, hai đầu không trùng) nằm ở `_filtered_walls`. Đối số có thể dựng bằng
+    `model_construct` nên không tin ràng buộc của B5-01.
     """
     if raw.size == 0:
         return
@@ -170,9 +172,9 @@ def _filtered_walls(walls: Sequence[WallPx], size: tuple[int, int], dropped: Cou
         dtype=float,
     ).reshape(len(walls), 6)
     _checked(raw, "walls")
-    if raw.size and not bool((raw[:, 4] > 0.0).all()):
+    if not bool((raw[:, 4] > 0.0).all()):
         raise ValueError("walls có thickness_px không dương")
-    if raw.size and bool((raw[:, :2] == raw[:, 2:4]).all(axis=1).any()):
+    if bool((raw[:, :2] == raw[:, 2:4]).all(axis=1).any()):
         raise ValueError("walls có tường hai đầu trùng nhau")
     return _kept(walls, np.delete(raw, 4, axis=1), size, dropped)
 

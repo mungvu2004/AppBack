@@ -63,19 +63,23 @@ def _resolve_plain_token(row: Any, keys: tuple[bytes, ...]) -> str | None:
 
 
 def _on_send_token_mail_failed(payload: SendTokenMailPayload, code: str) -> None:
-    """Ghi log hỏng cho lô: chỉ `token_ids` và mã, không email/token/link (K11)."""
+    """Ghi log **tóm tắt lô** hỏng: chỉ `token_ids` và mã, không email/token/link (K11).
+
+    Log từng token bị cô lập mang tên riêng `token_mail_isolated` (NO-195) để luật cảnh báo
+    đếm theo tên `token_mail_failed` không đếm đôi một token hỏng.
+    """
     _log.error("token_mail_failed", extra={"token_ids": payload.token_ids, "code": code})
 
 
 def _log_isolated_failure(*, token_id: str, code: str, smtp_code: int | None) -> None:
-    """Ghi `token_mail_failed` **ngay** khi một token bị cô lập, không đợi cuối vòng (NO-149b).
+    """Ghi `token_mail_isolated` **ngay** khi một token bị cô lập, không đợi cuối vòng (NO-149b).
 
     Nếu đợi tới `PermanentError` cuối `run_send_token_mail`, một token **sau** ném
     `TransientError` khiến ngoại lệ đó nổi lên trước, làm mã lỗi vĩnh viễn đã cô lập không
     bao giờ tới `on_failed` — token này bị "nuốt": lượt thử lại không còn thấy nó
     (`sent_at`/`superseded_at` đã ghi) nên có thể không ai biết nó từng hỏng.
     """
-    _log.error("token_mail_failed", extra={"token_id": token_id, "code": code, "smtp_code": smtp_code})
+    _log.error("token_mail_isolated", extra={"token_id": token_id, "code": code, "smtp_code": smtp_code})
 
 
 async def _mark_permanent_failure(
@@ -113,7 +117,7 @@ async def _send_one(
 
     `MailTransientError` ném thẳng `TransientError` — không cô lập, thử lại **cả lô** an toàn vì
     token đã gửi ở lượt trước đã có `sent_at` (J06 idempotent theo đó). Cô lập ghi log
-    `token_mail_failed` **ngay tại đây** (NO-149b) kèm `smtp_code` (NO-149a) — không đợi
+    `token_mail_isolated` **ngay tại đây** (NO-149b) kèm `smtp_code` (NO-149a) — không đợi
     `PermanentError` cuối `run_send_token_mail`, vốn có thể không bao giờ được ném nếu một
     token sau trong lô ném `TransientError` trước.
     """

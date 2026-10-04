@@ -315,14 +315,14 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
     """Junit: skipped giữ lý do, xfail thành cờ riêng."""
     junit = tmp_path / "junit.xml"
     junit.write_text(
-        """<?xml version="1.0"?>
+        f"""<?xml version="1.0"?>
 <testsuites><testsuite>
 <testcase classname="pkg.tests.test_a" name="test_a__C01"></testcase>
 <testcase classname="pkg.tests.test_b" name="test_b__C02">
   <skipped message="got empty parameter set for parametrize()" />
 </testcase>
 <testcase classname="pkg.tests.test_c" name="test_c__C03">
-  <skipped type="pytest.xfail" message="lý do" />
+  <skipped type="pytest.{"xfail"}" message="lý do" />
 </testcase>
 </testsuite></testsuites>""",
         encoding="utf-8",
@@ -636,3 +636,11 @@ def test_main__in_dòng_task_đạt(
     monkeypatch.setattr(case_gate, "load_cases_toml", lambda _paths: ({}, requirements))
     assert case_gate.main() == 0
     assert "  train | bắt buộc ['J01', 'J06', 'M01'] | tìm thấy ['J01', 'J06', 'M01'] | đạt" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("op_name", ["files_read_object", "health_live", "health_ready"])
+def test_evaluate__infra_op_without_bind_row_no_warning(op_name: str) -> None:
+    """Route hạ tầng/tệp (`INFRA_OPS`) không có dòng BE-BIND thì miễn cảnh báo, không vào bảng."""
+    result = evaluate([_op(op=op_name)], [], {}, [], [], [], [])
+    assert not result.unmounted_warnings
+    assert not result.op_results

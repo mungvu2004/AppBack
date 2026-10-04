@@ -14,11 +14,19 @@ phải dữ liệu cần đoán lại.
 trục vào jsonb bây giờ sẽ thành dữ liệu không ai đọc mà phải migrate về sau.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from packages.domain.spatial import Axis, Dimension, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, SpatialLayer, document_to_json, entity_ids
+
+__all__ = [
+    "DocumentCorruptError",
+    "document_from_json",
+    "document_to_json",
+    "entity_ids",
+]
+"""`document_to_json` và `entity_ids` sống ở `packages.domain.spatial.document` (NO-220); đây chỉ chuyển tiếp."""
 
 
 class DocumentCorruptError(Exception):
@@ -39,15 +47,6 @@ class _Envelope(BaseModel):
     dimensions: tuple[Dimension, ...]
 
 
-def document_to_json(layer: SpatialLayer, axes: Sequence[Axis], dimensions: Sequence[Dimension]) -> dict[str, object]:
-    """Dạng dây của một tài liệu. `axes` được nhận để chữ ký ổn định nhưng v1 luôn ghi `[]`."""
-    return {
-        "layer": layer.model_dump(mode="json", by_alias=True, exclude_none=True),
-        "axes": [],
-        "dimensions": [dimension.model_dump(mode="json", by_alias=True, exclude_none=True) for dimension in dimensions],
-    }
-
-
 def document_from_json(raw: Mapping[str, object]) -> tuple[SpatialLayer, tuple[Axis, ...], tuple[Dimension, ...]]:
     """Giải một cột `document`; bất kỳ lệch nào so với mô hình B3-01 → `DocumentCorruptError`."""
     try:
@@ -55,12 +54,3 @@ def document_from_json(raw: Mapping[str, object]) -> tuple[SpatialLayer, tuple[A
     except ValidationError as error:
         raise DocumentCorruptError(str(error)) from error
     return envelope.layer, envelope.axes, envelope.dimensions
-
-
-def entity_ids(layer: SpatialLayer) -> frozenset[str]:
-    """Id của mọi tường, ô mở, phòng, đồ đạc — đúng tập `floor_entity_ids` giữ cho tầng ấy (W4).
-
-    **Không** gồm kích thước: `Dimension` là chú thích đo vẽ, B3-03 thêm bớt tự do và
-    không tranh id với tầng khác. Toà mẫu A14 vì thế ra 48 + 16 + 21 + 14 = 99 id.
-    """
-    return frozenset(entity.id for entity in layer.entities())

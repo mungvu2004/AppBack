@@ -1,14 +1,14 @@
 """Model dây của N5/N6 (B2-02 [2]): thân ghi `ProjectSettingsBodyIn` và response `ProjectSettingsOut`.
 
 Số thập phân **vào** dưới dạng số JSON (bool và chuỗi bị từ chối), đổi qua `Decimal(str(x))` rồi
-làm tròn `ROUND_HALF_UP` trước khi kiểm dải; **ra** là `float` (số JSON, không chuỗi, W3).
+kiểm dải trên số thô rồi làm tròn `ROUND_HALF_UP` (NO-214); **ra** là `float` (số JSON, không chuỗi, W3).
 """
 
 import math
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BeforeValidator, Field, StringConstraints
+from pydantic import AfterValidator, BeforeValidator, Field, StringConstraints
 
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.project_settings.read import ProjectSettingsValue
@@ -31,24 +31,34 @@ def _clean_notes(value: Any) -> Any:
         raise ValueError(f"ghi chú: {exc}") from exc
 
 
-def _rounded(places: int) -> BeforeValidator:
-    """Bộ kiểm cho số thập phân: chỉ nhận số JSON, làm tròn `places` chữ số `ROUND_HALF_UP`."""
+def _to_decimal(value: Any) -> Decimal:
+    """`bool`/chuỗi/không hữu hạn → `ValueError`; còn lại `Decimal(str(x))` chưa làm tròn."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("phải là số")
+    if not math.isfinite(value):
+        raise ValueError("phải là số hữu hạn")
+    return Decimal(str(value))
+
+
+def _rounded(places: int) -> AfterValidator:
+    """Làm tròn `places` chữ số `ROUND_HALF_UP` **sau** khi `Field(ge, le)` đã kiểm số thô (NO-214).
+
+    `-0.0004` thô bị dải chặn 422 thay vì làm tròn ra `-0.000` rồi lọt; `-0.0` thô qua dải
+    nhưng được chuẩn hoá thành `0` không dấu để dây và băm (`body_digest`) không phân biệt `-0.000`.
+    """
     exponent = Decimal(1).scaleb(-places)
 
-    def convert(value: Any) -> Decimal:
-        """`bool`/chuỗi/không hữu hạn → `ValueError`; còn lại `Decimal(str(x))` đã làm tròn."""
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            raise ValueError("phải là số")
-        if not math.isfinite(value):
-            raise ValueError("phải là số hữu hạn")
-        return Decimal(str(value)).quantize(exponent, rounding=ROUND_HALF_UP)
+    def quantize(value: Decimal) -> Decimal:
+        """Làm tròn về `exponent`; số không có dấu âm → `abs`."""
+        rounded = value.quantize(exponent, rounding=ROUND_HALF_UP)
+        return abs(rounded) if rounded.is_zero() else rounded
 
-    return BeforeValidator(convert)
+    return AfterValidator(quantize)
 
 
 type Notes = Annotated[str, BeforeValidator(_clean_notes), StringConstraints(min_length=1, max_length=NOTES_MAX)]
-type Confidence = Annotated[Decimal, _rounded(3), Field(ge=0, le=1)]
-type ScaleMmPerPx = Annotated[Decimal, _rounded(6), Field(ge=Decimal("0.01"), le=1000)]
+type Confidence = Annotated[Decimal, BeforeValidator(_to_decimal), Field(ge=0, le=1), _rounded(3)]
+type ScaleMmPerPx = Annotated[Decimal, BeforeValidator(_to_decimal), Field(ge=Decimal("0.01"), le=1000), _rounded(6)]
 
 
 class ProjectSettingsBodyIn(WireRequest):

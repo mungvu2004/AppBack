@@ -21,8 +21,7 @@ from apps.api.spatial_read.documents import load_document
 from apps.api.versions.messages import before_pipeline_note
 from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_persist.constants import SYSTEM_PIPELINE_NAME
-from apps.worker.pipeline_persist.service import run_persist
-from apps.worker.pipeline_persist.tests.helpers import Arranged, open_run_at_build, put_layer, sample_built
+from apps.worker.pipeline_persist.tests.helpers import CPU_QUEUE, Arranged, arrange, persist_once
 from packages.core.errors import SYSTEM_PIPELINE
 from packages.db.models.notifications import NotificationRow
 from packages.db.models.versions import VersionRecord
@@ -33,9 +32,6 @@ from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.messaging import queued_payloads
 
 _log: Final = logging.getLogger(__name__)
-
-CPU_QUEUE: Final = "pipeline.cpu"
-"""Hàng của `pipeline.quality.run`; dùng chung cả phiên nên mỗi test phải `DEL` trước (BE-00 §12)."""
 
 
 @pytest.fixture
@@ -68,22 +64,6 @@ async def _wall_count(db: AsyncSession, project_id: str) -> int:
     return (await project_rollups(db, [project_id]))[project_id].walls_total
 
 
-async def _persist_once(
-    maker: async_sessionmaker[AsyncSession], storage: LocalDiskStorage, arranged: Arranged, clock: FakeClock
-) -> str:
-    """Một lượt giao `pipeline.persist.run` cho cảnh đã dựng, gọi thẳng lõi."""
-    return await run_persist(arranged.payload, sessionmaker=maker, storage=storage, clock=clock)
-
-
-async def _arrange(maker: async_sessionmaker[AsyncSession], storage: LocalDiskStorage, clock: FakeClock) -> Arranged:
-    """Cảnh đầy đủ: lượt đứng ở `spatialDataBuild` và `layer.json` mẫu đã nằm trong kho."""
-    arranged = await open_run_at_build(maker, clock, storage=storage)
-    await put_layer(storage, arranged, sample_built(arranged.level_id).to_json())
-    # `start_run` đã xếp `pipeline.orchestrate.start` lên cùng hàng; dọn để chỉ còn việc của lõi.
-    broker_redis_sync().delete(CPU_QUEUE)
-    return arranged
-
-
 @pytest.mark.asyncio(loop_scope="function")
 async def test_persist_pipeline_result__J01(
     db_sessionmaker: async_sessionmaker[AsyncSession],
@@ -97,10 +77,10 @@ async def test_persist_pipeline_result__J01(
     Đọc lại bằng session mới để khẳng định mọi thứ đã **commit** thật, không phải chỉ nằm
     trong session của lõi.
     """
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock, clear_queue=True)
     before = len(await event_bus.read_after(upload_stream(arranged.upload_id), "0-0"))
 
-    outcome = await _persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
+    outcome = await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert outcome == "persisted"
     async with db_sessionmaker() as db:
@@ -141,10 +121,10 @@ async def test_persist_pipeline_result__J06(
     event_bus: EventBus,
 ) -> None:
     """Giao lặp tuần tự: lượt hai `replayed`, không phiên bản, thông báo hay mục stream thứ hai."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock, clear_queue=True)
 
-    first = await _persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
-    second = await _persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
+    first = await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
+    second = await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert (first, second) == ("persisted", "replayed")
     await _assert_single_effect(db_sessionmaker, event_bus, arranged, revision=1)
@@ -179,11 +159,11 @@ async def test_persist_pipeline_result__J06_concurrent(
     `lock_run` khoá `floors` trước mọi việc nên lượt thứ hai xếp hàng sau lượt đầu và thấy
     `persisted_revision` đã có — đúng nhánh phát lại, không phải một lượt ghi thứ hai.
     """
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock, clear_queue=True)
 
     outcomes = await asyncio.gather(
-        _persist_once(db_sessionmaker, local_storage, arranged, fake_clock),
-        _persist_once(db_sessionmaker, local_storage, arranged, fake_clock),
+        persist_once(db_sessionmaker, local_storage, arranged, fake_clock),
+        persist_once(db_sessionmaker, local_storage, arranged, fake_clock),
     )
 
     assert sorted(outcomes) == ["persisted", "replayed"]

@@ -124,6 +124,22 @@ class ProcessLocal[ResourceT]:
             self._value, self._pid = None, None
             return value
 
+    @contextmanager
+    def override(self, factory: Callable[[], ResourceT]) -> Iterator[None]:
+        """Chỉ cho test: thay `factory` trong khối `with`, trả lại bản cũ khi thoát (kể cả khi thân ném).
+
+        Tài nguyên đang giữ bị quên ở cả hai đầu khối, nên bản dựng bằng factory thay thế không
+        sống sót sang test sau và bản dựng trước đó không lọt vào khối.
+        """
+        with self._lock:
+            previous = self._factory
+            self._factory, self._value, self._pid = factory, None, None
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._factory, self._value, self._pid = previous, None, None
+
 
 def with_db(url: str, db: int) -> str:
     """URL tới DB của vai `db`: số DB **gốc** trong URL (vắng = 0) cộng độ lệch vai; giữ scheme, đăng nhập, query.

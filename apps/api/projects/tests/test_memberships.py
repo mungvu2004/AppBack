@@ -102,6 +102,14 @@ async def test_count_projects_of_users_skips_deleted_projects(
     assert counts == {owner.id: 2, "usr_khong-co": 0}
 
 
+async def test_count_projects_of_users__empty_batch_runs_no_query(db_session: AsyncSession) -> None:
+    """NO-193: lô rỗng → `{}` và **không** câu SQL nào (cùng luật với `member_users`/`touch_projects`)."""
+    with count_sql() as counter:
+        counts = await count_projects_of_users(db_session, [])
+    assert counts == {}
+    assert counter.count == 0
+
+
 async def test_list_projects_of_user_sorts_by_id_and_honours_the_limit(
     db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:

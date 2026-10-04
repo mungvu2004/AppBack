@@ -5,6 +5,8 @@ trước đã `completed`, cộng một `layer.json` trong kho. Gom vào đây �
 dựng hai cảnh lệch nhau; không có mock nào ở đây (K23), tất cả là dòng thật trong Postgres.
 """
 
+import dataclasses
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -19,12 +21,14 @@ from apps.worker.pipeline_build.build import BuiltLayer
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_orchestrate.pins import pin_models
 from apps.worker.pipeline_persist.constants import LAYER_ARTIFACT, STEP
+from apps.worker.pipeline_persist.service import run_persist
 from packages.core.clock import Clock
 from packages.db.hooks import after_commit_idle
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
 from packages.domain.spatial.model import SpatialLayer
 from packages.messaging.payloads.pipeline import RunStepPayload
+from packages.messaging.redis import broker_redis_sync
 from packages.storage.keys import run_artifact
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import ObjectStorage
@@ -32,7 +36,13 @@ from packages.testing.factories.auth import make_user
 from packages.testing.factories.drawings import make_complete_upload
 from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
-from packages.testing.factories.spatial import sample_floor_dimensions, sample_floor_layer
+from packages.testing.factories.spatial import make_floor_document, sample_floor_dimensions, sample_floor_layer
+from packages.testing.fixtures.clock import FakeClock
+
+type Maker = async_sessionmaker[AsyncSession]
+
+CPU_QUEUE: Final = "pipeline.cpu"
+"""Hàng của `pipeline.quality.run`; dùng chung cả phiên nên mỗi test phải `DEL` trước (BE-00 §12)."""
 
 PAGE_BYTES: Final = b"%PDF-1.4 fake page for uploads"
 """Nội dung tệp gốc: `make_complete_upload` chỉ cần vài byte thật, không ai đọc lại nó ở đây."""
@@ -148,3 +158,45 @@ async def put_layer(storage: ObjectStorage, arranged: Arranged, data: bytes) -> 
         arranged.project_id, arranged.floor_id, arranged.upload_id, arranged.run_id, STEP, LAYER_ARTIFACT
     )
     await storage.put(key, data, content_type="application/json", max_bytes=len(data))
+
+
+def broken_layer(level_id: str) -> bytes:
+    """`layer.json` hợp lệ về schema nhưng ô mở trỏ tường không có — bỏ hết `walls` khỏi lớp AI.
+
+    `merge_pipeline_result` không kiểm tham chiếu chéo, nên lỗi đến từ chính `write_layer` (B3-03)
+    như trên đường thật, chứ không phải từ bước trộn.
+    """
+    built = sample_built(level_id)
+    return dataclasses.replace(built, layer=built.layer.model_copy(update={"walls": ()})).to_json()
+
+
+async def arrange(
+    maker: Maker,
+    storage: ObjectStorage,
+    clock: FakeClock,
+    *,
+    build: Callable[[str], BuiltLayer] | None = None,
+    with_document: bool = False,
+    clear_queue: bool = False,
+) -> Arranged:
+    """Cảnh đầy đủ: lượt đứng ở `spatialDataBuild` và `layer.json` đã nằm trong kho.
+
+    `build=None` → `sample_built`. `with_document` dựng trước dòng `floor_documents` đã commit (để
+    bên chờ khoá gặp một dòng thật mà chờ `FOR UPDATE`); `clear_queue` dọn `pipeline.orchestrate.start`
+    mà `start_run` xếp lên hàng `pipeline.cpu`, để chỉ còn việc của lõi.
+    """
+    arranged = await open_run_at_build(maker, clock, storage=storage)
+    if with_document:
+        async with maker() as db:
+            await make_floor_document(db, floor_pk=arranged.floor_pk, clock=clock)
+            await db.commit()
+    make_built = sample_built if build is None else build
+    await put_layer(storage, arranged, make_built(arranged.level_id).to_json())
+    if clear_queue:
+        broker_redis_sync().delete(CPU_QUEUE)
+    return arranged
+
+
+async def persist_once(maker: Maker, storage: ObjectStorage, arranged: Arranged, clock: FakeClock) -> str:
+    """Một lượt giao `pipeline.persist.run` cho cảnh đã dựng, gọi thẳng lõi."""
+    return await run_persist(arranged.payload, sessionmaker=maker, storage=storage, clock=clock)

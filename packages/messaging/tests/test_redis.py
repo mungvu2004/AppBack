@@ -1,5 +1,6 @@
 """Client Redis: chọn đúng DB, đặt đúng trần, và dịch đúng lỗi phụ thuộc."""
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -212,6 +213,23 @@ def test_process_local_builds_once_per_process(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(os, "getpid", lambda: 999_999)
     assert local.get() == 2
+
+
+def test_process_local_override_restores_the_factory_even_when_the_body_raises() -> None:
+    """Trong `override` `get()` dùng factory thay thế; thoát khối (kể cả do ngoại lệ) thì factory cũ trở lại."""
+    local = counting_local()
+    assert local.get() == 1
+
+    with local.override(lambda: -1):
+        assert local.get() == -1
+
+    assert local.get() == 2
+
+    with contextlib.suppress(ZeroDivisionError), local.override(lambda: -2):
+        assert local.get() == -2
+        raise ZeroDivisionError
+
+    assert local.get() == 3
 
 
 def test_process_local_reset_forgets_the_value() -> None:

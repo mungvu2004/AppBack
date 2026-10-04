@@ -148,28 +148,25 @@ def _run_smoke(
     clock: FakeClock,
     broker: SyncRedis,
     worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> float:
     """Đường smoke dùng chung của `__J01_smoke` và test trần thời gian; trả số giây tới khi đủ ba `ml.infer.*`.
 
     Đồng hồ bắt đầu ngay trước khi dựng worker (thông điệp `start` đã nằm trên `pipeline.cpu`).
     """
-    tasks.reset_orchestrate_storage()
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: storage)
+    with tasks._STORAGE.override(lambda: storage):
+        data = jpeg_with_orientation(640, 480, orientation=1)
+        _scene, run = asyncio.run(_upload_and_run(maker, storage, data=data, file_name="plan.jpg", clock=clock))
+        payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
+        assert queued_payloads(broker, START_QUEUE) == [payload.model_dump(mode="json")]
 
-    data = jpeg_with_orientation(640, 480, orientation=1)
-    _scene, run = asyncio.run(_upload_and_run(maker, storage, data=data, file_name="plan.jpg", clock=clock))
-    payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
-    assert queued_payloads(broker, START_QUEUE) == [payload.model_dump(mode="json")]
-
-    start = time.monotonic()
-    with worker_factory([START_QUEUE]):
-        deadline = start + J01_WAIT_S
-        while time.monotonic() < deadline and broker.llen(ML_QUEUE) < 3:
-            time.sleep(0.05)
-        elapsed = time.monotonic() - start
-    assert len(queued_payloads(broker, ML_QUEUE)) == 3
-    return elapsed
+        start = time.monotonic()
+        with worker_factory([START_QUEUE]):
+            deadline = start + J01_WAIT_S
+            while time.monotonic() < deadline and broker.llen(ML_QUEUE) < 3:
+                time.sleep(0.05)
+            elapsed = time.monotonic() - start
+        assert len(queued_payloads(broker, ML_QUEUE)) == 3
+        return elapsed
 
 
 @pytest.mark.usefixtures("process_env")
@@ -179,7 +176,6 @@ def test_orchestrate_pipeline_start__J01_smoke(
     fake_clock: FakeClock,
     clean_ml_queue: SyncRedis,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Đường gửi thật → task thật (BE-00 §7 "Test task"): đủ ba `ml.infer.*` (NO-218).
 
@@ -191,14 +187,14 @@ def test_orchestrate_pipeline_start__J01_smoke(
     `DB_AFTER_COMMIT_INLINE=1` (đặt bởi `create_celery` cho app thử) chạy callback sau commit
     tại chỗ trong luồng worker, nên không cần chờ riêng. Task tự dựng `worker_sessionmaker()`
     (đọc `DATABASE_URL` của `process_env`, khoá theo vòng sự kiện của chính nó — `packages.db.
-    engine.worker_sessionmaker`); chỉ kho vẫn trỏ qua `_STORAGE._factory` để dùng chung
+    engine.worker_sessionmaker`); chỉ kho vẫn trỏ qua `_STORAGE.override` để dùng chung
     `local_storage` với dữ liệu đã mồi.
 
     Không mang marker `perf` và **không** khẳng định thời gian: `J01_WAIT_S` chỉ là trần chờ
     chống treo. Case `J01` không được là test `perf` (cổng bước 5b cấm test `perf` mang tên
     case); trần 5 s của [8] kiểm ở `test_orchestrate_start_smoke_stays_under_ceiling`.
     """
-    elapsed = _run_smoke(db_sessionmaker, local_storage, fake_clock, clean_ml_queue, celery_worker_factory, monkeypatch)
+    elapsed = _run_smoke(db_sessionmaker, local_storage, fake_clock, clean_ml_queue, celery_worker_factory)
     _log.info("j01_elapsed_s=%.3f", elapsed)
 
 
@@ -210,14 +206,13 @@ def test_orchestrate_start_smoke_stays_under_ceiling(
     fake_clock: FakeClock,
     clean_ml_queue: SyncRedis,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Trần thời gian của smoke: worker thật đưa đủ ba `ml.infer.*` trong ≤ 5 s (NO-295 P3-04).
 
     Nguồn trần: B5-06a [8] `__J01_smoke` "≤ 5 s có ba `ml.infer.*`" — trần đặc tả, không tự đặt.
     Tên không mang mã case nên được gắn `perf` (cổng bước 5b); cùng đường với `__J01_smoke`.
     """
-    elapsed = _run_smoke(db_sessionmaker, local_storage, fake_clock, clean_ml_queue, celery_worker_factory, monkeypatch)
+    elapsed = _run_smoke(db_sessionmaker, local_storage, fake_clock, clean_ml_queue, celery_worker_factory)
     _log.info("start_smoke_elapsed_s=%.3f", elapsed)
     assert elapsed <= J01_CEILING_S, f"smoke {elapsed:.3f} s > trần {J01_CEILING_S} s"
 

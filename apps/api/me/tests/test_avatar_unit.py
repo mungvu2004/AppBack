@@ -6,7 +6,7 @@ import os
 import struct
 import zlib
 from collections.abc import Iterator
-from typing import Final
+from typing import Any, Final, Literal
 
 import pytest
 from PIL import Image, ImageFile
@@ -184,6 +184,7 @@ async def test_process_avatar_huge_declared_dims_is_too_large_and_decoder_never_
     original_load = ImageFile.ImageFile.load
 
     def _counting_load(self: ImageFile.ImageFile) -> object:
+        """Đếm số lần bộ giải mã `ImageFile.load` được gọi."""
         nonlocal calls
         calls += 1
         return original_load(self)
@@ -229,6 +230,7 @@ async def test_process_avatar_concurrency_gate_returns_503(monkeypatch: pytest.M
     monkeypatch.setattr(avatar, "_DECODE_WAIT_S", 0.05)
 
     async def _hold_slot() -> None:
+        """Giữ một chỗ giải mã cho tới khi test cho phép nhả."""
         async with avatar._decode_slot():
             await asyncio.sleep(0.2)
 
@@ -272,6 +274,7 @@ async def test_avatar_url_absolute_and_no_stat_call(
     original_stat = local_storage.stat
 
     async def _counting_stat(k: str) -> object:
+        """Đếm lời gọi `stat` rồi chuyển cho bản thật."""
         nonlocal calls
         calls += 1
         return await original_stat(k)
@@ -281,3 +284,40 @@ async def test_avatar_url_absolute_and_no_stat_call(
     assert url is not None
     assert url.startswith("https://appback.test/api/files/")
     assert calls == 0
+
+
+def test_decode_and_reencode__does_not_write_truncated_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-170: pipeline không gán `ImageFile.LOAD_TRUNCATED_IMAGES` (biến toàn cục, BE-00 §11)."""
+    monkeypatch.setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+    avatar._decode_and_reencode(png_bytes(), "png")
+    assert ImageFile.LOAD_TRUNCATED_IMAGES is True
+
+
+@pytest.mark.parametrize(
+    ("raw", "kind", "mode", "converts"),
+    [
+        (png_bytes(mode="RGBA"), "png", "RGBA", 0),
+        (png_bytes(mode="RGB"), "png", "RGB", 0),
+        (jpeg_bytes(), "jpeg", "RGB", 0),
+        (png_bytes(mode="L"), "png", "L", 1),
+        (png_bytes(mode="P"), "png", "P", 1),
+    ],
+)
+def test_decode_and_reencode__converts_only_when_mode_is_not_rgb_rgba(
+    monkeypatch: pytest.MonkeyPatch, raw: bytes, kind: Literal["png", "jpeg"], mode: str, converts: int
+) -> None:
+    """NO-171: `convert` 8-bit chỉ khi mode ≠ RGB/RGBA; ảnh đã RGB/RGBA không bị chép nguyên cỡ."""
+    seen: list[str] = []
+    original = Image.Image.convert
+
+    def _spy(self: Image.Image, *args: Any, **kwargs: Any) -> Image.Image:
+        """Đếm lời gọi `convert` trên ảnh có mode `mode`."""
+        if self.mode == mode:
+            seen.append(self.mode)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "convert", _spy)
+    out = avatar._decode_and_reencode(raw, kind)
+    assert len(seen) == converts
+    with Image.open(io.BytesIO(out)) as result:
+        assert result.mode in ("RGB", "RGBA")

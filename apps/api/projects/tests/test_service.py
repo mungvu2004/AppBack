@@ -6,6 +6,7 @@ dừng request thứ nhất đúng lúc giữa `_live_project` và `_write_chang
 dòng đó bằng **session khác** trước khi gọi — mô phỏng #27 xen vào giữa hai bước của #26.
 """
 
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.core.auth import Principal
 from apps.api.projects.schemas import ProjectUpdateIn
-from apps.api.projects.service import _write_changes
+from apps.api.projects.service import _storage_of, _write_changes
 from packages.core.errors import AppError
 from packages.db.models.projects import Project
 from packages.testing.factories.auth import make_user
@@ -47,3 +48,16 @@ async def test_write_changes_raises_not_found_when_deleted_between_gate_and_upda
             await _write_changes(setup, stale, changes, principal, fake_clock)
         assert excinfo.value.code.code == "NOT_FOUND"
         assert excinfo.value.wire_params() == {"resource": "project"}
+
+
+async def test_storage_of__raises_when_app_has_no_storage() -> None:
+    """NO-194: có `app` mà thiếu `app.state.storage` → ném ngay, không lặng lẽ `None` làm mất `avatarUrl`."""
+    with pytest.raises(AttributeError):
+        _storage_of(SimpleNamespace(state=SimpleNamespace()))
+
+
+async def test_storage_of__none_without_app_and_returns_state_storage() -> None:
+    """NO-194: `app=None` → `None`; có app → đúng `app.state.storage`."""
+    sentinel = object()
+    assert _storage_of(None) is None
+    assert _storage_of(SimpleNamespace(state=SimpleNamespace(storage=sentinel))) is sentinel

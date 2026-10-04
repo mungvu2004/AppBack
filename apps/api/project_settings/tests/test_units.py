@@ -19,9 +19,9 @@ from apps.api.project_settings.schemas import ProjectSettingsBodyIn
 from apps.api.project_settings.service import body_digest
 from apps.api.project_settings.tests.support import GOOD_BODY, seed_engineer_project
 from packages.db.models.project_settings import ProjectSettingsRow
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 
 
 def _body(**overrides: Any) -> ProjectSettingsBodyIn:
@@ -42,6 +42,28 @@ def test_body__rejects_non_finite_or_non_number(bad: Any) -> None:
     """`NaN`, vô cực, `bool`, chuỗi và `null` không là số hợp lệ."""
     with pytest.raises(ValidationError):
         _body(confidenceThreshold=bad)
+
+
+@pytest.mark.parametrize(
+    ("field", "raw"),
+    [
+        ("confidenceThreshold", -0.0004),
+        ("confidenceThreshold", 1.0004),
+        ("defaultScaleMmPerPx", 0.0099999),
+        ("defaultScaleMmPerPx", 1000.0000004),
+    ],
+)
+def test_body__range_is_checked_on_the_raw_number_not_the_rounded_one(field: str, raw: float) -> None:
+    """NO-214: số ngoài dải bị 422 dù làm tròn rồi lọt vào dải (`-0.0004` → `-0.000` không được ra dây `-0.0`)."""
+    with pytest.raises(ValidationError):
+        _body(**{field: raw})
+
+
+def test_body__negative_zero_is_normalized_to_zero() -> None:
+    """NO-214: JSON `-0.0` lọt dải nhưng không được ra `-0.000` (dây `-0.0`, băm khác `0.000`)."""
+    body = _body(confidenceThreshold=-0.0)
+    assert body.confidence_threshold == Decimal("0.000")
+    assert not body.confidence_threshold.is_signed()
 
 
 def test_digest__is_stable_and_sensitive() -> None:
