@@ -22,7 +22,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 import textwrap
@@ -55,6 +54,7 @@ from apps.ml.training_runner.tests.support import (
 )
 from packages.core.clock import SystemClock
 from packages.messaging.celery_app import send_task
+from packages.messaging.payloads.training import WEIGHTS_NAME_RE
 from packages.messaging.redis import SyncRedis, broker_redis_sync
 from packages.storage.keys import model_artifact
 from packages.storage.local import LocalDiskStorage
@@ -65,7 +65,6 @@ _log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[4]
 QUEUE = "default"
 WAIT_S = 90.0
-WEIGHTS_NAME_RE = re.compile(r"\Aweights-[0-9a-f]{32}\.onnx\Z")
 
 
 def _fail_exit(code: int) -> None:
@@ -277,7 +276,9 @@ def test_run_training_job_cancel_while_waiting(
     script = _CANCEL_WHILE_WAITING_SCRIPT.format(
         payload_json=json.dumps(payload.model_dump(mode="json")), claim_token=claim_token
     )
-    env = dict(os.environ) | _runner_env(storage_root=tmp_path / "objects", redis_broker_url=redis_broker_url)
+    env = dict(os.environ) | _runner_env(
+        storage_root=tmp_path / "objects", redis_broker_url=redis_broker_url, ml_device="auto"
+    )
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính venv, mã cố định
         [sys.executable, "-c", script], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False, timeout=60
     )

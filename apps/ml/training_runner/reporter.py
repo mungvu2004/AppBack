@@ -13,8 +13,8 @@ from typing import Final, Literal
 
 from pydantic import BaseModel
 
+from apps.ml.runtime.lease import JOIN_TIMEOUT_S
 from apps.ml.training_runner.keys import FINISHED_TASK, HEARTBEAT_TASK, LOG_TASK, METRICS_TASK
-from apps.ml.training_runner.watchdog import JOIN_TIMEOUT_S
 from packages.core.clock import Clock
 from packages.core.errors import AppError
 from packages.ml_contracts.payloads import (
