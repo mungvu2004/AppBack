@@ -38,10 +38,10 @@ from apps.api.drawings.tests._upload_helpers import (
     upload_png,
     upload_through,
 )
-from apps.api.drawings.uploads import chunk_key
 from packages.core.settings import get_core_settings
 from packages.db.models.drawings import UploadChunkRow, UploadRow
 from packages.db.settings import reset_database_settings_cache
+from packages.storage.keys import upload_chunk
 from packages.storage.port import ObjectStorage
 from packages.testing.factories.drawings import make_upload
 from packages.testing.fixtures.api import make_api_client
@@ -348,7 +348,7 @@ async def _seed_chunks(db: AsyncSession, storage: ObjectStorage, stage: Stage, d
     upload = await make_upload(db, project=stage.scene.project, floor=stage.scene.floor, size_bytes=len(data))
     for index, piece in enumerate(split(data)):
         sha256 = hashlib.sha256(piece).hexdigest()
-        key = chunk_key(stage.project_id, stage.level_id, upload.id, index, sha256)
+        key = upload_chunk(stage.project_id, stage.level_id, upload.id, index, sha256)
         await storage.put(key, piece, content_type="application/octet-stream", max_bytes=len(piece))
         db.add(
             UploadChunkRow(upload_id=upload.id, chunk_index=index, size_bytes=len(piece), sha256=sha256, object_key=key)

@@ -22,8 +22,8 @@ from packages.core.ids import new_id
 from packages.core.object_keys import upload_prefix_of
 from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.db.models.floors import FloorRow
-from packages.storage.keys import check_key, upload_prefix
-from packages.storage.port import ObjectStorage
+from packages.storage.keys import server_chosen_kind, upload_page_revision, upload_prefix
+from packages.storage.port import Disposition, ObjectStorage
 
 PAGES_SEGMENT = "pages/"
 """Thư mục con của trang **đã nắn** dưới `upload_prefix` ([5]); dùng cả lúc dựng và lúc kiểm."""
@@ -41,12 +41,18 @@ def new_page_key(*, project_id: str, level_id: str, upload_id: str, page_index: 
     # Không có hàm ULID trần công khai (`new_id` luôn kèm tiền tố) — cắt tiền tố là đường
     # rẻ nhất; nâng cấp là thêm `new_ulid()` vào `packages/core/ids.py` (ngoài whitelist).
     ulid = new_id("drw", clock).removeprefix("drw_")
-    return check_key(f"{upload_prefix(project_id, level_id, upload_id)}{PAGES_SEGMENT}{page_index}-{ulid}.png")
+    return upload_page_revision(project_id, level_id, upload_id, page_index, ulid)
 
 
 async def drawing_url(storage: ObjectStorage, page_key: str) -> str:
-    """URL ký của một trang đã nắn: `attachment`, **không** `kind` (khoá không phải do server chọn)."""
-    return (await storage.signed_url(page_key, disposition="attachment")).url
+    """URL ký của một trang đã nắn: `inline` + `kind` png khi khoá do server đặt (`keys.server_chosen_kind`).
+
+    Khoá không do server đặt (`kind` là `None`) giữ `attachment`, không `kind`: `inline` sẽ buộc kho
+    `stat` object và ký loại tệp người dùng khai (K15).
+    """
+    kind = server_chosen_kind(page_key)
+    disposition: Disposition = "attachment" if kind is None else "inline"
+    return (await storage.signed_url(page_key, disposition=disposition, kind=kind)).url
 
 
 async def current_drawing(db: AsyncSession, floor_pk: int, *, for_update: bool = False) -> DrawingRow | None:

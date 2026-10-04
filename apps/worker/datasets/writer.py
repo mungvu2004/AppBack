@@ -11,8 +11,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Awaitable, Callable
 
 from apps.api.admin_ml_datasets.errors import DATASET_TOO_LARGE
-from packages.core.ids import check_id
-from packages.core.object_keys import check_key
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.datasets import (
     DATASET_MAX_BYTES,
@@ -29,16 +27,6 @@ from packages.storage.port import ObjectStorage
 _MANIFEST_NAME = "manifest.jsonl"
 
 BeforePut = Callable[[], Awaitable[None]]
-
-
-def _sample_key(version_id: str, rel_path: str) -> str:
-    """Khoá của một tệp mẫu (`{split}/{sample_id}/{filename}`, nhiều đoạn).
-
-    Nợ: `dataset_object` (`packages/storage/keys.py:74`, ngoài whitelist của việc này) dùng
-    `_name` chặn tên lồng đường dẫn, nên từ chối `sample_path(...)` dù prompt khối [6] chỉ đúng
-    cách gọi này — dựng khoá thẳng bằng `check_id`/`check_key` của lõi (cùng luật, K13) thay vì
-    qua `dataset_object`. Chủ file: người điều phối ghi `NO-…`, giao chủ `packages/storage`."""
-    return check_key(f"ml/datasets/{check_id('dsv', version_id)}/{rel_path}")
 
 
 class SampleWriter:
@@ -91,11 +79,11 @@ class SampleWriter:
     async def _put(
         self, split: Split, sample_id: str, filename: str, data: bytes | AsyncIterable[bytes], content_type: str
     ) -> None:
-        """Một `put` qua `dataset_object`; cộng `ObjectInfo.size` thật (không băm lại, prompt khối [2])."""
+        """Một `put` qua `dataset_object` (NO-263); cộng `ObjectInfo.size` thật (không băm lại, prompt khối [2])."""
         if self._before_put is not None:
             await self._before_put()
         rel_path = sample_path(split, sample_id, filename)
-        key = _sample_key(self._version_id, rel_path)
+        key = dataset_object(self._version_id, rel_path)
         # `max_bytes` của `put` là trần MỘT object (413 `PAYLOAD_TOO_LARGE`, mã lỗi khác hợp đồng
         # module này); trần dataset là việc của `self._max_bytes` cộng dồn ngay dưới đây, nên
         # truyền trần tuyệt đối của gói cho `put` để nó không tự chặn trước khi ta kịp cộng dồn.

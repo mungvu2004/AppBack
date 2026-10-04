@@ -1,3 +1,5 @@
+"""Hàm khoá object của `packages.storage.keys`: bố cục, luật id và loại ảnh do server đặt."""
+
 import re
 from collections.abc import Callable
 
@@ -17,6 +19,7 @@ DATASET_VERSION = "dsv_01ARZ3NDEKTSV4RRFFQ69G5FHB"
 
 
 def test_keys_follow_charter_layout() -> None:
+    """Mỗi hàm dựng khoá ra đúng bố cục hiến chương (BE-00 §8)."""
     upload = f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}"
     assert keys.upload_original(PROJECT, FLOOR, UPLOAD, "png") == f"{upload}/original.png"
     assert keys.upload_page(PROJECT, FLOOR, UPLOAD, 0) == f"{upload}/pages/0.png"
@@ -30,6 +33,7 @@ def test_keys_follow_charter_layout() -> None:
 
 
 def test_prefixes_end_with_slash() -> None:
+    """Tiền tố dự án và lượt tải kết thúc bằng `/`."""
     assert keys.project_prefix(PROJECT) == f"projects/{PROJECT}/"
     assert keys.upload_prefix(PROJECT, FLOOR, UPLOAD) == f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
 
@@ -102,6 +106,7 @@ def test_run_and_model_layout_comes_from_core(
     ],
 )
 def test_builders_reject_wrong_ids(build: Callable[[], str], match: str) -> None:
+    """Id hay tên sai luật → `ValueError` với thông điệp nêu đúng luật."""
     with pytest.raises(ValueError, match=match):
         build()
 
@@ -113,6 +118,7 @@ def test_builders_reject_wrong_ids(build: Callable[[], str], match: str) -> None
         (f"users/{USER}/avatar/{ULID}.jpg", "jpeg"),
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.png", "png"),
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/12.png", "png"),
+        (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/12-{ULID}.png", "png"),
         (f"users/{USER}/avatar/{ULID}.pdf", None),
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/original.png", None),
         (f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/0.jpg", None),
@@ -160,3 +166,54 @@ def test_server_chosen_kind_reads_id_rules_of_core(
     assert keys.server_chosen_kind(key) is not None
     monkeypatch.setattr(module, rule, lambda *_: False)
     assert keys.server_chosen_kind(key) is None
+
+
+SHA = "a" * 64
+
+
+def test_dataset_object__accepts_multi_segment_sample_path() -> None:
+    """NO-263: đường mẫu `{split}/{sample_id}/{filename}` (ba đoạn) là tên hợp lệ; manifest một đoạn vẫn đúng."""
+    assert keys.dataset_object(DATASET_VERSION, "train/s1/image.png") == (
+        f"ml/datasets/{DATASET_VERSION}/train/s1/image.png"
+    )
+    assert keys.dataset_object(DATASET_VERSION, "manifest.jsonl") == f"ml/datasets/{DATASET_VERSION}/manifest.jsonl"
+
+
+@pytest.mark.parametrize("name", ["", "/a", "a/", "a//b", "a/../b", "../a", "a/./b", "a/b c", "a\b"])
+def test_dataset_object__rejects_unsafe_names(name: str) -> None:
+    """NO-263: từng đoạn đều qua `is_segment`; đoạn rỗng, `.`/`..`, ký tự lạ → `ValueError`."""
+    with pytest.raises(ValueError, match="tên object"):
+        keys.dataset_object(DATASET_VERSION, name)
+
+
+def test_upload_chunk__layout_and_rules() -> None:
+    """NO-215: khoá khúc `chunks/{i}/{sha256}` dựng ở `keys`, cạnh `upload_original`/`upload_page`."""
+    assert keys.upload_chunk(PROJECT, FLOOR, UPLOAD, 3, SHA) == (
+        f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/chunks/3/{SHA}"
+    )
+    for index, sha in [(-1, SHA), (0, "A" * 64), (0, "a" * 63), (0, "../" + "a" * 61)]:
+        with pytest.raises(ValueError, match="khúc"):
+            keys.upload_chunk(PROJECT, FLOOR, UPLOAD, index, sha)
+
+
+def test_upload_page_revision__is_a_server_chosen_png() -> None:
+    """NO-217: trang đã nắn `pages/{i}-{ULID}.png` do server đặt → `server_chosen_kind` trả `png`; khoá lạ thì không."""
+    base = f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/pages/"
+    key = keys.upload_page_revision(PROJECT, FLOOR, UPLOAD, 2, ULID)
+    assert key == f"{base}2-{ULID}.png"
+    assert keys.server_chosen_kind(key) == "png"
+    for bad in (f"{base}2-khong-phai-ulid.png", f"{base}02-{ULID}.png", f"{base}2-{ULID}.jpg", f"{base}-{ULID}.png"):
+        assert keys.server_chosen_kind(bad) is None
+    with pytest.raises(ValueError, match="số trang"):
+        keys.upload_page_revision(PROJECT, FLOOR, UPLOAD, -1, ULID)
+    with pytest.raises(ValueError, match="ULID"):
+        keys.upload_page_revision(PROJECT, FLOOR, UPLOAD, 0, "x")
+
+
+def test_dataset_version_prefix__is_the_prefix_of_every_dataset_object() -> None:
+    """NO-263: tiền tố phiên bản dataset là một nguồn với `dataset_object`; id sai mẫu → `ValueError`."""
+    prefix = keys.dataset_version_prefix(DATASET_VERSION)
+    assert prefix == f"{keys.DATASETS_PREFIX}{DATASET_VERSION}/"
+    assert keys.dataset_object(DATASET_VERSION, "train/s1/image.png").startswith(prefix)
+    with pytest.raises(ValueError, match="dsv_"):
+        keys.dataset_version_prefix(MODEL)
