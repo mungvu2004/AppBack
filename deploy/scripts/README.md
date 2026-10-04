@@ -292,7 +292,7 @@ hành cần đặt tay trong `appback.env` hoặc secret GitHub:
 | `APPBACK_HEALTH_TIMEOUT_S` | `180` | `appback.env`, chỉnh nếu máy chậm khởi động |
 | `ALERT_WEBHOOK_URL` | rỗng | Environment `alerts` của GitHub + `appback.env` (§4) |
 | `BACKUP_TARGET` | `/var/backups/appback` | secret GitHub + `appback.env` (§3) |
-| `BACKUP_AGE_RECIPIENT` | rỗng → không mã hoá | secret GitHub + `appback.env` (§8, **bắt buộc** trước khi bản sao lưu rời máy) |
+| `BACKUP_AGE_RECIPIENT` | rỗng → không mã hoá; `APP_ENV=production` thì `backup.sh` thoát 1 | secret GitHub + `appback.env` (§8, **bắt buộc** trước khi bản sao lưu rời máy) |
 | `BACKUP_AGE_IDENTITY` | rỗng | chỉ đặt tạm lúc khôi phục thật (§8) |
 | `SMTP_HOST` | **bắt buộc** | `appback.env` — máy chủ SMTP; thiếu thì mọi lệnh `docker compose` trên prod hỏng ngay lúc nội suy (`base.yml`) |
 | `MAIL_FROM` | **bắt buộc** | `appback.env` — địa chỉ người gửi; thiếu như `SMTP_HOST` |

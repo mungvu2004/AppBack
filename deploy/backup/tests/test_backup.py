@@ -186,6 +186,23 @@ def test_backup__age_recipient_encrypts_and_leaves_only_age_files(tmp_path: Path
         assert _sha256(stage / rel) == expected
 
 
+def test_backup__production_without_age_recipient_exits_1_before_dump(tmp_path: Path) -> None:
+    """APP_ENV=production mà thiếu BACKUP_AGE_RECIPIENT → thoát 1, không pg_dump, không bản rõ (C-18)."""
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "APP_ENV": "production"})
+    assert code == 1, log
+    assert "pg_dump" not in log
+    assert not target.exists() or not any(target.iterdir())
+
+
+def test_backup__production_with_age_recipient_encrypts(tmp_path: Path) -> None:
+    """APP_ENV=production có BACKUP_AGE_RECIPIENT → chạy bình thường, chỉ còn tệp .age (C-18)."""
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "production", "BACKUP_AGE_RECIPIENT": "age1testrecipient"}
+    code, log, target = _run_backup(tmp_path, env)
+    assert code == 0, log
+    stage = next(p for p in target.iterdir() if p.is_dir())
+    assert {p.name for p in stage.iterdir()} == {"db.dump.age", "objects.tar.age", "manifest.json"}
+
+
 def test_backup__pg_dump_failure_exits_1_and_removes_stage_dir(tmp_path: Path) -> None:
     """pg_dump hỏng → thoát 1, không để lại thư mục dở dang."""
     code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "_FAIL": "1"})
