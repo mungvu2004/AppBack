@@ -45,6 +45,7 @@ from packages.testing.fixtures.worker_id import XDIST_WORKER_ENV
     ],
 )
 def test_tên_database_mẫu_theo_tiến_trình(monkeypatch: pytest.MonkeyPatch, worker: str, expected: str) -> None:
+    """Tên database mẫu mang hậu tố mã tiến trình xdist."""
     monkeypatch.setenv(XDIST_WORKER_ENV, worker)
     assert template_db_name() == expected
 
@@ -56,6 +57,7 @@ def test_tên_database_mẫu_ngoài_xdist_giữ_nguyên(monkeypatch: pytest.Monk
 
 
 def test_hai_tiến_trình_xdist_không_dùng_chung_database_mẫu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hai tiến trình xdist khác nhau ra hai tên database mẫu khác nhau."""
     monkeypatch.setenv(XDIST_WORKER_ENV, "gw0")
     first = template_db_name()
     monkeypatch.setenv(XDIST_WORKER_ENV, "gw1")
@@ -70,11 +72,13 @@ WRITERS = 6
 
 @dataclass
 class _FakeUrl:
+    """URL tối thiểu mà `trace_case` đọc (`path`)."""
     path: str = "/v1/things"
 
 
 @dataclass
 class _FakeRequest:
+    """Request tối thiểu mà `trace_case` đọc (`method`, `url`)."""
     method: str = "GET"
     url: _FakeUrl = field(default_factory=_FakeUrl)
 
