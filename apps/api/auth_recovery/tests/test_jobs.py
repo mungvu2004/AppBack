@@ -151,7 +151,7 @@ async def test_send_token_mail__J03(
 ) -> None:
     """Người nhận bị SMTP từ chối hẳn (550) → `PermanentError(MAIL_REJECTED)`, không thử lại.
 
-    NO-149a: log `token_mail_failed` phải giữ `smtp_code` (550) — trước sửa, `except MailRejectedError`
+    NO-149a: log `token_mail_isolated` phải giữ `smtp_code` (550) — trước sửa, `except MailRejectedError`
     không đọc `exc.smtp_code` nên log không phân biệt được 550 với 554.
     """
     async with db_sessionmaker() as setup:
@@ -170,7 +170,7 @@ async def test_send_token_mail__J03(
         await run_send_token_mail(db_sessionmaker, fake_clock, [row.id])
     assert excinfo.value.code == MAIL_REJECTED
 
-    record = next(r for r in caplog.records if r.msg == "token_mail_failed" and r.token_id == row.id)  # type: ignore[attr-defined]
+    record = next(r for r in caplog.records if r.msg == "token_mail_isolated" and r.token_id == row.id)  # type: ignore[attr-defined]
     assert record.smtp_code == 550  # type: ignore[attr-defined]
 
     async with db_sessionmaker() as check:
@@ -220,7 +220,7 @@ async def test_send_token_mail__J01_isolates_bad_token_from_batch(
 async def test_send_token_mail__logs_isolated_failure_before_later_transient(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
-    memory_mailer: MemoryMailer,
+    memory_mailer: MemoryMailer,  # đặt env mail mà `get_mail_settings()` đọc trước `create_mailer` bị thay
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -256,7 +256,7 @@ async def test_send_token_mail__logs_isolated_failure_before_later_transient(
         await run_send_token_mail(db_sessionmaker, fake_clock, [bad_row.id, transient_row.id])
 
     record = next(
-        (r for r in caplog.records if r.msg == "token_mail_failed" and getattr(r, "token_id", None) == bad_row.id),
+        (r for r in caplog.records if r.msg == "token_mail_isolated" and getattr(r, "token_id", None) == bad_row.id),
         None,
     )
     assert record is not None
@@ -267,6 +267,34 @@ async def test_send_token_mail__logs_isolated_failure_before_later_transient(
         bad_after = await check.get(OneTimeToken, bad_row.id)
     assert bad_after is not None
     assert bad_after.superseded_at is not None  # cô lập đã ghi dù batch cuối cùng ném TransientError
+
+
+async def test_send_token_mail__one_token_mail_failed_record_per_bad_token(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    fake_clock: FakeClock,
+    memory_mailer: MemoryMailer,  # đặt env mail cho `get_mail_settings()`; token hỏng không tới mailer
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """NO-195: một token hỏng chỉ sinh **một** bản ghi `token_mail_failed` (luật cảnh báo đếm theo tên).
+
+    Log cô lập từng token mang tên riêng `token_mail_isolated` (`token_id`, `smtp_code`); tên
+    `token_mail_failed` dành cho bản tóm tắt lô ở `on_failed` (`token_ids`). Trước sửa, cả hai
+    cùng tên nên đường `PermanentError` → `on_failed` đếm đôi.
+    """
+    async with db_sessionmaker() as setup:
+        user = await make_user(setup)
+        row, _ = await seed_token(setup, user_id=user.id, purpose="invite", clock=fake_clock)
+    async with db_sessionmaker() as corrupt:
+        await corrupt.execute(update(OneTimeToken).where(OneTimeToken.id == row.id).values(token_hash="0" * 64))
+        await corrupt.commit()
+
+    with caplog.at_level(logging.ERROR), pytest.raises(PermanentError) as excinfo:
+        await run_send_token_mail(db_sessionmaker, fake_clock, [row.id])
+    jobs._on_send_token_mail_failed(SendTokenMailPayload(token_ids=[row.id]), excinfo.value.code)
+
+    assert [r.msg for r in caplog.records].count("token_mail_failed") == 1
+    isolated = [r for r in caplog.records if r.msg == "token_mail_isolated"]
+    assert [getattr(r, "token_id", None) for r in isolated] == [row.id]
 
 
 def test_send_token_mail_task_is_registered_under_tokens_constant() -> None:
