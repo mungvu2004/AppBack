@@ -8,6 +8,7 @@ Hai đoạn `run:` được trích thẳng từ YAML rồi chạy bằng `bash` 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,15 @@ def test_notify_permissions_empty_and_no_checkout() -> None:
     assert doc.get("permissions") == {}
     uses_values = _walk_key(doc["jobs"], "uses")
     assert not any(u.startswith("actions/checkout@") for u in uses_values)
+
+
+def test_notify_workflow__secret_only_from_environment() -> None:
+    """SEC-061: job đọc `secrets.*` (trừ `GITHUB_TOKEN`) phải khai `environment:` — secret cấp repository thì mọi
+    workflow, kể cả chạy mã từ nhánh khác, đều đọc được URL webhook cảnh báo."""
+    doc = _load_yaml(NOTIFY_YML)
+    for name, job in doc["jobs"].items():
+        used = set(re.findall(r"secrets\.(\w+)", json.dumps(job))) - {"GITHUB_TOKEN"}
+        assert not used or job.get("environment"), f"job {name} đọc secret cấp repository: {sorted(used)}"
 
 
 def test_notify_run_steps_never_interpolate_event_directly() -> None:

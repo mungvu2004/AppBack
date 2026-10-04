@@ -235,3 +235,24 @@ def test_backup__rotate_only_keeps_seven_days_and_weekly_and_untouched_stray(tmp
             expected.add((now - timedelta(days=latest)).strftime("%Y%m%dT000000Z"))
 
     assert set(dated) == expected
+
+
+def test_backup__stage_dir_and_dump_are_owner_only(tmp_path: Path) -> None:
+    """SEC-040: dưới `umask 022` của phiên SSH/systemd, thư mục bản sao lưu và tệp script tạo vẫn chỉ chủ đọc được.
+
+    Bản rõ (không `BACKUP_AGE_RECIPIENT`) chứa hash mật khẩu và mọi bản vẽ: 0644/0755 là cho mọi tài khoản
+    cục bộ đọc. Chạy qua `bash -c 'umask 022; exec …'` để kết quả không phụ thuộc umask của tiến trình pytest.
+    """
+    target = tmp_path / "target"
+    log = tmp_path / "log"
+    env = {"FAKE_LOG": str(log), "BACKUP_TARGET": str(target), "APPBACK_STORAGE": "s3"}
+    wrapper = tmp_path / "umask022.sh"
+    wrapper.write_text(f'umask 022\nexec bash "{BACKUP_SH}"\n', encoding="utf-8")
+    result = run_script(wrapper, env=env, bin_dir=_bin_dir(tmp_path))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    (stage,) = [p for p in target.iterdir() if p.is_dir()]
+    # Chỉ khẳng định thứ script tự tạo: `objects/**` do container `mc`/`tar` sinh (docker giả ở đây ghi trên host nên
+    # không chứng minh gì về chúng) — chúng được bảo vệ bởi thư mục cha 0700.
+    modes = {name: (stage / name).stat().st_mode & 0o777 for name in (".", "db.dump", "manifest.json", "objects")}
+    assert modes == {".": 0o700, "db.dump": 0o600, "manifest.json": 0o600, "objects": 0o700}

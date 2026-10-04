@@ -14,6 +14,8 @@
 #
 # Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát).
 set -euo pipefail
+# Bản sao lưu chứa hash mật khẩu và mọi bản vẽ: thư mục/tệp do script tạo chỉ chủ đọc được (SEC-040).
+umask 077
 
 : "${APPBACK_DIR:=/opt/appback}"
 : "${COMPOSE_FILE:=$APPBACK_DIR/prod.yml}"
