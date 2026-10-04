@@ -9,9 +9,8 @@ import secrets
 from typing import Final, cast
 
 from packages.core.ids import check_id
-from packages.core.object_keys import check_key
 from packages.ml_contracts.datasets import Split, sample_path
-from packages.storage.keys import model_artifact
+from packages.storage.keys import dataset_object, model_artifact
 
 SLOT_KEY: Final = "training:slot"
 """Khoá "một job mỗi lúc" cho mọi thiết bị (BE-00 §7); `cuda` giữ thêm `gpu:0`."""
@@ -47,14 +46,14 @@ def weights_key(job_id: str, token: str) -> str:
 def sample_key(dataset_version_id: str, path: str) -> str:
     """Khoá object một tệp mẫu: `ml/datasets/<dsv>/` + đường manifest `{split}/{sample_id}/{filename}` (B6-02).
 
-    Không qua `dataset_object`: nó chỉ nhận tên một đoạn (NO-263), cùng cách lách với
-    `apps/worker/datasets/writer.py` `_sample_key`. Đường không đủ ba đoạn hay sai luật `sample_path` → `ValueError`.
+    Dựng qua `dataset_object` (một nguồn bố cục); trước đó kiểm đường đủ ba đoạn và đúng luật
+    `sample_path`, nếu không → `ValueError`.
     """
     parts = path.split("/")
     if len(parts) != 3:
         raise ValueError(f"đường mẫu phải có ba đoạn: {path!r}")
     sample_path(cast("Split", parts[0]), parts[1], parts[2])
-    return check_key(f"ml/datasets/{check_id('dsv', dataset_version_id)}/{path}")
+    return dataset_object(dataset_version_id, path)
 
 
 START_TASK: Final = "ml.training.runner.start"
