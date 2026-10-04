@@ -211,7 +211,7 @@ def _rescaled(decoded: DecodedSnapshot, doc: FloorDocument) -> tuple[SpatialLaye
             rescale_dimensions(decoded.dimensions, float(old), float(new)),
         )
     except RescaleError as exc:
-        raise VALIDATION.error(count=1) from exc
+        raise VALIDATION.error() from exc
 
 
 async def restore_version(
@@ -228,7 +228,7 @@ async def restore_version(
     if located.level_id != floor_id:
         raise VERSION_FLOOR_MISMATCH.error(field="body.floorId")
     actor_id = access.principal.user_id
-    doc = await lock_floor_document(db, floor_pk=version.floor_pk, clock=clock)
+    _, doc = await lock_floor_document(db, floor_pk=version.floor_pk, clock=clock)
     replay = await _replayed(db, version=version, doc=doc, actor_id=actor_id, base_version=base_version)
     if replay is not None:
         return RestoreOutcome(replay, replayed=True)

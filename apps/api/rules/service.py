@@ -25,7 +25,7 @@ from apps.api.rules.errors import (
     RULE_THRESHOLD_OUT_OF_RANGE,
     RULE_THRESHOLD_UNKNOWN,
 )
-from apps.api.rules.schemas import ProjectRuleConfigOut, RuleConfigBodyIn
+from apps.api.rules.schemas import ProjectRuleConfigOut, RuleConfigBodyIn, RuleConfigOverrideOut
 from packages.core.clock import Clock
 from packages.core.errors import VersionConflictError
 from packages.db.models.rules import RuleConfigRow
@@ -34,7 +34,7 @@ _OVERRIDES_FIELD = "body.overrides"
 
 
 def filter_overrides(overrides: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Bỏ mã và khoá ngưỡng không còn trong danh mục; `thresholds` rỗng rồi thì bỏ khoá, override rỗng thì bỏ mã.
+    """Bỏ mã, khoá ngưỡng ngoài danh mục và trường ngoài `RuleConfigOverrideOut`; `thresholds`/override rỗng thì bỏ.
 
     Chỉ lọc khi trả (dữ liệu lưu trước một FIX thu hẹp danh mục); không ghi lại dòng jsonb.
     """
@@ -42,7 +42,11 @@ def filter_overrides(overrides: Mapping[str, Mapping[str, Any]]) -> dict[str, di
     for code, override in overrides.items():
         if code != GENERAL_CODE and code not in RULE_CODES:
             continue
-        item = {name: value for name, value in override.items() if name != "thresholds"}
+        item = {
+            name: value
+            for name, value in override.items()
+            if name != "thresholds" and name in RuleConfigOverrideOut.model_fields
+        }
         thresholds = {
             key: value
             for key, value in override.get("thresholds", {}).items()

@@ -182,6 +182,7 @@ async def test_create_version__parallel_on_floor_without_document(
         vs = await make_version_scene(setup, fake_clock, document=False)
 
     async def one() -> int:
+        """Một lượt chụp trong phiên riêng; trả `sequence`."""
         async with db_sessionmaker() as session:
             row = await snap(session, vs, fake_clock)
             await session.commit()
@@ -279,6 +280,7 @@ def _set(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
     """Đột biến: đặt `raw[key] = value`."""
 
     def apply(raw: dict[str, Any]) -> None:
+        """Gán `key = value` vào ảnh chụp thô."""
         raw[key] = value
 
     return apply
@@ -414,3 +416,22 @@ async def test_versions__boundary_row_and_duplicate_sequence(db_session: AsyncSe
     db_session.add(_record(vs, fake_clock))
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def test_create_version__reads_floors_once(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Một lượt chụp chỉ chạm `floors` một lần (câu khoá); `project_id` lấy từ câu đó (NO-245)."""
+    vs = await make_version_scene(db_session, fake_clock)
+    statements: list[str] = []
+
+    def capture(_conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
+        """Ghi lại mọi câu SQL gửi tới Postgres."""
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        created = await snap(db_session, vs, fake_clock)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert created.project_id == vs.floor.project_id
+    assert len([s for s in statements if s.startswith("SELECT") and "FROM floors" in s]) == 1

@@ -26,6 +26,15 @@ def test_filter_overrides__drops_unknown_code_key_and_empties() -> None:
     }
 
 
+def test_filter_overrides__drops_unknown_override_field() -> None:
+    """Trường ngoài `RuleConfigOverrideOut` bị bỏ (`extra="forbid"`); override chỉ còn trường lạ → bỏ mã (NO-250)."""
+    stored: dict[str, dict[str, Any]] = {
+        "DOOR-WIDTH": {"enabled": False, "note": "x", "thresholds": {"door.minWidthMm": 700}},
+        "WALL-LENGTH": {"note": "y"},
+    }
+    assert filter_overrides(stored) == {"DOOR-WIDTH": {"enabled": False, "thresholds": {"door.minWidthMm": 700}}}
+
+
 @pytest.mark.parametrize(
     ("overrides", "code", "field"),
     [
