@@ -22,12 +22,13 @@ from apps.ml.training_runner.errors import (
     TRAINING_DISK_FULL,
 )
 from apps.ml.training_runner.keys import sample_key
+from packages.core.error_codes import NOT_FOUND
 from packages.core.errors import AppError
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.datasets import ManifestEntry, parse_manifest
 from packages.ml_contracts.payloads import TrainJobPayload
 from packages.storage.keys import dataset_object
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 
 _log: Final = logging.getLogger(__name__)
 
@@ -58,18 +59,14 @@ class DatasetPlan:
 
 
 async def _read_manifest(storage: ObjectStorage, key: str) -> bytes:
-    """Đọc manifest theo khúc, chặn tại `MANIFEST_MAX_BYTES`; object vắng hay quá cỡ → mã manifest lệch."""
-    chunks: list[bytes] = []
-    total = 0
-    try:
-        async for chunk in storage.open_read(key):
-            total += len(chunk)
-            if total > MANIFEST_MAX_BYTES:
-                raise PermanentError(DATASET_MANIFEST_MISMATCH)
-            chunks.append(chunk)
-    except AppError as exc:
-        raise PermanentError(DATASET_MANIFEST_MISMATCH) from exc
-    return b"".join(chunks)
+    """Đọc manifest, chặn tại `MANIFEST_MAX_BYTES`; vắng hay quá cỡ → mã manifest lệch; kho 503 lan nguyên (R-16)."""
+    return await read_all_capped(
+        storage,
+        key,
+        max_bytes=MANIFEST_MAX_BYTES,
+        too_large=lambda: PermanentError(DATASET_MANIFEST_MISMATCH),
+        on_missing=lambda: PermanentError(DATASET_MANIFEST_MISMATCH),
+    )
 
 
 async def load_plan(storage: ObjectStorage, payload: TrainJobPayload) -> DatasetPlan:
@@ -103,7 +100,8 @@ def check_disk(directory: Path, total_bytes: int, *, disk_usage: Callable[[Path]
 
 
 async def _download_one(storage: ObjectStorage, dataset_version_id: str, entry: ManifestEntry, dest: Path) -> None:
-    """Tải một mục manifest về `dest`, băm + đếm byte khi ghi; lệch hay vắng → xoá tệp dở, mã object lệch.
+    """Tải một mục manifest về `dest`, băm + đếm byte khi ghi; lệch hay vắng → xoá tệp dở, mã object lệch;
+    kho 503 cũng xoá tệp dở nhưng lan nguyên để thử lại (R-16).
 
     `Path.open`/`write`/`unlink` là lệnh chặn (ASYNC240): chạy qua `asyncio.to_thread`. Dùng
     `sample_key` (không `dataset_object`, chỉ nhận tên một đoạn — NO-263): `entry.path` ba đoạn.
@@ -120,6 +118,8 @@ async def _download_one(storage: ObjectStorage, dataset_version_id: str, entry: 
     except AppError as exc:
         await asyncio.to_thread(handle.close)
         await asyncio.to_thread(dest.unlink, missing_ok=True)
+        if exc.code is not NOT_FOUND:
+            raise  # kho bận (503) là sự cố tạm: để hàng đợi thử lại, không đổi thành lỗi vĩnh viễn (R-16)
         raise PermanentError(DATASET_OBJECT_MISMATCH) from exc
     else:
         await asyncio.to_thread(handle.close)
