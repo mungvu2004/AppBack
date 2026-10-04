@@ -9,6 +9,7 @@ import pytest
 
 from apps.worker.pipeline_build import build as build_module
 from apps.worker.pipeline_build.build import BuiltLayer, build_layer
+from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from packages.domain.scale import RescaleError, ScaleSample
 from packages.ml_contracts.artifacts import (
     BoxPx,
