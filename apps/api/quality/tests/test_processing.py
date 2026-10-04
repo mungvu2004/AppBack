@@ -182,7 +182,7 @@ def _saturate(
     monkeypatch.setattr(processing, "rectify", slow)
 
     async def scenario() -> list[BaseException]:
-        """5 lời gọi cùng lúc trên hai chỗ; trả các lỗi của lời bị từ chối."""
+        """`CALLS` lời gọi cùng lúc trên `workers` chỗ; trả các lỗi của lời bị từ chối."""
         tasks = [
             asyncio.create_task(process_corners(data, kind="png", page_index=0, corner_ratios=corners))
             for _ in range(CALLS)
@@ -231,7 +231,7 @@ def test_reset_processing_state__applies_new_workers(monkeypatch: pytest.MonkeyP
         processing.reset_processing_state()
         rejected, ran, names = _saturate(monkeypatch, data, shot.corners, workers=workers)
         assert (ran, len(rejected)) == (workers, CALLS - workers)
-        assert 1 < len(names) <= workers
+        assert len(names) == workers  # `workers` việc cùng chờ cổng → đúng `workers` luồng khác nhau
         assert all(name.startswith("quality-imaging") for name in names)
 
 
