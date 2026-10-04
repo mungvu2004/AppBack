@@ -46,12 +46,14 @@ from packages.storage.port import ObjectStorage
 
 @pytest.fixture(autouse=True)
 def fresh_cache() -> Iterator[None]:
+    """Xoá cache phiên trước mỗi test để các test không thấy phiên của nhau."""
     clear_session_cache()
     yield
     clear_session_cache()
 
 
 def storage_ref(data: bytes, *, checksum: str | None = None, name: str = "model.onnx") -> ModelRef:
+    """`ModelRef` dạng storage của `data` (checksum mặc định là SHA-256 thật của nó)."""
     version = some_id("mdl")
     return ModelRef(
         version_id=version,
@@ -63,6 +65,7 @@ def storage_ref(data: bytes, *, checksum: str | None = None, name: str = "model.
 
 
 def pinned_ref(data: bytes, name: str = "yolov8n") -> ModelRef:
+    """`ModelRef` dạng ghim theo tên `name`, checksum của `data`."""
     return ModelRef(
         version_id=some_id("mdl"),
         family="openingAndFurnitureDetection",
@@ -73,11 +76,13 @@ def pinned_ref(data: bytes, name: str = "yolov8n") -> ModelRef:
 
 
 def pin_table(data: bytes, name: str = "yolov8n") -> dict[str, PinnedWeights]:
+    """Bảng ghim một mục `name` khớp SHA-256 của `data`."""
     weights = PinnedWeights(name, "openingAndFurnitureDetection", "", sha(data), sha(data), "AGPL-3.0")
     return {name: weights}
 
 
 async def put(storage: LocalDiskStorage, ref: ModelRef, data: bytes) -> None:
+    """Ghi `data` vào kho dưới khoá của `ref`."""
     await storage.put(str(ref.weights_key), data, content_type="application/octet-stream", max_bytes=len(data) + 1)
 
 
@@ -88,6 +93,7 @@ async def expect(
     models_dir: Path,
     pinned: Mapping[str, PinnedWeights] = PINNED,
 ) -> None:
+    """`load_onnx` phải ném `PermanentError` mang đúng mã `code`."""
     with pytest.raises(PermanentError) as caught:
         await load_onnx(storage, ref, models_dir=models_dir, pinned=pinned)
     assert caught.value.code == code
@@ -100,6 +106,7 @@ def run(session: Any, value: float) -> float:
 
 
 async def test_load_onnx_runs_a_storage_model(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Model storage hợp lệ chạy được; `ModelRef` cổ điển không khoá thì bị từ chối."""
     data = add_model(2.0).SerializeToString()
     ref = storage_ref(data)
     await put(local_storage, ref, data)
@@ -116,6 +123,7 @@ async def test_load_onnx_runs_a_storage_model(local_storage: LocalDiskStorage, t
 
 
 async def test_load_onnx_m02_checksum_mismatch(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Checksum không khớp (storage lẫn ghim) → `MODEL_CHECKSUM_MISMATCH`."""
     data = add_model().SerializeToString()
     ref = storage_ref(data, checksum="0" * 64)
     await put(local_storage, ref, data)
@@ -125,6 +133,7 @@ async def test_load_onnx_m02_checksum_mismatch(local_storage: LocalDiskStorage, 
 
 
 async def test_load_onnx_m02_missing(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Object hay tệp ghim không có → `MODEL_NOT_FOUND`."""
     data = add_model().SerializeToString()
     await expect(MODEL_NOT_FOUND, local_storage, storage_ref(data), tmp_path)
     await expect(MODEL_NOT_FOUND, local_storage, pinned_ref(data), tmp_path, pinned=pin_table(data))
@@ -145,6 +154,7 @@ async def test_read_model_object__returns_bytes_and_maps_missing_to_model_not_fo
 
 
 async def test_load_onnx_object_vanishes_or_storage_fails(tmp_path: Path) -> None:
+    """Object biến mất giữa chừng → `MODEL_NOT_FOUND`; lỗi tạm của kho đi tiếp nguyên mã."""
     data = add_model().SerializeToString()
     await expect(
         MODEL_NOT_FOUND, FailingReads(tmp_path, NOT_FOUND.error(), pretend_size=1), storage_ref(data), tmp_path
@@ -158,6 +168,7 @@ async def test_load_onnx_object_vanishes_or_storage_fails(tmp_path: Path) -> Non
 async def test_load_onnx_m02_size_cap(
     local_storage: LocalDiskStorage, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Vượt trần `MODEL_MAX_BYTES` (kể cả khi kho khai sai cỡ) → `MODEL_FORMAT_UNSUPPORTED`."""
     data = add_model().SerializeToString()
     monkeypatch.setattr(loader, "MODEL_MAX_BYTES", len(data) - 1)
     ref = storage_ref(data)
@@ -173,6 +184,7 @@ async def test_load_onnx_m02_size_cap(
 
 
 def _zip_bytes() -> bytes:
+    """Bytes một tệp zip nhỏ (dạng `.pt`)."""
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("archive/data.pkl", pickle.dumps({"w": 1}))
@@ -180,6 +192,7 @@ def _zip_bytes() -> bytes:
 
 
 def _safetensors_bytes() -> bytes:
+    """Bytes một tệp safetensors tối thiểu."""
     header = json.dumps({"w": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]}}).encode()
     return struct.pack("<Q", len(header)) + header + struct.pack("<f", 1.0)
 
@@ -190,6 +203,7 @@ async def test_load_onnx_m03_user_pickle(
     """Pickle, zip `.pt`, safetensors với checksum **khớp** vẫn bị chặn; không bộ giải pickle nào được gọi."""
 
     def forbidden(*_: object, **__: object) -> None:
+        """Bộ giải bị cấm: gọi tới là test hỏng."""
         raise AssertionError("bộ giải pickle không được chạm tới")
 
     for target, name in ((pickle, "loads"), (pickle, "load"), (torch, "load")):
@@ -208,6 +222,7 @@ async def test_load_onnx_m03_user_pickle(
 
 
 def _function(name: str, nodes: list[onnx.NodeProto]) -> onnx.FunctionProto:
+    """`FunctionProto` cục bộ tên `name` với các nút `nodes`."""
     return helper.make_function("local", name, ["a"], ["b"], nodes, [helper.make_opsetid("", 17)])
 
 
@@ -222,6 +237,7 @@ def _external_function_model() -> onnx.ModelProto:
 
 
 async def test_load_onnx_m03_external_data(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Model tham chiếu dữ liệu ngoài bị chặn ở mọi chỗ tensor có thể nằm."""
     samples = (
         _external_function_model(),
         model([helper.make_node("Add", ["x", "c"], ["y"])], initializer=[external_tensor("c")]),
@@ -280,6 +296,7 @@ def test_has_external_data_walks_every_tensor() -> None:
 
 
 def _graph_with(tensor: TensorProto) -> onnx.GraphProto:
+    """Đồ thị một nút `Identity` có hằng `tensor`."""
     return helper.make_graph(
         [helper.make_node("Identity", ["k"], ["out"])],
         "branch",
@@ -290,10 +307,12 @@ def _graph_with(tensor: TensorProto) -> onnx.GraphProto:
 
 
 def _scan_model() -> onnx.ModelProto:
+    """Model dùng nút `Scan`."""
     return model([helper.make_node("Scan", ["x"], ["y"], num_scan_inputs=1)])
 
 
 def _loop_in_if() -> onnx.ModelProto:
+    """Model có `Loop` lồng trong nhánh của `If`."""
     loop = loop_model()
     branch = helper.make_graph(
         list(loop.graph.node), "then", [], [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])]
@@ -302,6 +321,7 @@ def _loop_in_if() -> onnx.ModelProto:
 
 
 def _loop_in_function() -> onnx.ModelProto:
+    """Model có `Loop` nằm trong hàm cục bộ."""
     function = _function(
         "F", [helper.make_node("Loop", ["", "", "a"], ["b"], body=loop_model().graph.node[0].attribute[0].g)]
     )
@@ -309,6 +329,7 @@ def _loop_in_function() -> onnx.ModelProto:
 
 
 def _cyclic_functions() -> onnx.ModelProto:
+    """Model có hàm cục bộ tự gọi chính nó."""
     function = _function("F", [helper.make_node("F", ["a"], ["b"], domain="local")])
     return model([helper.make_node("F", ["x"], ["y"], domain="local")], functions=[function], opsets=LOCAL_OPSETS)
 
@@ -415,6 +436,7 @@ async def test_load_onnx_m03_pinned_loads(local_storage: LocalDiskStorage, tmp_p
 
 
 async def test_session_cache_keeps_three(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Cache phiên giữ tối đa ba model gần nhất."""
     refs = []
     for value in range(4):
         data = add_model(float(value)).SerializeToString()
