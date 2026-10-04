@@ -327,12 +327,24 @@ def mount_routers(app: FastAPI, routers: Sequence[tuple[str, APIRouter]]) -> Non
 
 
 async def _abort(request: Request, session: AsyncSession) -> None:
-    """Lượt chạy hỏng: rollback, đóng session, xoá dòng idempotency của chính mình."""
-    await session.rollback()
-    await session.close()
+    """Lượt chạy hỏng: rollback, đóng session, xoá dòng idempotency của chính mình.
+
+    Mọi bước dọn đều chạy dù bước trước ném: rollback hỏng (DB rớt, request bị huỷ) mà bỏ luôn
+    `discard` là để dòng claim `in_progress` mồ côi tới hết TTL — lượt lặp cùng khoá bị từ chối
+    (`IDEMPOTENCY_IN_PROGRESS`) thay vì chạy lại. Ngoại lệ **đầu tiên** được ném lại sau khi đã dọn hết.
+    """
     claim = request.state.idempotency_claim
+    steps: list[Callable[[], Awaitable[None]]] = [session.rollback, session.close]
     if claim is not None:
-        await idempotency.discard(request.app.state.claim_sessionmaker, claim)
+        steps.append(lambda: idempotency.discard(request.app.state.claim_sessionmaker, claim))
+    first: BaseException | None = None
+    for step in steps:
+        try:
+            await step()
+        except BaseException as exc:  # noqa: BLE001 — ném lại ở cuối, sau khi đã dọn hết
+            first = first or exc
+    if first is not None:
+        raise first
 
 
 async def _finish(request: Request, session: AsyncSession, response: Response) -> Response:

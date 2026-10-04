@@ -11,11 +11,13 @@ from typing import Final
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core import idempotency, routing
 from apps.api.core.auth import Principal
 from apps.api.core.tests.sample import sample_app, sample_client, sample_row_ids
+from packages.db.models.idempotency import IdempotencyRecord
 from packages.testing.fixtures.api import auth_headers
 
 __all__ = ["sample_app", "sample_client"]
@@ -104,3 +106,29 @@ async def test_abort__cancelled_rollback_still_closes_the_session(
     with suppress(asyncio.CancelledError):
         await sample_client.post("/api/sample/broken-tx", json={"name": "a"}, headers=auth_headers(fake_principal))
     assert _checked_out(sample_app) == 0
+
+
+async def _claims(app: FastAPI) -> int:
+    """Số dòng idempotency còn lại, đọc bằng session mới của pool nhận việc."""
+    async with app.state.claim_sessionmaker() as session:
+        return int((await session.execute(select(func.count()).select_from(IdempotencyRecord))).scalar_one())
+
+
+async def test_abort__rollback_failure_still_discards_the_claim(
+    sample_client: httpx.AsyncClient, sample_app: FastAPI, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`rollback()` ném (sau khi đã rollback thật) → `close` và `discard` vẫn chạy: không còn dòng claim mồ côi."""
+    real_rollback = AsyncSession.rollback
+
+    async def broken_rollback(session: AsyncSession) -> None:
+        """Rollback thật rồi ném — như DB rớt đúng lúc trả lời."""
+        await real_rollback(session)
+        raise RuntimeError("rollback hỏng")
+
+    monkeypatch.setattr(AsyncSession, "rollback", broken_rollback)
+    response = await sample_client.post(
+        "/api/sample/boom", json={"name": "a"}, headers={**auth_headers(fake_principal), idempotency.HEADER: KEY}
+    )
+    assert response.status_code == 500
+    assert _checked_out(sample_app) == 0
+    assert await _claims(sample_app) == 0
