@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import Boolean, CheckConstraint, Column, Enum, Integer, MetaData, Table, Text, make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.schema import CreateTable
@@ -301,3 +303,27 @@ def test_migrate_check__uses_shared_pinned_image() -> None:
     literals = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
     assert not [v for v in literals if v.startswith("postgres:")]
     assert migrate_check.POSTGRES_IMAGE == pinned_images.POSTGRES_IMAGE
+
+
+async def test_run_checks__merge_revision_from_template_passes(migrations: Path, url: str) -> None:
+    """NO-249: revision merge do `script.py.mako` thật sinh ra nạp lại được và qua đủ mười bước.
+
+    Hai head cùng cha, `alembic merge heads` (đúng lệnh `merge-heads` của `tools/verify/steps.py`
+    gọi) render bằng template của repo: `down_revision` phải là tuple hai head chứ không phải một
+    chuỗi, và `downgrade -1` từ head là revision merge không được hỏng `Ambiguous walk`.
+    """
+    add_revision(migrations, "r20260921_b9_01", BASELINE, THING, DROP_THING)
+    add_revision(migrations, "r20260921_b9_02", BASELINE, "pass")
+    config = alembic_config(migrations)
+    command.merge(config, "heads", message="merge", rev_id="r20260921_merge_w01_1")
+    merged = next((migrations / "versions").glob("r20260921_merge_w01_1_*.py"))
+    assigned = {
+        node.target.id: ast.literal_eval(node.value)
+        for node in ast.parse(merged.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None
+    }
+    assert sorted(assigned["down_revision"]) == ["r20260921_b9_01", "r20260921_b9_02"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["r20260921_merge_w01_1"]
+    results = await run_checks(config, url, metadata=thing_metadata(), seed_runner=no_seed)
+    assert failed_steps(results) == []
+    assert len(results) == 10
