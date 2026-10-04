@@ -354,7 +354,7 @@ def test_lib_empty_swap_settle_s_falls_back_to_default__no200(tmp_path: Path) ->
     lib = REPO_ROOT / "deploy" / "scripts" / "lib.sh"
     for given, want in (("", "11"), ("0", "0"), ("3", "3")):
         out = subprocess.run(  # noqa: S603 — bash + tham số cố định của test
-            ["bash", "-c", f'source "{lib.as_posix()}"; printf %s "$APPBACK_API_SWAP_SETTLE_S"'],  # noqa: S607
+            ["bash", "-c", f'source "{lib.as_posix()}"; printf %s "$APPBACK_API_SWAP_SETTLE_S"'],  # noqa: S607 — bash
             env={**os.environ, "APPBACK_API_SWAP_SETTLE_S": given},
             capture_output=True, text=True, check=True,
         )  # fmt: skip
