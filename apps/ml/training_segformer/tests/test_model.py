@@ -2,6 +2,8 @@
 
 import ast
 import logging
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -53,26 +55,75 @@ def test_train_m03_no_pickle(tmp_path: Path) -> None:
     assert excinfo.value.code == MODEL_FORMAT_UNSUPPORTED
 
 
+def _violations(source: str) -> list[str]:
+    """Lỗi K12 trong một đoạn mã: `torch.load`/`load`/`Unpickler` (mọi cách nhập), pickle/joblib, cờ không an toàn."""
+    found: list[str] = []
+    torch_aliases: set[str] = {"torch"}
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _FORBIDDEN_IMPORTS:
+                    found.append(f"nhập {alias.name}")
+                if alias.name == "torch" and alias.asname:
+                    torch_aliases.add(alias.asname)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module in _FORBIDDEN_IMPORTS:
+                found.append(f"nhập từ {node.module}")
+            if node.module == "torch" and any(alias.name in _FORBIDDEN_NAMES for alias in node.names):
+                found.append("nhập tên cấm từ torch")
+        elif isinstance(node, ast.Attribute) and node.attr in _FORBIDDEN_NAMES:
+            if isinstance(node.value, ast.Name) and node.value.id in torch_aliases:
+                found.append(f"gọi torch.{node.attr}")
+        elif isinstance(node, ast.keyword):
+            if node.arg == "weights_only" and isinstance(node.value, ast.Constant) and node.value.value is False:
+                found.append("weights_only=False")
+            if node.arg == "trust_remote_code":
+                found.append("trust_remote_code dùng")
+    return found
+
+
 def test_train_m03_ast_no_pickle_load() -> None:
     """Quét AST mọi `.py` của gói: không `torch.load`, `pickle`/`joblib`, `weights_only=False`, `trust_remote_code`."""
     package_root = Path(__file__).resolve().parents[1]
     for path in package_root.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    assert alias.name not in _FORBIDDEN_IMPORTS, f"{path}: nhập {alias.name}"
-            if isinstance(node, ast.ImportFrom) and node.module in _FORBIDDEN_IMPORTS:
-                raise AssertionError(f"{path}: nhập từ {node.module}")
-            if isinstance(node, ast.Attribute) and node.attr == "load":
-                root = node.value
-                if isinstance(root, ast.Name) and root.id == "torch":
-                    raise AssertionError(f"{path}: gọi torch.load")
-            if isinstance(node, ast.keyword):
-                if node.arg == "weights_only" and isinstance(node.value, ast.Constant) and node.value.value is False:
-                    raise AssertionError(f"{path}: weights_only=False")
-                if node.arg == "trust_remote_code":
-                    raise AssertionError(f"{path}: trust_remote_code dùng")
+        assert _violations(path.read_text(encoding="utf-8")) == [], str(path)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from torch import load",
+        "import torch as t\nt.load('x')",
+        "import torch\ntorch.load('x')",
+        "import torch\ntorch.Unpickler",
+        "import pickle",
+        "from joblib import load",
+        "f(weights_only=False)",
+        "f(trust_remote_code=True)",
+    ],
+)
+def test_ast_scan__flags_every_unsafe_form(source: str) -> None:
+    """Máy quét K12 bắt cả `from torch import load` và bí danh `import torch as t` (NO-318 P3-8)."""
+    assert _violations(source) != []
+
+
+def test_load_base_model__hf_offline_env_forced() -> None:
+    """Nhập gói đặt `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` **trước** `transformers` (BE-00 §9, NO-333)."""
+    probe = "; ".join(
+        [
+            "import os",
+            "os.environ['HF_HUB_OFFLINE'] = '0'",
+            "os.environ.pop('TRANSFORMERS_OFFLINE', None)",
+            "import apps.ml.training_segformer.model",
+            "import huggingface_hub.constants as c",
+            "assert os.environ['HF_HUB_OFFLINE'] == '1' and os.environ['TRANSFORMERS_OFFLINE'] == '1'",
+            "assert c.HF_HUB_OFFLINE is True",
+        ]
+    )
+    completed = subprocess.run(  # noqa: S603 — argv cố định, không dữ liệu ngoài
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_train_loads_pinned_model_with_contract_labels(tmp_path: Path) -> None:

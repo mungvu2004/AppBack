@@ -5,6 +5,7 @@ mái ở mức module. Không tự dọn `out_dir` lúc lỗi — `trainer.py` d
 """
 
 import copy
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
@@ -51,6 +52,44 @@ class _LogitsOnly(torch.nn.Module):
         return logits
 
 
+def _check_exported_format(onnx_path: Path, out_dir: Path) -> bytes:
+    """Chỉ một tệp trong `out_dir`, proto giải được, không dữ liệu ngoài, `onnx.checker` đạt; trả byte ONNX.
+
+    `has_external_data` chạy **trước** `check_model`: checker đã từ chối tensor ngoài thiếu tệp phụ
+    bằng `ValidationError`, nên đặt sau nó thì nhánh này không bao giờ tới được.
+    """
+    if any(path != onnx_path for path in out_dir.iterdir()):
+        raise _unsupported()
+    try:
+        onnx_model = onnx.load(str(onnx_path), load_external_data=False)
+        if has_external_data(onnx_model):
+            raise _unsupported()
+        onnx.checker.check_model(onnx_model)
+    except (DecodeError, onnx.checker.ValidationError) as exc:
+        raise _unsupported() from exc
+    return onnx_path.read_bytes()
+
+
+def _parity_agreement(
+    onnx_tile: Callable[[NDArray[np.float32]], NDArray[np.float32]],
+    torch_tile: Callable[[NDArray[np.float32]], NDArray[np.float32]],
+    validation_dir: Path,
+    *,
+    config: SegformerTrainConfig,
+    reporter: TrainReporter,
+) -> float:
+    """Tỉ lệ điểm ảnh ONNX và `torch` cho cùng nhãn trên `config.parity_images` mẫu đầu (1.0 nếu không có mẫu)."""
+    matches = 0
+    total_px = 0
+    for sample_dir in sample_dirs(validation_dir)[: config.parity_images]:
+        pixels, _truth = read_sample(sample_dir)
+        onnx_mask = stitch_mask(pixels, segformer_metrics.guarded(onnx_tile, reporter))
+        torch_mask = stitch_mask(pixels, segformer_metrics.guarded(torch_tile, reporter))
+        matches += int(np.count_nonzero(onnx_mask == torch_mask))
+        total_px += onnx_mask.size
+    return 1.0 if total_px == 0 else matches / total_px
+
+
 def export_and_check(
     model: torch.nn.Module,
     out_dir: Path,
@@ -61,33 +100,16 @@ def export_and_check(
 ) -> float:
     """Xuất `model` ra `out_dir/model.onnx`, kiểm định dạng + tương đương, trả IoU ONNX đã làm tròn 4.
 
-    Thứ tự: xuất → chỉ một tệp trong `out_dir` → `onnx.checker` + không dữ liệu ngoài →
-    log `training_exported` → tương đương với bản gốc trên `config.parity_images` mẫu đầu của
-    `validation_dir` (huỷ giữa chừng → `TrainingStopped`) → log `training_parity` →
-    `agreement < parity_min_agreement` → `MODEL_EXPORT_MISMATCH` → IoU trên cả split
-    (`None` → `PermanentError(DATASET_SPLIT_EMPTY)`).
+    Thứ tự: xuất → `_check_exported_format` (một tệp, không dữ liệu ngoài, `onnx.checker`) →
+    log `training_exported` → `_parity_agreement` với bản gốc (huỷ giữa chừng → `TrainingStopped`) →
+    log `training_parity` → `agreement < parity_min_agreement` → `MODEL_EXPORT_MISMATCH` → IoU trên
+    cả split (`None` → `PermanentError(DATASET_SPLIT_EMPTY)`).
     """
     cpu_model = copy.deepcopy(model).to("cpu", torch.float32).eval()
-    wrapper = _LogitsOnly(cpu_model)
-    sample = torch.zeros(1, 3, TILE_PX, TILE_PX)
     onnx_path = out_dir / _ONNX_FILENAME
-    export_onnx(wrapper, sample, onnx_path, opset=17)
-
-    extra_files = [path for path in out_dir.iterdir() if path != onnx_path]
-    if extra_files:
-        raise _unsupported()
-
-    try:
-        onnx_model = onnx.load(str(onnx_path), load_external_data=False)
-        onnx.checker.check_model(onnx_model)
-    except (DecodeError, onnx.checker.ValidationError) as exc:
-        raise _unsupported() from exc
-    if has_external_data(onnx_model):
-        raise _unsupported()
-
-    data = onnx_path.read_bytes()
-    size_mib = round(len(data) / 2**20, 2)
-    reporter.log("info", "training_exported", {"size_mib": size_mib})
+    export_onnx(_LogitsOnly(cpu_model), torch.zeros(1, 3, TILE_PX, TILE_PX), onnx_path, opset=17)
+    data = _check_exported_format(onnx_path, out_dir)
+    reporter.log("info", "training_exported", {"size_mib": round(len(data) / 2**20, 2)})
 
     session = ort.InferenceSession(data, providers=["CPUExecutionProvider"])
     SegformerOnnxSegmenter(session)
@@ -103,17 +125,7 @@ def export_and_check(
         return result
 
     torch_tile = segformer_metrics.torch_run_tile(cpu_model, "cpu")
-    parity_dirs = sample_dirs(validation_dir)[: config.parity_images]
-    matches = 0
-    total_px = 0
-    for sample_dir in parity_dirs:
-        pixels, _truth = read_sample(sample_dir)
-        onnx_mask = stitch_mask(pixels, segformer_metrics.guarded(onnx_tile, reporter))
-        torch_mask = stitch_mask(pixels, segformer_metrics.guarded(torch_tile, reporter))
-        matches += int(np.count_nonzero(onnx_mask == torch_mask))
-        total_px += onnx_mask.size
-
-    agreement = 1.0 if total_px == 0 else matches / total_px
+    agreement = _parity_agreement(onnx_tile, torch_tile, validation_dir, config=config, reporter=reporter)
     reporter.log("info", "training_parity", {"agreement": round(agreement, 6)})
     if agreement < config.parity_min_agreement:
         raise PermanentError(MODEL_EXPORT_MISMATCH)

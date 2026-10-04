@@ -22,6 +22,8 @@ from packages.ml_contracts.ports import LogParam, TrainSpec
 from packages.ml_contracts.synthetic import render_plan
 
 if TYPE_CHECKING:
+    from transformers import SegformerForSemanticSegmentation
+
     from apps.ml.walls.segformer import SegformerOnnxSegmenter
 
 MICRO_WIDTH_PX: Final = 800
@@ -77,11 +79,19 @@ def onnx_segmenter(onnx_path: Path) -> "SegformerOnnxSegmenter":
     return SegformerOnnxSegmenter(ort.InferenceSession(onnx_path.read_bytes(), providers=["CPUExecutionProvider"]))
 
 
-def write_split(data_dir: Path, split: Split, count: int, *, seed: int = 0) -> tuple[Path, ...]:
-    """Ghi `count` mẫu `render_plan` 800x600 vào `data_dir/split/s<seed+i>`; trả thư mục mẫu đã sắp."""
+def write_split(
+    data_dir: Path,
+    split: Split,
+    count: int,
+    *,
+    seed: int = 0,
+    width_px: int = MICRO_WIDTH_PX,
+    height_px: int = MICRO_HEIGHT_PX,
+) -> tuple[Path, ...]:
+    """Ghi `count` mẫu `render_plan` khổ `width_px` x `height_px` (mặc định 800x600) vào `data_dir/split/s<seed+i>`."""
     written: list[Path] = []
     for index in range(count):
-        plan = render_plan(seed + index, width_px=MICRO_WIDTH_PX, height_px=MICRO_HEIGHT_PX)
+        plan = render_plan(seed + index, width_px=width_px, height_px=height_px)
         sample_id = f"s{seed + index:04d}"
         target = data_dir / split / sample_id
         target.mkdir(parents=True)
@@ -90,14 +100,27 @@ def write_split(data_dir: Path, split: Split, count: int, *, seed: int = 0) -> t
         meta = SampleMeta(
             sample_id=sample_id,
             group_key=f"synthetic:{seed + index}",
-            width_px=MICRO_WIDTH_PX,
-            height_px=MICRO_HEIGHT_PX,
+            width_px=width_px,
+            height_px=height_px,
             mm_per_px=plan.mm_per_px,
             source="synthetic",
         )
         (target / "meta.json").write_text(meta.model_dump_json(), encoding="utf-8")
         written.append(target)
     return tuple(written)
+
+
+def load_pinned_base(
+    base_model: str, pinned: Mapping[str, PinnedWeights] = PINNED
+) -> "SegformerForSemanticSegmentation":
+    """Nạp `base_model` từ `ML_MODELS_DIR` thật (đường mà `trainer.train` dùng), kiểm checksum theo `pinned`.
+
+    Dùng cho test `gpu`: `PinnedWeights.name` là tên bản ghim chứ không phải đường dẫn (NO-316).
+    """
+    from apps.ml.training_segformer import model as segformer_model
+    from apps.ml.training_segformer import trainer
+
+    return segformer_model.load_pretrained(trainer._settings_models_dir(), base_model, pinned)
 
 
 def write_dataset(data_dir: Path, *, train: int = 4, validation: int = 2) -> Path:
