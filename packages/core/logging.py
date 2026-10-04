@@ -44,6 +44,8 @@ _STR_PATTERNS: Final = (
     (re.compile(r"eyJ[\w-]*\.[\w-]*\.[\w-]*"), MASK),
     (re.compile(r"(?i)(\bBearer\s+)\S+"), rf"\g<1>{MASK}"),
     (re.compile(r"(?i)([?&](?:X-Amz-Signature|X-Amz-Credential|token)=)[^&#\s\"']*"), rf"\g<1>{MASK}"),
+    # `scheme://user:mật-khẩu@host`: tham lam tới `/` để mật khẩu chứa `@` vẫn che hết (SEC-042).
+    (re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^\s:/@]*:)[^\s/]+@"), rf"\g<1>{MASK}@"),
 )
 # Thuộc tính sẵn có của LogRecord; phần còn lại là `extra=` của lời gọi.
 _RECORD_ATTRS: Final = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime"}
@@ -58,6 +60,7 @@ def bind_log_context(**fields: object) -> Token[Mapping[str, object]]:
 
 
 def _mask_str(s: str, limit: int | None = MAX_STR_LEN) -> str:
+    """Che các mẫu bí mật trong chuỗi tự do (JWT, Bearer, query token, mật khẩu URL) rồi cắt theo `limit`."""
     masked = s
     for pattern, repl in _STR_PATTERNS:
         masked = pattern.sub(repl, masked)
@@ -67,6 +70,7 @@ def _mask_str(s: str, limit: int | None = MAX_STR_LEN) -> str:
 
 
 def _mask_items[K](items: Mapping[K, object]) -> dict[K, object]:
+    """Che đệ quy một mapping: giá trị của khoá nhạy cảm thành `MASK`, giá trị khác đi qua `mask`."""
     return {
         k: MASK if isinstance(k, str) and k.replace("-", "").replace("_", "").casefold() in _MASKED_KEYS else mask(v)
         for k, v in items.items()
@@ -89,7 +93,10 @@ def mask(obj: object) -> object:
 
 
 class JsonFormatter(logging.Formatter):
+    """Định dạng `LogRecord` thành một dòng JSON đã che bí mật (BE-00 §5)."""
+
     def payload(self, record: logging.LogRecord) -> dict[str, object]:
+        """Dựng dict bản ghi: trường cố định, ngữ cảnh gắn bằng `bind_log_context` và `extra=` của lời gọi, đã che."""
         msg = record.msg if isinstance(record.msg, str) else str(mask(record.msg))
         if record.args:
             msg = msg % mask(record.args)
@@ -111,6 +118,7 @@ class JsonFormatter(logging.Formatter):
         return data
 
     def format(self, record: logging.LogRecord) -> str:
+        """Trả bản ghi dưới dạng chuỗi đã che bí mật."""
         return json.dumps(self.payload(record), ensure_ascii=False)
 
 
@@ -118,6 +126,7 @@ class _TextFormatter(JsonFormatter):
     """`LOG_JSON=false` (máy dev): cùng nội dung đã che, một dòng dễ đọc."""
 
     def format(self, record: logging.LogRecord) -> str:
+        """Trả bản ghi dưới dạng chuỗi đã che bí mật."""
         data = self.payload(record)
         head = " ".join(str(data.pop(k)) for k in ("ts", "level", "logger", "msg"))
         stack = data.pop("stack", None)
@@ -126,6 +135,7 @@ class _TextFormatter(JsonFormatter):
 
 
 def configure_logging(settings: CoreSettings) -> None:
+    """Gắn `JsonFormatter` (hoặc dạng dòng khi `LOG_JSON=false`) vào root logger theo `settings`."""
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter() if settings.log_json else _TextFormatter())
     root = logging.getLogger()
