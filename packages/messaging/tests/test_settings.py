@@ -128,3 +128,13 @@ def test_settings_are_cached_until_reset(monkeypatch: pytest.MonkeyPatch) -> Non
     reset_messaging_settings_cache()
     assert get_messaging_settings().stream_maxlen == 7
     reset_messaging_settings_cache()
+
+
+@pytest.mark.parametrize("name", ["redis_broker_url", "redis_cache_url"])
+def test_invalid_url_error_does_not_echo_the_password(name: str) -> None:
+    """NO-329 mở rộng: thông điệp `ValidationError` của URL sai không in mật khẩu nhúng trong URL."""
+    values: dict[str, Any] = {"redis_broker_url": BROKER, "redis_cache_url": CACHE}
+    values[name] = "http://:s3cr3tpw@broker:6379/0"
+    with pytest.raises(ValidationError) as caught:
+        MessagingSettings(**values)
+    assert "s3cr3tpw" not in str(caught.value)

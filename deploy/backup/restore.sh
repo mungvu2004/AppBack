@@ -142,8 +142,9 @@ case "$storage" in
       'mc alias set local "$S3_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc mirror --remove /restore-objects local/"$S3_BUCKET"'
     ;;
   local)
-    docker compose run --rm --no-deps --entrypoint sh -v "$objects_tar_path:/restore/objects.tar:ro" api -c \
-      'find /var/lib/appback/storage -mindepth 1 -delete && tar -xf /restore/objects.tar -C /var/lib/appback/storage'
+    # Tệp host (0600 của người chạy script) đi qua stdin: container `api` (uid 10001) không đọc được volume gắn từ nó.
+    docker compose run --rm --no-deps -T --entrypoint sh api -c \
+      'find /var/lib/appback/storage -mindepth 1 -delete && tar -xf - -C /var/lib/appback/storage' < "$objects_tar_path"
     ;;
   *)
     # Không thể tới — đã kiểm "s3|local" ở :83, trước mọi lệnh dừng/DROP DATABASE (review

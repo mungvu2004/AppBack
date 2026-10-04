@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tarfile
 from datetime import UTC, datetime, timedelta
@@ -51,13 +52,11 @@ case "$args" in
     exit 0
     ;;
   *"entrypoint tar"*|*" tar "*)
-    if [ -n "$host_mount" ]; then
-      src="$(mktemp -d)"
-      printf 'vol-object-1' > "$src/x.bin"
-      printf 'vol-object-2' > "$src/y.bin"
-      tar -cf "$host_mount/objects.tar" -C "$src" .
-      rm -rf "$src"
-    fi
+    src="$(mktemp -d)"
+    printf 'vol-object-1' > "$src/x.bin"
+    printf 'vol-object-2' > "$src/y.bin"
+    tar -cf - -C "$src" .
+    rm -rf "$src"
     exit 0
     ;;
   *"DROP DATABASE"*|*"CREATE DATABASE"*|*pg_restore*)
@@ -235,3 +234,45 @@ def test_backup__rotate_only_keeps_seven_days_and_weekly_and_untouched_stray(tmp
             expected.add((now - timedelta(days=latest)).strftime("%Y%m%dT000000Z"))
 
     assert set(dated) == expected
+
+
+def test_backup__stage_dir_and_dump_are_owner_only(tmp_path: Path) -> None:
+    """SEC-040: dưới `umask 022` của phiên SSH/systemd, thư mục bản sao lưu và tệp script tạo vẫn chỉ chủ đọc được.
+
+    Bản rõ (không `BACKUP_AGE_RECIPIENT`) chứa hash mật khẩu và mọi bản vẽ: 0644/0755 là cho mọi tài khoản
+    cục bộ đọc. Chạy qua `bash -c 'umask 022; exec …'` để kết quả không phụ thuộc umask của tiến trình pytest.
+    """
+    target = tmp_path / "target"
+    log = tmp_path / "log"
+    env = {"FAKE_LOG": str(log), "BACKUP_TARGET": str(target), "APPBACK_STORAGE": "s3"}
+    wrapper = tmp_path / "umask022.sh"
+    wrapper.write_text(f'umask 022\nexec bash "{BACKUP_SH}"\n', encoding="utf-8")
+    result = run_script(wrapper, env=env, bin_dir=_bin_dir(tmp_path))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    (stage,) = [p for p in target.iterdir() if p.is_dir()]
+    # Chỉ khẳng định thứ script tự tạo: `objects/**` do container `mc`/`tar` sinh (docker giả ở đây ghi trên host nên
+    # không chứng minh gì về chúng) — chúng được bảo vệ bởi thư mục cha 0700.
+    modes = {name: (stage / name).stat().st_mode & 0o777 for name in (".", "db.dump", "manifest.json", "objects")}
+    assert modes == {".": 0o700, "db.dump": 0o600, "manifest.json": 0o600, "objects": 0o700}
+
+
+def test_backup__s3_mirror_runs_as_host_user(tmp_path: Path) -> None:
+    """NO-327: `mc mirror` chạy bằng uid:gid của người chạy script, không root — không thì `objects/**` thuộc root
+    và `rm -rf`/xoay vòng của `deploy` hỏng EPERM (đo bằng alpine: thư mục root-owned không xoá được)."""
+    code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3"})
+    assert code == 0, log
+    (mirror,) = [line for line in log.splitlines() if "mirror" in line]
+    assert f"--user {os.getuid()}:{os.getgid()}" in mirror, mirror
+
+
+def test_backup__local_tar_streams_to_a_host_owned_file(tmp_path: Path) -> None:
+    """NO-327: stage_dir là 0700 của `deploy` nên container `api` (uid 10001) không ghi vào đó được — tar đi qua
+    stdout (`-T`, không gắn volume đích) và host ghi `objects.tar` 0600."""
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "local"})
+    assert code == 0, log
+    (tar_line,) = [line for line in log.splitlines() if " tar " in f" {line} " and "docker" in line]
+    assert " -T " in tar_line, tar_line
+    assert "backup-dest" not in tar_line, tar_line
+    (stage,) = [p for p in target.iterdir() if p.is_dir()]
+    assert (stage / "objects.tar").stat().st_mode & 0o777 == 0o600

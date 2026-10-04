@@ -1,3 +1,5 @@
+"""Test bộ che log và `JsonFormatter` (BE-00 §5)."""
+
 import asyncio
 import base64
 import io
@@ -21,6 +23,7 @@ SENSITIVE = "hunter2-do-not-leak"
 
 
 def _b64(data: dict[str, object]) -> str:
+    """Hàm phụ của test: b64."""
     return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
 
 
@@ -30,6 +33,7 @@ JWT = f"{_b64({'alg': 'HS256', 'typ': 'JWT'})}.{_b64({'sub': 'usr_x', 'aud': 'ac
 
 @pytest.fixture
 def capture() -> Iterator[tuple[logging.Logger, io.StringIO]]:
+    """Hàm phụ của test: capture."""
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     handler.setFormatter(JsonFormatter())
@@ -42,6 +46,7 @@ def capture() -> Iterator[tuple[logging.Logger, io.StringIO]]:
 
 
 def _records(stream: io.StringIO) -> list[dict[str, object]]:
+    """Hàm phụ của test: records."""
     return [json.loads(line) for line in stream.getvalue().splitlines()]
 
 
@@ -71,30 +76,40 @@ MASKED_KEYS = [
 
 @pytest.mark.parametrize("key", MASKED_KEYS)
 def test_mask_masks_key(key: str) -> None:
+    """Kiểm test mask masks key."""
     assert mask({key: SENSITIVE, "email": "a@b.vn"}) == {key: MASK, "email": "a@b.vn"}
 
 
 @pytest.mark.parametrize("key", ["tokenCount", "passwordPolicy", "cookies", "email", "chunkIndex"])
 def test_mask_keeps_other_keys(key: str) -> None:
+    """Kiểm test mask keeps other keys."""
     assert mask({key: "visible"}) == {key: "visible"}
 
 
 def test_mask_masks_container_values_under_masked_key() -> None:
+    """Kiểm test mask masks container values under masked key."""
     assert mask({"cookie": {"appback_refresh": SENSITIVE}, "chunk": [SENSITIVE]}) == {"cookie": MASK, "chunk": MASK}
 
 
 def test_mask_nested_three_levels() -> None:
+    """Kiểm test mask nested three levels."""
     data = {"a": [{"b": ({"password": SENSITIVE, "ok": 1}, "x")}], "n": None}
     assert mask(data) == {"a": [{"b": ({"password": MASK, "ok": 1}, "x")}], "n": None}
 
 
 def test_mask_keeps_scalars() -> None:
+    """Kiểm test mask keeps scalars."""
     assert [mask(v) for v in (None, True, 3, 1.5)] == [None, True, 3, 1.5]
 
 
 def test_mask_stringifies_unknown_objects() -> None:
+    """Kiểm test mask stringifies unknown objects."""
+
     class Header:
+        """Hàm phụ của test: Header."""
+
         def __str__(self) -> str:
+            """Trả chuỗi dạng header Bearer để `mask` che."""
             return f"Bearer {SENSITIVE}"
 
     assert mask(Header()) == f"Bearer {MASK}"
@@ -102,14 +117,17 @@ def test_mask_stringifies_unknown_objects() -> None:
 
 
 def test_mask_jwt_in_string() -> None:
+    """Kiểm test mask jwt in string."""
     assert mask(f"token là {JWT} nhé") == f"token là {MASK} nhé"
 
 
 def test_mask_bearer_case_insensitive() -> None:
+    """Kiểm test mask bearer case insensitive."""
     assert mask(f"Authorization: bearer {SENSITIVE}") == f"Authorization: bearer {MASK}"
 
 
 def test_mask_presigned_s3_url() -> None:
+    """Kiểm test mask presigned s3 url."""
     url = (
         "https://s3.example.vn/bucket/plan.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256"
         "&X-Amz-Credential=minio%2F20260101%2Fus-east-1%2Fs3%2Faws4_request"
@@ -124,10 +142,30 @@ def test_mask_presigned_s3_url() -> None:
 
 
 def test_mask_token_query_param() -> None:
+    """Kiểm test mask token query param."""
     assert mask(f"/api/files/x?token={SENSITIVE}#top") == f"/api/files/x?token={MASK}#top"
 
 
+@pytest.mark.parametrize(
+    ("raw", "masked"),
+    [
+        (
+            "connect postgresql://appback:s3cr3tpw@postgres:5432/appback failed",
+            f"connect postgresql://appback:{MASK}@postgres:5432/appback failed",
+        ),
+        ("redis://:r3dispw@redis-broker:6379/0 refused", f"redis://:{MASK}@redis-broker:6379/0 refused"),
+        ("postgresql+asyncpg://u:p@ss@h/db", f"postgresql+asyncpg://u:{MASK}@h/db"),
+        ("https://host/path?a=b@c", "https://host/path?a=b@c"),
+        ("http://user@host:80/", "http://user@host:80/"),
+    ],
+)
+def test_mask_url_userinfo_password(raw: str, masked: str) -> None:
+    """SEC-042: mật khẩu trong `scheme://user:pw@host` của chuỗi tự do bị che; URL không có userinfo giữ nguyên."""
+    assert mask(raw) == masked
+
+
 def test_mask_truncates_long_string() -> None:
+    """Kiểm test mask truncates long string."""
     masked = str(mask("x" * 5000))
     assert masked.startswith("x" * 2000)
     assert "x" * 2001 not in masked
@@ -136,6 +174,7 @@ def test_mask_truncates_long_string() -> None:
 
 
 def test_record_fields(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test record fields."""
     logger, stream = capture
     token = request_id_var.set("req-12345678")
     try:
@@ -154,12 +193,14 @@ def test_record_fields(capture: tuple[logging.Logger, io.StringIO]) -> None:
 
 
 def test_request_id_absent_is_null(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test request id absent is null."""
     logger, stream = capture
     logger.info("không có request")
     assert _records(stream)[0]["requestId"] is None
 
 
 def test_jwt_in_msg_masked(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test jwt in msg masked."""
     logger, stream = capture
     logger.info("đăng nhập với %s", JWT)
     logger.info(f"đăng nhập với {JWT}")  # chuỗi đã ghép sẵn cũng bị che
@@ -169,6 +210,7 @@ def test_jwt_in_msg_masked(capture: tuple[logging.Logger, io.StringIO]) -> None:
 
 
 def test_msg_args_masked_before_formatting(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test msg args masked before formatting."""
     logger, stream = capture
     logger.info("thân %s", {"password": SENSITIVE})
     logger.info("thân %(password)s", {"password": SENSITIVE})
@@ -182,6 +224,7 @@ def test_msg_args_masked_before_formatting(capture: tuple[logging.Logger, io.Str
 
 
 def test_extra_fields_masked(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test extra fields masked."""
     logger, stream = capture
     logger.info("request", extra={"headers": {"Authorization": f"Bearer {SENSITIVE}", "Cookie": SENSITIVE}})
     assert SENSITIVE not in stream.getvalue()
@@ -189,9 +232,11 @@ def test_extra_fields_masked(capture: tuple[logging.Logger, io.StringIO]) -> Non
 
 
 def test_exception_has_stack_without_masked_values(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test exception has stack without masked values."""
     logger, stream = capture
 
     def login(password: str) -> None:
+        """Hàm phụ của test: login."""
         raise RuntimeError(f"hỏng khi kiểm token {JWT}")
 
     try:
@@ -209,12 +254,14 @@ def test_exception_has_stack_without_masked_values(capture: tuple[logging.Logger
 
 
 def test_exception_logged_outside_except(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test exception logged outside except."""
     logger, stream = capture
     logger.exception("không có ngoại lệ")
     assert "excType" not in _records(stream)[0]
 
 
 def test_long_stack_not_truncated(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test long stack not truncated."""
     logger, stream = capture
     try:
         raise ValueError("y" * 3000)
@@ -224,9 +271,11 @@ def test_long_stack_not_truncated(capture: tuple[logging.Logger, io.StringIO]) -
 
 
 async def test_request_id_isolated_between_tasks(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test request id isolated between tasks."""
     logger, stream = capture
 
     async def handle(request_id: str) -> None:
+        """Hàm phụ của test: handle."""
         request_id_var.set(request_id)
         bind_log_context(user=request_id)
         await asyncio.sleep(0)
@@ -243,6 +292,7 @@ async def test_request_id_isolated_between_tasks(capture: tuple[logging.Logger, 
 
 
 def test_bind_log_context_accumulates_and_resets(capture: tuple[logging.Logger, io.StringIO]) -> None:
+    """Kiểm test bind log context accumulates and resets."""
     logger, stream = capture
     first = bind_log_context(jobId="job_1")
     second = bind_log_context(step="preprocess", token=SENSITIVE)
@@ -257,6 +307,7 @@ def test_bind_log_context_accumulates_and_resets(capture: tuple[logging.Logger, 
 
 @pytest.fixture
 def root_logger() -> Iterator[logging.Logger]:
+    """Hàm phụ của test: root logger."""
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
     yield root
@@ -265,6 +316,7 @@ def root_logger() -> Iterator[logging.Logger]:
 
 
 def _settings(*, log_json: bool) -> CoreSettings:
+    """Hàm phụ của test: settings."""
     return CoreSettings(
         app_env="test",
         public_base_url="https://appback.test",
@@ -275,6 +327,7 @@ def _settings(*, log_json: bool) -> CoreSettings:
 
 
 def test_configure_logging_json(root_logger: logging.Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    """Kiểm test configure logging json."""
     configure_logging(_settings(log_json=True))
     configure_logging(_settings(log_json=True))  # gọi lại không nhân đôi handler
     assert len(root_logger.handlers) == 1
@@ -285,6 +338,7 @@ def test_configure_logging_json(root_logger: logging.Logger, capsys: pytest.Capt
 
 
 def test_configure_logging_text(root_logger: logging.Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    """Kiểm test configure logging text."""
     configure_logging(_settings(log_json=False))
     log = logging.getLogger("app.test")
     log.info("xin chào", extra={"token": SENSITIVE})

@@ -24,6 +24,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from apps.ml.ml_eval.evaluate import evaluate_family
 from apps.ml.ml_eval.sandbox import RESULT_PREFIX, build_adapter
 from apps.ml.ml_eval.settings import get_eval_settings
+from apps.ml.runtime.child_env import allowlisted_env
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED
 from apps.ml.runtime.loader import load_onnx, read_model_object
 from apps.ml.runtime.tasks_util import infer_context
@@ -71,8 +72,7 @@ def on_failed(payload: EvaluateVersionPayload, code: str) -> None:
 
 def _child_env() -> dict[str, str]:
     """Môi trường tối thiểu của con: không khoá, không biến kho; luồng và arena bị chặn trên."""
-    env = {name: value for name, value in os.environ.items() if name in _ENV_KEEP or name.startswith(_ENV_PREFIX)}
-    env.setdefault("PYTHONPATH", os.getcwd())
+    env = allowlisted_env(_ENV_KEEP, _ENV_PREFIX)
     threads = min(int(env.get("ML_ORT_THREADS", "1") or "1"), MAX_ORT_THREADS)
     env["ML_ORT_THREADS"] = str(threads)
     env["MALLOC_ARENA_MAX"] = "2"

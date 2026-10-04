@@ -514,3 +514,39 @@ def test_nginx_no_cors_header_on_app_server() -> None:
             continue
         for node in find_directive(nodes, "add_header"):
             assert node.args[:1] != ["Access-Control-Allow-Origin"], f"{path}: cấm bật CORS cho /api (W19)"
+
+
+def test_nginx_error_bodies__carry_base_security_headers() -> None:
+    """SEC-060: thân 413/503 do chính nginx sinh mang đủ bộ header nền B0-06 (BE-00 §11), kèm `always`.
+
+    Location `/__errors/*` có `add_header` riêng nên không thừa kế header cấp server (nginx thay, không cộng) —
+    mỗi bản (thường và `-files`) phải tự khai đủ bốn header, nếu không 413/503 thiếu `nosniff` và 503 bị cache."""
+    required = {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "X-Frame-Options": "DENY",
+        "Cache-Control": "no-store",
+    }
+    files = _entry_files_assembled()
+    names = ("/__errors/413", "/__errors/503", "/__errors/413-files", "/__errors/503-files")
+    for name in names:
+        found = _locations_matching(files, lambda loc, n=name: loc.args[-1:] == [n])
+        assert found, f"thiếu location {name}"
+        for path, loc in found:
+            headers = {n.args[0]: n.args[1:] for n in loc.children if n.directive == "add_header" and n.args}
+            for header, value in required.items():
+                assert headers.get(header) == [value, "always"], (
+                    f"{path}: {name} thiếu add_header {header} {value} always"
+                )
+
+
+def test_nginx_error_bodies__carry_hsts_variable() -> None:
+    """NO-331: 413/503 ở prod cũng mang HSTS như trang SPA — qua `$hsts_header` (rỗng ở dev nên nginx không gửi),
+    biến phải được khai bằng `map` trong mọi template include snippet lỗi."""
+    files = _entry_files_assembled()
+    for name in ("/__errors/413", "/__errors/503", "/__errors/413-files", "/__errors/503-files"):
+        for path, loc in _locations_matching(files, lambda loc, n=name: loc.args[-1:] == [n]):
+            headers = {n.args[0]: n.args[1:] for n in loc.children if n.directive == "add_header" and n.args}
+            assert headers.get("Strict-Transport-Security") == ["$hsts_header", "always"], f"{path}: {name}"
+            maps = [n.args for n in files[path] if n.directive == "map" and n.args[-1:] == ["$hsts_header"]]
+            assert maps, f"{path}: thiếu map $hsts_header"

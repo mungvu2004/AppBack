@@ -14,6 +14,8 @@
 #
 # Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát).
 set -euo pipefail
+# Bản sao lưu chứa hash mật khẩu và mọi bản vẽ: thư mục/tệp do script tạo chỉ chủ đọc được (SEC-040).
+umask 077
 
 : "${APPBACK_DIR:=/opt/appback}"
 : "${COMPOSE_FILE:=$APPBACK_DIR/prod.yml}"
@@ -110,13 +112,15 @@ case "$APPBACK_STORAGE" in
     objects_dir="$stage_dir/objects"
     mkdir -p "$objects_dir"
     # shellcheck disable=SC2016 # $S3_ENDPOINT/$S3_BUCKET/... phải giãn TRONG container minio-init.
-    docker compose run --rm --no-deps --entrypoint sh -v "$objects_dir:/backup-objects" minio-init -c \
+    docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -e MC_CONFIG_DIR=/tmp/.mc \
+      --entrypoint sh -v "$objects_dir:/backup-objects" minio-init -c \
       'mc alias set local "$S3_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc mirror local/"$S3_BUCKET" /backup-objects'
     object_count="$(find "$objects_dir" -type f | wc -l | tr -d ' ')"
     ;;
   local)
-    docker compose run --rm --no-deps --entrypoint tar -v "$stage_dir:/backup-dest" api \
-      cf /backup-dest/objects.tar -C /var/lib/appback/storage .
+    # tar ra stdout: stage_dir là 0700 của người chạy script, container `api` (uid 10001) không ghi vào đó được.
+    docker compose run --rm --no-deps -T --entrypoint tar api \
+      cf - -C /var/lib/appback/storage . > "$stage_dir/objects.tar"
     object_count="$(
       python3 -c 'import sys, tarfile; t = tarfile.open(sys.argv[1]); print(sum(1 for m in t.getmembers() if m.isfile()))' \
         "$stage_dir/objects.tar"

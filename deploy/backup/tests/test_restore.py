@@ -191,6 +191,7 @@ def test_restore__command_order_stop_drop_create_restore_mirror_migrate_up_smoke
     lines = log.splitlines()
 
     def first_index(needle: str) -> int:
+        """Hàm phụ của test: first index."""
         return next(i for i, line in enumerate(lines) if needle in line)
 
     stop_i = first_index(" stop ")
@@ -290,3 +291,14 @@ def test_restore__missing_directory_exits_2(tmp_path: Path) -> None:
         stdin="",
     )
     assert result.returncode == 2, result.stderr
+
+
+def test_restore__local_objects_tar_goes_through_stdin(tmp_path: Path) -> None:
+    """NO-327: `objects.tar` là 0600 của `deploy` (backup chạy dưới umask 077) nên container `api` (uid 10001) không
+    đọc được nếu gắn nó làm volume — tar vào qua stdin (`-T`), host mở tệp."""
+    backup_dir = _make_plain_backup(tmp_path, storage="local")
+    result, log = _run_restore(tmp_path, backup_dir)
+    assert result.returncode == 0, result.stderr
+    (line,) = [entry for entry in log.splitlines() if "tar -xf" in entry]
+    assert " -T " in line, line
+    assert "/restore/objects.tar" not in line, line
