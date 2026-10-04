@@ -37,6 +37,7 @@ SCANNED = (
     "apps/api/streams/tests/test_streams_open_progress.py",
     "apps/api/telemetry/tests/test_feature_flags_route.py",
     "apps/ml/runtime/tests/test_device_gpu.py",
+    "apps/ml/text/tests/test_reader_real.py",
     "apps/ml/training_runner/tests/test_runtime.py",
     "apps/worker/datasets/tests/test_perf.py",
     "apps/worker/pipeline_quality/tests/test_runtime.py",
