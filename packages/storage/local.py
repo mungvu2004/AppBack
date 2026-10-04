@@ -57,6 +57,8 @@ def _open_write(path: Path) -> BinaryIO:
 
 
 class LocalDiskStorage:
+    """Kho object trên đĩa cục bộ (dev/test), ký URL bằng token HMAC cho `GET /api/files/{token}` (BE-00 §8)."""
+
     def __init__(
         self,
         root: Path,
