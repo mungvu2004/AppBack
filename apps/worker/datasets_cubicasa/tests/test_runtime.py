@@ -32,10 +32,10 @@ from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_ses
 from packages.db.settings import DatabaseSettings
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import ObjectInfo
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.fixtures.clock import FakeClock
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BLOCKED_PACKAGES: Final = ("fastapi", "starlette", "uvicorn", "jwt", "argon2")
 IMPORT_TIMEOUT_S: Final = 120.0
 BLOCK_WAIT_S: Final = 30.0
 PERF_SAMPLE_COUNT: Final = 50
@@ -212,7 +212,7 @@ async def test_import_cubicasa_performance(
 )
 def test_imports_without_web_or_crypto_packages(module: str) -> None:
     """Nhập được khi `fastapi`, `starlette`, `uvicorn`, `jwt`, `argon2` bị chặn (ảnh `worker` không cài chúng)."""
-    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in BLOCKED_PACKAGES)
+    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import {module}"],
         cwd=REPO_ROOT,
