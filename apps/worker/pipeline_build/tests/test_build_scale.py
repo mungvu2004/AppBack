@@ -41,13 +41,13 @@ def _run(
     fallback: str = "5",
 ) -> BuiltLayer:
     """Gọi `build_layer` trên khổ 1600x1200 mặc định; tham số còn lại giữ nguyên giữa các ca."""
-    return build_layer(
-        level_id=LEVEL_ID,
-        walls=WallsResult(walls=tuple(walls)),
-        objects=ObjectsResult(detections=tuple(detections)),
-        text=TextResult(items=tuple(texts)),
+    return build_wrapped(
+        walls=walls,
+        detections=detections,
+        texts=texts,
         fallback_mm_per_px=Decimal(fallback),
         clock=clock,
+        level_id=LEVEL_ID,
         **SIZE,
     )
 
@@ -81,15 +81,8 @@ def test_build_layer__rejects_bad_fallback(fallback: str, fake_clock: FakeClock)
 def test_build_layer__rejects_empty_image(width: int, height: int, fake_clock: FakeClock) -> None:
     """Ảnh nhỏ hơn 1 px không có hệ toạ độ để kẹp đầu vào → `ValueError`."""
     with pytest.raises(ValueError, match="không hợp lệ"):
-        build_layer(
-            level_id=LEVEL_ID,
-            walls=WallsResult(walls=()),
-            objects=ObjectsResult(detections=()),
-            text=TextResult(items=()),
-            width_px=width,
-            height_px=height,
-            fallback_mm_per_px=Decimal("5"),
-            clock=fake_clock,
+        build_wrapped(
+            width_px=width, height_px=height, fallback_mm_per_px=Decimal("5"), clock=fake_clock, level_id=LEVEL_ID
         )
 
 

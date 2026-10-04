@@ -9,16 +9,14 @@ from decimal import Decimal
 
 import pytest
 
-from apps.worker.pipeline_build.build import BuiltLayer, _SpanIndex, build_layer
+from apps.worker.pipeline_build.build import BuiltLayer, _SpanIndex
+from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from packages.domain.spatial import Dimension
 from packages.ml_contracts.artifacts import (
     BoxPx,
-    ObjectsResult,
     PointPx,
     TextPx,
-    TextResult,
     WallPx,
-    WallsResult,
 )
 from packages.ml_contracts.synthetic import render_plan
 from packages.testing.fixtures.clock import FakeClock
@@ -41,15 +39,14 @@ def _text(value: str, centre_x: float, centre_y: float = 145.0) -> TextPx:
 
 def _run(texts: Sequence[TextPx], clock: FakeClock) -> BuiltLayer:
     """`build_layer` trên hình học dựng tay ở trên, `fallback` 5 mm/px."""
-    return build_layer(
-        level_id=LEVEL_ID,
-        walls=WallsResult(walls=(MAIN_WALL, CROSS_WALL)),
-        objects=ObjectsResult(detections=()),
-        text=TextResult(items=tuple(texts)),
+    return build_wrapped(
+        walls=(MAIN_WALL, CROSS_WALL),
+        texts=texts,
         width_px=1600,
         height_px=1200,
         fallback_mm_per_px=Decimal("5"),
         clock=clock,
+        level_id=LEVEL_ID,
     )
 
 
