@@ -27,7 +27,8 @@ async def test_seed__twice_keeps_one_admin(db_session: AsyncSession) -> None:
     """Seed hai lần → đúng một dòng admin active, không nhân bản."""
     await seed(db_session)
     await seed(db_session)
-    count = (await db_session.execute(select(func.count()).select_from(User).where(User.id == SEED_ADMIN_ID))).scalar_one()
+    stmt = select(func.count()).select_from(User).where(User.id == SEED_ADMIN_ID)
+    count = (await db_session.execute(stmt)).scalar_one()
     assert count == 1
     row = await db_session.get(User, SEED_ADMIN_ID)
     assert row is not None
