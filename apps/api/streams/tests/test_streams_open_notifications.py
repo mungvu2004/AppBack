@@ -36,6 +36,7 @@ from packages.testing.fixtures.streams import (
 OP: Final = "streams_open_notifications"
 PATH: Final = "/api/streams/notifications"
 
+_log: Final = logging.getLogger(__name__)
 FAST: Final = {"stream_heartbeat_s": "0.2", "stream_recheck_s": "0.2", "stream_read_block_ms": "100"}
 CLOSE_BUDGET_S: Final = 1.0
 WAIT_S: Final = 3.0
@@ -223,6 +224,35 @@ async def test_streams_open_notifications__S05(
 # ---------------------------------------------------------------------------
 
 
+async def _s07_close_elapsed(
+    scenario: str,
+    stream_app: StreamAppFactory,
+    sse_open: SseOpen,
+    db_session: AsyncSession,
+    event_bus: EventBus,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> float:
+    """Mở luồng thông báo, gây mất quyền (`revoke_sessions` hay `policy_revoked`), trả số giây tới lúc luồng đóng.
+
+    `wait_closed(WAIT_S)` ném `TimeoutError` nếu luồng không đóng; trần `CLOSE_BUDGET_S` kiểm ở test `perf`.
+    """
+    _short_cache(monkeypatch)
+    policy = FakePolicy()
+    app = stream_app(providers=[notifications_provider(policy=policy)], **FAST)
+    async with signed_stream_user(app, db_session) as owner:
+        async with sse_open(app, PATH, cookies=owner.cookies) as stream:
+            if scenario == "revoke_sessions":
+                await publish_notification(event_bus, owner.user.id)
+                await stream.next_frames(1, WAIT_S)
+                await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
+                await db_session.commit()
+                await after_commit_idle(db_session)
+            else:
+                policy.allowed = False
+            return await stream.wait_closed(WAIT_S)
+
+
 async def test_streams_open_notifications__S07(
     stream_app: StreamAppFactory,
     sse_open: SseOpen,
@@ -230,42 +260,44 @@ async def test_streams_open_notifications__S07(
     event_bus: EventBus,
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Thu hồi phiên → luồng thông báo đóng ≤ 1 s, không gửi thêm gì."""
-    _short_cache(monkeypatch)
-    app = stream_app(providers=[notifications_provider()], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, PATH, cookies=owner.cookies) as stream:
-            await publish_notification(event_bus, owner.user.id)
-            await stream.next_frames(1, WAIT_S)
-            await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
-            await db_session.commit()
-            await after_commit_idle(db_session)
-            elapsed = await stream.wait_closed(WAIT_S)
-        with capsys.disabled():
-            print(f"\n[S07] notifications revoke_sessions: đóng sau {elapsed:.3f}s")
-        assert elapsed <= CLOSE_BUDGET_S
+    """Thu hồi phiên → luồng thông báo đóng (trần 1 s ở test `perf` bên dưới), không gửi thêm gì."""
+    elapsed = await _s07_close_elapsed(
+        "revoke_sessions", stream_app, sse_open, db_session, event_bus, fake_clock, monkeypatch
+    )
+    _log.info("s07_notifications_revoke_sessions closed_after_s=%.3f", elapsed)
 
 
 async def test_streams_open_notifications__S07_policy_revoked(
     stream_app: StreamAppFactory,
     sse_open: SseOpen,
     db_session: AsyncSession,
+    event_bus: EventBus,
+    fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Chính sách của B4-02 đổi sang từ chối giữa chừng → luồng đóng ≤ 1 s."""
-    _short_cache(monkeypatch)
-    policy = FakePolicy()
-    app = stream_app(providers=[notifications_provider(policy=policy)], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, PATH, cookies=owner.cookies) as stream:
-            policy.allowed = False
-            elapsed = await stream.wait_closed(WAIT_S)
-        with capsys.disabled():
-            print(f"\n[S07] notifications policy từ chối: đóng sau {elapsed:.3f}s")
-        assert elapsed <= CLOSE_BUDGET_S
+    """Chính sách của B4-02 đổi sang từ chối giữa chừng → luồng đóng."""
+    elapsed = await _s07_close_elapsed(
+        "policy_revoked", stream_app, sse_open, db_session, event_bus, fake_clock, monkeypatch
+    )
+    _log.info("s07_notifications_policy_revoked closed_after_s=%.3f", elapsed)
+
+
+@pytest.mark.perf
+@pytest.mark.parametrize("scenario", ["revoke_sessions", "policy_revoked"])
+async def test_notifications_stream_closes_within_budget_after_access_loss(
+    scenario: str,
+    stream_app: StreamAppFactory,
+    sse_open: SseOpen,
+    db_session: AsyncSession,
+    event_bus: EventBus,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Trần S07 (≤ 1 s) của từng kịch bản mất quyền, đo tuần tự ở bước 5b."""
+    elapsed = await _s07_close_elapsed(scenario, stream_app, sse_open, db_session, event_bus, fake_clock, monkeypatch)
+    _log.info("s07_notifications_%s closed_after_s=%.3f", scenario, elapsed)
+    assert elapsed <= CLOSE_BUDGET_S
 
 
 # ---------------------------------------------------------------------------
