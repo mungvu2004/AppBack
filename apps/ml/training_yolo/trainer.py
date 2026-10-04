@@ -246,7 +246,7 @@ def _check_export(onnx_path: Path) -> None:
     YoloOnnxDetector(session, ARTIFACT_LABELS)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class YoloTrainer:
     """Huấn luyện YOLO dò cửa/đồ đạc; đồng hồ, thư mục trọng số và bản ghim đều tiêm được.
 
@@ -259,7 +259,11 @@ class YoloTrainer:
     models_dir: Path | None = None
     clock: Clock = field(default_factory=SystemClock)
     monotonic: Callable[[], float] = time.monotonic
-    family: TrainableFamily = _FAMILY
+
+    @property
+    def family(self) -> TrainableFamily:
+        """Họ cố định `openingAndFurnitureDetection` (khối [2]); không tiêm được."""
+        return _FAMILY
 
     def train(self, spec: TrainSpec, data_dir: Path, out_dir: Path, reporter: TrainReporter) -> TrainResult:
         """Huấn luyện rồi xuất `out_dir/model.onnx`; trả đúng số đo `map50` của epoch cuối.
