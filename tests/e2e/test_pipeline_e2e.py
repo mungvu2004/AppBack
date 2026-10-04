@@ -40,7 +40,6 @@ from apps.api.spatial_read.counts import layer_counts, recount_floor
 from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_write.tests._route_helpers import layer_path as write_layer_path
 from apps.api.spatial_write.tests._route_helpers import wire
-from apps.ml.runtime.settings import reset_ml_settings_cache
 from apps.ml.runtime.tasks_util import reset_infer_context
 from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_quality.tests.helpers import process_env as process_env
@@ -91,17 +90,16 @@ def test_synthetic_plan_has_no_frame() -> None:
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def e2e_env(process_env: None) -> AsyncIterator[None]:
-    """`process_env` + dọn cache cấu hình/ngữ cảnh suy luận ML giữa các lượt e2e.
+    """`process_env` + dọn ngữ cảnh suy luận ML giữa các lượt e2e.
 
     Chỉ e2e được nhập `apps.ml` ([9]); `pipeline_quality` dùng chung `process_env` không cần
-    phần ML nên hai lời gọi này đứng riêng ở đây, không trong `tests/helpers.py`. Thiếu
-    `reset_infer_context` làm lượt e2e thứ hai trong cùng tiến trình đọc kho ML cũ (C2).
+    phần ML nên lời gọi này đứng riêng ở đây, không trong `tests/helpers.py`. Thiếu
+    `reset_infer_context` làm lượt e2e thứ hai trong cùng tiến trình đọc kho ML cũ (C2). Cache
+    `get_ml_settings` do fixture autouse `ml_settings_cache` dọn quanh mọi test (NO-312).
     """
-    reset_ml_settings_cache()
     reset_infer_context()
     yield
     reset_infer_context()
-    reset_ml_settings_cache()
 
 
 @pytest.fixture
