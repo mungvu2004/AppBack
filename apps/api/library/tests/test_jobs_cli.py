@@ -14,7 +14,6 @@ from sqlalchemy import func, select
 
 from apps.api.library import cli
 from apps.api.library.jobs import TASK_NAME, publish_library_assets
-from apps.api.library.tests._helpers import BLOCKED
 from packages.core.clock import SystemClock
 from packages.core.settings import reset_settings_cache
 from packages.db.engine import create_engine, create_sessionmaker, session_scope
@@ -24,6 +23,7 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.schedules import schedule_entries
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 
@@ -120,7 +120,7 @@ def test_blocked_covers_importlinter_jobs_contract() -> None:
         if parser[section].get("name", "").startswith("apps.api.*.jobs"):
             forbidden.update(parser[section]["forbidden_modules"].split())
     assert forbidden
-    assert forbidden <= set(BLOCKED), sorted(forbidden - set(BLOCKED))
+    assert forbidden <= set(WORKER_BLOCKED), sorted(forbidden - set(WORKER_BLOCKED))
 
 
 @pytest.mark.parametrize(
@@ -129,7 +129,7 @@ def test_blocked_covers_importlinter_jobs_contract() -> None:
 )
 def test_imports_without_web_or_crypto_packages(module: str) -> None:
     """Worker/CLI nhập được các module này khi `fastapi`, `jwt`, `argon2` bị chặn trong `sys.modules`."""
-    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in BLOCKED)
+    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import {module}"],
         cwd=REPO_ROOT,
