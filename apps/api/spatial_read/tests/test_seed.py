@@ -80,9 +80,9 @@ async def test_seed_twice_keeps_row_counts(db_session: AsyncSession) -> None:
 
 def test_seed_shares_the_domain_helpers_with_the_api() -> None:
     """Seed và `codec`/`counts` gọi cùng một hàm (NO-220): không còn bản dựng lại hình dạng ở seed."""
-    assert seed_module.document_to_json is codec.document_to_json
-    assert seed_module.entity_ids is codec.entity_ids
-    assert seed_module.layer_counts is layer_counts
+    assert vars(seed_module)["document_to_json"] is codec.document_to_json
+    assert vars(seed_module)["entity_ids"] is codec.entity_ids
+    assert vars(seed_module)["layer_counts"] is layer_counts
 
 
 async def test_seed_matches_codec_and_counts(db_session: AsyncSession) -> None:
