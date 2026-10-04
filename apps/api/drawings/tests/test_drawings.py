@@ -356,15 +356,10 @@ async def test_current_drawing_locks_row_when_asked(
     assert locked.id == written.id
 
 
-async def test_drawing_url_is_signed_attachment(
-    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
-) -> None:
-    """URL trang đã nắn là URL ký, tải về (`attachment`), không cần object tồn tại trước."""
-    scene = await make_scene(db_session)
-    upload, _ = await _upload_with_run(db_session, local_storage, scene, fake_clock)
-    key = _page_key(scene, upload, fake_clock)
-    url = await drawing_url(local_storage, key)
-    grant = local_storage.verify_token(url.rsplit("/", 1)[-1])
+async def test_drawing_url__foreign_key_is_signed_attachment(local_storage: LocalDiskStorage) -> None:
+    """NO-217: khoá không do server đặt tên không có `kind` tin được → `attachment`, không cần object tồn tại."""
+    key = f"{project_prefix('prj_' + '0' * 26)}floors/L-ABCDEFGHIJ/uploads/x/a.png"
+    grant = local_storage.verify_token((await drawing_url(local_storage, key)).rsplit("/", 1)[-1])
     assert grant.key == key
     assert grant.disposition == "attachment"
 
@@ -394,3 +389,15 @@ async def test_use_signer_refuses_outside_test_env(
     reset_settings_cache()
     with pytest.raises(RuntimeError, match="APP_ENV=test"):
         use_signer(local_storage)
+
+
+async def test_drawing_url__page_is_signed_inline_png(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """NO-217: `Drawing.url` là ảnh FE hiển thị — ký `inline` (kind `png` truyền sẵn, không `stat`) như ảnh đại diện."""
+    scene = await make_scene(db_session)
+    upload, _ = await _upload_with_run(db_session, local_storage, scene, fake_clock)
+    key = _page_key(scene, upload, fake_clock)
+    grant = local_storage.verify_token((await drawing_url(local_storage, key)).rsplit("/", 1)[-1])
+    assert grant.key == key
+    assert grant.disposition == "inline"

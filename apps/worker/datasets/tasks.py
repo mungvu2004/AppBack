@@ -55,6 +55,7 @@ from packages.messaging import (
 from packages.messaging.payloads.datasets import BUILD_VERSION_TASK, BuildDatasetVersionPayload
 from packages.ml_contracts.artifacts import ObjectsResult, encode_mask, objects_to_json, read_png_header
 from packages.ml_contracts.datasets import DATASET_MAX_BYTES, SampleMeta, split_for
+from packages.storage.keys import dataset_version_prefix
 from packages.storage.port import ObjectStorage
 from packages.vision.preprocess.sniff import sniff_kind
 
@@ -135,6 +136,7 @@ class _Beat:
     """
 
     def __init__(self, clock: Clock) -> None:
+        """Bắt đầu đếm từ `clock.now()` với 0 mẫu."""
         self._clock = clock
         self._at = clock.now()
         self._samples = 0
@@ -152,8 +154,8 @@ class _Beat:
 
 
 def version_prefix(version_id: str) -> str:
-    """Tiền tố object của một phiên bản — cùng chuỗi `SampleWriter` dựng khoá mẫu dưới đó."""
-    return f"ml/datasets/{version_id}/"
+    """Tiền tố object của một phiên bản — cùng chuỗi `SampleWriter` dựng khoá mẫu dưới đó (`keys`)."""
+    return dataset_version_prefix(version_id)
 
 
 def _labels(layer: SpatialLayer, family: str) -> tuple[Wall | Opening | Furniture, ...]:
