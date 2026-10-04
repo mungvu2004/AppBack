@@ -3,8 +3,8 @@
 Quét tĩnh (AST) các tệp test đã rà trong cụm C07: một hàm `test_*` có `assert` cận trên về thời gian
 (`elapsed < …`, `perf_counter() - started <= …`) mà không mang `@pytest.mark.perf` là hỏng — dưới
 `pytest-xdist` (`-n 6`) trần đo tuần tự không giữ được. Hai luật đi kèm: test mang mã case
-(`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf` (`tools/verify/steps.py` `perf_case_named` làm bước 5b hỏng),
-và không đặt `pytestmark = perf` cấp tệp (kéo cả test không có trần rời bước 5).
+(`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf` (`perf_case_named` của `tools/verify/steps.py`
+làm bước 5b hỏng), và không đặt `pytestmark = perf` cấp tệp (kéo cả test không có trần rời bước 5).
 
 Giới hạn: đây là quét **cú pháp** (biến/thuộc tính/khoá tên `elapsed|duration|took`, lời gọi đồng hồ). Hạn
 chờ rộng (`wait_until(timeout_s=…)`, `wait_closed(WAIT_S)`) không phải cận trên đo được nên không bị quét —
@@ -45,7 +45,7 @@ _ELAPSED_NAME = re.compile(r"elapsed|duration|took", re.IGNORECASE)
 
 
 def _is_time(node: ast.expr) -> bool:
-    """Biểu thức là một khoảng thời gian: biến `elapsed…`, lời gọi đồng hồ, hay `đồng_hồ − mốc`."""
+    """Biểu thức là một khoảng thời gian: biến `elapsed…`, lời gọi đồng hồ, hay `đồng_hồ - mốc`."""
     if isinstance(node, ast.Name):
         return bool(_ELAPSED_NAME.search(node.id))
     if isinstance(node, ast.Attribute):
