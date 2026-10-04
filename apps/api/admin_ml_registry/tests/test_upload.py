@@ -483,6 +483,7 @@ async def test_upload_version_streams_a_file_larger_than_the_sniffed_head(
     assert (info.size, info.sha256) == (len(weights), sha256(weights).hexdigest())
 
 
+@pytest.mark.perf
 async def test_upload_version_keeps_the_pool_free_while_streaming(
     api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
 ) -> None:

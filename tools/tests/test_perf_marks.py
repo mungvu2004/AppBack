@@ -1,0 +1,117 @@
+"""DEBT-02 C07 (NO-272/246/278) — test khẳng định trần đồng hồ tường phải gắn `perf` (BE-00 §12).
+
+Quét tĩnh (AST) các tệp test đã rà trong cụm C07: một hàm `test_*` có `assert` cận trên về thời gian
+(`elapsed < …`, `perf_counter() - started <= …`) mà không mang `@pytest.mark.perf` là hỏng — dưới
+`pytest-xdist` (`-n 6`) trần đo tuần tự không giữ được. Hai luật đi kèm: test mang mã case
+(`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf` (bước 5b không gộp được vào case gate),
+và không đặt `pytestmark = perf` cấp tệp (kéo cả test không có trần rời bước 5).
+
+Hạn chờ rộng (`wait_until(timeout_s=…)`, `wait_closed(timeout_s=…)`) không phải cận trên đo được nên
+không bị quét: chỉ `assert` so sánh biến/phép trừ thời gian với một trần mới tính.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCANNED = (
+    "apps/api/admin_ml_registry/tests/test_upload.py",
+    "apps/api/auth/tests/test_verifier.py",
+    "apps/api/auth_recovery/tests/test_jobs.py",
+    "apps/api/core/tests/test_routing.py",
+    "apps/api/drawings/tests/test_upload_flow.py",
+    "apps/api/measurements/tests/test_routes_read_delete.py",
+    "apps/api/streams/tests/test_fixture_streams.py",
+    "apps/api/streams/tests/test_streams_open_notifications.py",
+    "apps/api/streams/tests/test_streams_open_progress.py",
+    "apps/api/telemetry/tests/test_feature_flags_route.py",
+    "apps/ml/runtime/tests/test_device_gpu.py",
+    "apps/worker/datasets/tests/test_perf.py",
+    "packages/db/tests/test_hooks.py",
+    "packages/mail/tests/test_fixtures.py",
+    "packages/mail/tests/test_sender.py",
+)
+_CLOCKS = frozenset({"perf_counter", "monotonic", "time"})
+_ELAPSED_NAME = re.compile(r"elapsed|duration|took", re.IGNORECASE)
+_CASE_SUFFIX = re.compile(r"__[A-Z]\d{2}[a-z]?(?:[_\[]|$)")
+
+
+def _is_time(node: ast.expr) -> bool:
+    """Biểu thức là một khoảng thời gian: biến `elapsed…`, lời gọi đồng hồ, hay `đồng_hồ − mốc`."""
+    if isinstance(node, ast.Name):
+        return bool(_ELAPSED_NAME.search(node.id))
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        return node.func.attr in _CLOCKS
+    return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub) and _is_time(node.left)
+
+
+def _is_ceiling(assertion: ast.Assert) -> bool:
+    """`assert` đặt cận **trên** cho một khoảng thời gian (cận dưới `>= 1.0` không tính)."""
+    test = assertion.test
+    if not isinstance(test, ast.Compare):
+        return False
+    operands = [test.left, *test.comparators]
+    for index, op in enumerate(test.ops):
+        if isinstance(op, ast.Lt | ast.LtE) and _is_time(operands[index]):
+            return True
+        if isinstance(op, ast.Gt | ast.GtE) and _is_time(operands[index + 1]):
+            return True
+    return False
+
+
+def _has_perf(node: ast.AST) -> bool:
+    """Cây `node` (decorator hay giá trị `pytestmark`) nhắc tới marker `perf`."""
+    return any(isinstance(item, ast.Attribute) and item.attr == "perf" for item in ast.walk(node))
+
+
+def violations(source: str) -> list[str]:
+    """Lỗi của một tệp test: trần chưa `perf`, `perf` mang mã case, `pytestmark = perf` cấp tệp."""
+    tree = ast.parse(source)
+    found = [
+        f"dòng {stmt.lineno}: pytestmark perf cấp tệp"
+        for stmt in tree.body
+        if isinstance(stmt, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in stmt.targets)
+        and _has_perf(stmt.value)
+    ]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or not node.name.startswith("test_"):
+            continue
+        marked = any(_has_perf(decorator) for decorator in node.decorator_list)
+        if marked and _CASE_SUFFIX.search(node.name):
+            found.append(f"{node.name}: perf không được mang mã case")
+        ceiling = [a.lineno for a in ast.walk(node) if isinstance(a, ast.Assert) and _is_ceiling(a)]
+        if ceiling and not marked:
+            found.append(f"{node.name}: trần thời gian ở dòng {ceiling} nhưng thiếu @pytest.mark.perf")
+    return found
+
+
+@pytest.mark.parametrize("relative", SCANNED)
+def test_scanned_files_mark_wall_clock_ceilings_perf(relative: str) -> None:
+    """Mỗi tệp đã rà: không còn trần đồng hồ tường ở bước 5, không `perf` mang mã case."""
+    assert violations((REPO_ROOT / relative).read_text(encoding="utf-8")) == []
+
+
+def test_scanner_flags_each_violation_kind() -> None:
+    """Lưới quét tự kiểm: bắt đủ ba loại lỗi, và bỏ qua cận dưới, hạn chờ, test đã `perf`."""
+    source = (
+        "import pytest\n"
+        "pytestmark = pytest.mark.perf\n"
+        "def test_a():\n    assert elapsed < 2\n"
+        "def test_b():\n    assert 1.5 < time.perf_counter() - started < 3\n"
+        "def test_c():\n    assert time.monotonic() - started >= 1.0\n    assert x < 3\n"
+        "@pytest.mark.perf\ndef test_d__J09():\n    assert elapsed < 2\n"
+        "@pytest.mark.perf\ndef test_e():\n    assert elapsed <= 2\n"
+    )
+    found = violations(source)
+    assert len(found) == 4
+    assert found[0].startswith("dòng 2")
+    assert any("test_a" in item and "[4]" in item for item in found)
+    assert any("test_b" in item for item in found)
+    assert any("test_d__J09" in item and "mã case" in item for item in found)
+    assert not any("test_c" in item or "test_e" in item for item in found)
