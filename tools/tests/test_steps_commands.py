@@ -437,15 +437,8 @@ def test_openapi_module_giả_ghi_đúng_file_xoá_file_cũ(repo: Path) -> None:
 # --- merge-heads --------------------------------------------------------------------
 
 _ALEMBIC_INI = "[alembic]\nscript_location = %(here)s/migrations\n"
-_MAKO = (
-    '"""${message}"""\n'
-    "revision = ${repr(up_revision)}\n"
-    "down_revision = ${repr(down_revision)}\n"
-    "branch_labels = None\n"
-    "depends_on = None\n\n\n"
-    "def upgrade() -> None:\n    pass\n\n\n"
-    "def downgrade() -> None:\n    pass\n"
-)
+# Template **thật** của repo, không bản tự chế: bản giả `repr(down_revision)` che lỗi tuple→chuỗi (NO-249).
+_MAKO = Path(__file__).resolve().parents[2] / "packages" / "db" / "migrations" / "script.py.mako"
 
 
 def _alembic_repo(root: Path, *revisions: tuple[str, str | None]) -> Path:
@@ -454,7 +447,7 @@ def _alembic_repo(root: Path, *revisions: tuple[str, str | None]) -> Path:
     versions = db / "migrations" / "versions"
     versions.mkdir(parents=True)
     (db / "alembic.ini").write_text(_ALEMBIC_INI, encoding="utf-8")
-    (db / "migrations" / "script.py.mako").write_text(_MAKO, encoding="utf-8")
+    shutil.copy(_MAKO, db / "migrations" / "script.py.mako")
     for rev, down in revisions:
         (versions / f"{rev}_viec.py").write_text(
             f'revision = "{rev}"\ndown_revision = {down!r}\n\n\n'
