@@ -24,6 +24,7 @@ def worktree(tmp_path: Path) -> Path:
     root = tmp_path / "cây làm việc"
     (root / "tools" / "verify").mkdir(parents=True)
     shutil.copy2(RUN_SH, root / "tools" / "verify" / "run.sh")
+    shutil.copy2(RUN_SH.with_name("appfront_repo.sh"), root / "tools" / "verify" / "appfront_repo.sh")  # run.sh nạp nó
     git = [GIT, "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
     subprocess.run([GIT, "init", "-q", str(root)], check=True)  # noqa: S603 — lệnh cố định trên thư mục tạm
     subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "x"], check=True)  # noqa: S603 — như trên
@@ -128,3 +129,134 @@ def test_gc_lowercases_and_normalizes_worktree_names(worktree: Path, tmp_path: P
     valid_names_arg = next(a for a in args if a.startswith("VERIFY_VALID_NAMES="))
     names = valid_names_arg.removeprefix("VERIFY_VALID_NAMES=").split(",")
     assert "b7-01_extra" in names
+
+
+def _gc_section() -> str:
+    """Nhánh `gc)` của `run.sh` (từ `  gc)` tới `;;` đầu tiên sau nó)."""
+    text = RUN_SH.read_text(encoding="utf-8")
+    start = text.index("\n  gc)")
+    return text[start : text.index(";;", start)]
+
+
+def test_gc__git_chạy_ở_cwd_không_truyền_đường() -> None:
+    """NO-205: `run.sh` đã `cd "$REPO_ROOT"`, nên nhánh `gc` gọi `git` ở thư mục hiện tại, không truyền đường nào.
+
+    Truyền `git -C "$REPO_ROOT"` là chính lỗi cũ: dưới `MSYS_NO_PATHCONV=1`, `$REPO_ROOT` giữ dạng `/f/...` mà git
+    Windows không hiểu → thoát 128 ngay ở phép gán `valid_names`. Test quét tĩnh vì lỗi thật chỉ ra trên Git Bash
+    Windows (`PATH=<docker giả> bash tools/verify/run.sh gc` thoát 128 trước khi sửa, 0 sau khi sửa).
+    """
+    section = _gc_section()
+    assert "git -C" not in section  # `run.sh` đã `cd` vào gốc repo: git dùng thư mục hiện tại, không cần đường nào
+    assert "$REPO_ROOT" not in section
+
+
+def test_shell__build_xong_trước_khi_đọc_stdin(worktree: Path, tmp_path: Path) -> None:
+    """NO-299: `compose run --build` đọc stdin cho `buildx bake -f -` và nuốt script nhiều dòng của `shell`.
+
+    `docker` giả: lệnh có `--build` ăn hết stdin (như buildx thật), lệnh `run` còn lại ghi lại stdin nhận được.
+    Script phải tới được lệnh `run` — tức bước build tách riêng, không đọc stdin.
+    """
+    bin_dir = tmp_path / "bin"
+    seen = bin_dir / "stdin-seen"
+    _fake_command(
+        bin_dir,
+        "docker",
+        f'case " $* " in *" --build "*) cat > /dev/null ;; *" run "*) cat > "{seen}" ;; esac',
+    )
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    script = "echo một\necho hai\n"
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(worktree / "tools" / "verify" / "run.sh"), "shell"],
+        env=env,
+        input=script,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert seen.read_text(encoding="utf-8") == script
+
+
+def test_volume_work_được_tạo_tường_minh_trước_lượt_compose(worktree: Path, tmp_path: Path) -> None:
+    """NO-185: `appback-work` là `external` trong `verify.yml`, nên `run.sh` phải `docker volume create` nó
+    trước mọi lệnh compose — nếu không, lượt đầu trên máy sạch (CI) hỏng vì volume chưa có."""
+    bin_dir = tmp_path / "bin"
+    log = bin_dir / "docker-calls"
+    _fake_command(bin_dir, "docker", f'echo "$*" >> "{log}"')
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(worktree / "tools" / "verify" / "run.sh"), "verify"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert calls[0] == "volume create appback-work"
+    assert calls[1].startswith("compose ")
+
+
+def test_shell__báo_làm_việc_trên_bản_chép(worktree: Path, tmp_path: Path) -> None:
+    """NO-190: `shell` in một dòng stderr nói thẳng `/tmp/w` là bản chép, sửa trong đó không về worktree."""
+    bin_dir = tmp_path / "bin"
+    _fake_command(bin_dir, "docker", "cat > /dev/null")
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(worktree / "tools" / "verify" / "run.sh"), "shell"],
+        env=env,
+        input="true\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "BẢN CHÉP /tmp/w" in result.stderr
+
+
+def test_verify__junit_mồ_côi_bị_dọn_cùng_log(worktree: Path, tmp_path: Path) -> None:
+    """NO-324: `<log>.junit.xml` không có log đi kèm (log đã bị dọn theo trần) bị dọn; junit của log còn giữ."""
+    log_dir = worktree / ".cache" / "src-out" / "verify"
+    names = _old_logs(log_dir, LOG_KEEP + 2)
+    for name in names:
+        (log_dir / name.replace(".log", ".junit.xml")).write_text("<testsuites/>", encoding="utf-8")
+
+    _run_verify(worktree, tmp_path / "bin")
+
+    kept = [n.replace(".log", ".junit.xml") for n in names[3:]]
+    assert sorted(p.name for p in log_dir.glob("*.junit.xml")) == sorted(kept)
+
+
+@pytest.mark.parametrize("task", ["verify", "gc"])
+def test_mọi_việc_build_riêng_trước_run_không_còn_run_build(worktree: Path, tmp_path: Path, task: str) -> None:
+    """NO-299: `run --build` cũ đọc stdin ở mọi việc; nay `build verify` đứng riêng, trước `run` (verify, gc)."""
+    bin_dir = tmp_path / "bin"
+    log = bin_dir / "docker-calls"
+    _fake_command(bin_dir, "docker", f'echo "$*" >> "{log}"')
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(worktree / "tools" / "verify" / "run.sh"), task],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert not any("--build" in c for c in calls)
+    build = next(i for i, c in enumerate(calls) if c.endswith(" build verify"))
+    run = next(i for i, c in enumerate(calls) if " run --rm" in c)
+    assert build < run
+
+
+def test_verify__junit_perf_mồ_côi_bị_dọn_cùng_log(worktree: Path, tmp_path: Path) -> None:
+    """NO-324: `<log>.perf.junit.xml` đi cùng log như `<log>.junit.xml`: còn log thì giữ, mất log thì dọn."""
+    log_dir = worktree / ".cache" / "src-out" / "verify"
+    names = _old_logs(log_dir, LOG_KEEP + 2)
+    for name in names:
+        (log_dir / name.replace(".log", ".perf.junit.xml")).write_text("<testsuites/>", encoding="utf-8")
+
+    _run_verify(worktree, tmp_path / "bin")
+
+    kept = [n.replace(".log", ".perf.junit.xml") for n in names[3:]]
+    assert sorted(p.name for p in log_dir.glob("*.perf.junit.xml")) == sorted(kept)

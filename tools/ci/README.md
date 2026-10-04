@@ -25,8 +25,8 @@ Bật:
   - **Require conversation resolution before merging** — bật (giải quyết hết
     hội thoại review).
 - **Require status checks to pass**: chọn **mọi** job của `ci.yml` (`lint`,
-  `typecheck`, `unit`, `integration`, `ml`, `contract`, `build`, `commits`,
-  `coverage`) và job `analyze` của `codeql.yml` (mỗi ngôn ngữ trong `matrix`
+  `typecheck`, `unit`, `integration`, `ml`, `contract`, `build`, `coverage`),
+  job `commits` của `commits.yml` và job `analyze` của `codeql.yml` (mỗi ngôn ngữ trong `matrix`
   hiện thành một check riêng — chọn cả hai); bật **Require branches to be up
   to date before merging**.
 - **Bypass list**: thêm **Repository admin** — nếu không, ngoại lệ hẹp của
@@ -71,10 +71,11 @@ gh api repos/mungvu2004/AppBack/rulesets --jq '.[] | select(.target=="tag")'
   thêm `" in /deploy/docker"` vào tiêu đề, dễ vượt 72 ký tự — người điều phối
   rút gọn tiêu đề PR về ≤ 72 ký tự **trước khi** squash (job `commits` chỉ
   miễn dòng đầu từng commit cho nhánh `dependabot/**`, không miễn tiêu đề PR —
-  `/merge-review` lượt 1 #4). `ci.yml` khai `pull_request.types` gồm `edited`
-  (NO-110): sửa tiêu đề PR ngay trên GitHub tự chạy lại job `commits` với tiêu
-  đề mới, không cần đẩy commit rỗng hay bấm re-run (mặc định `pull_request`
-  không có `edited` sẽ giữ payload cũ).
+  `/merge-review` lượt 1 #4). `commits.yml` khai `pull_request.types` gồm
+  `edited` (NO-110): sửa tiêu đề PR ngay trên GitHub tự chạy lại job `commits`
+  với tiêu đề mới, không cần đẩy commit rỗng hay bấm re-run (mặc định
+  `pull_request` không có `edited` sẽ giữ payload cũ). `ci.yml` không có
+  `edited` (NO-182): check `skipped` trùng tên sẽ thoả required check.
 
 **Kiểm:**
 
@@ -142,3 +143,9 @@ bash tools/ci/job.sh build --no-scan   # bỏ trivy — B0-10 dùng cho diễn t
 
 Bảng trạng thái từng bước con in ra stdout; job đọc `$GITHUB_STEP_SUMMARY` khi
 biến này có (trên runner) và tự bỏ qua khi chạy tại chỗ.
+
+Job `unit`/`integration`/`ml` chạy `pytest -n <N> --dist loadfile --cov` (xdist, như bước 5 của
+verify), ghi độ phủ vào `.coverage.<nhóm>`. `N` mặc định 3 (`ml`: 2); đặt `CI_PYTEST_WORKERS=<số>`
+để đổi. Bước `build` kiểm `nginx -v` của ảnh `web` với sàn bản vá **theo dòng phát hành**
+(`nginx_floor_for_line` trong `job.sh`); đổi dòng nginx của `web.Dockerfile` thì tra
+nginx.org/en/security_advisories.html rồi thêm dòng sàn mới, nếu không job `build` hỏng kín.

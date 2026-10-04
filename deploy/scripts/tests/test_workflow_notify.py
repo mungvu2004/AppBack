@@ -20,6 +20,9 @@ CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 RESTORE_DRILL_YML = REPO_ROOT / ".github" / "workflows" / "restore-drill.yml"
 NOTIFY_YML = REPO_ROOT / ".github" / "workflows" / "notify.yml"
+COMMITS_YML = REPO_ROOT / ".github" / "workflows" / "commits.yml"
+CODEQL_YML = REPO_ROOT / ".github" / "workflows" / "codeql.yml"
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
 
 def _load_yaml(path: Path) -> dict[Any, Any]:
@@ -56,13 +59,29 @@ def _workflow_names(*paths: Path) -> set[str]:
     return {_load_yaml(p)["name"] for p in paths}
 
 
-def test_notify_watches_exact_names_of_ci_deploy_restore_drill() -> None:
+def test_notify_watches_exact_names_of_watched_workflows() -> None:
+    """Danh sách `workflow_run.workflows` lấy đúng `name:` thật của từng workflow được báo (không chép tay)."""
     doc = _load_yaml(NOTIFY_YML)
     watched = set(_triggers(doc)["workflow_run"]["workflows"])
-    assert watched == _workflow_names(CI_YML, DEPLOY_YML, RESTORE_DRILL_YML)
+    assert watched == _workflow_names(CI_YML, DEPLOY_YML, RESTORE_DRILL_YML, COMMITS_YML, CODEQL_YML)
+
+
+def test_notify_watches_every_workflow_running_on_push_to_main() -> None:
+    """FIX-136: mọi workflow chạy trên `push: main` nằm trong danh sách của notify — tách một job ra workflow mới
+    (vd `commits` khỏi `CI`) không được làm lỗi trên `main` thành im lặng."""
+    watched = set(_triggers(_load_yaml(NOTIFY_YML))["workflow_run"]["workflows"])
+    on_main_push = set()
+    for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        doc = _load_yaml(path)
+        push = _triggers(doc).get("push") or {}
+        if "main" in push.get("branches", []):
+            on_main_push.add(doc["name"])
+    assert on_main_push, "không workflow nào chạy trên push: main"
+    assert on_main_push <= watched, on_main_push - watched
 
 
 def test_notify_permissions_empty_and_no_checkout() -> None:
+    """Job notify không quyền token và không checkout: lượt được báo có thể từ PR fork, không được chạy mã của nó."""
     doc = _load_yaml(NOTIFY_YML)
     assert doc.get("permissions") == {}
     uses_values = _walk_key(doc["jobs"], "uses")
@@ -124,11 +143,18 @@ def _run_decision(tmp_path: Path, *, workflow: str, conclusion: str, head_branch
         ("Deploy", "cancelled", "main", False),
         ("Restore drill", "failure", "main", True),
         ("Restore drill", "success", "main", False),
+        ("Commits", "failure", "main", True),
+        ("Commits", "failure", "feature/x", False),
+        ("Commits", "success", "main", False),
+        ("CodeQL", "failure", "main", True),
+        ("CodeQL", "failure", "feature/x", False),
+        ("CodeQL", "success", "main", False),
     ],
 )
 def test_notify_send_decision_matches_prompt_table(
     tmp_path: Path, workflow: str, conclusion: str, head_branch: str, expected_send: bool
 ) -> None:
+    """Điều kiện gửi chạy thật bằng bash khớp bảng B0-10 [6] (CI/Commits/CodeQL: failure trên main)."""
     assert _run_decision(tmp_path, workflow=workflow, conclusion=conclusion, head_branch=head_branch) is expected_send
 
 
@@ -150,6 +176,7 @@ def _send_script() -> str:
 
 
 def _run_send(tmp_path: Path, *, webhook_url: str) -> Any:
+    """Chạy thật bước gửi của notify.yml với biến `env:` của một lượt Deploy hỏng và webhook cho trước."""
     script = tmp_path / "send.sh"
     script.write_text("set -euo pipefail\n" + _send_script(), encoding="utf-8")
     return run_script(
@@ -167,6 +194,7 @@ def _run_send(tmp_path: Path, *, webhook_url: str) -> Any:
 
 
 def test_notify_send_posts_json_with_matching_text_and_content(tmp_path: Path) -> None:
+    """Tin gửi là JSON có `text` = `content`, một dòng, mang tên workflow, sha 12 ký tự và đường dẫn run."""
     with HttpStub() as stub:
         result = _run_send(tmp_path, webhook_url=stub.url)
         assert result.returncode == 0, result.stdout + result.stderr
@@ -182,12 +210,14 @@ def test_notify_send_posts_json_with_matching_text_and_content(tmp_path: Path) -
 
 
 def test_notify_send_missing_webhook_url_skips_without_posting(tmp_path: Path) -> None:
+    """Chưa cấu hình webhook thì bỏ qua bằng `::notice::` và thoát 0 — không làm đỏ workflow notify."""
     result = _run_send(tmp_path, webhook_url="")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "::notice::" in result.stdout
 
 
 def test_notify_send_server_error_warns_but_exits_zero(tmp_path: Path) -> None:
+    """Webhook trả 500 thì cảnh báo `::warning::` và thoát 0 — lỗi kênh báo không che kết quả workflow gốc."""
     with HttpStub(post_reply=Reply(status=500)) as stub:
         result = _run_send(tmp_path, webhook_url=stub.url)
     assert result.returncode == 0, result.stdout + result.stderr

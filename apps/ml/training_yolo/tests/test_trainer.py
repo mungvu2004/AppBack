@@ -233,11 +233,28 @@ def _fake_train(
     return run
 
 
+@pytest.fixture(scope="module")
+def originals() -> dict[str, object]:
+    """Bản gốc của hai thuộc tính `fake_run` vá, chụp lần đầu fixture được dùng trong module — với `fake_run` là
+    trước lần vá đầu; `test_zz_fake_run_restores_originals` chạy lẻ thì chụp ngay lúc đó."""
+    prepare_ultralytics()
+    from ultralytics.engine import model as model_module
+
+    from apps.ml.runtime import export_yolo as export_module
+
+    return {"export_yolo": export_module.export_yolo, "Model.train": model_module.Model.train}
+
+
 @pytest.fixture
 def fake_run(
-    tmp_path: Path, trained: tuple[Any, RecordingReporter, Path]
-) -> Iterator[tuple[Path, Path, dict[str, Any], dict[str, Any]]]:
-    """Vá `Model.train` và `export_yolo` (chỉ hai chỗ này, khối [8]); `export_yolo` chép ONNX đã xuất thật."""
+    tmp_path: Path, trained: tuple[Any, RecordingReporter, Path], originals: dict[str, object]
+) -> Iterator[tuple[Path, Path, dict[str, Any], dict[str, Any], pytest.MonkeyPatch]]:
+    """Vá `Model.train` và `export_yolo` (chỉ hai chỗ này, khối [8]); `export_yolo` chép ONNX đã xuất thật.
+
+    Trả cả `patch`: test cần vá đè hai thuộc tính này phải vá qua CHÍNH context này, không qua fixture
+    `monkeypatch` — hai MonkeyPatch hoàn tác lệch thứ tự sẽ trả `export_yolo` về bản giả thay vì bản gốc,
+    rò sang test sau cùng tiến trình (FIX-137: `apps/ml/runtime/tests/test_export.py` nhận ONNX "sha").
+    """
     result, _reporter, _out = trained
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -257,21 +274,22 @@ def fake_run(
 
     from apps.ml.runtime import export_yolo as export_module
 
+    assert export_module.export_yolo is originals["export_yolo"]
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(export_module, "export_yolo", fake_export)
         patch.setattr(model_module.Model, "train", _fake_train(out_dir, 0.5, train_args))
-        yield data_dir, out_dir, train_args, export_args
+        yield data_dir, out_dir, train_args, export_args, patch
 
 
 @pytest.mark.parametrize(("base_model", "batch"), [("yolov8n", 16), ("yolov8s", 8)])
 def test_cuda_branch_uses_gpu_arguments(
-    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any]],
+    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any], pytest.MonkeyPatch],
     tiny_pt: tuple[Path, Mapping[str, PinnedWeights]],
     base_model: str,
     batch: int,
 ) -> None:
     """`device="cuda"` → `device=0`, `amp=True`, `batch` theo model gốc, `plots=False` (CI không GPU)."""
-    data_dir, out_dir, train_args, _export_args = fake_run
+    data_dir, out_dir, train_args, _export_args, _patch = fake_run
     models_dir, _pinned = tiny_pt
     pinned = {**pinned_for(file_sha256(models_dir / "yolov8n" / "yolov8n.pt"), "yolov8n")}
     pinned[base_model] = pinned["yolov8n"]
@@ -286,16 +304,15 @@ def test_cuda_branch_uses_gpu_arguments(
 
 
 def test_missing_metrics_fails_the_run(
-    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any]],
+    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any], pytest.MonkeyPatch],
     tiny_pt: tuple[Path, Mapping[str, PinnedWeights]],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Không epoch nào cho `map50` → `TRAINING_METRICS_MISSING` và `out_dir` rỗng."""
     prepare_ultralytics()
     from ultralytics.engine import model as model_module
 
-    data_dir, out_dir, train_args, _export_args = fake_run
-    monkeypatch.setattr(model_module.Model, "train", _fake_train(out_dir, None, train_args))
+    data_dir, out_dir, train_args, _export_args, patch = fake_run
+    patch.setattr(model_module.Model, "train", _fake_train(out_dir, None, train_args))
     with pytest.raises(PermanentError) as caught:
         _trainer(tiny_pt).train(_spec(epochs=1), data_dir, out_dir, RecordingReporter())
     assert caught.value.code == "TRAINING_METRICS_MISSING"
@@ -303,21 +320,20 @@ def test_missing_metrics_fails_the_run(
 
 
 def test_broken_export_is_rejected(
-    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any]],
+    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any], pytest.MonkeyPatch],
     tiny_pt: tuple[Path, Mapping[str, PinnedWeights]],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ONNX xuất ra không giải được → `MODEL_FORMAT_UNSUPPORTED`, không artifact nào ở lại."""
     from apps.ml.runtime import export_yolo as export_module
 
-    data_dir, out_dir, _train_args, _export_args = fake_run
+    data_dir, out_dir, _train_args, _export_args, patch = fake_run
 
     def broken(_pt: Path, target: Path, **_kwargs: Any) -> str:
         """Ghi byte không phải ONNX."""
         target.write_bytes(b"\x00\x01not-an-onnx-graph")
         return "sha"
 
-    monkeypatch.setattr(export_module, "export_yolo", broken)
+    patch.setattr(export_module, "export_yolo", broken)
     with pytest.raises(PermanentError) as caught:
         _trainer(tiny_pt).train(_spec(epochs=1), data_dir, out_dir, RecordingReporter())
     assert caught.value.code == "MODEL_FORMAT_UNSUPPORTED"
@@ -326,14 +342,14 @@ def test_broken_export_is_rejected(
 
 @pytest.mark.parametrize("cancel_at", [1, _MICRO_SAMPLES + 1], ids=["while-tiling", "after-first-batch"])
 def test_cancel_stops_the_run(
-    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any]],
+    fake_run: tuple[Path, Path, dict[str, Any], dict[str, Any], pytest.MonkeyPatch],
     tiny_pt: tuple[Path, Mapping[str, PinnedWeights]],
     cancel_at: int,
 ) -> None:
     """Huỷ lúc đang lát hay sau batch đầu → `TrainingStopped`, không `model.onnx`, không rác tạm (J04)."""
     from apps.ml.training_runner.errors import TrainingStopped
 
-    data_dir, out_dir, _train_args, _export_args = fake_run
+    data_dir, out_dir, _train_args, _export_args, _patch = fake_run
     reporter = RecordingReporter(cancel_when=lambda calls: calls >= cancel_at)
     with pytest.raises(TrainingStopped):
         _trainer(tiny_pt).train(_spec(epochs=1), data_dir, out_dir, reporter)
@@ -357,3 +373,15 @@ def test_discover_trainers_finds_this_trainer() -> None:
     from apps.ml.runtime.trainers import discover_trainers
 
     assert discover_trainers()[_FAMILY] is TRAINER
+
+
+def test_zz_fake_run_restores_originals(originals: dict[str, object]) -> None:
+    """FIX-137: `export_yolo` và `Model.train` là bản gốc — chạy cả tệp thì so với bản chụp trước lần vá đầu của
+    `fake_run` (không bản giả nào rò qua các test trước); chạy lẻ thì bản chụp là chính giá trị hiện tại."""
+    prepare_ultralytics()
+    from ultralytics.engine import model as model_module
+
+    from apps.ml.runtime import export_yolo as export_module
+
+    assert export_module.export_yolo is originals["export_yolo"]
+    assert model_module.Model.train is originals["Model.train"]

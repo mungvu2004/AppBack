@@ -1,15 +1,6 @@
-# Bảng case bắt buộc thêm của bước phát hiện ô mở/đồ đạc (B5-03 [8], CASE.md §2.3).
-#
-# Lệch khỏi prompt — [8] đòi `require = ["J02", "J03", "J05", "J08"]` cùng `M01`-`M04`, ở
-#   đây bỏ hết mã `M`: `_TEST_TASK_RE` (`tools/case_gate.py:296`) chỉ nhận mã `J\d{2}` cho
-#   test task, nên khai `M01`..`M04` là đòi một case mà cổng không bao giờ tìm thấy
-#   (NO-256, như `apps/ml/walls/cases.toml`). `tools/**` nằm trong khối [12] KHÔNG ĐƯỢC SỬA.
-#
-# Độ phủ case không giảm: cổng tự đòi J01 và J06 cho mọi task trong sổ
-# (`tools/case_gate.py:493-499`), và `apps/ml/objects/tests/test_tasks.py` có đủ
-# `test_objects_detect__J01, __J02, __J02_exhausted, __J03, __J05, __J06, __J08,
-# __M01, __M02, __M03, __M04`.
+# Bảng case bắt buộc thêm của bước phát hiện ô mở/đồ đạc (B5-03 [8], CASE.md §2.3, §6).
+# Cổng tự đòi J01, J06; dưới là phần [8] đòi thêm, gồm M01–M04 (NO-256).
 
 [[task]]
 fn = "objects_detect"
-require = ["J02", "J03", "J05", "J08"]
+require = ["J02", "J03", "J05", "J08", "M01", "M02", "M03", "M04"]

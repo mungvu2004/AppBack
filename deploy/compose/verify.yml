@@ -53,3 +53,6 @@ volumes:
   # (khác worktree) cùng làm ấm volume chung này không giẫm nhau.
   appback-work:
     name: appback-work
+    # `run.sh` tạo volume (`docker volume create`) trước mỗi lượt: compose không còn so nhãn project
+    # của volume với project của lượt này, nên hết cảnh báo "created for project …" (NO-185).
+    external: true

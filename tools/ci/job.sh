@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/ci/job.sh <job> [--no-scan] — lệnh THẬT của mỗi job GitHub Actions (B0-09).
 #
-# `.github/workflows/ci.yml` chỉ gọi script này; không job nào gõ lệnh cổng trực
+# `.github/workflows/ci.yml` và `commits.yml` chỉ gọi script này; không job nào gõ lệnh cổng trực
 # tiếp, để chạy trên runner và trong container verify (`bash tools/verify/run.sh
 # shell`) cho cùng kết quả (BE-00 §12, hop-dong.md §2). Ngoại lệ: `build` còn chạy
 # được trên máy (Git Bash + Docker Desktop) vì cần build ảnh thật.
@@ -34,9 +34,7 @@ GITLEAKS_IMAGE="zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16
 TRIVY_IMAGE="aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
 # NO-113: trivy 0.74.0 không ánh xạ CVE của gói `nginx` cài từ kho nginx.org (ảnh `web`, B0-08) —
 # CSDL của nó không biết gói này, nên `job_build_trivy web` xanh không chứng minh nginx sạch CVE.
-# Bù bằng kiểm `nginx -v` so với bản vá tối thiểu đã tra advisory nginx.org (CVE-2026-42533 vá ở
-# 1.30.4; CVE-2026-42945 vá 1.30.1+) — ghim một nơi, cả hai commit FIX-070 và FIX-084 đọc từ đây.
-NGINX_MIN_VERSION="1.30.4"
+# Bù bằng kiểm `nginx -v` so với sàn bản vá THEO DÒNG PHÁT HÀNH (`nginx_floor_for_line`, NO-183).
 PIP_AUDIT_VERSION="2.10.1"
 NET_TIMEOUT_S=300
 BUILD_TIMEOUT_S=1800
@@ -207,6 +205,15 @@ job_typecheck() {
 # unit / integration / ml — coverage run pytest --ci-split=<nhóm>
 # ---------------------------------------------------------------------------
 
+# Số tiến trình xdist của job unit/integration/ml — `CI_PYTEST_WORKERS`, rỗng/lạ → mặc định (cùng
+# luật `pytest_workers()` ở tools/verify/steps.py, FIX-112). Mặc định 3 (ml: 2): runner GitHub chuẩn
+# 4 vCPU / 16 GB, đo ENV.md §4 một cổng `-n 6` ≈ 5,2 GiB nên 3 còn dư; `ml` nạp torch mỗi tiến trình.
+_ci_pytest_workers() {
+  local group="$1" value="${CI_PYTEST_WORKERS:-}" default=3
+  [ "$group" = "ml" ] && default=2
+  if [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -gt 0 ]; then echo "$value"; else echo "$default"; fi
+}
+
 job_test_group() {
   local group="$1"
   local trace="trace-${group}.jsonl"
@@ -224,9 +231,13 @@ job_test_group() {
     run_step "verify --steps 0 (làm ấm node_modules)" python -m tools.verify.steps verify --steps 0
     run_step "verify --steps 6 (migrations)" python -m tools.verify.steps verify --steps 6
   fi
-  run_step "coverage run pytest --ci-split=${group}" \
-    env "CASE_TRACE_FILE=${trace}" \
-    coverage run -m pytest "--ci-split=${group}" "--junitxml=junit-${group}.xml"
+  # NO-269: `pytest -n … --cov` như bước 5 (`coverage run` chỉ đo tiến trình chủ, xdist dựng tiến
+  # trình con nên độ phủ về ~0). pytest-cov gộp dữ liệu các tiến trình vào COVERAGE_FILE — đặt
+  # `.coverage.<nhóm>` để khớp glob `.coverage.*` mà ci.yml tải lên và merge_artifacts đòi.
+  run_step "pytest -n --cov --ci-split=${group}" \
+    env "CASE_TRACE_FILE=${trace}" "COVERAGE_FILE=.coverage.${group}" \
+    pytest -n "$(_ci_pytest_workers "$group")" --dist loadfile --cov --cov-report= \
+    "--ci-split=${group}" "--junitxml=junit-${group}.xml"
 }
 
 # ---------------------------------------------------------------------------
@@ -353,13 +364,37 @@ job_build_trivy() {
     --format sarif --output "/out/trivy-${img}.sarif" "appback-${img}:ci"
 }
 
+nginx_floor_for_line() {
+  # Sàn bản vá theo dòng phát hành: bản vá của mỗi dòng ra độc lập (1.31.6 vá cùng lỗi với 1.30.5),
+  # nên một sàn chung so bằng `sort -V` cho xanh giả (1.31.5 ≥ 1.30.5 nhưng còn lỗ hổng). Nguồn:
+  # nginx.org/en/security_advisories.html, tra 2026-10-03 — advisory mới nhất "buffer overflow when
+  # using ngx_http_v3_module" (CVE-2026-90439) "not vulnerable" 1.31.6+, 1.30.5+. Dòng chưa có trong
+  # bảng → trả 1 (hỏng kín): đổi dòng ảnh `web` (web.Dockerfile) thì tra advisory rồi thêm dòng ở đây.
+  case "$1" in
+    1.30) echo "1.30.5" ;;
+    1.31) echo "1.31.6" ;;
+    *) return 1 ;;
+  esac
+}
+
 job_build_check_nginx_version() {
-  # `nginx -v` in ra stderr ("nginx version: nginx/1.30.4"); không build ảnh thật ở test — test
+  # `nginx -v` in ra stderr ("nginx version: nginx/1.30.5"); không build ảnh thật ở test — test
   # nguồn hàm này với `docker` giả trên PATH (kiểu test pip-audit ở job_lint_pip_audit).
-  local actual
-  actual="$(docker run --rm --entrypoint nginx appback-web:ci -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
-  [ -n "$actual" ] || return 1
-  printf '%s\n%s\n' "$NGINX_MIN_VERSION" "$actual" | sort -C -V
+  local actual line floor
+  actual="$(docker run --rm --entrypoint nginx appback-web:ci -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+  if [ -z "$actual" ]; then
+    echo "nginx: không đọc được phiên bản từ 'nginx -v' của appback-web:ci" >&2
+    return 1
+  fi
+  line="${actual%.*}"
+  if ! floor="$(nginx_floor_for_line "$line")"; then
+    echo "nginx ${actual}: dòng ${line} không có sàn trong nginx_floor_for_line — tra advisory nginx.org rồi thêm" >&2
+    return 1
+  fi
+  if ! printf '%s\n%s\n' "$floor" "$actual" | sort -C -V; then
+    echo "nginx ${actual} < sàn ${floor} (dòng ${line}) — nâng ảnh web.Dockerfile" >&2
+    return 1
+  fi
 }
 
 job_build_smoke() {
@@ -380,7 +415,7 @@ job_build_smoke() {
   export PUBLIC_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"
   run_step "compose up --wait" timeout "${NET_TIMEOUT_S}s" \
     docker compose -p "$project" "${compose_files[@]}" up -d --wait
-  # NO-118: `api` không còn cổng host riêng (`deploy/compose/ci.yml`) — qua nginx của `web`, proxy
+  # NO-118/NO-180: `api` không publish cổng host (`deploy/compose/ci.yml`, không còn `API_HOST_PORT`) — qua nginx của `web`, proxy
   # `/api/` sang `api:8000` (đúng đường request thật, không tắt qua sau lưng nginx).
   run_step "smoke /api/health" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/health"
   run_step "smoke /api/ready" curl -fsS --max-time 5 "http://127.0.0.1:${WEB_HTTP_PORT}/api/ready"
@@ -410,7 +445,7 @@ job_build() {
   sha="$(tr -d '[:space:]' <tools/contract/APPFRONT_SHA)"
   run_step "web-context.sh (AppFront @ ${sha})" bash deploy/docker/web-context.sh "$sha" "$web_ctx"
   job_build_one_image web --build-context "appfront=${web_ctx}" --build-arg "APPFRONT_SHA=${sha}"
-  run_step "nginx -v >= ${NGINX_MIN_VERSION} (NO-113)" job_build_check_nginx_version
+  run_step "nginx -v >= sàn theo dòng phát hành (NO-113)" job_build_check_nginx_version
 
   job_build_import_all api
   job_build_import_all worker

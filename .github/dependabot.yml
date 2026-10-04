@@ -49,9 +49,15 @@ updates:
       docker-patches:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # NO-178/NO-183: hệ `docker` không có kênh security-update, nên KHÔNG `ignore` major trần —
+    # bản major ảnh nền vẫn được đề xuất (PR riêng, không vào nhóm minor/patch; CI là required check).
+    # Đổi minor của ảnh nền `python`/`node` (3.12→3.14, bỏ corepack) là việc có chủ đích kèm relock.
+    # Cú pháp: docs.github.com → Dependabot options reference → `ignore` / `update-types`.
     ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-minor"]
     commit-message:
       prefix: "build"
       include: "scope"

@@ -26,6 +26,7 @@ TESTING_PACKAGE = "packages.testing"
 
 
 def _url(database: str) -> str:
+    """URL Postgres giả trỏ tới database `database`."""
     return f"postgresql+asyncpg://u:p@127.0.0.1:5432/{database}"
 
 
@@ -50,6 +51,7 @@ def test_lượt_dọn_nhận_database_của_chính_tiến_trình(monkeypatch: p
     ],
 )
 def test_lượt_dọn_từ_chối_database_lạ(monkeypatch: pytest.MonkeyPatch, database: str) -> None:
+    """Lượt dọn từ chối database lạ."""
     monkeypatch.setenv(XDIST_WORKER_ENV, "gw3")
     with pytest.raises(RuntimeError, match="chỉ dọn được"):
         assert_reset_target(_url(database))
@@ -76,6 +78,7 @@ def test_lượt_dọn_chấp_nhận_khi_chỉ_có_biến_môi_trường_của_p
 
 
 def _contract() -> configparser.SectionProxy:
+    """Mục hợp đồng `testing-only-from-tests` trong `.importlinter`."""
     parser = configparser.ConfigParser()
     parser.read(REPO_ROOT / ".importlinter", encoding="utf-8")
     assert CONTRACT_SECTION in parser, f"thiếu hợp đồng [{CONTRACT_SECTION}] trong .importlinter"
@@ -83,6 +86,7 @@ def _contract() -> configparser.SectionProxy:
 
 
 def _lines(section: configparser.SectionProxy, key: str) -> set[str]:
+    """Các dòng của khoá `key` trong một mục, thành tập."""
     return {line.strip() for line in section[key].splitlines() if line.strip()}
 
 
@@ -90,7 +94,7 @@ def _top_level_modules() -> set[str]:
     """Nguồn của hợp đồng: mọi gói một cấp dưới `packages/` và `apps/`, cộng chính `tools`.
 
     `tools` là một gói (`tools/__init__.py`) chứ không phải thư mục chứa nhiều gói, và mã không
-    phải test của nó (`coverage_gate.py`, `case_gate.py`, `pinned_images.py`) cũng là mã sản phẩm
+    phải test của nó (`coverage_gate.py`, `case_gate.py`) cũng là mã sản phẩm
     — bỏ nó ra ngoài là lưới không phủ hết ý của hợp đồng (review F-4). `packages.testing` đứng
     ngoài vì nó chính là thứ đang bị cấm nhập.
     """
@@ -103,6 +107,7 @@ def _top_level_modules() -> set[str]:
 
 
 def test_hợp_đồng_cấm_đúng_packages_testing() -> None:
+    """Hợp đồng chỉ cấm đúng `packages.testing`."""
     section = _contract()
     assert section["type"] == "forbidden"
     assert _lines(section, "forbidden_modules") == {TESTING_PACKAGE}

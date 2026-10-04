@@ -2,7 +2,7 @@
 
 Chỉ thư viện chuẩn — không nhập `fastapi`, `sqlalchemy` — để H4 (`tools.contract.check`) nhập được ngoài
 app. H4 đọc đúng hai hằng `RULE_CODES` và `THRESHOLD_SPECS`; đổi tên chúng là hỏng cổng. Mỗi dòng dưới đây
-dẫn dòng FE mà nó chép (`F:/AppFront/src/domain/rules/...`). Không thêm mã ngoài FE (kế hoạch P9: v2);
+dẫn dòng FE mà nó chép (`F:/App/AppFront/src/domain/rules/...`). Không thêm mã ngoài FE (kế hoạch P9: v2);
 thu hẹp danh mục sau khi có dữ liệu là việc của FIX (FIX.md luật 8).
 """
 

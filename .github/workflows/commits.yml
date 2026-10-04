@@ -1,0 +1,48 @@
+name: Commits
+
+# B0-09 (hop-dong.md §2). Job `commits` tách khỏi `ci.yml` (NO-110, NO-182, /merge-review DEBT-02 W1 #1): chỉ
+# job này cần chạy lại khi tiêu đề/thân PR đổi (`edited`). Để trong `ci.yml` với `if:` thì mỗi lần sửa tiêu đề,
+# tám job còn lại sinh check run TRÙNG TÊN ở trạng thái `skipped` trên cùng head SHA, mà GitHub tính `skipped`
+# là thành công của required check — che một run `synchronize` đỏ. Workflow riêng thì `edited` chỉ sinh check
+# run `commits`. Mọi `uses:` ghim SHA 40 ký tự kèm chú thích tag, như `ci.yml`.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    # Mặc định (opened, synchronize, reopened) không chạy lại khi tiêu đề PR đổi — sửa tiêu đề (vd rút gọn PR
+    # Dependabot hệ docker về ≤ 72 ký tự trước squash) phải tự chạy lại `commits` với payload mới (NO-110).
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch: {}
+
+concurrency:
+  group: commits-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  commits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Không nội suy ${{ github.event.* }} vào `run:` (SEC — CodeQL bắt lỗi
+      # này): giá trị đi qua biến môi trường, `tools.ci.commits` tự đọc lại.
+      EVENT: ${{ github.event_name }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      HEAD_REF: ${{ github.head_ref || github.ref_name }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false # job chỉ đọc lịch sử local, không push (/merge-review #15)
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12.12"
+          cache-dependency-glob: "uv.lock"
+      - run: uv sync --locked --all-packages --group dev
+      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - run: bash tools/ci/job.sh commits

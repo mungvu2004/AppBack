@@ -105,28 +105,28 @@
 | FIX-108 | 2026-09-26 | B0-03 | — | Test seed chốt "repo chưa có seed", đỏ khi B3-02 thêm seed `spatial` thật | `1ada889` (gộp `15d1f53`, nhánh `feature/b3-02-spatial-read`) |
 | FIX-109 | 2026-09-28 | B2-02 | — | Test dò sink mời chốt "chưa module nào có `invite_sinks.py`", đỏ khi B4-02 cài `ProjectInviteNotifier` thật | (nhánh `feature/b4-02-notifications`) |
 | FIX-110 | 2026-09-28 | B4-01 | — | Test mặc định luồng thông báo giả định "chưa có B4-02", đỏ khi B4-02 cài provider `notifications` thật | (nhánh `feature/b4-02-notifications`) |
-| FIX-117 | 2026-10-03 | B0-01 | NO-205, NO-325, NO-299, NO-324, NO-185, NO-190, NO-306 | DEBT-02 W1/C01: `run.sh` (gc trên Git Bash, đường AppFront mặc định, stdin của `shell`, junit bước 5, cache ruff/mypy) và volume `appback-work` | (nhánh `fix/debt-02-w1-verify-run`) |
-| FIX-118 | 2026-10-03 | B0-08 | NO-325 | DEBT-02 W1/C01: đường AppFront mặc định của `deploy/docker/web-context.sh` | (nhánh `fix/debt-02-w1-verify-run`) |
-| FIX-119 | 2026-10-03 | B3-05 | NO-325 | DEBT-02 W1/C01: đường AppFront trong `apps/api/rules/catalog.py` | (nhánh `fix/debt-02-w1-verify-run`) |
-| FIX-120 | 2026-10-03 | B0-09 | NO-269, NO-181, NO-183, NO-191, NO-180 | DEBT-02 W1/C02: `tools/ci/job.sh` (xdist, sàn nginx theo nhánh, `cd` khi nạp) và test của nó | (nhánh `fix/debt-02-w1-ci-job`) |
-| FIX-121 | 2026-10-03 | B0-08 | NO-180 | DEBT-02 W1/C02: cổng host `api` của `deploy/compose/ci.yml` | (nhánh `fix/debt-02-w1-ci-job`) |
-| FIX-122 | 2026-10-03 | B0-09 | NO-178, NO-182, NO-183, NO-330, NO-179 | DEBT-02 W1/C03: Dependabot, trigger `edited`, miễn trừ gitleaks, test ảnh ghim trùng | (nhánh `fix/debt-02-w1-ci-github`) |
-| FIX-123 | 2026-10-03 | B0-01 | NO-184 | DEBT-02 W1/C03: `packages/testing` nhập `tools.pinned_images` (đảo chiều tầng) | (nhánh `fix/debt-02-w1-ci-github`) |
-| FIX-124 | 2026-10-03 | B0-02 | NO-184 | DEBT-02 W1/C03: nơi mới của hằng ảnh ghim trong `packages/core` (nếu phương án chốt chọn) | (nhánh `fix/debt-02-w1-ci-github`) |
-| FIX-125 | 2026-10-03 | B0-01 | NO-294, NO-256, NO-257, NO-309 | DEBT-02 W1/C04: `case_gate` nhận case task J/U/M và task của `apps/ml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-126 | 2026-10-03 | B5-04 | NO-257, NO-256 | DEBT-02 W1/C04: khai lại `[[task]] text_read` trong `apps/ml/text/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-127 | 2026-10-03 | B0-05 | NO-309 | DEBT-02 W1/C04: sổ case `docs/contracts.toml` biết task `apps/ml` (người điều phối sửa) | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-128 | 2026-10-03 | B5-06a | NO-294 | DEBT-02 W1/C04: thêm lại `U01`, `U02`, `U04`, `U06` vào `require` của `apps/worker/pipeline_orchestrate/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-129 | 2026-10-03 | B5-02 | NO-256 | DEBT-02 W1/C04: khai `M01`, `M02` trong `apps/ml/walls/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-130 | 2026-10-03 | B5-03 | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04` trong `apps/ml/objects/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-131 | 2026-10-03 | B6-04b | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04`, `M06` trong `apps/ml/ml_eval/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-132 | 2026-10-03 | B5-06c | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/pipeline_steps/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-133 | 2026-10-03 | B6-03a | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/training_bridge/cases.toml` | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | (nhánh `fix/debt-02-w1-case-gate`) |
-| FIX-135 | 2026-10-03 | B0-03 | NO-184 | DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung | (nhánh `fix/debt-02-w1-ci-github`) |
-| FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | (nhánh `fix/debt-02-w1`) |
-| FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | (nhánh `fix/debt-02-w1`) |
-| FIX-138 | 2026-10-04 | B5-01 | — | DEBT-02 W1 cổng 2 đỏ: phần `apps/ml/runtime` của cùng lỗi nếu gốc nằm ở `export_pinned`/`export_yolo` (dùng khi phương án chốt đòi) | (nhánh `fix/debt-02-w1`) |
+| FIX-117 | 2026-10-03 | B0-01 | NO-205, NO-325, NO-299, NO-324, NO-185, NO-190, NO-306 | DEBT-02 W1/C01: `run.sh` (gc trên Git Bash, đường AppFront mặc định, stdin của `shell`, junit bước 5, cache ruff/mypy) và volume `appback-work` | `e462a86`, `2e23c58`, `bfc9451`, `cd63213` (nhánh `fix/debt-02-w1`) |
+| FIX-118 | 2026-10-03 | B0-08 | NO-325 | DEBT-02 W1/C01: đường AppFront mặc định của `deploy/docker/web-context.sh` | `de9a61d` (nhánh `fix/debt-02-w1`) |
+| FIX-119 | 2026-10-03 | B3-05 | NO-325 | DEBT-02 W1/C01: đường AppFront trong `apps/api/rules/catalog.py` | `ef08b8f` (nhánh `fix/debt-02-w1`) |
+| FIX-120 | 2026-10-03 | B0-09 | NO-269, NO-181, NO-183, NO-191, NO-180 | DEBT-02 W1/C02: `tools/ci/job.sh` (xdist, sàn nginx theo nhánh, `cd` khi nạp) và test của nó | `59242c1`, `dfdd92c`, `9150899` (nhánh `fix/debt-02-w1`) |
+| FIX-121 | 2026-10-03 | B0-08 | NO-180 | DEBT-02 W1/C02: cổng host `api` của `deploy/compose/ci.yml` | không dùng — `deploy/compose/ci.yml` trên `main` đã không còn publish cổng host `api` (C02 `quyet-dinh.md` P-5) |
+| FIX-122 | 2026-10-03 | B0-09 | NO-178, NO-182, NO-183, NO-330, NO-179 | DEBT-02 W1/C03: Dependabot, trigger `edited`, miễn trừ gitleaks, test ảnh ghim trùng | `b5a87ca`, `b395b97`, `07660d0`, `dfdd92c` (nhánh `fix/debt-02-w1`) |
+| FIX-123 | 2026-10-03 | B0-01 | NO-184 | DEBT-02 W1/C03: `packages/testing` nhập `tools.pinned_images` (đảo chiều tầng) | `a857c9c`, `10091a5`, `f4339c5`, `c80faa5` (nhánh `fix/debt-02-w1`) |
+| FIX-124 | 2026-10-03 | B0-02 | NO-184 | DEBT-02 W1/C03: nơi mới của hằng ảnh ghim trong `packages/core` (nếu phương án chốt chọn) | `90e360f`, `19fc9e4` (nhánh `fix/debt-02-w1`) |
+| FIX-125 | 2026-10-03 | B0-01 | NO-294, NO-256, NO-257, NO-309 | DEBT-02 W1/C04: `case_gate` nhận case task J/U/M và task của `apps/ml` | `9181628`, `1a16885`, `5caf86f`, `8860fa8`, `cd63213` (nhánh `fix/debt-02-w1`) |
+| FIX-126 | 2026-10-03 | B5-04 | NO-257, NO-256 | DEBT-02 W1/C04: khai lại `[[task]] text_read` trong `apps/ml/text/cases.toml` | `e8a6e77` (nhánh `fix/debt-02-w1`) |
+| FIX-127 | 2026-10-03 | B0-05 | NO-309 | DEBT-02 W1/C04: sổ case `docs/contracts.toml` biết task `apps/ml` (người điều phối sửa) | không dùng — sổ task đã dò `apps.ml` từ `3b7ebf4`, gốc NO-309 nằm ở `tools/case_gate.py` (C04 `quyet-dinh.md` P-5, P-6; FIX-125) |
+| FIX-128 | 2026-10-03 | B5-06a | NO-294 | DEBT-02 W1/C04: thêm lại `U01`, `U02`, `U04`, `U06` vào `require` của `apps/worker/pipeline_orchestrate/cases.toml` | `20cd8a6` (nhánh `fix/debt-02-w1`) |
+| FIX-129 | 2026-10-03 | B5-02 | NO-256 | DEBT-02 W1/C04: khai `M01`, `M02` trong `apps/ml/walls/cases.toml` | `1ece360` (nhánh `fix/debt-02-w1`) |
+| FIX-130 | 2026-10-03 | B5-03 | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04` trong `apps/ml/objects/cases.toml` | `684e36d` (nhánh `fix/debt-02-w1`) |
+| FIX-131 | 2026-10-03 | B6-04b | NO-256 | DEBT-02 W1/C04: khai `M01`–`M04`, `M06` trong `apps/ml/ml_eval/cases.toml` | `b7ffa1e`, `2d56d91`, `fbdb883` (nhánh `fix/debt-02-w1`) |
+| FIX-132 | 2026-10-03 | B5-06c | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/pipeline_steps/cases.toml` | `695c947` (nhánh `fix/debt-02-w1`) |
+| FIX-133 | 2026-10-03 | B6-03a | NO-256 | DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/training_bridge/cases.toml` | `d270199` (nhánh `fix/debt-02-w1`) |
+| FIX-134 | 2026-10-03 | B6-03b | NO-256 | DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`) | `dad3628` (nhánh `fix/debt-02-w1`); commit `dad3628` mang nhầm trailer `Fix: FIX-125` |
+| FIX-135 | 2026-10-03 | B0-03 | NO-184 | DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung | `5c6ddcd`, `f723d98` (nhánh `fix/debt-02-w1`) |
+| FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | `9738dab` (nhánh `fix/debt-02-w1`) |
+| FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | `8e5cc8f`, `a84f143` (nhánh `fix/debt-02-w1`) |
+| FIX-138 | 2026-10-04 | B5-01 | — | DEBT-02 W1 cổng 2 đỏ: phần `apps/ml/runtime` của cùng lỗi nếu gốc nằm ở `export_pinned`/`export_yolo` (dùng khi phương án chốt đòi) | không dùng — gốc lỗi nằm hẳn ở `apps/ml/training_yolo/tests/test_trainer.py` (B6-04b, FIX-137); `apps/ml/runtime` không đổi |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -1020,3 +1020,232 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Như FIX-107: dựng sổ từ `build_registry(_app_with())` (bảng override rỗng, helper có sẵn trong file) thay vì
   lượt dò repo thật; giữ nguyên ba assert (`AnyEvent`, không `policy`, không `snapshot`).
 - **[6]** Test xanh cả trên `main` lẫn trên nhánh B4-02.
+
+> **DEBT-02 đợt 1** (2026-10-03): khối 7 mục của từng cụm C01–C04, chép từ `dieu-phoi/chay/DEBT-02/W1/C0*/FIX-*.md`.
+
+## FIX-117 cho B0-01 — DEBT-02 W1/C01: `run.sh` (gc trên Git Bash, đường AppFront mặc định, stdin của `shell`, junit bước 5, cache ruff/mypy) và volume `appback-work`
+
+1. **Triệu chứng:** gc thoát 128 trên Git Bash; shell nuốt stdin; junit mất; cảnh báo volume; shell không tài liệu; F:/AppFront cũ
+2. **Nguyên nhân gốc:** MSYS_NO_PATHCONV + git -C đường MSYS; run --build đọc stdin; container AutoRemove; volume nhãn project; mặc định cứng
+3. **Sửa:** gc dùng cwd; build riêng trong run_container; export_junit + dọn mồ côi; external + volume create; cảnh báo stderr + README; helper appfront_repo.sh (--git-common-dir)
+4. **Test chặn tái phát:** test_run_sh.py, test_verify_yml.py, test_steps_commands.py, test_web_context_sh.py (xem quyet-dinh.md)
+5. **Bằng chứng đỏ→xanh:** tai-hien-NO-*.md tương ứng (red.log → green.log, 97 passed ở lượt cuối).
+6. **Hợp đồng:** không đổi (đối số công khai của run.sh giữ nguyên; volume appback-work trong verify.yml nay external — README ghi).
+7. **Nợ còn lại:** NO-306 không tái hiện (giữ mở); junit-perf.xml bước 5b không xuất; charter/ENV.md, HOP-DONG-MOI.md còn F:/AppFront (điều phối)
+
+## FIX-118 cho B0-08 — DEBT-02 W1/C01: đường AppFront mặc định của `deploy/docker/web-context.sh`
+
+1. **Triệu chứng:** mặc định F:/AppFront cũ
+2. **Nguyên nhân gốc:** hằng cứng
+3. **Sửa:** source tools/verify/appfront_repo.sh (--git-common-dir)
+4. **Test chặn tái phát:** test_web_context_sh.py::test_web_context_sh__…
+5. **Bằng chứng đỏ→xanh:** tai-hien-NO-*.md tương ứng (red.log → green.log, 97 passed ở lượt cuối).
+6. **Hợp đồng:** không đổi (đối số công khai của run.sh giữ nguyên; volume appback-work trong verify.yml nay external — README ghi).
+7. **Nợ còn lại:** không
+
+## FIX-119 cho B3-05 — DEBT-02 W1/C01: đường AppFront trong `apps/api/rules/catalog.py`
+
+1. **Triệu chứng:** docstring dẫn F:/AppFront cũ
+2. **Nguyên nhân gốc:** chuyển thư mục
+3. **Sửa:** đổi chú thích thành F:/App/AppFront
+4. **Test chặn tái phát:** không có hành vi để test (docstring)
+5. **Bằng chứng đỏ→xanh:** tai-hien-NO-*.md tương ứng (red.log → green.log, 97 passed ở lượt cuối).
+6. **Hợp đồng:** không đổi (đối số công khai của run.sh giữ nguyên; volume appback-work trong verify.yml nay external — README ghi).
+7. **Nợ còn lại:** không
+
+## FIX-120 cho B0-09 — DEBT-02 W1/C02: `tools/ci/job.sh` (xdist, sàn nginx theo nhánh, `cd` khi nạp) và test của nó
+
+- **[1]** Job CI unit/integration/ml chạy pytest tuần tự dưới `coverage run` (NO-269); sàn nginx một hằng cho mọi dòng phát hành (NO-183) và test dưới-sàn chỉ `!= 0` (NO-181); nhánh không-`RUNNER_TEMP` của `job_build_trivy` chưa có test (NO-191); assert cấm chữ `API_HOST_PORT` khoá cả comment (NO-180).
+- **[2]** Trên cây chưa sửa chạy 2 tệp test mới/sửa → `14 failed, 9 passed` (red1.log).
+- **[3]** `tools/ci/job.sh` (`job_test_group`, `nginx_floor_for_line`, `job_build_check_nginx_version`), `tools/ci/tests/test_workflows.py`, `tools/ci/tests/test_job_xdist.py`, `tools/ci/README.md`.
+- **[4]** `pytest -n N --dist loadfile --cov --cov-report=` với `COVERAGE_FILE=.coverage.<nhóm>` (N=3, ml=2, `CI_PYTEST_WORKERS`); bảng sàn nginx 1.30→1.30.5, 1.31→1.31.6, dòng lạ hỏng kín (nguồn nginx.org advisories, 2026-10-03); assert theo dòng mã.
+- **[5]** Không đổi ci.yml/merge_artifacts/hợp đồng artifact (glob `.coverage.*` khớp).
+- **[6]** Test: test_job_xdist.py (5), test_workflows.py nginx (13 ca), trivy local, API_HOST_PORT.
+- **[7]** Commit: xem `git log` nhánh `fix/debt-02-w1-ci-job` (`Prompt: B0-09`, `Fix: FIX-120`).
+
+## FIX-122 cho B0-09 — DEBT-02 W1/C03: Dependabot, trigger `edited`, miễn trừ gitleaks, test ảnh ghim trùng
+
+Mức: thấp
+
+[1 TRIỆU CHỨNG]
+Dependabot gộp minor ảnh nền, bỏ major docker; `edited` chạy chín job; gitleaks lịch sử đỏ; test ảnh ghim trùng lặp.
+
+[2 TÁI HIỆN]
+Xem tai-hien-NO-*.md (178/183/182/330/179): test chặn tái phát đỏ trên cây chưa sửa (`red.log`, `cov.log`), gitleaks thật đỏ 19 phát hiện (NO-330).
+
+[3 BẰNG CHỨNG]
+`quyet-dinh.md` (bảng P-1..P-8); `cov.log` 89 passed; `verify14.log` bước 1-4 đạt; `gitleaks-xanh.log` no leaks found.
+
+[4 KHOANH VÙNG]
+.github/dependabot.yml, .github/workflows/ci.yml, .gitleaks.toml, tools/ci/h2.py, tools/ci/tests/test_h2.py, tools/ci/tests/test_github_config.py (mới). Không sửa test_workflows.py (C02): test_workflows.patch cho M.
+
+[5 SỬA NHỎ NHẤT]
+ignore python/node minor, bỏ ignore major trần docker; if != edited tám job + nhóm concurrency tách edited; 12 SHA vào commits; xoá test trùng; h2.py nhập packages.core.pinned_images.
+
+[6 TEST CHẶN TÁI PHÁT]
+test_github_config.py: 5 test đầu + test_packages_sources__do_not_import_tools_pinned_images.
+
+[7 NGHIỆM THU]
+`verify --steps 1,2,3,4` đạt; test ở [6] đỏ→xanh; commit `fix(...)` + trailer Prompt/Fix. Cổng đầy đủ ở việc gộp M.
+
+## FIX-123 cho B0-01 — DEBT-02 W1/C03: `packages/testing` nhập `tools.pinned_images` (đảo chiều tầng)
+
+Mức: thấp
+
+[1 TRIỆU CHỨNG]
+packages/testing nhập tools.pinned_images (đảo chiều tầng).
+
+[2 TÁI HIỆN]
+Xem tai-hien-NO-*.md (184): test chặn tái phát đỏ trên cây chưa sửa (`red.log`, `cov.log`), gitleaks thật đỏ 19 phát hiện (NO-330).
+
+[3 BẰNG CHỨNG]
+`quyet-dinh.md` (bảng P-1..P-8); `cov.log` 89 passed; `verify14.log` bước 1-4 đạt; `gitleaks-xanh.log` no leaks found.
+
+[4 KHOANH VÙNG]
+packages/testing/fixtures/services.py; xoá tools/pinned_images.py, tools/tests/test_pinned_images.py (đã dời).
+
+[5 SỬA NHỎ NHẤT]
+services.py nhập packages.core.pinned_images; xoá nguồn cũ ở tools.
+
+[6 TEST CHẶN TÁI PHÁT]
+test_packages_sources__do_not_import_tools_pinned_images.
+
+[7 NGHIỆM THU]
+`verify --steps 1,2,3,4` đạt; test ở [6] đỏ→xanh; commit `fix(...)` + trailer Prompt/Fix. Cổng đầy đủ ở việc gộp M.
+
+## FIX-124 cho B0-02 — DEBT-02 W1/C03: nơi mới của hằng ảnh ghim trong `packages/core` (nếu phương án chốt chọn)
+
+Mức: thấp
+
+[1 TRIỆU CHỨNG]
+Hằng ảnh ghim chưa có nơi ở tầng thấp.
+
+[2 TÁI HIỆN]
+Xem tai-hien-NO-*.md (184): test chặn tái phát đỏ trên cây chưa sửa (`red.log`, `cov.log`), gitleaks thật đỏ 19 phát hiện (NO-330).
+
+[3 BẰNG CHỨNG]
+`quyet-dinh.md` (bảng P-1..P-8); `cov.log` 89 passed; `verify14.log` bước 1-4 đạt; `gitleaks-xanh.log` no leaks found.
+
+[4 KHOANH VÙNG]
+packages/core/pinned_images.py (mới), packages/core/tests/test_pinned_images.py (dời, dạng ghim K29).
+
+[5 SỬA NHỎ NHẤT]
+Ba hằng ảnh dời sang packages.core (không nhập gì, hợp đồng core-isolated giữ).
+
+[6 TEST CHẶN TÁI PHÁT]
+packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
+
+[7 NGHIỆM THU]
+`verify --steps 1,2,3,4` đạt; test ở [6] đỏ→xanh; commit `fix(...)` + trailer Prompt/Fix. Cổng đầy đủ ở việc gộp M.
+
+## FIX-125 cho B0-01 — DEBT-02 W1/C04: `case_gate` nhận case task J/U/M và task của `apps/ml`
+
+- **[1 TRIỆU CHỨNG]** `[[task]] require` khai U/M luôn báo "thiếu" dù test có và qua → B5-06a bỏ U01/U02/U04/U06, B5-04 bỏ cả
+  `[[task]] text_read` (J02/J03/J05/J08/M01–M04). Task đạt không in dòng nào → `start_training_runner` "không ra số" (NO-309).
+- **[2 TÁI HIỆN]** `repro.sh` trong `run.sh shell` trên `1dcca7d` (log `repro-before.log`); test mới chạy trên `case_gate.py` của `1dcca7d` (khối ĐỎ của `cov.sh`).
+- **[3 BẰNG CHỨNG]** `tools/case_gate.py:296` `_TEST_TASK_RE = ...(?P<case>J\d{2})$`; `main()` :556-557 chỉ in `task_missing`.
+  `registered_tasks()` trong container: 43 task, gồm `start_training_runner` (`packages/messaging/tasks.py:173` dò `apps.ml` từ `3b7ebf4`) → vế "sổ chưa biết task apps/ml" của NO-309 sai sự kiện.
+- **[4 KHOANH VÙNG]** `tools/case_gate.py`, `tools/tests/test_case_gate.py`. Cấm: `docs/charter/*`, `docs/contracts.toml`, `tools/verify/*`.
+- **[5 SỬA NHỎ NHẤT]** `_TEST_TASK_RE` → `[JUM]\d{2}`, giữ đúng tên không hậu tố (CASE §2.3: hậu tố chỉ cho op; :105 `test_<task>__U01`).
+  `GateResult.task_rows` + `main()` in mỗi task `fn | bắt buộc | tìm thấy | đạt/thiếu` như op. Không đổi hợp đồng (CASE đã đòi U, M).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_evaluate__task_require_u_m[U01]`, `[M03]`, `test_main__in_dòng_task_đạt` (đỏ trên cây cũ);
+  `test_evaluate__task_case_có_hậu_tố_không_được_tính` (giữ luật).
+- **[7 NGHIỆM THU]** verify bước 1–4, `cov.sh` (đỏ→xanh, độ phủ `tools/case_gate.py`), case_gate thật trên junit 3 thư mục; commit `9181628`, `1a16885`, `5caf86f`, `8860fa8` (id tham số `[...]` cho task, như op).
+
+## FIX-126 cho B5-04 — DEBT-02 W1/C04: khai lại `[[task]] text_read` trong `apps/ml/text/cases.toml`
+
+- **[1]** `apps/ml/text/cases.toml` rỗng → cổng chỉ đòi J01, J06 cho `text_read`.
+- **[2]** `repro.sh` (log `repro-before.log`, dòng `text_read`).
+- **[3]** Chú thích cũ dòng 5-23 của tệp; test có thật `apps/ml/text/tests/test_tasks.py:166-303` (J02, J03, J05, J08, M01–M04, đúng tên).
+- **[4]** `apps/ml/text/cases.toml`. **[5]** `[[task]] fn="text_read" require=[J02,J03,J05,J08,M01,M02,M03,M04]` (cần FIX-125).
+- **[6]** Dòng `text_read | ... | đạt` của case_gate thật (khối sau sửa của `cov.sh`); test cổng `test_evaluate__task_require_u_m[M03]`.
+- **[7]** commit `e8a6e77`.
+
+## FIX-128 cho B5-06a — DEBT-02 W1/C04: thêm lại `U01`, `U02`, `U04`, `U06` vào `require` của `apps/worker/pipeline_orchestrate/cases.toml`
+
+- **[1]** `apps/worker/pipeline_orchestrate/cases.toml` thiếu U-case vì cổng không nhận U.
+- **[2]** `repro.sh` (dòng `orchestrate_pipeline_start`), sau sửa: xoá tạm testcase U01 khỏi junit → dòng đỏ "thiếu U01".
+- **[3]** test có thật `apps/worker/pipeline_orchestrate/tests/test_start_cases.py:300,314,340,357`.
+- **[4]** tệp trên. **[5]** thêm U01, U02, U04, U06 vào `require` (cần FIX-125). **[6]** như [2]. **[7]** commit `20cd8a6`.
+- Lưu ý: FIX-128 chưa có trong dải giữ chỗ `docs/fixes.md` (FIX-117..127) — điều phối thêm dòng.
+
+## FIX-129 cho B5-02 — DEBT-02 W1/C04: khai `M01`, `M02` trong `apps/ml/walls/cases.toml`
+
+- **[1]** `apps/ml/walls/cases.toml` bỏ M01,M02 vì `_TEST_TASK_RE` chỉ nhận J (chú thích "Lệch khỏi prompt" cũ của tệp).
+- **[2]** `cov2.sh` (pytest thư mục test của tệp → `python -m tools.case_gate`), log `cov2.log`.
+- **[3]** test có thật đúng tên trong `apps/ml/walls/tests/test_tasks.py` (collect-only trong `cov2.log`), không perf/gpu.
+- **[4]** `apps/ml/walls/cases.toml`. **[5]** thêm M01,M02 vào `require`, bỏ chú thích lỗi thời (cần FIX-125).
+- **[6]** dòng `segment_walls | ... | đạt` của case_gate thật. **[7]** commit `1ece360`.
+
+## FIX-130 cho B5-03 — DEBT-02 W1/C04: khai `M01`–`M04` trong `apps/ml/objects/cases.toml`
+
+- **[1]** `apps/ml/objects/cases.toml` bỏ M01–M04 vì `_TEST_TASK_RE` chỉ nhận J (chú thích "Lệch khỏi prompt" cũ của tệp).
+- **[2]** `cov2.sh` (pytest thư mục test của tệp → `python -m tools.case_gate`), log `cov2.log`.
+- **[3]** test có thật đúng tên trong `apps/ml/objects/tests/test_tasks.py` (collect-only trong `cov2.log`), không perf/gpu.
+- **[4]** `apps/ml/objects/cases.toml`. **[5]** thêm M01–M04 vào `require`, bỏ chú thích lỗi thời (cần FIX-125).
+- **[6]** dòng `objects_detect | ... | đạt` của case_gate thật. **[7]** commit `684e36d`.
+
+## FIX-131 cho B6-04b — DEBT-02 W1/C04: khai `M01`–`M04`, `M06` trong `apps/ml/ml_eval/cases.toml`
+
+- **[1]** `apps/ml/ml_eval/cases.toml` bỏ M01–M04,M06 vì `_TEST_TASK_RE` chỉ nhận J (chú thích "Lệch khỏi prompt" cũ của tệp).
+- **[2]** `cov2.sh` (pytest thư mục test của tệp → `python -m tools.case_gate`), log `cov2.log`.
+- **[3]** test có thật đúng tên trong `apps/ml/ml_eval/tests/test_tasks.py` (collect-only trong `cov2.log`), không perf/gpu.
+- **[4]** `apps/ml/ml_eval/cases.toml`. **[5]** thêm M01–M04, M06 vào `require`, bỏ chú thích lỗi thời (cần FIX-125).
+- **[6]** dòng `ml_eval_evaluate_version | ... | đạt` của case_gate thật. **[7]** commit `b7ffa1e` (M01–M04, M06), `2d56d91` (tạm bỏ M01: test parametrize → junit `__M01[...]`), `fbdb883` (thêm lại M01 sau khi FIX-125 `8860fa8` nhận id tham số cho task; log `cov4.log`).
+
+## FIX-132 cho B5-06c — DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/pipeline_steps/cases.toml`
+
+- **[1–3]** Chú thích viện dẫn `_TEST_TASK_RE` chỉ nhận `J\d{2}`; sau FIX-125 không còn đúng. Không có test U/M cho task của tệp → `require` giữ nguyên.
+- **[4]** `apps/worker/pipeline_steps/cases.toml`. **[5]** bỏ chú thích. **[6]** dòng task của tệp vẫn đạt trong `cov2.log`. **[7]** commit `695c947`.
+
+## FIX-133 cho B6-03a — DEBT-02 W1/C04: chú thích "chỉ J" lỗi thời trong `apps/worker/training_bridge/cases.toml`
+
+- **[1–3]** Chú thích viện dẫn `_TEST_TASK_RE` chỉ nhận `J\d{2}`; sau FIX-125 không còn đúng. Không có test U/M cho task của tệp → `require` giữ nguyên.
+- **[4]** `apps/worker/training_bridge/cases.toml`. **[5]** bỏ chú thích. **[6]** dòng task của tệp vẫn đạt trong `cov2.log`. **[7]** commit `d270199`.
+
+## FIX-134 cho B6-03b — DEBT-02 W1/C04: chú thích task trong `apps/ml/training_runner/cases.toml` (commit `dad3628` ghi nhầm trailer `Fix: FIX-125`)
+
+- **[1–3]** Chú thích dòng 4 viện dẫn NO-294 (`_TEST_TASK_RE` chỉ nhận J); sau FIX-125 không còn đúng. Task
+  `start_training_runner` không có test U/M → `require` giữ `["J03","J04","J05","J08"]`; dòng case_gate thật `đạt` (`cov.log`, `cov2.log`).
+- **[4]** `apps/ml/training_runner/cases.toml`. **[5]** bỏ câu "Chỉ khai mã J (NO-294)." **[6]** dòng `start_training_runner | ... | đạt`.
+- **[7]** commit `dad3628`. **Commit dad3628 mang nhầm trailer FIX-125** (đúng là FIX-134); không viết lại lịch sử.
+
+## FIX-135 cho B0-03 — DEBT-02 W1/C03: `packages/db/migrate_check.py` chép tay ảnh `postgres:16-alpine` thay vì nhập nguồn ghim chung
+
+- **[1 TRIỆU CHỨNG]** `packages/db/migrate_check.py:42` chép tay ảnh `postgres:16-alpine`, lệch nguồn ghim chung (NO-184, nhánh B0-03).
+- **[2 TÁI HIỆN]** C03b: test `test_migrate_check__uses_shared_pinned_image` được thêm cùng `5c6ddcd` (bằng chứng chạy: `C03/cov2.log`).
+- **[3 BẰNG CHỨNG]** `C03/spec-C03b.md` mục (b); `C03/tai-hien-NO-184.md`.
+- **[4 KHOANH VÙNG]** `packages/db/migrate_check.py`, `packages/db/tests/test_migrate_check.py`.
+- **[5 SỬA NHỎ NHẤT]** nhập `POSTGRES_IMAGE` từ hằng ghim của `packages.core` (FIX-124) thay vì chuỗi chép tay.
+- **[6 TEST CHẶN TÁI PHÁT]** `packages/db/tests/test_migrate_check.py::test_migrate_check__uses_shared_pinned_image`.
+- **[7 NGHIỆM THU]** commit `5c6ddcd`, `f723d98` (docstring); cổng đầy đủ của nhánh gộp `fix/debt-02-w1`.
+
+## FIX-136 cho B0-10 — DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI)
+
+- **[1 TRIỆU CHỨNG]** Vòng sửa 1 tách job `commits` khỏi `CI` sang workflow `Commits` (chạy cả `push: main`); `notify.yml` chỉ nghe
+  `[CI, Deploy, "Restore drill"]` → `commits` hỏng trên `main` không còn tin cảnh báo. `CodeQL` (cũng `push: main`) chưa bao giờ được nghe.
+- **[2 TÁI HIỆN]** `deploy/scripts/tests/test_workflow_notify.py` mới chạy trên `notify.yml` cũ (`9150899`): đỏ (`M/pre-r1b.log`).
+- **[3 BẰNG CHỨNG]** `.github/workflows/notify.yml:8` (danh sách), `:31` (nhánh `case`); `.github/workflows/commits.yml`, `codeql.yml` có `push: main`.
+- **[4 KHOANH VÙNG]** `.github/workflows/notify.yml`, `deploy/scripts/tests/test_workflow_notify.py`.
+- **[5 SỬA NHỎ NHẤT]** thêm `Commits`, `CodeQL` vào `workflow_run.workflows`; nhánh `CI | Commits | CodeQL)` gửi tin khi `failure` trên `main`
+  (điều phối chọn thêm cả CodeQL: hỏng quét bảo mật trên `main` không được im lặng).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_notify_watches_every_workflow_running_on_push_to_main` (mọi workflow `push: main` ⊆ danh sách notify),
+  `test_notify_watches_exact_names_of_watched_workflows`, `test_notify_send_decision_matches_prompt_table[Commits-…|CodeQL-…]`.
+- **[7 NGHIỆM THU]** commit `9738dab`; cổng đầy đủ `M/gate-2.log` của nhánh `fix/debt-02-w1`.
+
+## FIX-137 cho B6-04b — DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `test_trainer.py` lọt sang `test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự
+
+- **[1 TRIỆU CHỨNG]** Cổng 2 (`VERIFY_PYTEST_WORKERS=4`, `M/gate-2.log`) đỏ bước 5: `apps/ml/runtime/tests/test_export.py::test_export_all_missing_source_exits_3`
+  — `ONNX của yolov8n lệch bản ghim: sha` (mong "thiếu tệp"). Cổng 1 (`-n 6`) không gặp vì hai tệp rơi vào hai worker khác nhau.
+- **[2 TÁI HIỆN]** `pytest apps/ml/training_yolo/tests/test_trainer.py apps/ml/runtime/tests/test_export.py` một tiến trình: mã thoát 1, cùng
+  thông điệp; `test_export.py` một mình: 14 passed (`M/repro-export.log`). Hai tệp và mã nguồn giống hệt `main` (lỗi có sẵn).
+- **[3 BẰNG CHỨNG]** `fake_run` vá `export_yolo`/`Model.train` bằng `pytest.MonkeyPatch.context()`; `test_missing_metrics_fails_the_run` (`:298`) và
+  `test_broken_export_is_rejected` (`:320`) vá đè cùng thuộc tính qua fixture `monkeypatch` — hai ngăn hoàn tác chạy lệch thứ tự, để lại
+  `fake_export` (trả `"sha"`) sau test.
+- **[4 KHOANH VÙNG]** `apps/ml/training_yolo/tests/test_trainer.py` (chỉ test; không đổi mã sản phẩm).
+- **[5 SỬA NHỎ NHẤT]** `fake_run` trả thêm `patch` (context của nó); hai test vá đè qua `patch`, bỏ fixture `monkeypatch` — một ngăn hoàn tác duy nhất.
+  Bản gốc chụp bằng fixture `originals` (`scope="module"`), không dict toàn cục — test chặn chạy lẻ vẫn đúng.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_zz_fake_run_restores_originals` (sau mọi test dùng `fake_run`, `export_yolo` và `Model.train` là bản gốc chụp
+  trước lần vá đầu; chạy lẻ `-k test_zz` xanh); lệnh hai tệp một tiến trình: với `test_trainer.py` cũ đỏ (mã thoát 1) → xanh (31 passed,
+  mã thoát 0, `M/fix137b.log`); `pytest -n 4 apps/ml` 453 passed (`M/fix137.log`).
+- **[7 NGHIỆM THU]** commit `8e5cc8f`, `a84f143`; cổng đầy đủ `M/gate-3.log` (`-n 4`).

@@ -45,6 +45,8 @@ def normalize_verify_name(name: str) -> str:
 
 @dataclass
 class StepOutcome:
+    """Kết quả một bước: số bước, tên, trạng thái và chi tiết."""
+
     number: str
     name: str
     status: str
@@ -52,11 +54,13 @@ class StepOutcome:
 
 
 def _run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
+    """In dòng lệnh rồi chạy `cmd` trong `REPO_ROOT`, trả `CompletedProcess`."""
     print(f"$ {' '.join(cmd)}")
     return subprocess.run(cmd, cwd=REPO_ROOT, text=True, **kw)
 
 
 def _touched_units() -> set[str]:
+    """Các đơn vị (gói/app) bị chạm, suy ra từ các dòng của `VERIFY_CHANGED`."""
     changed = [line.strip() for line in os.environ.get("VERIFY_CHANGED", "").splitlines() if line.strip()]
     return {u for u in (unit_of(c) for c in changed) if u is not None}
 
@@ -81,6 +85,7 @@ def _infra_failure(number: str, name: str, exc: Exception) -> StepOutcome:
 
 
 def _print_table(outcomes: list[StepOutcome]) -> None:
+    """In bảng trạng thái các bước (số, tên, trạng thái, chi tiết)."""
     print()
     print(f"{'#':>3} | {'Bước':<28} | {'Trạng thái':<14} | Chi tiết")
     print("-" * 90)
@@ -119,23 +124,52 @@ def step_warm_node_modules() -> StepOutcome:
 
 
 def step_ruff_format() -> StepOutcome:
+    """Bước 1: `ruff format --check`."""
     r = _run(["ruff", "format", "--check", "."])
     return StepOutcome("1", "ruff format --check", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
 def step_ruff_check() -> StepOutcome:
+    """Bước 2: `ruff check`."""
     r = _run(["ruff", "check", "."])
     return StepOutcome("2", "ruff check", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
 def step_mypy() -> StepOutcome:
+    """Bước 3: `mypy` (strict)."""
     r = _run(["mypy"])
     return StepOutcome("3", "mypy --strict", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
 def step_lint_imports() -> StepOutcome:
+    """Bước 4: `lint-imports` kiểm ranh giới import."""
     r = _run(["lint-imports"])
     return StepOutcome("4", "lint-imports", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
+
+
+JUNIT_FILE = Path("/tmp/junit.xml")
+"""Nơi pytest ghi junit (`addopts` của `pyproject.toml`); `case_gate` đọc đúng đường này."""
+
+
+JUNIT_PERF_FILE = Path("/tmp/junit-perf.xml")
+"""Nơi bước 5b ghi junit của pytest perf (`--junitxml` ở `step_perf`); `case_gate` đọc đúng đường này."""
+
+
+def export_junit(source: Path, suffix: str) -> None:
+    """Chép `source` thành `<tên log><suffix>` cạnh log cổng khi lượt có `VERIFY_LOG_FILE` (NO-324).
+
+    Container `AutoRemove` nên junit ở `/tmp` mất theo; thư mục log là bind-mount ra host. Là bản sao
+    như log: không log, chưa có junit hay chép hỏng thì bỏ qua (hỏng thì cảnh báo ở stderr), không đổi
+    kết quả bước 5.
+    """
+    log_file = os.environ.get("VERIFY_LOG_FILE")
+    if not log_file or not source.is_file():
+        return
+    dest = Path(log_file).with_suffix(suffix)
+    try:
+        shutil.copy2(source, dest)
+    except OSError as exc:
+        print(f"chép junit {source} -> {dest} hỏng: {exc}", file=sys.stderr)
 
 
 PYTEST_WORKERS_ENV = "VERIFY_PYTEST_WORKERS"
@@ -172,6 +206,8 @@ def step_coverage() -> StepOutcome:
     ]
     for cmd in steps:
         r = _run(cmd)
+        if cmd[0] == "pytest":
+            export_junit(JUNIT_FILE, ".junit.xml")  # cả khi pytest hỏng: lúc đỏ là lúc cần junit nhất
         if r.returncode != 0:
             return StepOutcome("5", "pytest -n (cov)", STATUS_FAIL, "pytest hoặc coverage hỏng")
     r = _run([sys.executable, "-m", "tools.coverage_gate"])
@@ -188,6 +224,7 @@ def perf_case_named(node_ids: list[str]) -> list[str]:
 
 
 def _collect_perf(paths: list[str]) -> list[str]:
+    """Collect test `perf` (không gpu) trong `paths`, trả danh sách node id."""
     # --junitxml riêng: addopts ghi /tmp/junit.xml, collect-only không được đè junit của bước 5
     r = _run(
         ["pytest", "--collect-only", "-q", "-m", _PERF_EXPR, "--junitxml=/tmp/junit-collect.xml", *paths],
@@ -197,6 +234,7 @@ def _collect_perf(paths: list[str]) -> list[str]:
 
 
 def step_perf() -> StepOutcome:
+    """Bước 5b: collect và chạy pytest perf của đơn vị bị chạm, rồi `case_gate`."""
     name = "pytest -m perf → case_gate"
     integration = os.environ.get("VERIFY_BRANCH") == "integration"
     # integration: mọi testpaths (paths rỗng); worker: chỉ đơn vị bị chạm
@@ -209,7 +247,8 @@ def step_perf() -> StepOutcome:
 
     detail = f"perf: {len(perf_ids)} test"
     if perf_ids:
-        r = _run(["pytest", "-m", _PERF_EXPR, "--junitxml=/tmp/junit-perf.xml", *paths])
+        r = _run(["pytest", "-m", _PERF_EXPR, f"--junitxml={JUNIT_PERF_FILE}", *paths])
+        export_junit(JUNIT_PERF_FILE, ".perf.junit.xml")  # cả khi perf hỏng
         if r.returncode != 0:
             return StepOutcome("5b", name, STATUS_FAIL, "test perf hỏng")
     elif not integration:
@@ -220,6 +259,7 @@ def step_perf() -> StepOutcome:
 
 
 def step_migrations() -> StepOutcome:
+    """Bước 6: `lint_migrations` rồi `migrate_check`, theo file điều kiện của B0-03."""
     gated = _gate_status(REPO_ROOT / "packages" / "db" / "migrate_check.py", "B0-03")
     if gated is not None:
         return StepOutcome("6", "lint_migrations → migrate_check", gated)
@@ -231,6 +271,7 @@ def step_migrations() -> StepOutcome:
 
 
 def step_contract() -> StepOutcome:
+    """Bước 7: `tools.contract.check`, theo file điều kiện của B0-07."""
     gated = _gate_status(REPO_ROOT / "tools" / "contract" / "check.py", "B0-07")
     if gated is not None:
         return StepOutcome("7", "H1 H3 H4 H5 (tools.contract.check)", gated)
@@ -239,6 +280,7 @@ def step_contract() -> StepOutcome:
 
 
 def step_openapi() -> StepOutcome:
+    """Bước 8: xuất openapi ra /tmp, so với bản đã commit ở nhánh integration; theo file điều kiện B0-06."""
     gated = _gate_status(REPO_ROOT / "apps" / "api" / "core" / "openapi.py", "B0-06")
     if gated is not None:
         return StepOutcome("8", "openapi", gated)
@@ -457,6 +499,7 @@ def export_contract_samples() -> None:
 
 
 def cmd_lock(_args: argparse.Namespace) -> int:
+    """Việc `lock`: chép `uv.lock` ra thư mục ra sau khi xoá nội dung cũ."""
     # in_container.sh đã chạy `uv lock` (không --upgrade) rồi `uv sync --locked`.
     dest = _clean_dir(OUT_DIR / "lock")
     shutil.copy2(REPO_ROOT / "uv.lock", dest / "uv.lock")
@@ -465,6 +508,7 @@ def cmd_lock(_args: argparse.Namespace) -> int:
 
 
 def cmd_openapi(_args: argparse.Namespace) -> int:
+    """Việc `openapi`: xuất `openapi.json` hợp nhất ra thư mục ra; thiếu module B0-06 thì thoát 1."""
     if not (REPO_ROOT / "apps" / "api" / "core" / "openapi.py").is_file():
         print("openapi: thiếu apps/api/core/openapi.py — chủ B0-06 chưa hợp nhất", file=sys.stderr)
         return 1
@@ -473,11 +517,13 @@ def cmd_openapi(_args: argparse.Namespace) -> int:
 
 
 def _alembic_heads(alembic_ini: Path) -> list[str]:
+    """Danh sách revision head của alembic theo `alembic heads`."""
     r = _run(["alembic", "-c", str(alembic_ini), "heads"], capture_output=True)
     return [line.split()[0] for line in r.stdout.splitlines() if line.strip()]
 
 
 def cmd_merge_heads(args: argparse.Namespace) -> int:
+    """Việc `merge-heads`: tạo revision merge hai head, kiểm lint, chép file mới ra thư mục ra."""
     name: str = args.name
     if not MERGE_REVISION_RE.match(name):
         print(f"merge-heads: '{name}' sai mẫu r<yyyymmdd>_merge_w<nn>_<k>", file=sys.stderr)
@@ -518,6 +564,7 @@ def cmd_merge_heads(args: argparse.Namespace) -> int:
 
 
 def cmd_shell(_args: argparse.Namespace) -> int:
+    """Việc `shell`: thay tiến trình bằng bash để gỡ lỗi."""
     os.execvp("bash", ["bash"])
 
 
@@ -534,6 +581,7 @@ def cmd_gc(_args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Dựng parser lệnh con (verify/lock/openapi/merge-heads/shell/gc) và chạy việc được chọn."""
     parser = argparse.ArgumentParser(prog="tools.verify.steps")
     sub = parser.add_subparsers(dest="task", required=True)
 

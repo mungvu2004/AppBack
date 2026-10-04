@@ -1,12 +1,6 @@
-# Bảng case bắt buộc thêm của task đánh giá (B6-04b [8], CASE.md §2.3).
-#
-# Lệch khỏi prompt — [8] đòi thêm `M01`, `M02`, `M03`, `M04`, `M06`; ở đây chỉ khai mã `J`:
-#   `_TEST_TASK_RE` (`tools/case_gate.py`) chỉ nhận `J\d{2}` cho test task (NO-256, NO-294,
-#   như `apps/ml/objects/cases.toml`). `tools/**` nằm trong khối [12].
-#
-# Độ phủ case không giảm: cổng tự đòi J01 và J06 cho mọi task trong sổ, và
-# `apps/ml/ml_eval/tests/test_tasks.py` có đủ `__J01 … __J08` cùng `__M01 … __M06`.
+# Bảng case bắt buộc thêm của task đánh giá (B6-04b [8], CASE.md §2.3, §6).
+# Cổng tự đòi J01, J06; dưới là phần [8] đòi thêm, gồm M01–M04, M06 (NO-256).
 
 [[task]]
 fn = "ml_eval_evaluate_version"
-require = ["J02", "J03", "J05", "J08"]
+require = ["J02", "J03", "J05", "J08", "M01", "M02", "M03", "M04", "M06"]

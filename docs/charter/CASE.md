@@ -1,5 +1,7 @@
 # CASE — Ma trận case chuẩn
 
+> **Bản 7 · 2026-10-03.** DEBT-02 (NO-256, NO-294, NO-338): test task nhận case J/U/M và id tham số `[...]`; người dùng duyệt câu chữ.
+>
 > **Bản 6 · 2026-09-17.** Tranh luận lô 4c: C09b so với base đã lưu của lượt ghi hiện hành.
 >
 > **Bản 5 · 2026-09-17.** Tranh luận lô 4b: trùng tên hàm task → `case_gate` hỏng; T-complete bỏ "+ J-case của pipeline" (J-case thuộc task); U07 định nghĩa cách kiểm tệp cụt.
@@ -128,7 +130,7 @@ U01, U02, U04, U06 nằm trong task tiền xử lý: `test_<task>__U01`.
 - kết quả `passed` trong junit;
 - vết case có **ít nhất một** response của đúng `<op>` trong test đó; với case có mã cố định thì status/mã khớp: C02 → 422; C03 → 422 `VALIDATION`; C04, C05 → 401; C06, C08, C23 → 404; C07 → 403; C11 → 429; C12 → 413; C13 → 503; C21 → 422 `PATH_BODY_MISMATCH`; C22 → 503 `IDEMPOTENCY_IN_PROGRESS`; C24 → 403 `ORIGIN_MISMATCH`; C25 → 401 hoặc 403.
 
-**Task:** (`cases.toml`: `[[task]]` `fn = "segment_walls"` `require = ["J03"]`; `fn` là tên hàm như `registered_tasks()` trả; task `pipeline.*` bắt buộc thêm J10) mọi task trong `registered_tasks()` và mọi `periodic` bắt buộc có `test_<tên hàm>__J01` và `__J06`, cộng `[[task]] require = [...]` của chủ. Task không có trong sổ mà có `[[task]]` → hỏng. **Hai task/`periodic` trùng tên hàm → hỏng** (một test không được thoả J-case của hai module).
+**Task:** (`cases.toml`: `[[task]]` `fn = "segment_walls"` `require = ["J03"]`; `fn` là tên hàm như `registered_tasks()` trả; task `pipeline.*` bắt buộc thêm J10) mọi task trong `registered_tasks()` và mọi `periodic` bắt buộc có `test_<tên hàm>__J01` và `__J06`, cộng `[[task]] require = [...]` của chủ. Task không có trong sổ mà có `[[task]]` → hỏng. **Hai task/`periodic` trùng tên hàm → hỏng** (một test không được thoả J-case của hai module). Test task đặt tên `test_<tên hàm>__<case>` với `<case>` là J, U hoặc M hai chữ số; được theo sau bởi id tham số `[...]` như test op, không được có hậu tố `_xxx` (bản 7, DEBT-02 NO-256/NO-294).
 
 **Kết quả:** in bảng `op | bắt buộc | tìm thấy | miễn | thiếu`; thiếu một case → hỏng. `op` đã mount mà không có dòng BE-BIND → cảnh báo (B0-07 chặn).
 

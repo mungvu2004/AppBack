@@ -24,7 +24,7 @@
 > - Phiên bản có `floorRevision`. Phép đo **xoá cứng**.
 > - ML: bản gốc seed sẵn; refine `TrainingJob`; `nextCursor` khi polling.
 >
-> Thiết kế từ màn FE thật (`F:\AppFront\src` @ `7dccb44`). Trường không màn nào cần thì **không** đưa vào (W1).
+> Thiết kế từ màn FE thật (`F:\App\AppFront\src` @ `7dccb44`). Trường không màn nào cần thì **không** đưa vào (W1).
 > **F-00a / F-00b / F-00c** viết zod từ file này. **Prompt BE** trỏ về file này cho tới khi schema FE đã hợp nhất; sau đó chính schema FE là nguồn chuẩn (H1). Bằng chứng dòng rút gọn: `S:` = `src/`.
 
 ---
