@@ -54,11 +54,16 @@ def test_export_onnx_deterministic(tmp_path: Path) -> None:
         for out in outs
     ]
     digests = []
-    for proc, out in zip(procs, outs, strict=True):
-        stdout, stderr = proc.communicate(timeout=300)
-        assert proc.returncode == 0, stderr
-        digests.append(stdout.strip().splitlines()[-1])
-        assert digests[-1] == sha(out.read_bytes())
+    try:
+        for proc, out in zip(procs, outs, strict=True):
+            stdout, stderr = proc.communicate(timeout=300)
+            assert proc.returncode == 0, stderr
+            digests.append(stdout.strip().splitlines()[-1])
+            assert digests[-1] == sha(out.read_bytes())
+    finally:
+        for proc in procs:
+            proc.kill()
+            proc.wait()
     assert digests[0] == digests[1]
     exported = onnx.load_model_from_string((tmp_path / "run0.onnx").read_bytes())
     assert exported.opset_import[0].version == 17

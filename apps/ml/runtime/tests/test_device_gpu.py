@@ -32,11 +32,13 @@ TTL_MS, RENEW_MS = 600, 150
     [("cpu", True, "cpu"), ("auto", True, "cuda"), ("auto", False, "cpu"), ("cuda", True, "cuda")],
 )
 def test_resolve_device_m04(monkeypatch: pytest.MonkeyPatch, setting: str, available: bool, expected: str) -> None:
+    """M04: `ML_DEVICE` (`cpu`/`auto`/`cuda`) cùng trạng thái CUDA chọn đúng thiết bị."""
     monkeypatch.setattr(torch.cuda, "is_available", lambda: available)
     assert resolve_device(setting) == expected  # type: ignore[arg-type]  # thiết lập chuỗi trong test
 
 
 def test_resolve_device_m04_cuda_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M04: đòi `cuda` mà máy không có GPU → `ML_DEVICE_UNAVAILABLE` (lỗi vĩnh viễn, không thử lại)."""
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with pytest.raises(PermanentError) as caught:
         resolve_device("cuda")
@@ -45,6 +47,7 @@ def test_resolve_device_m04_cuda_missing(monkeypatch: pytest.MonkeyPatch) -> Non
 
 @pytest.fixture
 def safe(messaging_env: None) -> Iterator[SyncRedis]:
+    """Client Redis `safe` thật, khoá GPU đã xoá trước và sau test."""
     client = safe_redis_sync()
     client.delete(KEY)
     yield client
@@ -53,13 +56,16 @@ def safe(messaging_env: None) -> Iterator[SyncRedis]:
 
 
 def wait_for(predicate: Callable[[], bool], timeout_s: float = 15.0) -> None:
+    """Chờ `predicate` đúng; quá `timeout_s` → `TimeoutError` (hạn chờ chống treo, không phải trần hiệu năng)."""
     deadline = time.monotonic() + timeout_s
     while not predicate():
-        assert time.monotonic() < deadline, "quá hạn chờ"
+        if time.monotonic() >= deadline:
+            raise TimeoutError("quá hạn chờ")
         time.sleep(0.02)
 
 
 def test_gpu_slot_rejects_bad_timing() -> None:
+    """Chu kỳ gia hạn không nhỏ hơn hẳn TTL (hay bằng 0) bị từ chối trước khi lấy khoá."""
     for ttl, renew in ((600, 300), (600, 0), (100, 60)):
         with pytest.raises(ValueError, match="renew_every_ms"), gpu_slot(wait_s=0, ttl_ms=ttl, renew_every_ms=renew):
             pass
@@ -91,6 +97,7 @@ def test_gpu_slot_m04_contention(safe: SyncRedis) -> None:
     release = threading.Event()
 
     def holder() -> None:
+        """Luồng giữ khoá GPU tới khi test nhả `release`."""
         with gpu_slot(wait_s=0, ttl_ms=TTL_MS, renew_every_ms=RENEW_MS):
             release.wait(5)
 
@@ -136,6 +143,7 @@ def test_gpu_slot_release_survives_a_dead_redis(
     slots: list[GpuSlot] = []
 
     def failing_body(admin: SyncRedis) -> None:
+        """Lấy khoá, tắt Redis rồi ném lỗi trong thân — lượt trả khoá gặp Redis đã chết."""
         with gpu_slot(wait_s=0, ttl_ms=60_000, renew_every_ms=20_000) as slot:
             slots.append(slot)
             admin.shutdown(nosave=True)
@@ -158,6 +166,7 @@ def test_gpu_release_has_no_catch_of_its_own() -> None:
     """`gpu.py` trả khoá chỉ qua `SafeLock.release_quietly`, không `try` nào bọc lời trả (R-07, NO-074)."""
 
     def releases(node: ast.AST) -> set[str]:
+        """Tên mọi lời gọi phương thức `release*` trong cây con `node`."""
         funcs = (n.func for n in ast.walk(node) if isinstance(n, ast.Call))
         return {f.attr for f in funcs if isinstance(f, ast.Attribute) and f.attr.startswith("release")}
 
