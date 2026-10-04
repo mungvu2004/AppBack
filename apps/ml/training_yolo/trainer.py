@@ -148,7 +148,7 @@ class _RunCallbacks:
         now = self.monotonic()
         if now - self.last_beat >= self.heartbeat_every_s:
             self.last_beat = now
-            self.reporter.heartbeat(self.epochs_done + 1)
+            self.reporter.heartbeat(min(self.epochs_done + 1, self.epochs))
 
     def on_fit_epoch_end(self, trainer: Any) -> None:
         """Một điểm `train` (loss) và một điểm `validation` (`map50`) cho mỗi epoch đã xong.

@@ -90,6 +90,29 @@ def test_on_val_batch_end__sends_heartbeat_once_interval_passed() -> None:
     assert reporter.cancel_checks == 1
 
 
+def test_heartbeat_epochs_never_decrease_nor_exceed_spec_epochs() -> None:
+    """Pha `final_eval` chạy sau epoch cuối: nhịp tim không được báo `epochs + 1`, rồi `_export` báo `epochs` (lùi)."""
+    reporter = RecordingReporter()
+    clock = [0.0]
+    callbacks = _RunCallbacks(
+        reporter=reporter,
+        clock=SystemClock(),
+        monotonic=lambda: clock[0],
+        heartbeat_every_s=1.0,
+        last_beat=0.0,
+        epochs=2,
+    )
+    for _ in range(2):
+        clock[0] += 2.0
+        callbacks.on_train_batch_end(None)
+        callbacks.on_fit_epoch_end(SimpleNamespace(tloss={"box": 1.0}, metrics={"metrics/mAP50(B)": 0.4}))
+    clock[0] += 2.0
+    callbacks.on_val_batch_end(None)
+    reporter.heartbeat(2)  # `_export` báo `spec.epochs`
+    assert reporter.heartbeats == sorted(reporter.heartbeats)
+    assert max(reporter.heartbeats) <= 2
+
+
 def test_best_weights_falls_back_to_last(tmp_path: Path) -> None:
     """Không có `best.pt` (fitness không cải thiện) thì lấy `last.pt`; không có gì cả là lỗi."""
     weights = tmp_path / "ultralytics" / "run" / "weights"
