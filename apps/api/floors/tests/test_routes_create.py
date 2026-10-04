@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
 from apps.api.core import extensions
-from apps.api.floors.settings import reset_floors_settings_cache
+from apps.api.floors.settings import get_floors_settings, reset_floors_settings_cache
 from apps.api.floors.tests._bodies import (
     FLOORS_MAX_TEST,
     FORBIDDEN_ROLE,
@@ -369,3 +369,26 @@ async def test_floors_create_floor__restore_blocked_by_limit(
     )
     assert response.status_code == 422
     assert response.json()["code"] == "FLOOR_LIMIT_REACHED"
+
+
+async def test_floors_create_floor__restore_exactly_at_window_gets_new_pk(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    fake_clock: FakeClock,
+) -> None:
+    """Biên: đúng `FLOOR_RESTORE_WINDOW_S` giây sau khi xoá là hết cửa sổ (cùng luật `restore_window_elapsed`)."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    level_id = new_level_id()
+    floor = await make_floor(db_session, project=project, level_id=level_id, order=0)
+    await db_session.execute(update(FloorRow).where(FloorRow.pk == floor.pk).values(deleted_at=fake_clock.now()))
+    await db_session.commit()
+    fake_clock.advance(timedelta(seconds=get_floors_settings().floor_restore_window_s))
+
+    response = await api_client.post(floors_path(project.id), json=floor_body(id=level_id), headers=headers_of(owner))
+    assert response.status_code == 201
+
+    row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=level_id)
+    assert row is not None
+    assert row.pk != floor.pk
