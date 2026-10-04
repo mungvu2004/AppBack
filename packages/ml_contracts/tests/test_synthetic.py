@@ -4,7 +4,6 @@ import hashlib
 import itertools
 import logging
 import math
-import re
 import subprocess
 import sys
 import textwrap
@@ -30,10 +29,10 @@ from packages.ml_contracts.synthetic import (
     read_marker,
     render_plan,
 )
+from packages.testing.ocr_metrics import DIMENSION_RE
 
 _log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DIMENSION_RE = re.compile(r"[0-9]{1,3}(\.[0-9]{3})*")
 SEEDS = (0, 1, 7, 100, 123, 139, 4_000_000_000)
 
 
