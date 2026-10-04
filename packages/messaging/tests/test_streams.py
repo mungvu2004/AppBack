@@ -151,7 +151,8 @@ async def test_read_after_rejects_a_block_longer_than_the_socket_budget(
         await event_bus.read_after(stream, FIRST_ID, block_ms=block_ms)
 
 
-@pytest.mark.parametrize("data", [{"at": datetime.now(UTC)}, {"blob": b"x"}])
+# Hằng, không `datetime.now`: tham số phải giống nhau giữa mọi lần thu thập của xdist (NO-266)
+@pytest.mark.parametrize("data", [{"at": datetime(2026, 1, 1, tzinfo=UTC)}, {"blob": b"x"}])
 async def test_publish_rejects_raw_types_the_wire_has_no_form_for(
     event_bus: EventBus, stream: str, data: dict[str, object]
 ) -> None:
