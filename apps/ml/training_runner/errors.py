@@ -1,13 +1,14 @@
 """Mã kết thúc của job huấn luyện: hằng chuỗi gửi trong `TrainingFinishedPayload.error_code`.
 
 Không khai bằng `ERRORS.define` (không lên dây HTTP, B6-03b [2]). `MODEL_FORMAT_UNSUPPORTED`,
-`GPU_LOCK_LOST` lấy lại của `apps.ml.runtime.errors` (B5-01), không khai trùng.
+`GPU_LOCK_LOST` lấy lại của `apps.ml.runtime.error_codes` (B5-01, nhập nhẹ — không kéo
+`onnxruntime`, trainer SegFormer nhập được), không khai trùng.
 `TRAINING_CLAIM_LOST`, `TRAINING_CANCELLED` chỉ là lý do dừng/log — không bao giờ gửi `finished`.
 """
 
 from typing import Final
 
-from apps.ml.runtime.errors import GPU_LOCK_LOST, MODEL_FORMAT_UNSUPPORTED
+from apps.ml.runtime.error_codes import GPU_LOCK_LOST, MODEL_FORMAT_UNSUPPORTED
 
 __all__ = [
     "DATASET_MANIFEST_MISMATCH",

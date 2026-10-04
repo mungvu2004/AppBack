@@ -7,7 +7,8 @@ cha chỉ đọc dòng có tiền tố nên dòng lạ do thư viện in không 
 
 Bất biến: `RLIMIT_AS` đặt **trước** lần nhập `onnxruntime`/`apps.ml.runtime` đầu tiên —
 ORT cấp bộ nhớ ngay lúc nhập, trần đặt sau là trần không có tác dụng. Vì vậy mọi nhập
-nặng nằm trong `_evaluate`, mức module chỉ có thư viện chuẩn.
+nặng nằm trong `_evaluate`; mức module chỉ có thư viện chuẩn và `apps.ml.runtime.error_codes`
+(chỉ `typing`, test `test_error_codes__import_light`).
 
 Con **không** cầm khoá hay client storage nào: cha chép bytes trọng số vào một thư mục
 tạm và con dựng `LocalDiskStorage` trên thư mục ấy, nên lỗi tạm của kho thật (J02) xảy ra
@@ -19,13 +20,12 @@ import resource
 import sys
 from typing import IO, Any, Final
 
+from apps.ml.runtime.error_codes import MODEL_FORMAT_UNSUPPORTED
+
 __all__ = ["RESULT_PREFIX", "main"]
 
 RESULT_PREFIX: Final = "ML_EVAL_RESULT "
 """Khung của dòng kết quả trên stdout: chuỗi này không thể là đầu một JSON hợp lệ."""
-
-MODEL_FORMAT_UNSUPPORTED: Final = "MODEL_FORMAT_UNSUPPORTED"
-"""Lặp lại hằng của `apps.ml.runtime.errors`: module ấy kéo `onnxruntime` vào."""
 
 
 def build_adapter(ref: Any, session: Any) -> Any:

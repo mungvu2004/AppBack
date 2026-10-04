@@ -1,35 +1,28 @@
 """Khoá GPU `gpu:0` trên DB Redis an toàn: một tác vụ GPU mỗi lúc (BE-00 §9, M04).
 
-`gpu_slot` là context **đồng bộ** cho mã huấn luyện (không có vòng sự kiện): một luồng
-daemon chạy `asyncio.Runner` riêng, dựng client `safe_redis()` ngay trong vòng đó (client
-async gắn với vòng tạo ra nó), lấy `SafeLock` rồi gia hạn định kỳ. Mất khoá — gia hạn
-bị từ chối, hay Redis hỏng lâu hơn `ttl_ms - renew_every_ms` (khoá có thể đã hết hạn và
-người khác đã lấy) — thì bật `lost`; người giữ gọi `check()` giữa các bước để dừng.
+`gpu_slot` là context **đồng bộ** cho mã huấn luyện (không có vòng sự kiện): lấy, gia hạn,
+cờ `lost` và trả khoá là lõi chung `held_lease` (`apps/ml/runtime/lease.py`, cùng lõi với
+`training_slot`, NO-308). Lớp vỏ ở đây chỉ chuyển ba phép của lõi sang `SafeLock` (async,
+token rào, khoá `lock:gpu:0`): client async gắn với vòng tạo ra nó, nên mọi lời gọi đi qua
+**một** vòng sự kiện chạy trong luồng daemon riêng (`SafeLockOps`).
 """
 
 import asyncio
-import logging
-import random
 import threading
-import time
-from collections.abc import Iterator
+from collections.abc import Coroutine, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from apps.ml.runtime.errors import GPU_LOCK_LOST
+from apps.ml.runtime.lease import JOIN_TIMEOUT_S, check_timing, held_lease
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
 from packages.messaging.locks import SafeLock
 from packages.messaging.redis import AsyncRedis, safe_redis
-from packages.messaging.tasks import PermanentError, TransientError
-
-_log: Final = logging.getLogger(__name__)
+from packages.messaging.tasks import PermanentError
 
 GPU_LOCK_NAME: Final = "gpu:0"
-ACQUIRE_EVERY_S: Final = 1.0
-ACQUIRE_JITTER: Final = 0.2
-JOIN_TIMEOUT_S: Final = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,95 +38,64 @@ class GpuSlot:
             raise PermanentError(GPU_LOCK_LOST)
 
 
-def _dependency_error(exc: AppError) -> bool:
-    """Lỗi Redis không phục vụ được (đã dịch bởi `redis_errors`); lỗi khác phải nổi lên."""
-    return exc.code is DEPENDENCY_UNAVAILABLE
-
-
-class _Keeper(threading.Thread):
-    """Luồng giữ khoá: lấy (thử lại mỗi 1 s ± 20 %), gia hạn, trả khoá khi được báo dừng."""
-
-    def __init__(self, *, wait_s: float, ttl_ms: int, renew_every_ms: int) -> None:
-        """Luồng daemon: tiến trình tắt giữa chừng không bị luồng giữ khoá chặn lại (TTL dọn khoá)."""
-        super().__init__(name="gpu-slot", daemon=True)
-        self.ready = threading.Event()
-        self.stopping = threading.Event()
-        self.lost = threading.Event()
-        self.token: int | None = None
-        self.error: Exception | None = None
-        self._wait_s = wait_s
-        self._ttl_ms = ttl_ms
-        self._renew_every_ms = renew_every_ms
-
-    def run(self) -> None:
-        """Toàn bộ đời khoá trên một vòng sự kiện riêng; `ready` bật ở mọi đường ra."""
-        try:
-            with asyncio.Runner() as runner:
-                client = runner.run(_client())
-                try:
-                    self._hold(runner, SafeLock(client, GPU_LOCK_NAME, self._ttl_ms))
-                finally:
-                    runner.run(client.aclose())
-        finally:
-            self.ready.set()
-
-    def _hold(self, runner: asyncio.Runner, lock: SafeLock) -> None:
-        """Lấy khoá rồi giữ tới khi được báo dừng; thoát bất thường cũng tính là mất khoá (fail-closed)."""
-        try:
-            token = self._acquire(runner, lock)
-            self.token = token
-        except (TransientError, AppError) as exc:
-            self.error = exc
-            return
-        finally:
-            self.ready.set()
-        try:
-            self._renew_until_stopped(runner, lock, token)
-        finally:
-            if not self.stopping.is_set():
-                self.lost.set()
-
-    def _acquire(self, runner: asyncio.Runner, lock: SafeLock) -> int:
-        """Thử lấy khoá tới `wait_s`; hết giờ → `TransientError` (task thử lại sau)."""
-        deadline = time.monotonic() + self._wait_s
-        jitter = random.Random()  # noqa: S311 — lệch nhịp chờ cho các worker không tranh cùng lúc
-        while True:
-            token = runner.run(lock.acquire())
-            if token is not None:
-                return token
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TransientError(f"GPU đang bận quá {self._wait_s} giây")
-            pause = ACQUIRE_EVERY_S * jitter.uniform(1 - ACQUIRE_JITTER, 1 + ACQUIRE_JITTER)
-            time.sleep(min(remaining, pause))
-
-    def _renew_until_stopped(self, runner: asyncio.Runner, lock: SafeLock, token: int) -> None:
-        """Gia hạn mỗi `renew_every_ms`; mất khoá thì bật `lost` và thôi gia hạn; dừng thì trả khoá.
-
-        Trả bằng `SafeLock.release_quietly` (một nguồn, NO-074): Redis hỏng lúc trả chỉ ghi
-        `WARNING`, không che lỗi của thân khối; khoá không trả được thì TTL dọn hộ.
-        """
-        grace_s = (self._ttl_ms - self._renew_every_ms) / 1000
-        last_ok = time.monotonic()
-        while not self.stopping.wait(self._renew_every_ms / 1000):
-            try:
-                renewed: bool | None = runner.run(lock.renew(token))
-            except AppError as exc:
-                if not _dependency_error(exc):
-                    raise
-                renewed = None
-            if renewed:
-                last_ok = time.monotonic()
-            elif renewed is False or time.monotonic() - last_ok > grace_s:
-                self.lost.set()
-                _log.warning("gpu_lock_lost", extra={"lock": GPU_LOCK_NAME, "token": token})
-                return
-        runner.run(lock.release_quietly(token))
-
-
 async def _client() -> AsyncRedis:
-    """Client DB an toàn dựng **trong** vòng sự kiện của luồng giữ khoá."""
+    """Client DB an toàn dựng **trong** vòng sự kiện của `SafeLockOps`."""
     return safe_redis()
+
+
+class SafeLockOps:
+    """`LeaseOps[int]` trên `SafeLock`: một vòng sự kiện riêng trong luồng daemon, đóng bằng `close()`."""
+
+    def __init__(self, name: str, ttl_ms: int) -> None:
+        """Mở vòng sự kiện và client; client lỗi → dọn vòng rồi nổi lên."""
+        self.name = name
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, name="gpu-slot-loop", daemon=True)
+        self._thread.start()
+        try:
+            self._client = self._call(_client())
+        except BaseException:
+            self._stop_loop()
+            raise
+        self._lock = SafeLock(self._client, name, ttl_ms)
+
+    def _call[R](self, coro: Coroutine[Any, Any, R]) -> R:
+        """Chạy `coro` trên vòng của lớp này và chờ kết quả (gọi được từ mọi luồng)."""
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+
+    def try_acquire(self) -> int | None:
+        """Token rào khi lấy được, `None` khi đang bận; Redis hỏng → `AppError` 503 (task thử lại)."""
+        return self._call(self._lock.acquire())
+
+    def renew(self, token: int) -> bool | None:
+        """Gia hạn; Redis không phục vụ được (`DEPENDENCY_UNAVAILABLE`) → `None`, lỗi khác nổi lên."""
+        try:
+            return self._call(self._lock.renew(token))
+        except AppError as exc:
+            if exc.code is not DEPENDENCY_UNAVAILABLE:
+                raise
+            return None
+
+    def release_quietly(self, token: int) -> None:
+        """Trả khoá qua `SafeLock.release_quietly` (một nguồn, NO-074): Redis hỏng chỉ ghi `WARNING`."""
+        self._call(self._lock.release_quietly(token))
+
+    def close(self) -> None:
+        """Đóng client rồi dừng vòng sự kiện và luồng của nó."""
+        try:
+            self._call(self._client.aclose())
+        finally:
+            self._stop_loop()
+
+    def _stop_loop(self) -> None:
+        """Dừng `run_forever`, `join` tối đa `JOIN_TIMEOUT_S`, đóng vòng.
+
+        Lời gọi Redis có trần kết nối/đọc của client nên vòng dừng trong hạn `join`; vòng kẹt quá
+        hạn thì `close()` ném `RuntimeError` — chấp nhận, không thêm nhánh không phủ được.
+        """
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(JOIN_TIMEOUT_S)
+        self._loop.close()
 
 
 @contextmanager
@@ -141,19 +103,12 @@ def gpu_slot(*, wait_s: float, ttl_ms: int = 60_000, renew_every_ms: int = 20_00
     """Giữ `gpu:0` suốt khối `with` (dùng khi thiết bị là `cuda`).
 
     Chờ tới `wait_s` → `TransientError`; Redis hỏng lúc lấy → `AppError` 503 (thử lại).
-    `renew_every_ms x 2 ≥ ttl_ms` → `ValueError`: phải kịp gia hạn ít nhất hai lần mỗi TTL.
-    Thoát khối: dừng luồng, trả khoá, `join` tối đa `JOIN_TIMEOUT_S`.
+    `renew_every_ms x 2 ≥ ttl_ms` → `ValueError` trước khi chạm Redis.
     """
-    if renew_every_ms <= 0 or renew_every_ms * 2 >= ttl_ms:
-        raise ValueError(f"cần 0 < renew_every_ms x 2 < ttl_ms, nhận {renew_every_ms} và {ttl_ms}")
-    keeper = _Keeper(wait_s=wait_s, ttl_ms=ttl_ms, renew_every_ms=renew_every_ms)
-    keeper.start()
-    keeper.ready.wait()
-    if keeper.token is None:
-        keeper.join(JOIN_TIMEOUT_S)
-        raise keeper.error or RuntimeError("luồng khoá GPU dừng trước khi lấy được khoá")
+    check_timing(ttl_ms=ttl_ms, renew_every_ms=renew_every_ms)
+    ops = SafeLockOps(GPU_LOCK_NAME, ttl_ms)
     try:
-        yield GpuSlot(token=keeper.token, lost=keeper.lost)
+        with held_lease(ops, wait_s=wait_s, ttl_ms=ttl_ms, renew_every_ms=renew_every_ms) as lease:
+            yield GpuSlot(token=lease.token, lost=lease.lost)
     finally:
-        keeper.stopping.set()
-        keeper.join(JOIN_TIMEOUT_S)
+        ops.close()
