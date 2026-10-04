@@ -127,6 +127,35 @@
 | FIX-136 | 2026-10-04 | B0-10 | NO-182 | DEBT-02 W1 vòng sửa review: `notify.yml` theo dõi workflow `Commits` tách mới (hỏng trên `main` phải báo như CI) | `9738dab` (nhánh `fix/debt-02-w1`) |
 | FIX-137 | 2026-10-04 | B6-04b | — | DEBT-02 W1 cổng 2 đỏ (luật 47): exporter giả của `apps/ml/training_yolo/tests/test_trainer.py` lọt sang `apps/ml/runtime/tests/test_export.py` (digest `"sha"`) — test phụ thuộc thứ tự | `8e5cc8f`, `a84f143` (nhánh `fix/debt-02-w1`) |
 | FIX-138 | 2026-10-04 | B5-01 | — | DEBT-02 W1 cổng 2 đỏ: phần `apps/ml/runtime` của cùng lỗi nếu gốc nằm ở `export_pinned`/`export_yolo` (dùng khi phương án chốt đòi) | không dùng — gốc lỗi nằm hẳn ở `apps/ml/training_yolo/tests/test_trainer.py` (B6-04b, FIX-137); `apps/ml/runtime` không đổi |
+| FIX-139 | 2026-10-04 | B0-01 | NO-306, NO-337 | DEBT-02 W2/C05b: cổng đầy đủ tin cache mypy ấm (NO-306); case_gate giữ bản tách tên test | `3e04636` (nhánh `fix/debt-02-w2-tools-layer`) |
+| FIX-140 | 2026-10-04 | B0-07 | NO-337 | DEBT-02 W2/C05b: bộ ghi golden nhập tầng công cụ `tools.case_gate` | `9d79a1f` (nhánh `fix/debt-02-w2-tools-layer`) |
+| FIX-141 | 2026-10-04 | B0-02 | NO-337 | DEBT-02 W2/C05b: nguồn tách tên test case dùng chung ở tầng thấp | `f726b60` (nhánh `fix/debt-02-w2-tools-layer`) |
+| FIX-142 | 2026-10-04 | B3-04 | NO-258 | DEBT-02 W2/C06: `test_versions_list_versions__cursor_of_another_floor` đỏ ~1/1024 | `a439587` (nhánh `fix/debt-02-w2-flakes`) |
+| FIX-143 | 2026-10-04 | B0-05 | NO-211 | DEBT-02 W2/C06: `apps/api/auth_recovery/tests/test_e2e.py` chạy lẻ: worker thật `Received unregistered task 'default.auth_recovery.send_token_mail'`, không có thư trong 15 s | `71266df`, `4114c13` (nhánh `fix/debt-02-w2-flakes`) |
+| FIX-144 | 2026-10-04 | B4-01 | NO-298 | DEBT-02 W2/C06: `test_open_streams_do_not_hold_postgres_connections` đỏ `assert 9 == 0` (`pool.checkedout()`) ở cổng `-n 6` máy thiếu RAM (B5-06b, sha 363ca00); chạy lẻ xanh | `4eebaa1`, `65969ff` (nhánh `fix/debt-02-w2-flakes`) |
+| FIX-145 | 2026-10-04 | B1-05 | NO-340 | DEBT-02 W2/C06: `import apps.api.auth_recovery.jobs  # noqa: F401` ở `test_e2e.py:14`, chỉ có để đăng ký task với worker thật | `199a28b` (nhánh `fix/debt-02-w2-flakes`) |
+| FIX-146 | 2026-10-04 | B0-03 | NO-341 | DEBT-02 W2/C06: `test_conventions_catch_bad_columns` đỏ khi chạy lặp trong cùng một tiến trình: `ArgumentError: Column object 'score' already assigned to Table 'bad'` | `0b432f4`, `6fbdd5a` (nhánh `fix/debt-02-w2-flakes`) |
+| FIX-147 | 2026-10-04 | B2-05b | NO-264 | DEBT-02 W2/C06: dòng nợ ghi đỏ ~1/4 lượt dưới `-n 6`; không tái hiện được (C06: 3 giả thuyết; 0/22 lượt cổng đầy đủ từ 09-29 + 3 junit) | `7aef2e8`, `2c4cd0c` (nhánh `fix/debt-02-w2-flakes`) |
+| FIX-148 | 2026-10-04 | B0-05 | NO-266 | DEBT-02 W2/C05: tham số parametrize sinh từ đồng hồ lúc thu thập (NO-266) + docstring R-01 thiếu | `971ae1f`, `959742d` (nhánh `fix/debt-02-w2-fixtures`) |
+| FIX-149 | 2026-10-04 | B0-03 | NO-267, NO-277, NO-279 | DEBT-02 W2/C05: lượt dọn db_url mở kết nối mới mỗi test và đặt setval trước khi nạp seed | `bcb9572`, `15d1045` (nhánh `fix/debt-02-w2-fixtures`) |
+| FIX-150 | 2026-10-04 | B0-01 | NO-277, NO-281, NO-282 | DEBT-02 W2/C05: container dịch vụ mồ côi khi pytest bị giết cứng (NO-281), docker chưa khai trong nhóm dev (NO-282), chú thích O_APPEND | `9c1e4c3`, `89d40ab`, `1308068` (nhánh `fix/debt-02-w2-fixtures`) |
+| FIX-154 | 2026-10-04 | B6-01 | NO-246, NO-268, NO-272, NO-278 | DEBT-02 W2/C07: test K36 pool một kết nối chưa gắn perf | `802da8b` (nhánh `fix/debt-02-w2-perf-marks`); NO-344 docstring: `e9269bb` (nhánh `fix/debt-02-w2`) |
+| FIX-155 | 2026-10-04 | B0-06 | NO-246, NO-268, NO-272, NO-278 | DEBT-02 W2/C07: test broker chết chưa gắn perf | `9b048e6` (nhánh `fix/debt-02-w2-perf-marks`) |
+| FIX-156 | 2026-10-04 | B2-04 | NO-246, NO-268, NO-272, NO-278 | DEBT-02 W2/C07: test K36/K28 chưa perf, tên khớp mẫu case | `1d28348` (nhánh `fix/debt-02-w2-perf-marks`) |
+| FIX-157 | 2026-10-04 | B2-07 | NO-246 | DEBT-02 W2/C07: NO-246: test 1000x20 điểm khẳng định < 2 s chưa perf | `a64a1cc` (nhánh `fix/debt-02-w2-perf-marks`) |
+| FIX-158 | 2026-10-04 | B4-01 | NO-272 | DEBT-02 W2/C07: NO-272: 6 test S07 (mã case) khẳng định elapsed <= trần ở bước 5 (progress ×4 + notifications ×2, cùng chủ B4-01) | `4ab46e1`, `c0f355b` (nhánh `fix/debt-02-w2-perf-marks`) |
+| FIX-159 | 2026-10-04 | B7-01 | NO-246, NO-268, NO-272, NO-278 | DEBT-02 W2/C07: wait_until 1,5 s sát TTL cache 1 s | `7720f0c` (nhánh `fix/debt-02-w2-perf-marks`); NO-344 docstring: `21c27fd` (nhánh `fix/debt-02-w2`) |
+| FIX-160 | 2026-10-04 | B5-01 | NO-268 | DEBT-02 W2/C07: NO-268: test_export_onnx_deterministic 8–10 s kéo đuôi lượt loadfile | `3477820` (nhánh `fix/debt-02-w2-perf-marks`); NO-344 docstring: `c2fbb1a` (nhánh `fix/debt-02-w2`) |
+| FIX-161 | 2026-10-04 | B6-02 | NO-278 | DEBT-02 W2/C07: NO-278: pytestmark perf cấp tệp, số đo chưa in bằng logging | `e706ecf` (nhánh `fix/debt-02-w2-perf-marks`) |
+| FIX-162 | 2026-10-04 | B0-03 | NO-246, NO-268, NO-272, NO-278 | DEBT-02 W2/C07: 3 test J09 (mã case) khẳng định elapsed ở bước 5 | `f1357ae`, `087741d`, `ebc7495`, `cfd7797` (nhánh `fix/debt-02-w2-perf-marks`); NO-344 docstring: `84fa737`, `4559b4d` (nhánh `fix/debt-02-w2`) |
+| FIX-163 | 2026-10-04 | B0-01 | NO-246, NO-268, NO-272, NO-278 | DEBT-02 W2/C07: thiếu lưới chặn tái phát cho trần đồng hồ chưa perf | `d84e7ad`, `9dbaa7a` (nhánh `fix/debt-02-w2-perf-marks`) |
+| FIX-167 | 2026-10-04 | B5-03 | NO-312 | DEBT-02 W2/C08: test M04 vá ML_DEVICE=cuda làm bẩn cache get_ml_settings của cả tiến trình | `b11a258` (nhánh `fix/debt-02-w2-cache`) |
+| FIX-168 | 2026-10-04 | B6-03b | NO-312 | DEBT-02 W2/C08: support.py định nghĩa lại fixture ml_settings_cache trùng bản dùng chung (R-02, NO-312) | `44db1f4`, `19ca19f` (nhánh `fix/debt-02-w2-cache`) |
+| FIX-169 | 2026-10-04 | B2-04 | NO-265 | DEBT-02 W2/C08: signer() ăn kho cache cấp tiến trình của test khác | `0534cc9` (nhánh `fix/debt-02-w2-cache`) |
+| FIX-170 | 2026-10-04 | B0-10 | NO-204 | DEBT-02 W2/C08: README kiểm ml.env dùng danh sách cấm hẹp (NO-204 nửa 2) | `4a45c6c` (nhánh `fix/debt-02-w2-cache`) |
+| FIX-171 | 2026-10-04 | B5-01 | NO-322, NO-323 | DEBT-02 W2/C08: scan() bỏ tệp test nên import ultralytics trần tái sinh NO-322 | `df46a99` (nhánh `fix/debt-02-w2-cache`) |
+| FIX-172 | 2026-10-04 | B2-03 | NO-265 | DEBT-02 W2/C08: test đếm SQL của `view_parts` chỉ xanh nhờ `_default_signer` do test khác làm ấm | `d3c8838` (nhánh `fix/debt-02-w2-cache`) |
+| FIX-173 | 2026-10-04 | B5-06a | NO-218, NO-295, NO-339 | DEBT-02 W2/C14: đo RSS sai tiến trình (NO-339), J01 không qua đường gửi thật (NO-218), J06 khẳng định rỗng và dọn test | `fce473e`, `c2489b7` (nhánh `fix/debt-02-w2-pipeline`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -1249,3 +1278,318 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
   trước lần vá đầu; chạy lẻ `-k test_zz` xanh); lệnh hai tệp một tiến trình: với `test_trainer.py` cũ đỏ (mã thoát 1) → xanh (31 passed,
   mã thoát 0, `M/fix137b.log`); `pytest -n 4 apps/ml` 453 passed (`M/fix137.log`).
 - **[7 NGHIỆM THU]** commit `8e5cc8f`, `a84f143`; cổng đầy đủ `M/gate-3.log` (`-n 4`).
+
+## FIX-139 cho B0-01 — cổng đầy đủ tin cache mypy ấm (NO-306); case_gate giữ bản tách tên test (NO-337)
+
+- **[1 TRIỆU CHỨNG]** verify tích hợp `main` @ 30b78ae hỏng bước 3: `apps/ml/training_yolo/trainer.py:71: error: Call to untyped function "update" in typed context [no-untyped-call]`; `mypy --cache-dir=/dev/null` sạch (thoát 0).
+- **[2 TÁI HIỆN]** `run.sh shell`: chép `/work/no306-evidence-mypy-appback` → `/tmp/c`; `mypy --cache-dir /tmp/c apps/ml/training_yolo/trainer.py` thoát 1, `--cache-dir /dev/null` thoát 0 (W2/C05b/repro306.log, probe306b.log).
+- **[3 BẰNG CHỨNG]** `mypy -v`: `Updating mtime for apps.ml.training_yolo.trainer … meta …` (băm khớp → module tươi → phát lại lỗi lưu), 0 dòng `stale`; deploy/compose/verify.yml:37 `MYPY_CACHE_DIR=/work/mypy-${VERIFY_NAME}` dùng cho mọi lượt; tools/verify/steps.py `step_mypy` không chọn cache.
+- **[4 KHOANH VÙNG]** tools/verify/steps.py, tools/verify/README.md, tools/tests/test_steps_commands.py, tools/case_gate.py, tools/tests/test_case_gate.py · cấm: verify.yml (giữ hợp đồng), .importlinter.
+- **[5 SỬA NHỎ NHẤT]** `_run_verify`: cổng đầy đủ chạy các bước trong `_cold_mypy_cache()` (`MYPY_CACHE_DIR=os.devnull`, trả môi trường khi xong); `--steps`/`shell` giữ cache ấm (README: xem trước). case_gate nhập `split_case_test_name` từ `packages.core.case_names`, bỏ bản riêng; test tách tên chuyển sang packages/core/tests.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_steps_commands.py::test_verify__full_gate_runs_mypy_cold` — đỏ (FAILED [argv0-/dev/null]) → xanh.
+- **[7 NGHIỆM THU]** `run.sh verify --steps 1,2,3,4` + cov.sh (steps.py 99%, case_gate.py 98%); commit 3e04636 `fix(verify): …` Prompt: B0-01, Fix: FIX-139. Cổng đầy đủ ở việc gộp M.
+
+## FIX-140 cho B0-07 — bộ ghi golden nhập tầng công cụ `tools.case_gate` (NO-337)
+
+- **[1 TRIỆU CHỨNG]** `packages/testing/golden/recorder.py:32` `from tools.case_gate import split_case_test_name` — gói hạ tầng test nhập tầng ngoài cùng.
+- **[2 TÁI HIỆN]** `grep -rn "from tools" packages | grep -v /tests/` trên e5473c7 (W2/C05b/tai-hien-NO-337.md).
+- **[3 BẰNG CHỨNG]** recorder.py:32; packages/testing/fixtures/golden.py:16 (runner_client — ➖ người dùng duyệt 2026-10-04, giữ).
+- **[4 KHOANH VÙNG]** packages/testing/golden/recorder.py, tests/test_imports.py (mới), tests/test_recorder.py · cấm: fixtures/golden.py (giữ ngoại lệ), .importlinter.
+- **[5 SỬA NHỎ NHẤT]** recorder nhập `packages.core.case_names.split_case_test_name`; test_recorder `test_recorder_imports_no_private_name_of_case_gate` đổi module lọc sang `packages.core.case_names` (giữ tên test cho truy vết NO-049).
+- **[6 TEST CHẶN TÁI PHÁT]** `packages/testing/golden/tests/test_imports.py::test_packages_sources__do_not_import_tools` — đỏ → xanh.
+- **[7 NGHIỆM THU]** cov.sh: recorder.py 100%; commit 9d79a1f `fix(testing): …` Prompt: B0-07, Fix: FIX-140.
+
+## FIX-141 cho B0-02 — nguồn tách tên test case dùng chung ở tầng thấp (NO-337)
+
+- **[1 TRIỆU CHỨNG]** `split_case_test_name` chỉ có ở `tools/case_gate.py`, buộc `packages.testing` nhập `tools`.
+- **[2 TÁI HIỆN]** như FIX-140.
+- **[3 BẰNG CHỨNG]** tools/case_gate.py:314-342 (e5473c7); hợp đồng `testing-only-from-tests` cấm `tools` nhập `packages.testing`, nên đích chỉ có thể là gói không phải testing; tiền lệ NO-184 `packages/core/pinned_images.py`.
+- **[4 KHOANH VÙNG]** packages/core/case_names.py (mới, thuần `re`), packages/core/tests/test_case_names.py (mới, chuyển từ tools/tests/test_case_gate.py).
+- **[5 SỬA NHỎ NHẤT]** dời `CaseTestName`, hai regex, `split_case_test_name` nguyên văn; không còn bản thứ hai (R-07).
+- **[6 TEST CHẶN TÁI PHÁT]** `packages/core/tests/test_case_names.py::test_tách_tên_test_case` (7 tham số, chuyển nguyên) + test_imports ở FIX-140.
+- **[7 NGHIỆM THU]** cov.sh: case_names.py 100%; commit f726b60 `fix(core): …` Prompt: B0-02, Fix: FIX-141.
+
+## FIX-142 cho B3-04 — `test_versions_list_versions__cursor_of_another_floor` đỏ ~1/1024 (NO-258)
+
+- **[1 TRIỆU CHỨNG]** `test_versions_list_versions__cursor_of_another_floor` đỏ ~1/1024 — cursor giả `cursor[:-2] + "xx"` được 200, `KeyError: 'code'`.
+- **[2 NGUYÊN NHÂN GỐC]** MAC 32 byte = 43 ký tự base64url; ký tự cuối mang 2 bit đệm bị `_unb64` bỏ (`apps/api/core/pagination.py:74-76`); MAC thật đuôi `x[w-z]` giải ra cùng byte với `"xx"`.
+- **[3 SỬA]** `apps/api/versions/tests/test_routes_list.py` — `_forged` lật một ký tự giữa MAC (đủ 6 bit dữ liệu); không đổi mã sản phẩm.
+- **[4 TEST CHẶN TÁI PHÁT]** `test_forged__mac_ending_in_padding_bits` (tất định: dò cursor có MAC đuôi `x[w-z]`).
+- **[5 BẰNG CHỨNG]** đỏ (đuôi `"xx"`) `1 failed` mã 1; xanh `2 passed` mã 0 — `tai-hien-NO-258.md`, `repro1.log`.
+- **[6 PHẠM VI SOÁT]** `git grep '\[:-2\]\|cursor\['` apps/api/*/tests — chỉ chỗ này; `core/tests/test_pagination.py:51-57` lật `head[0]` (đúng).
+- **[7 COMMIT]** `a439587` (Prompt B3-04).
+
+## FIX-143 cho B0-05 — `apps/api/auth_recovery/tests/test_e2e.py` chạy lẻ: worker thật `Received unregistered task 'default.auth_recovery.send_token_mail'`, không có thư trong 15 s (NO-211)
+
+- **[1 TRIỆU CHỨNG]** `apps/api/auth_recovery/tests/test_e2e.py` chạy lẻ: worker thật `Received unregistered task 'default.auth_recovery.send_token_mail'`, không có thư trong 15 s.
+- **[2 NGUYÊN NHÂN GỐC]** `celery_test_app` dựng app trống; `shared_task` chỉ vào sổ khi module được nhập — phụ thuộc thứ tự test. Worker thật nạp ở `apps/worker/celery_main.py:19-20`.
+- **[3 SỬA]** `register_tasks(app)` gọi `discover_submodules("apps.worker", "tasks")` + `discover_jobs()` (như worker thật); `celery_test_app` dùng nó → mọi test qua `celery_worker_factory`/`celery_worker` có sổ đầy đủ. Không nạp `apps.ml.*.tasks` (như ảnh worker). Điều phối duyệt phương án A (ask 06:17Z).
+- **[4 TEST CHẶN TÁI PHÁT]** `packages/messaging/tests/test_celery_app.py::test_register_tasks__module_not_imported_before` (tiến trình con mới, tất định) + e2e chạy lẻ.
+- **[5 BẰNG CHỨNG]** đỏ (thân `register_tasks` rỗng) 2 FAILED mã 1; xanh `3 passed` mã 0 — `tai-hien-NO-211.md`, `repro3.log`.
+- **[6 RỦI RO ĐÃ XÉT]** 24 module nhập không có tác dụng phụ nặng/settings cấp module; `import_module` idempotent; không test nào đếm hàng `default`; import-linter không thấy nhập động.
+- **[7 COMMIT]** `71266df` + `4114c13` docstring (Prompt B0-05).
+
+## FIX-144 cho B4-01 — `test_open_streams_do_not_hold_postgres_connections` đỏ `assert 9 == 0` (`pool.checkedout()`) ở cổng `-n 6` máy thiếu RAM (B5-06b, sha 363ca00); chạy lẻ xanh (NO-298)
+
+- **[1 TRIỆU CHỨNG]** `test_open_streams_do_not_hold_postgres_connections` đỏ `assert 9 == 0` (`pool.checkedout()`) ở cổng `-n 6` máy thiếu RAM (B5-06b, sha 363ca00); chạy lẻ xanh.
+- **[2 NGUYÊN NHÂN GỐC]** test lấy mẫu `checkedout()` tại một thời điểm trong khi 20 luồng recheck mỗi 0,2 s (`apps/api/streams/sse.py:336-344`); cache phiên trượt (TTL 5 s, `soft_redis` nuốt Redis chậm, refresh xoá cache) → `_load_snapshot` mở phiên ngắn **hợp lệ** trên chính pool (`apps/api/auth/sessions.py:590-627`); Postgres chậm → nhiều phiên đang bay đúng lúc đo. Mã sản phẩm đúng K36.
+- **[3 SỬA]** test đứng `sse.monotonic` (`monkeypatch.setattr(sse, "monotonic", repeat(frozen).__next__)`) → recheck/heartbeat/gia hạn chỗ không bao giờ tới hạn trong test; phép đo chỉ còn đếm kết nối bị giam. Không sleep, không nới assert, không đổi mã sản phẩm.
+- **[4 TEST CHẶN TÁI PHÁT]** chính test đó; đầu dò Postgres chậm (`read_state` + `pg_sleep(0.3)`, cache luôn trượt) đỏ trên bản gốc.
+- **[5 BẰNG CHỨNG]** đỏ `assert 15 == 0` mã 1; xanh `1 passed` mã 0 (`repro5.log`); bản sửa ×20 + `test_streams_open_progress.py` `-n 4`: 540 passed (`repro4.log`).
+- **[6 RỦI RO CÒN LẠI]** rò phiên ở đường recheck/authorize không được test này bắt (phản biện P-9); đường đó đóng phiên bằng `async with maker()` (`sessions.py:593`) nên không có rò cấu trúc.
+- **[7 COMMIT]** `4eebaa1` (Prompt B4-01).
+
+  #### FIX-144 (tiếp) — NO-342 (B4-01): test đường recheck trả kết nối về pool (điều phối duyệt dùng lại mã)
+  - **Test mới**: `apps/api/streams/tests/test_recheck_pool.py::test_recheck__returns_session_to_pool`. `SteppedClock` thay `sse.monotonic`; xoá `auth:principal:<sid>` để recheck phải đọc Postgres; `SignallingPolicy.authorize` (chạy sau `check_session`) bật sự kiện "recheck xong"; listener `checkout` của pool chứng minh có đọc DB; khẳng định `pool.checkedout() == 0`. Không có `sleep(`.
+  - **Đỏ** (đột biến trong bản chép: `_load_snapshot` thành `db = maker()`, không đóng): `assert 1 == 0`, `1 failed`, mã 1 (`repro7.log`).
+  - **Xanh**: mã thật `1 passed`, mã 0. Lặp `--rep 10 -n 4` cùng `test_no_db_hold.py`: 20 passed, mã 0.
+  - Bản đầu dùng PING làm tín hiệu thì đỏ trên mã thật (`repro6.log`), vì heartbeat cùng vòng XREAD tới trước recheck. Đổi sang sự kiện trong `authorize`.
+  - **Commit**: `65969ff` (Prompt B4-01).
+
+## FIX-145 cho B1-05 — `import apps.api.auth_recovery.jobs  # noqa: F401` ở `test_e2e.py:14`, chỉ có để đăng ký task với worker thật (NO-340)
+
+- **[1 TRIỆU CHỨNG]** `import apps.api.auth_recovery.jobs  # noqa: F401` ở `test_e2e.py:14`, chỉ có để đăng ký task với worker thật — giờ thừa.
+- **[2 NGUYÊN NHÂN GỐC]** trước FIX-143, `celery_test_app` không nạp module task nào.
+- **[3 SỬA]** bỏ dòng import đó.
+- **[4 TEST CHẶN TÁI PHÁT]** `apps/api/users/tests/test_e2e.py::test_invited_user_can_accept_and_sign_in` chạy lẻ.
+  5. **Bằng chứng** (`repro6.log`): chạy lẻ `1 passed` mã 0; làm rỗng thân `register_tasks` trong bản chép → `Received unregistered task 'default.auth_recovery.send_token_mail'`, `1 failed` mã 1 → test giờ dựa vào FIX-143, đúng ý.
+- **[6 GHI CHÚ]** chủ là B1-05 (`tao_so_tra.py --chu`), không phải B2-02 như ô chủ của dòng nợ.
+- **[7 COMMIT]** `199a28b` (Prompt B1-05).
+
+## FIX-146 cho B0-03 — `test_conventions_catch_bad_columns` đỏ khi chạy lặp trong cùng một tiến trình: `ArgumentError: Column object 'score' already assigned to Table 'bad'` (NO-341)
+
+- **[1 TRIỆU CHỨNG]** `test_conventions_catch_bad_columns` đỏ khi chạy lặp trong cùng một tiến trình: `ArgumentError: Column object 'score' already assigned to Table 'bad'`.
+- **[2 NGUYÊN NHÂN GỐC]** `parametrize` giữ đối tượng `mapped_column(...)` ở cấp module; một `Column` chỉ gắn được vào một bảng, nên lượt thứ hai dùng lại thì hỏng.
+- **[3 SỬA]** tham số đổi thành `(name, kind, problem)`; cột được dựng trong thân test bằng `mapped_column(name, kind())`. Thêm docstring có sẵn còn thiếu trong tệp (R-01, audit).
+- **[4 TEST CHẶN TÁI PHÁT]** chính test đó, chạy `--rep 2` trong một tiến trình.
+  5. **Bằng chứng** (`repro6.log`): bản gốc `--rep 2`: `3 failed, 3 passed`, mã 1; bản sửa `--rep 2` cả tệp: `24 passed`, mã 0.
+- **[6 PHẠM VI]** không còn test nào khác giữ đối tượng `Column` cấp module trong `parametrize`.
+- **[7 COMMIT]** `0b432f4`, `6fbdd5a` (docstring) — Prompt B0-03.
+
+## FIX-147 cho B2-05b — dòng nợ ghi đỏ ~1/4 lượt dưới `-n 6`; không tái hiện được (C06: 3 giả thuyết; 0/22 lượt cổng đầy đủ từ 09-29 + 3 junit) (NO-264)
+
+- **[1 TRIỆU CHỨNG]** dòng nợ ghi đỏ ~1/4 lượt dưới `-n 6`; không tái hiện được (C06: 3 giả thuyết; 0/22 lượt cổng đầy đủ từ 09-29 + 3 junit).
+- **[2 NGUYÊN NHÂN GỐC]** chưa có. Phân 2 giữ / 3 bị 503 là tất định (`apps/api/quality/processing.py:83-93`).
+- **[3 SỬA]** gộp các assert `:108-114` thành một khẳng định trên `(sorted (status, Retry-After, code) của 3 bên bị từ chối, sorted status của 2 bên được nhận, gate.calls, sorted counts)`; thông điệp khi đỏ in `(status, Retry-After, thân[:300])` của cả 5 lời gọi. Điều kiện giữ nguyên; helper `_summary` đọc `code` an toàn khi thân không phải object JSON.
+- **[4 TEST]** `test_quality_set_corners__queue_capacity[1|2]`.
+  5. **Bằng chứng** (`repro7.log`): `--rep 5 -n 4`: 15 passed, mã 0. Minh hoạ đỏ (bản chép, `quality_workers=1`): `AssertionError: [(503, '2', '{"code": "DEPENDENCY_UNAVAILABLE", …}'), …]` kèm diff 4×503 so với 3×503, mã 1.
+- **[6 ĐỀ XUẤT CHO DÒNG NỢ]** `❌` — xem `tai-hien-NO-264.md` (C06b).
+- **[7 COMMIT]** `7aef2e8`, `2c4cd0c` (độ dài dòng) — Prompt B2-05b.
+
+## FIX-148 cho B0-05 — tham số parametrize sinh từ đồng hồ lúc thu thập (NO-266) + docstring R-01 thiếu
+
+- **[1 TRIỆU CHỨNG]** `packages/messaging/tests/test_streams.py:154` `parametrize` chứa `datetime.now(UTC)`: giá trị khác nhau giữa các lần thu thập; đổi sang tham số vô hướng là xdist bỏ cả lượt ("Different tests were collected").
+- **[2 TÁI HIỆN]** e5473c7: `run.sh shell < C05/do-do2.sh` → `pytest tools/tests/test_collection_stable.py` mã 1, `assert [{'at': datet...}] == [{'at': datet...}]`.
+- **[3 BẰNG CHỨNG]** test_streams.py:154 (cũ); do-truoc.log.
+- **[4 KHOANH VÙNG]** Sửa: packages/messaging/tests/test_streams.py, packages/testing/fixtures/messaging.py (chỉ docstring 4 fixture + `factory`; KHÔNG chạm celery_test_app — vùng của C06). Cấm: packages/messaging/{redis,locks}.py.
+- **[5 SỬA NHỎ NHẤT]** Hằng `datetime(2026, 1, 1, tzinfo=UTC)`; thêm docstring R-01 cho 20 test thiếu trong test_streams.py và streams_client/safe_client/cache_client/event_bus/factory (theo điều phối + audit).
+- **[6 TEST CHẶN TÁI PHÁT]** tools/tests/test_collection_stable.py::test_streams_parametrize__same_values_across_collections — đỏ (mã 1) trên e5473c7, xanh (cov.log, mã 0).
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 đạt (verify14.log, HEAD 1308068); cov.sh mã 0; commit 971ae1f, 959742d.
+
+## FIX-149 cho B0-03 — lượt dọn db_url mở kết nối mới mỗi test và đặt setval trước khi nạp seed (NO-267, NO-277, NO-279)
+
+- **[1 TRIỆU CHỨNG]** Teardown ~33 % tổng thời gian test (-n 4: 113,8 s / 348 s); `db_url` 47 ms/lượt teardown; bảng seed có Identity sẽ đụng khoá chính sau lượt dọn.
+- **[2 TÁI HIỆN]** e5473c7: test tạm gọi 10 lần `_on_reset_connection` → `CONNECTS 10 ms/lượt 103.9` (do-truoc.log); NO-277: test_reset_plan trên db.py cũ → mã 1 `UniqueViolationError … Key (id)=(1) already exists` (do-sau2.log).
+- **[3 BẰNG CHỨNG]** db.py:125-153 cũ (`create_async_engine` + `dispose` mỗi lượt); db.py:174-181 cũ (`setval(…,1,false)` trong `_RESET_SQL`, chạy trước `INSERT … SELECT` seed); số đo fixture: db_url 51,74 s/1096 → 15,07 s/1096.
+- **[4 KHOANH VÙNG]** Sửa: packages/testing/fixtures/db.py, packages/db/tests/test_reset_plan.py (mới), packages/db/tests/test_fixture_timings.py. Cấm: changes/FIX-112.md (chú thích "một DB mỗi test" còn sai — ghi lệch).
+- **[5 SỬA NHỎ NHẤT]** `SharedDb` (url, plan, vòng sự kiện riêng không đặt làm current, engine pool_size=1 + pool_pre_ping) — `db_url` gọi `shared_db.reset()`; `_RESEQUENCE_SQL` chạy sau nạp seed, `setval(seq, COALESCE(max(col),0)+1, false)`; docstring ghi phạm vi dọn (chỉ dòng). `shared_db` đổi kiểu trả (tuple → SharedDb) — không caller nào khác. `test_fixture_timings` đổi nhãn đường cũ + đo đường mới. Không thêm cờ bẩn (NO-279: quyet-dinh.md P-5).
+- **[6 TEST CHẶN TÁI PHÁT]** packages/db/tests/test_reset_plan.py::test_reset_plan__identity_counter_follows_reloaded_seed (đỏ mã 1 → xanh), ::test_shared_db_reset__reuses_one_connection (đỏ: chưa có SharedDb, lỗi thu thập mã 4 + số đo 10/10 kết nối → xanh).
+- **[7 NGHIỆM THU]** verify 1–4 đạt; cov.sh mã 0, db.py 99 % (nhánh 236->243 thiếu); -n 4 3 thư mục: 3002 passed, teardown 113,8 → 47,5 s, tường 115 → 108 s (n4-sau.log); commit bcb9572, 15d1045.
+
+## FIX-150 cho B0-01 — container dịch vụ mồ côi khi pytest bị giết cứng (NO-281), docker chưa khai trong nhóm dev (NO-282), chú thích O_APPEND (NO-277)
+
+- **[1 TRIỆU CHỨNG]** Ryuk tắt (FIX-114) → phiên bị giết để lại container; `docker` nhập trực tiếp mà chỉ có qua testcontainers; lập luận PIPE_BUF sai đối tượng.
+- **[2 TÁI HIỆN]** e5473c7: `pytest tools/tests/test_dev_dependencies.py` mã 1 (`'docker==7.2.0' in dev` sai); `pytest tools/tests/test_orphan_sweep.py` mã 2 (ImportError OWNER_LABEL — không có nhãn chủ/đường dọn) (do-truoc.log).
+- **[3 BẰNG CHỨNG]** services.py:57 `ryuk_disabled = True`; pyproject.toml:32-49; test_parallel_fixtures.py:8-10; hostname container verify = 12 hex đầu id (do-truoc.log).
+- **[4 KHOANH VÙNG]** Sửa: packages/testing/fixtures/services.py, pyproject.toml (1 dòng dev), uv.lock (run.sh lock — chỉ 2 dòng khai báo, không đổi bản gói), tools/tests/{test_orphan_sweep,test_dev_dependencies,test_collection_stable}.py (mới), tools/tests/test_parallel_fixtures.py.
+- **[5 SỬA NHỎ NHẤT]** `_start()` — mọi `.start()` của services.py đi qua: gắn nhãn `appback.test-owner=<hostname>:<pid điều khiển>` (gộp `_kwargs`), `sweep_orphans()` một lần/tiến trình: xoá khi cùng hostname mà pid chết, hoặc hostname 12-hex mà container không chạy; còn lại giữ (win32, nhãn hỏng, máy lạ → giữ). `docker==7.2.0` (ghim theo uv.lock, chủ ý theo DEBT; nâng docker phải sửa pyproject + lock cùng lượt).
+- **[6 TEST CHẶN TÁI PHÁT]** tools/tests/test_orphan_sweep.py::test_sweep_orphans__removes_dead_owner_keeps_live, ::test_session_owner__xdist_worker_points_at_controller, ::test_start__labels_service_container_with_owner (Docker thật); tools/tests/test_dev_dependencies.py::test_dev_group__declares_docker_pinned_to_lock — đỏ → xanh.
+- **[7 NGHIỆM THU]** verify 1–4 đạt; cov.sh mã 0, services.py 99 % (dòng 93 nhánh PermissionError — chạy root); -n 4: 0 container mang nhãn chủ còn sót sau phiên; commit 9c1e4c3, 89d40ab, 1308068.
+
+## FIX-154 cho B6-01 — test K36 pool một kết nối chưa gắn perf
+
+- **[1 TRIỆU CHỨNG]** apps/api/admin_ml_registry/tests/test_upload.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/api/admin_ml_registry/tests/test_upload.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/api/admin_ml_registry/tests/test_upload.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Gắn @pytest.mark.perf cho test_upload_version_keeps_the_pool_free_while_streaming (đã in số đo bằng logging). Độ phủ luồng 64 MiB do test không-perf khác gánh (test_upload.py:464).
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/api/admin_ml_registry/tests/test_upload.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-155 cho B0-06 — test broker chết chưa gắn perf
+
+- **[1 TRIỆU CHỨNG]** apps/api/core/tests/test_routing.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/api/core/tests/test_routing.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/api/core/tests/test_routing.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Gắn perf cho test_response_is_not_blocked_by_a_dead_broker (log sẵn). Đo: dead_broker_elapsed 0.136s.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/api/core/tests/test_routing.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-156 cho B2-04 — test K36/K28 chưa perf, tên khớp mẫu case
+
+- **[1 TRIỆU CHỨNG]** apps/api/drawings/tests/test_upload_flow.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/api/drawings/tests/test_upload_flow.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/api/drawings/tests/test_upload_flow.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Đổi tên bỏ hậu tố __K36/__K28 (steps.py:218 làm 5b hỏng khi perf mang mã case) → _k36/_k28, gắn perf, print → logging. Đo: K36 0,020 s (trần 1 s), K28 1,34 s (trần 15 s).
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/api/drawings/tests/test_upload_flow.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-157 cho B2-07 — NO-246: test 1000x20 điểm khẳng định < 2 s chưa perf
+
+- **[1 TRIỆU CHỨNG]** apps/api/measurements/tests/test_routes_read_delete.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/api/measurements/tests/test_routes_read_delete.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/api/measurements/tests/test_routes_read_delete.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Gắn perf, thêm _log.info số đo. Đo 0,896 s (trần 2,0 s giữ nguyên).
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/api/measurements/tests/test_routes_read_delete.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-158 cho B4-01 — NO-272: 6 test S07 (mã case) khẳng định elapsed <= trần ở bước 5 (progress ×4 + notifications ×2, cùng chủ B4-01)
+
+- **[1 TRIỆU CHỨNG]** apps/api/streams/tests/test_streams_open_progress.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/api/streams/tests/test_streams_open_progress.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/api/streams/tests/test_streams_open_progress.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Mỗi module: hàm _s07_close_elapsed(kịch bản) dùng chung; test case __S07* chỉ chạy kịch bản, log số đo, giữ wait_closed(WAIT_S) rộng (không đóng thì TimeoutError → đỏ); trần chuyển sang test perf tham số hoá (tên không mã case) giữ nguyên trần cũ (1,0/1,5 s). Đo: 0,18–0,37 s; disabled_user 1,013 s (trần 1,5 s).
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/api/streams/tests/test_streams_open_progress.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-159 cho B7-01 — wait_until 1,5 s sát TTL cache 1 s
+
+- **[1 TRIỆU CHỨNG]** apps/api/telemetry/tests/test_feature_flags_route.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/api/telemetry/tests/test_feature_flags_route.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/api/telemetry/tests/test_feature_flags_route.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Nâng hạn chờ 1,5 → 3,0 s (như auth/test_verifier.py). Chờ rộng, không phải trần đo; không đổi khẳng định.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/api/telemetry/tests/test_feature_flags_route.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-160 cho B5-01 — NO-268: test_export_onnx_deterministic 8–10 s kéo đuôi lượt loadfile
+
+- **[1 TRIỆU CHỨNG]** apps/ml/runtime/tests/test_export.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/ml/runtime/tests/test_export.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/ml/runtime/tests/test_export.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Hai tiến trình xuất chạy song song (Popen + communicate) thay vì tuần tự; vẫn hai tiến trình lạnh, cùng khẳng định SHA. test_ocr (45,9 s đo) không sửa được trong whitelist: ngữ nghĩa tổng hợp 10 seed; đuôi thật cần xếp tệp lên đầu hàng đợi (tools/verify) → NO-268 chưa đóng hết.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/ml/runtime/tests/test_export.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-161 cho B6-02 — NO-278: pytestmark perf cấp tệp, số đo chưa in bằng logging
+
+- **[1 TRIỆU CHỨNG]** apps/worker/datasets/tests/test_perf.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** apps/worker/datasets/tests/test_perf.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: apps/worker/datasets/tests/test_perf.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Bỏ pytestmark; perf chỉ cho test twenty_large_pages (+ _log.info 1,40 s, trần 20 s); test K22/K36 checkedout()==0 về bước 5; viết lại docstring.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[apps/worker/datasets/tests/test_perf.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-162 cho B0-03 — 3 test J09 (mã case) khẳng định elapsed ở bước 5
+
+- **[1 TRIỆU CHỨNG]** packages/db/tests/test_hooks.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** packages/db/tests/test_hooks.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: packages/db/tests/test_hooks.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Bỏ trần đồng hồ dư: timeout chứng minh bằng record after_commit_failed error bắt đầu bằng TimeoutError (hooks.py:131,139,149); does_not_block_event_loop giữ assert calls == [] (đã chứng minh vòng không bị chặn). Không cần test perf: case J09 không có trần số.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[packages/db/tests/test_hooks.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-163 cho B0-01 — thiếu lưới chặn tái phát cho trần đồng hồ chưa perf
+
+- **[1 TRIỆU CHỨNG]** tools/tests/test_perf_marks.py: khẳng định trần đồng hồ tường chạy ở bước 5 (`pytest-xdist -n 6`, ~1/6 CPU mỗi tiến trình) — có thể đỏ giả khi tải (BE-00 §12; DEBT NO-272/NO-246/NO-268/NO-278). `tools/tests/test_perf_marks.py` đỏ trên cây cũ (mã thoát 1, `red.log`).
+- **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < red.sh` trên commit e5473c7 + test quét; xem `tai-hien-NO-272.md`.
+- **[3 BẰNG CHỨNG]** tools/tests/test_perf_marks.py (dòng trong `tai-hien-NO-272.md`); BE-00.md:479-482; tools/verify/steps.py:218-246 (`perf_case_named`).
+- **[4 KHOANH VÙNG]** Sửa: tools/tests/test_perf_marks.py duy nhất. Cấm: mã sản phẩm, conftest, tools/verify.
+- **[5 SỬA NHỎ NHẤT]** Test quét AST 15 tệp (trần cận trên thời gian thiếu perf / perf mang mã case — import _CASE_IN_NAME_RE từ steps.py / pytestmark perf cấp tệp) + tự kiểm 5 loại lỗi.
+- **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_perf_marks.py::test_scanned_files_mark_wall_clock_ceilings_perf[tools/tests/test_perf_marks.py]` — đỏ → xanh (`red.log` → `xanh.log`).
+- **[7 NGHIỆM THU]** `xanh.log` (test không-perf + perf mã thoát 0); `steps1234.log` bước 1-4; không đổi hợp đồng, không đổi trần; commit `fix(...)` + trailer Prompt/Fix.
+
+## FIX-167 cho B5-03 — test M04 vá ML_DEVICE=cuda làm bẩn cache get_ml_settings của cả tiến trình (NO-312)
+
+- **[1 TRIỆU CHỨNG]** test sau trong cùng worker thấy ml_device=cuda; B6-03b pre-6.log 6 test runner đỏ ML_DEVICE_UNAVAILABLE
+- **[2 TÁI HIỆN]** pytest -p no:randomly text/test_tasks.py objects/test_tasks.py -k 'M04 or not_pinned' → mã thoát 1 AssertionError 'cuda' != 'cuda' (cây fix/debt-02-w2-prep; chi tiết: tai-hien-NO-312.md, red.log)
+- **[3 BẰNG CHỨNG]** settings.py:42-45 @cache; objects/test_tasks.py:367, text/test_tasks.py:310, ml_eval/tests/test_tasks.py:280 (ngoài whitelist) đều setenv cuda; monkeypatch không trả cache
+- **[4 KHOANH VÙNG]** Sửa: apps/ml/objects/tests/test_tasks.py, packages/testing/fixtures/ml_settings.py (mới) · CẤM sửa: file chủ khác (K27), DEBT.md, docs/fixes.md
+- **[5 SỬA NHỎ NHẤT]** Fixture autouse toàn cục xoá cache trước/sau mọi test (conftest gốc tự nạp). Không đổi hợp đồng.
+- **[6 TEST CHẶN TÁI PHÁT]** test_get_ml_settings__not_pinned_by_a_previous_test
+- **[7 NGHIỆM THU]** Test ở [6] đỏ → xanh (log trong tai-hien-NO-312.md/cov.log); verify bước 1–4 + test đích; commit fix(...) + Prompt: B5-03, Fix: FIX-167
+
+## FIX-168 cho B6-03b — support.py định nghĩa lại fixture ml_settings_cache trùng bản dùng chung (R-02, NO-312)
+
+- **[1 TRIỆU CHỨNG]** Trùng lặp định nghĩa fixture sau khi có bản toàn cục
+- **[2 TÁI HIỆN]** đọc mã (cây fix/debt-02-w2-prep; chi tiết: tai-hien-NO-312.md, red.log)
+- **[3 BẰNG CHỨNG]** support.py:36-49 trùng packages/testing/fixtures/ml_settings.py
+- **[4 KHOANH VÙNG]** Sửa: apps/ml/training_runner/tests/support.py · CẤM sửa: file chủ khác (K27), DEBT.md, docs/fixes.md
+- **[5 SỬA NHỎ NHẤT]** Thay thân fixture bằng nhập lại (test_runner/test_runtime nhập tên này từ support).
+- **[6 TEST CHẶN TÁI PHÁT]** Không thêm test riêng: bao phủ bởi test_get_ml_settings__not_pinned_by_a_previous_test + test training_runner chạy xanh
+- **[7 NGHIỆM THU]** Test ở [6] đỏ → xanh (log trong tai-hien-NO-312.md/cov.log); verify bước 1–4 + test đích; commit fix(...) + Prompt: B6-03b, Fix: FIX-168
+
+  C08b: support.py không còn nhập lại fixture; test_runner.py/test_runtime.py thôi nhập `ml_settings_cache` (autouse toàn cục lo); bỏ `reset_ml_settings_cache()` tay ở test_runtime.py (mỗi test gọi `m04.run` đúng một lần nên thừa); docstring :345 trỏ fixture toàn cục. Kiểm: b-verify.log bước 1–4 mã thoát 0; training_runner 86 passed mã thoát 0 (b-red.sh).
+  ml_eval/tests/test_tasks.py:280: KHÔNG phải polluter — `context_of` thay `infer_context` bằng context riêng nên `get_ml_settings` không bị gọi; vô hiệu fixture rồi chạy ml_eval M04 + test nạn nhân vẫn `2 passed` (mã thoát 0), không cần sửa. Đính chính nhận định ở C08.
+
+## FIX-169 cho B2-04 — signer() ăn kho cache cấp tiến trình của test khác (NO-265)
+
+- **[1 TRIỆU CHỨNG]** 15 test floors chỉ xanh khi chạy sau drawings; signer() dựng kho theo env của test đầu tiên rồi nhớ
+- **[2 TÁI HIỆN]** pytest -p no:randomly drawings/tests/test_drawings.py -k signer → mã thoát 1 (bản cũ: DID NOT RAISE; bản test cuối: stat None, xem red265b.log) (cây fix/debt-02-w2-prep; chi tiết: tai-hien-NO-265.md, red.log)
+- **[3 BẰNG CHỨNG]** urls.py:20-26 @cache _default_signer; floors/lookup.py:26-36 → drawings/view_parts.py:40 gọi signer() cho mọi dự án có tầng, ~60 tệp test ngoài whitelist không cài kho → fail-closed bị bác
+- **[4 KHOANH VÙNG]** Sửa: apps/api/drawings/urls.py, apps/api/drawings/tests/test_drawings.py, packages/testing/fixtures/signer.py · CẤM sửa: file chủ khác (K27), DEBT.md, docs/fixes.md
+- **[5 SỬA NHỎ NHẤT]** reset_signer_cache() + fixture autouse signer_cache. Không nhánh APP_ENV=test trong mã sản phẩm; không đổi chữ ký.
+- **[6 TEST CHẶN TÁI PHÁT]** test_signer__default_store_is_not_inherited_from_a_previous_test
+- **[7 NGHIỆM THU]** Test ở [6] đỏ → xanh (log trong tai-hien-NO-265.md/cov.log); verify bước 1–4 + test đích; commit fix(...) + Prompt: B2-04, Fix: FIX-169
+
+## FIX-170 cho B0-10 — README kiểm ml.env dùng danh sách cấm hẹp (NO-204 nửa 2)
+
+- **[1 TRIỆU CHỨNG]** Lệnh kiểm in dòng theo danh sách cấm, bỏ lọt biến lạ
+- **[2 TÁI HIỆN]** pytest deploy/scripts/tests/test_deploy.py -k readme_ml_env → mã thoát 1 (cây fix/debt-02-w2-prep; chi tiết: tai-hien-NO-204.md, red.log)
+- **[3 BẰNG CHỨNG]** README.md:54 grep -E '^(SECRET_KEY|…)'; mẫu deploy/tests/test_env_example.py:216 dùng danh sách cho phép ML_/METRICS_. Nửa 1 (test_settings.py thiếu reset) ➖: storage_env_clean autouse :20-27
+- **[4 KHOANH VÙNG]** Sửa: deploy/scripts/README.md, deploy/scripts/tests/test_deploy.py · CẤM sửa: file chủ khác (K27), DEBT.md, docs/fixes.md
+- **[5 SỬA NHỎ NHẤT]** grep -vE '^(#|\$|ML_|METRICS_)'
+- **[6 TEST CHẶN TÁI PHÁT]** test_readme_ml_env_check__uses_allowlist
+- **[7 NGHIỆM THU]** Test ở [6] đỏ → xanh (log trong tai-hien-NO-204.md/cov.log); verify bước 1–4 + test đích; commit fix(...) + Prompt: B0-10, Fix: FIX-170
+
+## FIX-171 cho B5-01 — scan() bỏ tệp test nên import ultralytics trần tái sinh NO-322 (NO-323)
+
+- **[1 TRIỆU CHỨNG]** import ultralytics trần trong test vá PIL.Image.open toàn tiến trình, hỏng tuỳ xếp worker
+- **[2 TÁI HIỆN]** pytest apps/ml/runtime/tests/test_imports.py → mã thoát 1 (red323.log) (cây fix/debt-02-w2-prep; chi tiết: tai-hien-NO-323.md, red.log)
+- **[3 BẰNG CHỨNG]** test_imports.py: scan() 'if /tests/ not in rel'; H-02 thiếu docstring; H-03 tuple thiếu ultralytics_import
+- **[4 KHOANH VÙNG]** Sửa: apps/ml/runtime/tests/test_imports.py · CẤM sửa: file chủ khác (K27), DEBT.md, docs/fixes.md
+- **[5 SỬA NHỎ NHẤT]** scan() xét cả test: ultralytics cho phép khi tệp nhập prepare_ultralytics/import_ultralytics; luật pickle/torch.load chỉ mã sản phẩm; docstring; thêm ultralytics_import
+- **[6 TEST CHẶN TÁI PHÁT]** test_scan__flags_bare_ultralytics_in_test_files
+- **[7 NGHIỆM THU]** Test ở [6] đỏ → xanh (log trong tai-hien-NO-323.md/cov.log); verify bước 1–4 + test đích; commit fix(...) + Prompt: B5-01, Fix: FIX-171
+
+## FIX-172 cho B2-03 — test đếm SQL của `view_parts` chỉ xanh nhờ `_default_signer` do test khác làm ấm (NO-265)
+
+- **[1 TRIỆU CHỨNG]** Sau FIX-169 (cache `signer()` dọn quanh mỗi test), `apps/api/floors/tests/test_view_parts.py` không qua `api_env` nên không có `STORAGE_*`; `load_project_floors` ký URL bản vẽ qua `drawings.urls.signer()` và hỏng khi chạy lẻ.
+- **[2 TÁI HIỆN]** Cụm C08 (W2/C08: `tai-hien-NO-265.md`, `quyet-dinh.md` P-1): `floors/lookup.py:26-36` → `drawings/view_parts.py:40` gọi `signer()` cho mọi dự án có tầng; test chỉ xanh khi chạy sau test drawings.
+- **[3 BẰNG CHỨNG]** `quyet-dinh.md` C08 P-1; commit `d3c8838` (trailer `Prompt: B2-03`, `Fix: FIX-172`). Khối FIX này do việc gộp M soạn từ commit và `quyet-dinh.md` (cụm không để lại tệp `FIX-172.md`).
+- **[4 KHOANH VÙNG]** `apps/api/floors/tests/test_view_parts.py` (B2-03), chỉ test.
+- **[5 SỬA NHỎ NHẤT]** Fixture autouse `_signer` khai thẳng phụ thuộc `drawing_signer`, cùng khuôn `test_lookup.py`/`test_service.py`; không đổi mã sản phẩm.
+- **[6 TEST CHẶN TÁI PHÁT]** Các test của `test_view_parts.py` chạy lẻ (không còn dựa vào cache tiến trình), cùng `test_signer__default_store_is_not_inherited_from_a_previous_test` của FIX-169.
+- **[7 NGHIỆM THU]** Cụm C08: verify bước 1–4 + test đích (`W2/C08/verify1234*.log`, `cov*.log`); cổng đầy đủ ở việc gộp M.
+
+## FIX-173 cho B5-06a — đo RSS sai tiến trình (NO-339), J01 không qua đường gửi thật (NO-218), J06 khẳng định rỗng và dọn test (NO-295)
+
+- **[1 TRIỆU CHỨNG]** Bước 5b tích hợp W1: `ru_maxrss 4616168 KiB > trần 1572864 KiB` ở `test_prepare_page_40mp_stays_under_memory_ceiling`
+  (mã thoát 1, `W1/integ-verify-2.log`). Review B5-06a P2-01: J06 `walls["model"] != version.id` luôn đúng. NO-218: task
+  `pipeline.orchestrate.start` "chưa ai khai".
+- **[2 TÁI HIỆN]** e5473c7: `bash tools/verify/run.sh shell < W2/C14/repro.sh` — con béo 1,8 GiB rồi test 40 MP cùng tiến trình → đỏ;
+  đột biến "ghim đè" → J06 cũ vẫn xanh; J01 xanh (task đã được khai ở c06c400).
+- **[3 BẰNG CHỨNG]** `tests/test_start_runtime.py:165` đọc `RUSAGE_CHILDREN` (đỉnh mọi con đã reap); `tests/test_start_core.py:256` so dict với str;
+  `tasks.py:47` (c06c400) đã khai task; J01 gửi bằng `apply_async` (`test_start_cases.py:178`) nên không kiểm tên gửi.
+- **[4 KHOANH VÙNG]** `apps/worker/pipeline_orchestrate/**` (B5-06a). Không chạm `packages/testing/**`, `tools/**`, `DEBT.md`.
+- **[5 SỬA NHỎ NHẤT]** Con tự đo `RUSAGE_SELF` và gửi qua hàng đợi; J01 dựa vào thông điệp `send_start_after_commit` (khẳng định trên `pipeline.cpu`
+  rồi worker thật); J06 so `load_pins` với `active_versions` lúc giao lần một; test_pins ghim bộ khác lần hai; `tests/_helpers.py`
+  gom helper/hằng trùng; xoá `reset_orchestrate_settings_cache`; trường settings chữ thường + `MIB: Final`; `PreparedPage`
+  đối số tên; `preprocess._write_page` → `_put_rectified_page`. Không đổi hợp đồng (tên task/hàng/payload/env giữ nguyên).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_prepare_page_40mp_stays_under_memory_ceiling` (sau con béo), `test_orchestrate_pipeline_start__J06`,
+  `test_pin_models_second_call_returns_false`, `test_orchestrate_pipeline_start__J01_smoke` — đỏ ở cây cũ/đột biến, xanh sau sửa
+  (`tai-hien-NO-*.md`, `repro.log`, `cov.log`).
+- **[7 NGHIỆM THU]** verify bước 1–4 (`verify14.log`); gói: 59 passed; độ phủ `preprocess.py` 100%/100%, `settings.py` 100%; commit fce473e
+  `fix(pipeline-orchestrate): …`, trailer `Prompt: B5-06a`, `Fix: FIX-173`. Bước 5–8: cổng đầy đủ ở việc gộp M.
+
+- **[C14b — NO-295 P3-04]** commit c2489b7 `fix(pipeline): assert the 5 s start smoke ceiling in a perf test`: test `perf` mới
+  `test_orchestrate_start_smoke_stays_under_ceiling` dùng chung đường `_run_smoke` với `__J01_smoke`, khẳng định ≤ 5 s (B5-06a [8], trần đặc tả).
+  Số đo 0,320 s (perf), 0,299 s (smoke), cả hai mã thoát 0 (`perf14.log`); verify bước 1–4 đạt (`verify14b.log`). Dòng `time.sleep(0.05)` trong
+  diff là vòng chờ có sẵn của smoke, chỉ dời vào `_run_smoke`, không phải vòng chờ mới.
