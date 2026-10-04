@@ -2,7 +2,7 @@
 # Ảnh web: nginx không root đón front cho SPA AppFront + /api cùng origin
 # (BE-00 §8, W19). Build context = gốc repo; build-context phụ "appfront" do
 # deploy/docker/web-context.sh xuất.
-FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS build
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS build
 WORKDIR /src
 COPY --from=appfront . .
 # Ảnh node không còn kèm corepack (đo: node:26-bookworm-slim = v26.9.0, npm
