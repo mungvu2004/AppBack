@@ -27,7 +27,7 @@ from apps.api.access.activity import record_activity
 from apps.api.access.kinds import ActivityKind
 from apps.api.auth.sessions import bump_token_version, revoke_sessions
 from apps.api.auth_recovery.tokens import InvitationWindow, issue_token, latest_invitations, revoke_tokens
-from apps.api.me.avatar import avatar_url
+from apps.api.me.avatar import avatar_urls
 from apps.api.projects.memberships import (
     count_projects_of_users,
     list_projects_of_user,
@@ -222,15 +222,14 @@ def _admin_view(user: User, *, count: int, invite: InvitationWindow | None, avat
 
 
 async def admin_views(db: AsyncSession, storage: ObjectStorage, users: Sequence[User]) -> list[AdminUserOut]:
-    """`AdminUser` cho cả lô bằng **hai** truy vấn gộp (số dự án, lời mời); `avatar_url` không chạm DB."""
+    """`AdminUser` cho cả lô bằng **hai** truy vấn gộp (số dự án, lời mời); `avatar_url` ký cả lô một lần (NO-207)."""
     ids = [user.id for user in users]
     counts = await count_projects_of_users(db, ids)
     invites = await latest_invitations(db, ids)
+    avatars = await avatar_urls(storage, [user.avatar_key for user in users])
     return [
-        _admin_view(
-            user, count=counts[user.id], invite=invites.get(user.id), avatar=await avatar_url(storage, user.avatar_key)
-        )
-        for user in users
+        _admin_view(user, count=counts[user.id], invite=invites.get(user.id), avatar=avatar)
+        for user, avatar in zip(users, avatars, strict=True)
     ]
 
 
