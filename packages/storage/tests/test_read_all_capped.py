@@ -52,8 +52,20 @@ async def test_read_all_capped__missing_key_with_on_missing_is_replaced(local_st
         )
 
 
+def _collects(stmt: ast.AST, name: str) -> bool:
+    """`buf += name` hoặc `chunks.append(name)`: hai dạng gom khúc đọc được vào bộ nhớ."""
+    if isinstance(stmt, ast.AugAssign):
+        return isinstance(stmt.value, ast.Name) and stmt.value.id == name
+    return (
+        isinstance(stmt, ast.Call)
+        and isinstance(stmt.func, ast.Attribute)
+        and stmt.func.attr == "append"
+        and any(isinstance(arg, ast.Name) and arg.id == name for arg in stmt.args)
+    )
+
+
 def _accumulates_open_read(tree: ast.AST) -> list[int]:
-    """Dòng của mọi `async for x in <..>.open_read(..)` có thân `buf += x` (khuôn gom-tới-trần)."""
+    """Dòng của mọi `async for x in <..>.open_read(..)` có thân `buf += x` hay `chunks.append(x)`."""
     hits: list[int] = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.AsyncFor) and isinstance(node.target, ast.Name)):
@@ -61,10 +73,7 @@ def _accumulates_open_read(tree: ast.AST) -> list[int]:
         call = node.iter
         if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr == "open_read"):
             continue
-        if any(
-            isinstance(stmt, ast.AugAssign) and isinstance(stmt.value, ast.Name) and stmt.value.id == node.target.id
-            for stmt in ast.walk(node)
-        ):
+        if any(_collects(stmt, node.target.id) for stmt in ast.walk(node)):
             hits.append(node.lineno)
     return hits
 
