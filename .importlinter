@@ -193,3 +193,17 @@ source_modules =
     tools
 forbidden_modules =
     packages.testing
+
+[importlinter:contract:api-cli-no-web]
+name = apps.api.*.cli không nhập fastapi, starlette, uvicorn (CLI là lệnh một lần trong ảnh api, không dựng web; auth.cli cần argon2 để băm mật khẩu)
+type = forbidden
+ignore_imports =
+    packages.*.tests.** -> packages.testing.**
+    apps.**.tests.** -> packages.testing.**
+unmatched_ignore_imports_alerting = warn
+source_modules =
+    apps.api.*.cli
+forbidden_modules =
+    fastapi
+    starlette
+    uvicorn
