@@ -17,11 +17,11 @@ from packages.messaging.schedules import schedule_entries
 from packages.storage.keys import avatar as avatar_key_of
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 
 
 def _ulid(n: int) -> str:
