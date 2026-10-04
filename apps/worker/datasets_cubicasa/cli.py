@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from apps.worker.datasets.tasks import open_storage
-from apps.worker.datasets_cubicasa.importer import ImportReport, import_cubicasa
+from apps.worker.datasets_cubicasa.importer import SOURCE_LICENSE, ImportReport, import_cubicasa
 from apps.worker.datasets_cubicasa.settings import CubiCasaSettings
 from packages.core.clock import SystemClock
 from packages.db.engine import create_engine, create_sessionmaker
@@ -57,8 +57,9 @@ def _write_counts(label: str, counts: Mapping[str, int]) -> None:
 
 
 def _write_report(report: ImportReport) -> None:
-    """In toàn bộ báo cáo lệnh: phiên bản, split, mẫu bỏ, nhánh ảnh, phân bố, tên đồ lạ ([2])."""
+    """In toàn bộ báo cáo lệnh: phiên bản, giấy phép nguồn, split, mẫu bỏ, nhánh ảnh, phân bố, tên đồ lạ ([2])."""
     sys.stdout.write(f"version: {report.version_id or '-'} ({report.outcome})\n")
+    sys.stdout.write(f"license: {SOURCE_LICENSE}\n")
     _write_counts("splits", report.split_counts)
     _write_counts("skipped", report.skipped)
     _write_counts("branches", report.branches)
