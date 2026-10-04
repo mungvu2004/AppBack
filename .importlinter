@@ -175,6 +175,8 @@ ignore_imports =
     packages.**.tests.** -> packages.testing.**
     apps.**.tests.** -> packages.testing.**
     tools.tests.** -> packages.testing.**
+    # Không khớp hiện tại là bình thường; giữ cho thư mục test hai cấp dưới `tools/` (BE-00 §2.1).
+    tools.**.tests.** -> packages.testing.**
 unmatched_ignore_imports_alerting = warn
 source_modules =
     packages.core
