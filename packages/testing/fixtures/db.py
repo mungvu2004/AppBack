@@ -79,11 +79,13 @@ def _per_worker(base: str) -> str:
 
 
 def _with_database(url: str, name: str) -> str:
+    """Cùng URL nhưng trỏ sang database `name` (bỏ query/fragment)."""
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, f"/{name}", "", ""))
 
 
 async def _admin(url: str, statements: list[str]) -> None:
+    """Chạy các câu quản trị (AUTOCOMMIT) trên database `postgres` của máy chủ."""
     # Đường connect nhiều nhất của cả bộ test (mỗi test một `CREATE`/`DROP DATABASE`), nên
     # cũng chịu trần cổng thay vì 60 s mặc định của asyncpg (NO-002).
     engine = create_async_engine(
@@ -100,11 +102,13 @@ async def _admin(url: str, statements: list[str]) -> None:
 
 
 def _create_database(url: str, name: str, template: str | None = None) -> None:
+    """Tạo lại database `name` (xoá bản cũ nếu có), tuỳ chọn nhân bản từ `template`."""
     suffix = f' TEMPLATE "{template}"' if template else ""
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)', f'CREATE DATABASE "{name}"{suffix}']))
 
 
 def _drop_database(url: str, name: str) -> None:
+    """Xoá database `name` nếu có, cắt mọi kết nối đang mở."""
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)']))
 
 
@@ -246,7 +250,10 @@ async def _build_reset_plan(url: str) -> list[str]:
         _RESET_SQL,
         # S608: tên bảng không truyền được làm tham số buộc trong SQL, mà `t` đến từ `pg_tables` của
         # chính database này — không phải dữ liệu ngoài; đã bọc `"…"` nên tên lạ cũng chỉ là tên.
-        *(f'INSERT INTO public."{t}" SELECT * FROM "{RESET_SCHEMA}"."{t}"' for t in seeded),  # noqa: S608
+        *(
+            f'INSERT INTO public."{t}" SELECT * FROM "{RESET_SCHEMA}"."{t}"'  # noqa: S608 — tên từ pg_tables
+            for t in seeded
+        ),
         _RESEQUENCE_SQL,
     ]
 
@@ -254,11 +261,13 @@ async def _build_reset_plan(url: str) -> list[str]:
 async def _has_rows(connection: AsyncConnection, table: str) -> bool:
     """Bảng có dòng nào ngay sau `upgrade head` → là dữ liệu gốc của migration, phải nạp lại."""
     # S608: cùng lý do như lượt nạp lại — `table` là tên lấy từ `pg_tables`, không phải input
-    result = await connection.execute(text(f'SELECT EXISTS (SELECT 1 FROM public."{table}")'))  # noqa: S608
+    query = f'SELECT EXISTS (SELECT 1 FROM public."{table}")'  # noqa: S608 — tên từ pg_tables
+    result = await connection.execute(text(query))
     return bool(result.scalar())
 
 
 def _alembic_upgrade(url: str) -> None:
+    """`alembic upgrade head` trên `url`; trả lại `DATABASE_URL` cũ và cache cấu hình sau đó."""
     from alembic import command  # nhập tại chỗ: giữ thời gian thu thập test thấp
 
     previous = os.environ.get("DATABASE_URL")
@@ -341,6 +350,7 @@ def blank_db_url(postgres_url: str) -> Iterator[str]:
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Sessionmaker trên engine riêng của test, nối vào database của `db_url`."""
     # Pool nhỏ: mỗi tiến trình một database dùng chung, Postgres không phải giữ hàng trăm kết nối.
     # Trần bắt tay của đường cổng, không phải 10 s của đường request (NO-036, cùng lý do `_admin`).
     settings = DatabaseSettings(
@@ -355,6 +365,7 @@ async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[Async
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_session(db_sessionmaker: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
+    """Một `AsyncSession` của test, đóng sau test."""
     async with db_sessionmaker() as session:
         yield session
 
