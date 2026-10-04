@@ -82,7 +82,7 @@ def test_real_detector_finds_the_answer_boxes() -> None:
 
 @pytest.mark.perf
 def test_real_detector_page_time() -> None:
-    """Bộ dò thật chạy một trang `render_plan` 1.600 × 1.200 dưới `DETECT_BUDGET_S` ([8]).
+    """Bộ dò thật chạy một trang `render_plan` 1.600x1.200 dưới `DETECT_BUDGET_S` ([8]).
 
     Trần đồng hồ tường nên gắn `perf` (BE-00 §12, NO-343); đo 0,90 / 0,56 / 0,45 s cho seed
     100/101/102 (B5-04), trần 20 s gấp > 20 lần. Độ phủ của `_detect` do test recall gánh.

@@ -56,7 +56,7 @@ REC_WIDTH_STEP_PX: Final = 80
 """`W` làm tròn lên bội số này: vài khổ vào cố định cho ORT tái dùng kế hoạch của phiên."""
 
 REC_MIN_WIDTH_PX: Final = 320
-"""Sàn của `W`, bằng khổ `rec_img_shape` 48 × 320 của PP-OCR: tensor hẹp hơn làm số 0 cuối chuỗi
+"""Sàn của `W`, bằng khổ `rec_img_shape` 48x320 của PP-OCR: tensor hẹp hơn làm số 0 cuối chuỗi
 ngắn đọc thành 8 (`8.000` → `8.008`); đo seed 100-109: 105/122 → 114/122 chữ kích thước (NO-254)."""
 
 MAX_CHARACTERS: Final = 20_000
