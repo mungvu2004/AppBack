@@ -65,6 +65,21 @@ async def test_users_list_users__C01(
     assert not {"invitedAt", "inviteExpiresAt"} & set(rows[1])
 
 
+async def test_users_list_users__invite_bounced(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """NO-150: người `pending` có lời mời bị từ chối vĩnh viễn không hiện `invitedAt`/`inviteExpiresAt`."""
+    admin = await make_admin(db_session)
+    bounced = await make_user(db_session, status="pending", password=None)
+    await seed_token(db_session, user_id=bounced.id, purpose="invite", clock=fake_clock, failed_at=fake_clock.now())
+
+    rows = (await send(api_client, admin, "GET", USERS)).json()["users"]
+    row = next(item for item in rows if item["id"] == bounced.id)
+
+    assert row["status"] == "pending"
+    assert not {"invitedAt", "inviteExpiresAt"} & set(row)
+
+
 async def test_users_list_users__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """`lastActiveAt` luôn có khoá (`null` nếu chưa hoạt động); `avatarUrl`/lời mời vắng khoá khi không có."""
     admin = await make_admin(db_session)
