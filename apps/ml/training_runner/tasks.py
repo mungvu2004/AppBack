@@ -6,6 +6,7 @@ thật chạy ở tiến trình con `apps.ml.training_runner.__main__`, không t
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -24,6 +25,16 @@ from packages.ml_contracts.payloads import TrainingFinishedPayload, TrainJobPayl
 __all__ = ["FINISHED_TASK", "on_failed", "start_training_runner", "subprocess", "sys", "training_redis"]
 
 _log: Final = logging.getLogger(__name__)
+
+_ENV_KEEP: Final = frozenset(
+    {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "LD_LIBRARY_PATH", "APP_ENV", "REDIS_BROKER_URL", "STREAM_MAXLEN"}
+    | {"STORAGE_BACKEND", "STORAGE_LOCAL_ROOT"}
+)
+_ENV_PREFIX: Final = ("PYTHON", "ML_", "TRAINING_", "S3_", "CELERY_", "TASK_", "COVERAGE_", "NVIDIA_", "CUDA_")
+"""Biến con huấn luyện thật sự đọc (`MlEnvSettings`, `MlSettings`, `TrainingRunnerSettings`, `StorageSettings`,
+`MessagingSettings`) cộng nền tiến trình và biến GPU. `COVERAGE_*` để `coverage` đo con; vô hại ở production.
+Cố ý không có `SECRET_KEY*`, `DATABASE_URL`, `SMTP_*`: con không ký URL và không cầm DSN (NO-085, B-21).
+"""
 
 
 def on_failed(payload: TrainJobPayload, code: str) -> None:
@@ -60,6 +71,13 @@ def start_training_runner(payload: TrainJobPayload) -> None:
         client.close()
 
 
+def _child_env() -> dict[str, str]:
+    """Môi trường tối thiểu của con huấn luyện: danh sách cho phép, không thừa hưởng bí mật khác của `ml` (SEC-020)."""
+    env = {name: value for name, value in os.environ.items() if name in _ENV_KEEP or name.startswith(_ENV_PREFIX)}
+    env.setdefault("PYTHONPATH", os.getcwd())
+    return env
+
+
 def _launch(payload: TrainJobPayload, token: str, claim: str, client: SyncRedis) -> None:
     """Khởi chạy tiến trình con rồi ghi stdin (chữ ký chung); hỏng → xoá claim, báo `TRAINING_LAUNCH_FAILED`.
 
@@ -71,7 +89,10 @@ def _launch(payload: TrainJobPayload, token: str, claim: str, client: SyncRedis)
     proc: subprocess.Popen[bytes] | None = None
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "apps.ml.training_runner"], stdin=subprocess.PIPE, start_new_session=True
+            [sys.executable, "-m", "apps.ml.training_runner"],
+            stdin=subprocess.PIPE,
+            start_new_session=True,
+            env=_child_env(),
         )
         # `stdin=PIPE` luôn cho `proc.stdin`; `cast` thay nhánh `None` chết (không phủ được).
         pipe = cast("IO[bytes]", proc.stdin)
