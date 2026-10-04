@@ -184,7 +184,7 @@ def pytest_workers() -> str:
     không chập chờn. `-n 6` nhanh nhất; `-n 8` không nhanh hơn mà chỉ còn chừa ~1,4 GiB cho VM. RAM
     gần như nằm hết ở container `verify-run`: mỗi tiến trình pytest nạp `torch` ~2 GB PSS, còn
     ~10 container dịch vụ cộng lại chỉ ~0,5 GB — nên số tiến trình là số nhân của RAM. Hai cổng
-    cùng lúc (2 × ~8,5 GiB) vẫn vượt VM, ENV §4 giữ "một cổng đầy đủ" (đặt 3 khi phải chạy cạnh).
+    cùng lúc (2 × ~8,5 GiB) vẫn vượt VM, ENV §4 giữ "một cổng đầy đủ" (đặt 3 khi chạy cạnh).
     Giá trị rỗng hay lạ → dùng mặc định chứ không truyền tiếp cho pytest (xdist báo lỗi dùng sai,
     bước 5 hỏng vì cấu hình chứ không vì mã).
     """
