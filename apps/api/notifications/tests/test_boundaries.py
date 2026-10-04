@@ -19,10 +19,10 @@ WORKER_MODULES: Final = ("service", "payload", "messages", "kinds", "settings", 
 
 @pytest.mark.parametrize("module", WORKER_MODULES)
 def test_boundary__worker_modules_import_without_web_libraries(module: str) -> None:
-    """Nhập được khi `fastapi`, `jwt`, `argon2` bị chặn trong `sys.modules` (BE-00 §7 "Hàm worker nhập")."""
+    """Nhập được khi `fastapi`, `starlette`, `uvicorn`, `jwt`, `argon2` bị chặn trong `sys.modules` (BE-00 §7 "Hàm worker nhập")."""
     code = (
         "import sys\n"
-        "for name in ('fastapi', 'jwt', 'argon2'):\n"
+        "for name in ('fastapi', 'starlette', 'uvicorn', 'jwt', 'argon2'):\n"
         "    sys.modules[name] = None\n"
         f"import apps.api.notifications.{module}\n"
     )

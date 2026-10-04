@@ -6,6 +6,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.notifications.schemas import NotificationMarkReadBody
 from apps.api.notifications.tests.support import post_json, remove_member, rows_of, seed_project
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.notifications import make_notification
@@ -125,3 +126,9 @@ async def test_notifications_mark_all_read__C03(api_client: httpx.AsyncClient, d
     user = await make_user(db_session)
     response = await post_json(api_client, user, READ_ALL, {"x": 1})
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
+
+
+def test_notification_mark_read_body__openapi_keeps_bounds() -> None:
+    """NO-253 (3): lược đồ `ids` của #20 phơi `minItems`/`maxItems`/`maxLength` để `openapi.json` giữ ràng buộc."""
+    ids = NotificationMarkReadBody.model_json_schema()["properties"]["ids"]
+    assert (ids["minItems"], ids["maxItems"], ids["items"]["maxLength"]) == (1, 200, 64)
