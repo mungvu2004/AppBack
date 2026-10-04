@@ -159,7 +159,7 @@ async def test_templates_create_template__C01(
 @pytest.mark.parametrize(
     ("body", "field"),
     [
-        (template_body("door"), None),
+        (template_body("door"), "objectKind"),
         (template_body("furniture", fields={"rotationDeg": 360}), "fields.rotationDeg"),
         (template_body("furniture", fields={"rotationDeg": -0.5}), "fields.rotationDeg"),
         (template_body("opening", fields={"sillHeightMm": -1}), "fields.sillHeightMm"),
@@ -203,8 +203,8 @@ async def test_templates_create_template__C02(
     assert response.status_code == 422
     out = response.json()
     assert out["code"] == "VALIDATION"
-    # Union phân biệt: pydantic đặt tên nhánh (`wall.fields.heightMm`) trước đường trường; kind lạ không có `field`.
-    assert ("field" not in out) if field is None else out["field"].endswith(field)
+    # NO-248: `field_of` bỏ tag nhánh union → đường trường không tiền tố; kind lạ trỏ `objectKind`.
+    assert out["field"].endswith(field)
 
 
 @pytest.mark.parametrize(
