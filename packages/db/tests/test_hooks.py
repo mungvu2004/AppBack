@@ -39,6 +39,7 @@ def calls() -> list[str]:
 
 def _append(calls: list[str], name: str) -> Callable[[], None]:
     """Tạo callback đồng bộ ghi `name` vào `calls`, để test quan sát callback có chạy và theo thứ tự nào."""
+
     def callback() -> None:
         """Ghi tên đã gắn vào danh sách `calls`."""
         calls.append(name)
@@ -166,6 +167,7 @@ async def test_on_after_commit__J09_failing_callback_is_logged(
     db_sessionmaker: async_sessionmaker[AsyncSession], caplog: pytest.LogCaptureFixture
 ) -> None:
     """Callback lỗi không làm hỏng commit mà được ghi log `after_commit_failed` kèm tên và lỗi."""
+
     def boom() -> None:
         """Callback luôn ném lỗi để thử đường log lỗi."""
         raise ValueError("broker chết")
@@ -198,6 +200,7 @@ async def test_on_after_commit__J09_rejects_coroutine_function(
     db_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
     """Hàm bất đồng bộ bị từ chối lúc đăng ký vì callback phải là hàm đồng bộ."""
+
     async def send() -> None:
         """Coroutine giả, chỉ để bị `on_after_commit` từ chối."""
         pass
