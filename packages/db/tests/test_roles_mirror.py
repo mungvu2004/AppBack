@@ -6,4 +6,4 @@ from packages.domain import permissions
 
 def test_users_roles__is_the_permissions_mirror() -> None:
     """`packages.db.models.auth.ROLES` chính là `packages.domain.permissions.ROLES`."""
-    assert auth.ROLES is permissions.ROLES
+    assert vars(auth)["ROLES"] is permissions.ROLES
