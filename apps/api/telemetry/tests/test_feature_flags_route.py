@@ -36,6 +36,7 @@ TWO_KEYS = json.dumps({"scene.instanced-walls": True, "export.pdf-vector": False
 
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Xoá `FEATURE_FLAGS` và bộ nhớ đệm cấu hình trước/sau mỗi test để các test không rò trạng thái sang nhau."""
     monkeypatch.delenv("FEATURE_FLAGS", raising=False)
     reset_telemetry_settings_cache()
     yield
@@ -43,6 +44,7 @@ def _reset(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _principal(fake_clock: FakeClock, role: Role) -> Principal:
+    """Dựng principal với vai chỉ định để gọi route bằng header xác thực giả."""
     return Principal(user_id=new_id("usr", fake_clock), session_id=f"sid-{role}", role=role)
 
 
@@ -80,6 +82,7 @@ async def test_telemetry_read_feature_flags__C17_empty(
 async def test_telemetry_read_feature_flags__C17_two_keys(
     api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, fake_principal: Principal
 ) -> None:
+    """C17: hai khoá cấu hình → thân đúng hai khoá, không có giá trị `null`."""
     monkeypatch.setenv("FEATURE_FLAGS", TWO_KEYS)
     reset_telemetry_settings_cache()
     response = await api_client.get(PATH, headers=auth_headers(fake_principal))
@@ -90,16 +93,19 @@ async def test_telemetry_read_feature_flags__C17_two_keys(
 
 
 async def test_missing_authorization_is_401(api_client: httpx.AsyncClient) -> None:
+    """Thiếu header `Authorization` → 401."""
     response = await api_client.get(PATH)
     assert response.status_code == 401
 
 
 async def test_response_is_not_cached(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
+    """Phản hồi mang `Cache-Control: no-store` để trình duyệt không giữ cờ cũ."""
     response = await api_client.get(PATH, headers=auth_headers(fake_principal))
     assert response.headers["cache-control"] == "no-store"
 
 
 async def test_read_increments_metric(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
+    """Mỗi lần đọc cờ tăng bộ đếm `appback_feature_flags_reads_total` thêm 1."""
     reset_registry()
     await api_client.get(PATH, headers=auth_headers(fake_principal))
     await api_client.get(PATH, headers=auth_headers(fake_principal))
@@ -127,6 +133,7 @@ async def test_role_change_applies_within_the_session_cache_ttl(
     await db_session.commit()
 
     async def demoted() -> bool:
+        """Đọc lại cờ; true khi vai mới (`viewer`) đã làm khoá theo vai trả về false."""
         response = await auth_client.get(PATH, headers=me.headers)
         return response.json()["scene.instanced-walls"] is False
 
