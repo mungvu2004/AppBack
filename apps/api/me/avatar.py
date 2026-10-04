@@ -27,7 +27,7 @@ import io
 import os
 import struct
 import weakref
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import cache
@@ -44,7 +44,7 @@ from packages.core.error_codes import (
 )
 from packages.core.errors import ERRORS
 from packages.storage.keys import server_chosen_kind
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, SignRequest
 from packages.storage.sniff import ImageKind, sniff
 
 AVATAR_TYPE_UNSUPPORTED = ERRORS.define("AVATAR_TYPE_UNSUPPORTED", 422)
@@ -237,14 +237,19 @@ async def process_avatar(content_b64: str, mime_type: Literal["image/png", "imag
         return await asyncio.to_thread(_process, content_b64, mime_type)
 
 
-async def avatar_url(storage: ObjectStorage, avatar_key: str | None) -> str | None:
-    """URL `inline` của ảnh đại diện; `None` khi chưa có. Không `stat` (B0-04, K15).
+async def avatar_urls(storage: ObjectStorage, avatar_keys: Sequence[str | None]) -> list[str | None]:
+    """URL `inline` cho cả lô khoá ảnh đại diện, cùng thứ tự; khoá `None` ra `None` (NO-207).
 
-    `kind` suy từ đuôi khoá do server chọn (`keys.server_chosen_kind`) — B1-05 dựng 1.000
-    dòng không gọi mạng.
+    Mọi khoá có giá trị ký trong **một** lời gọi `signed_urls`, nên 1.000 người là một luồng ký chứ
+    không phải 1.000 lượt (B1-05 #38). `kind` suy từ đuôi khoá do server chọn (`keys.server_chosen_kind`).
     """
-    if avatar_key is None:
-        return None
-    kind = server_chosen_kind(avatar_key)
-    signed = await storage.signed_url(avatar_key, disposition="inline", kind=kind)
-    return signed.url
+    present = [key for key in avatar_keys if key is not None]
+    signed = iter(
+        await storage.signed_urls([SignRequest(key, "inline", kind=server_chosen_kind(key)) for key in present])
+    )
+    return [None if key is None else next(signed).url for key in avatar_keys]
+
+
+async def avatar_url(storage: ObjectStorage, avatar_key: str | None) -> str | None:
+    """URL `inline` của ảnh đại diện; `None` khi chưa có. Không `stat` (B0-04, K15)."""
+    return (await avatar_urls(storage, [avatar_key]))[0]
