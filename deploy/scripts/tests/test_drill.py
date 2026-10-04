@@ -85,3 +85,35 @@ def test_drill_storage_is_parameter_not_hardcoded__no_c16b(tmp_path: Path) -> No
     result = run_script(SCRIPT, [], bin_dir=_bin_dir(tmp_path), env={"FAKE_LOG": str(log), "DRILL_STORAGE": "bogus"})
     assert result.returncode == 2, result.stderr
     assert "DRILL_STORAGE" in result.stderr
+
+
+# `docker` giả đọc cạn stdin như `docker compose exec -T` thật (W10/C47: lệnh docker trong vòng
+# `while read … <<< …` nuốt phần còn lại của danh sách, ảnh chụp chỉ còn dòng đầu).
+_FAKE_DOCKER_SNAPSHOT = r"""
+cat >/dev/null
+case "$*" in
+  *information_schema*) printf 'alpha\nbeta\ngamma\n' ;;
+  *"count(*)"*) printf '7\n' ;;
+  *find*) printf 'local/local/projects/p/a.bin\nlocal/local/projects/p/b.bin\nlocal/local/projects/p/c.bin\n' ;;
+  *sha256sum*) printf 'abc123  -\n' ;;
+esac
+"""
+
+
+def test_drill_snapshot_lists_every_table_and_object__w10(tmp_path: Path) -> None:
+    """`snapshot` chụp ĐỦ mọi bảng và object kể cả khi `docker` đọc stdin — không thì diễn tập
+    so sánh một bảng một object rồi báo "khớp" giả (FIX-341)."""
+    bin_dir = fake_bin(tmp_path / "bin", {"docker": _FAKE_DOCKER_SNAPSHOT})
+    out = tmp_path / "snap"
+    wrapper = tmp_path / "w.sh"
+    wrapper.write_text(
+        f'source "{SCRIPT.as_posix()}"\ntrap - EXIT\n'
+        f'PG_USER=u PG_DB=d S3_BUCKET_NAME=local APPBACK_STORAGE=local snapshot "{out.as_posix()}"\n',
+        encoding="utf-8",
+    )
+    result = run_script(wrapper, bin_dir=bin_dir, env={"FAKE_LOG": str(tmp_path / "log")})
+    assert result.returncode == 0, result.stderr
+    tables = (out / "tables.tsv").read_text(encoding="utf-8").splitlines()
+    objects = (out / "objects.tsv").read_text(encoding="utf-8").splitlines()
+    assert tables == ["alpha\t7", "beta\t7", "gamma\t7"]
+    assert objects == [f"projects/p/{n}.bin\tabc123" for n in "abc"]
