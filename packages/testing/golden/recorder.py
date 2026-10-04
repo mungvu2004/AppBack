@@ -29,7 +29,7 @@ import httpx
 import pytest
 
 from apps.api.core.openapi import Operation, operations
-from tools.case_gate import split_case_test_name
+from packages.core.case_names import split_case_test_name
 
 SAMPLES_ENV: Final = "CONTRACT_SAMPLES_DIR"
 EVENT_STREAM: Final = "text/event-stream"
@@ -64,7 +64,7 @@ def samples_root() -> Path | None:
 def split_test_name(name: str) -> tuple[str, str, str] | None:
     """`(op, case, gốc tên file)` theo CASE §2.3, hay `None` khi tên không phải test case.
 
-    Tách bằng `split_case_test_name` của `case_gate` (nguồn duy nhất, R-07).
+    Tách bằng `packages.core.case_names.split_case_test_name` (nguồn duy nhất, R-07).
     Hậu tố (`_missing`, `[tham-số]`) thành `<case>_<hậu tố>`, chỉ giữ ký tự an toàn cho tên file.
     """
     parts = split_case_test_name(name)
