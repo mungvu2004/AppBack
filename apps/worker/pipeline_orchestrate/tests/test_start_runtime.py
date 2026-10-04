@@ -193,7 +193,7 @@ def test_peak_rss_kib__ignores_memory_of_the_parent() -> None:
 
     `RUSAGE_SELF.ru_maxrss` giữ mức nước cao qua `execve` nên con rỗng báo ≥ 768 MiB; `VmHWM` thì không.
     """
-    ballast = b"" * PARENT_BALLAST_BYTES
+    ballast = b"\x01" * PARENT_BALLAST_BYTES
     ctx = multiprocessing.get_context("spawn")
     queue: multiprocessing.Queue[int] = ctx.Queue()
     process = ctx.Process(target=_child_report_peak, args=(queue,))
