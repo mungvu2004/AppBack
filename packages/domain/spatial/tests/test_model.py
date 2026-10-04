@@ -1,5 +1,6 @@
 """Ràng buộc mô hình (B3-01 [6], [8]): mỗi luật một ca hỏng và một ca biên đạt; xuất dây không `null`."""
 
+import inspect
 import json
 import unicodedata
 from typing import Any
@@ -21,6 +22,7 @@ from packages.domain.spatial import (
     Segment,
     SpatialGraph,
     Wall,
+    model,
     sample_building,
 )
 
@@ -218,3 +220,10 @@ def test_sample_building_wire_round_trip() -> None:
     payload = json.loads(json.dumps(wire(GRAPH)))
     assert _nulls(payload) == 0
     assert SpatialGraph.model_validate(payload) == GRAPH
+
+
+def test_spatial_model__forbidden_chars_come_from_core_text() -> None:
+    """NO-169: `model.py` không giữ tập ký tự đảo chiều riêng — dùng `first_forbidden_char` của core."""
+    source = inspect.getsource(model)
+    assert "0x202A" not in source
+    assert "\u202a" not in source
