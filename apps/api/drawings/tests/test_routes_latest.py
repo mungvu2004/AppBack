@@ -1,23 +1,19 @@
 """N7 `GET /api/projects/{project_id}/drawings/uploads/latest` (B2-04 [8], CASE §2.2).
 
-Route N7 khai trong `apps/api/drawings/latest.py`; `router.py` (việc U) chỉ nhập router
-đó vào `ROUTERS` (xem `router.py.fragment`), nên ở đây test tự gắn nó vào app thật.
+Route N7 khai trong `apps/api/drawings/latest.py`; `router.py` nhập router đó vào `ROUTERS`
+nên `api_client` (app thật, `discover_routers()`) đã phục vụ nó.
 
 Thời gian: mỗi lượt mồi `commit` **và** đẩy `fake_clock` một giây, vì `created_at` dùng
 `now()` của Postgres (một giá trị cho cả giao dịch) còn ULID của `run_` lấy ms từ clock —
 hai khoá sắp xếp chỉ cùng chiều khi cả hai cùng tiến.
 """
 
-from collections.abc import AsyncIterator
 from datetime import timedelta
 
 import pytest
-import pytest_asyncio
-from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import FIRST_STEP
 from apps.api.drawings.runs import record_step, start_run
 from apps.api.drawings.tests._drawing_helpers import attach_floor_order
@@ -37,7 +33,6 @@ from packages.testing.factories.drawings import (
     png_bytes,
 )
 from packages.testing.factories.floors import make_floor
-from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
 
 PNG = png_bytes(40, 30)
@@ -46,14 +41,6 @@ PNG = png_bytes(40, 30)
 def latest_path(project_id: str) -> str:
     """Đường N7 của một dự án."""
     return f"/api/projects/{project_id}/drawings/uploads/latest"
-
-
-@pytest_asyncio.fixture(loop_scope="function")
-async def latest_client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
-    """App thật cộng router N7: `apps/api/drawings/router.py` chưa có trên nhánh này."""
-    api_app.include_router(latest_router)
-    async with make_api_client(api_app) as client:
-        yield client
 
 
 async def _tick(db: AsyncSession, clock: FakeClock) -> None:
@@ -75,7 +62,7 @@ async def _uploaded_run(
 async def test_drawings_list_latest_uploads__C01(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
@@ -87,7 +74,7 @@ async def test_drawings_list_latest_uploads__C01(
     await make_drawing(db_session, local_storage, upload=first, png=PNG)
     second = await _uploaded_run(db_session, local_storage, scene, fake_clock, floor=upper)
 
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id, upper.level_id])
     assert response.status_code == 200
     body = response.json()
@@ -101,7 +88,7 @@ async def test_drawings_list_latest_uploads__C01(
 async def test_drawings_list_latest_uploads__C06(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
@@ -110,28 +97,28 @@ async def test_drawings_list_latest_uploads__C06(
     outsider = await make_scene(db_session)
     await _uploaded_run(db_session, local_storage, scene, fake_clock)
 
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(outsider.user, role="admin"))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(outsider.user, role="admin"))
     assert response.status_code == 404
     assert response.json()["resource"] == "project"
 
 
 async def test_drawings_list_latest_uploads__C08(
-    db_session: AsyncSession, latest_client: AsyncClient, fake_clock: FakeClock
+    db_session: AsyncSession, api_client: AsyncClient, fake_clock: FakeClock
 ) -> None:
     """Dự án không tồn tại → 404: N7 không phân biệt "chưa từng có" với "không phải của bạn"."""
     scene = await make_scene(db_session)
     await _tick(db_session, fake_clock)
-    response = await latest_client.get(latest_path("prj_" + "0" * 26), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path("prj_" + "0" * 26), headers=headers_of(scene.user))
     assert response.status_code == 404
 
 
 async def test_drawings_list_latest_uploads__C15_empty(
-    db_session: AsyncSession, latest_client: AsyncClient, fake_clock: FakeClock
+    db_session: AsyncSession, api_client: AsyncClient, fake_clock: FakeClock
 ) -> None:
     """Dự án chưa tầng nào tải gì → `items` rỗng, không `nextCursor`."""
     scene = await make_scene(db_session)
     await _tick(db_session, fake_clock)
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert response.json() == {"items": []}
@@ -140,14 +127,14 @@ async def test_drawings_list_latest_uploads__C15_empty(
 async def test_drawings_list_latest_uploads__C15_single(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
     """Một tầng, một lượt tải → đúng một mục và hết trang."""
     scene = await make_scene(db_session)
     upload = await _uploaded_run(db_session, local_storage, scene, fake_clock)
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     body = response.json()
@@ -158,7 +145,7 @@ async def test_drawings_list_latest_uploads__C15_single(
 async def test_drawings_list_latest_uploads__C15(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
@@ -170,14 +157,14 @@ async def test_drawings_list_latest_uploads__C15(
     await _tick(db_session, fake_clock)
     uploads = [await _uploaded_run(db_session, local_storage, scene, fake_clock, floor=floor) for floor in floors]
 
-    first = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user), params={"limit": 2})
+    first = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user), params={"limit": 2})
     attach_floor_order(first, [floor.level_id for floor in floors])
     assert first.status_code == 200
     page_one = first.json()
     assert [item["uploadId"] for item in page_one["items"]] == [uploads[0].id, uploads[1].id]
     assert page_one["nextCursor"]
 
-    second = await latest_client.get(
+    second = await api_client.get(
         latest_path(scene.project.id),
         headers=headers_of(scene.user),
         params={"limit": 2, "cursor": page_one["nextCursor"]},
@@ -190,12 +177,12 @@ async def test_drawings_list_latest_uploads__C15(
 
 
 async def test_drawings_list_latest_uploads__C15_foreign_cursor(
-    db_session: AsyncSession, latest_client: AsyncClient, fake_clock: FakeClock
+    db_session: AsyncSession, api_client: AsyncClient, fake_clock: FakeClock
 ) -> None:
     """Cursor của dự án khác → 422 `CURSOR_INVALID` (cursor ký kèm `project`)."""
     scene = await make_scene(db_session)
     await _tick(db_session, fake_clock)
-    response = await latest_client.get(
+    response = await api_client.get(
         latest_path(scene.project.id), headers=headers_of(scene.user), params={"cursor": "khong-phai-cursor"}
     )
     assert response.status_code == 422
@@ -205,14 +192,14 @@ async def test_drawings_list_latest_uploads__C15_foreign_cursor(
 async def test_drawings_list_latest_uploads__C17(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
     """Tầng chưa có bản vẽ đang dùng → `sourceImageUrl` **vắng khoá** (W2)."""
     scene = await make_scene(db_session)
     await _uploaded_run(db_session, local_storage, scene, fake_clock)
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert "sourceImageUrl" not in response.json()["items"][0]
@@ -221,7 +208,7 @@ async def test_drawings_list_latest_uploads__C17(
 async def test_drawings_list_latest_uploads__C17_other_upload_drawing(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
@@ -231,7 +218,7 @@ async def test_drawings_list_latest_uploads__C17_other_upload_drawing(
     await make_drawing(db_session, local_storage, upload=old, png=PNG)
     fresh = await _uploaded_run(db_session, local_storage, scene, fake_clock)
 
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     item = response.json()["items"][0]
@@ -242,7 +229,7 @@ async def test_drawings_list_latest_uploads__C17_other_upload_drawing(
 async def test_drawings_list_latest_uploads__C01_abandoned_init_is_ignored(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
@@ -252,7 +239,7 @@ async def test_drawings_list_latest_uploads__C01_abandoned_init_is_ignored(
     await make_upload(db_session, project=scene.project, floor=scene.floor)
     await _tick(db_session, fake_clock)
 
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert [item["uploadId"] for item in response.json()["items"]] == [running.id]
@@ -261,7 +248,7 @@ async def test_drawings_list_latest_uploads__C01_abandoned_init_is_ignored(
 async def test_drawings_list_latest_uploads__C01_restart_on_older_upload(
     db_session: AsyncSession,
     local_storage: LocalDiskStorage,
-    latest_client: AsyncClient,
+    api_client: AsyncClient,
     fake_clock: FakeClock,
     sync_bus_reset: None,
 ) -> None:
@@ -278,14 +265,14 @@ async def test_drawings_list_latest_uploads__C01_restart_on_older_upload(
     await start_run(db_session, upload_id=first.id, clock=fake_clock)
     await _tick(db_session, fake_clock)
 
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert [item["uploadId"] for item in response.json()["items"]] == [first.id]
 
 
 async def test_drawings_list_latest_uploads__C15_rejected_upload_without_run(
-    db_session: AsyncSession, latest_client: AsyncClient, fake_clock: FakeClock
+    db_session: AsyncSession, api_client: AsyncClient, fake_clock: FakeClock
 ) -> None:
     """Tầng chỉ có lượt tải `rejected` và chưa lượt chạy nào → không có mục nào."""
     scene = await make_scene(db_session)
@@ -293,7 +280,7 @@ async def test_drawings_list_latest_uploads__C15_rejected_upload_without_run(
         db_session, project=scene.project, floor=scene.floor, status="rejected", rejected_code="FILE_CORRUPT"
     )
     await _tick(db_session, fake_clock)
-    response = await latest_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
+    response = await api_client.get(latest_path(scene.project.id), headers=headers_of(scene.user))
     attach_floor_order(response, [scene.floor.level_id])
     assert response.status_code == 200
     assert response.json()["items"] == []
@@ -301,12 +288,12 @@ async def test_drawings_list_latest_uploads__C15_rejected_upload_without_run(
 
 @pytest.mark.parametrize("limit", [0, 201])
 async def test_drawings_list_latest_uploads__C15_limit_out_of_range(
-    db_session: AsyncSession, latest_client: AsyncClient, fake_clock: FakeClock, limit: int
+    db_session: AsyncSession, api_client: AsyncClient, fake_clock: FakeClock, limit: int
 ) -> None:
     """`limit` ngoài `1…200` → 422 `VALIDATION` ngay ở dependency (`page_params`)."""
     scene = await make_scene(db_session)
     await _tick(db_session, fake_clock)
-    response = await latest_client.get(
+    response = await api_client.get(
         latest_path(scene.project.id), headers=headers_of(scene.user), params={"limit": limit}
     )
     assert response.status_code == 422
