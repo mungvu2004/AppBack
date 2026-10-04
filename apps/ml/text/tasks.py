@@ -16,6 +16,7 @@ from typing import Final, cast
 import numpy as np
 from numpy.typing import NDArray
 
+from apps.ml.runtime.errors import MODEL_VERSION_FAMILY_MISMATCH
 from apps.ml.runtime.loader import load_onnx
 from apps.ml.runtime.tasks_util import StepOutput, infer_context, run_step, step_failed
 from apps.ml.text.reader import RapidOcrReader
@@ -30,8 +31,6 @@ __all__ = ["MODEL_VERSION_FAMILY_MISMATCH", "STEP", "text_read"]
 _log: Final = logging.getLogger(__name__)
 
 STEP: Final = "dimensionReading"
-MODEL_VERSION_FAMILY_MISMATCH: Final = "MODEL_VERSION_FAMILY_MISMATCH"
-"""Payload trỏ bước hay họ model khác — hằng chuỗi, không khai trong `ERRORS` ([2])."""
 
 
 class _InactiveReader:
