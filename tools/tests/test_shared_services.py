@@ -157,3 +157,44 @@ def test_container_bị_xoá_dù_thân_test_ném_lỗi(tmp_path: Path, monkeypat
             raise ValueError("hỏng")
     remove.assert_called_once_with("cid-0")
     assert not list(tmp_path.glob(f"{SHARED_STATE_PREFIX}*.json"))  # người cuối đi thì file đi theo
+
+
+@pytest.mark.parametrize(("worker", "base"), [("", 0), ("gw0", 0), ("gw5", 5 * services.REDIS_ROLE_DBS)])
+def test_redis_db_base__each_worker_gets_its_own_block(
+    monkeypatch: pytest.MonkeyPatch, worker: str, base: int
+) -> None:
+    """NO-270: khối DB của `gwN` bắt đầu ở N × số vai; ngoài xdist là DB 0 như production."""
+    monkeypatch.setenv(XDIST_WORKER_ENV, worker)
+    assert services.redis_db_base() == base
+
+
+def test_shared_redis__two_workers_share_one_container_on_their_own_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-270: hai tiến trình xdist dựng **một** Redis mỗi chính sách, mỗi bên một URL khối DB riêng.
+
+    `--databases` đủ cho cả mã `gwN` của tiến trình thay thế (N ≥ số tiến trình, execnet cấp tăng dần).
+    """
+    starter = _Starter()
+    commands: list[str] = []
+
+    def fake_start(container: services.RedisContainer) -> _FakeContainer:
+        """Thay `_start`: ghi lệnh khởi động và một lần dựng, không chạm Docker."""
+        commands.append(container._command)
+        return starter()[0]
+
+    with (
+        patch.object(services, "_start", fake_start),
+        patch.object(services, "_redis_url", lambda _container: "redis://redis:6379/0"),
+        patch.object(services, "_remove_container") as remove,
+    ):
+        monkeypatch.setenv(services.XDIST_WORKER_COUNT_ENV, "4")
+        monkeypatch.setenv(XDIST_WORKER_ENV, "gw0")
+        with services._shared_redis("noeviction", _factory(tmp_path, "gw0")) as first:
+            monkeypatch.setenv(XDIST_WORKER_ENV, "gw1")
+            with services._shared_redis("noeviction", _factory(tmp_path, "gw1")) as second:
+                assert (first, second) == ("redis://redis:6379/0", f"redis://redis:6379/{services.REDIS_ROLE_DBS}")
+        assert starter.calls == ["cid-0"]
+        databases = services.REDIS_ROLE_DBS * 4 * services.XDIST_IDS_PER_WORKER
+        assert commands == [f"redis-server --maxmemory-policy noeviction --databases {databases}"]
+        remove.assert_called_once_with("cid-0")
