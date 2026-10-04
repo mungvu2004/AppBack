@@ -169,3 +169,17 @@ def test_spatial_prefix_matches_fe() -> None:
 )
 def test_is_measurement_id(value: str, ok: bool) -> None:
     assert is_measurement_id(value) is ok
+
+
+def test_new_ulid__bare_body_follows_clock(fake_clock: FakeClock) -> None:
+    """NO-168: `new_ulid` trả thân 26 ký tự trần, mili giây theo đồng hồ, và là thân của `new_id`."""
+    body = ids.new_ulid(fake_clock)
+    assert ids.is_ulid(body)
+    assert _ms_of(f"x_{body}") == int(datetime(2026, 1, 1, tzinfo=UTC).timestamp()) * 1000
+    assert ids.is_id("prj", new_id("prj", fake_clock))
+
+
+def test_new_ulid__rejects_time_before_epoch() -> None:
+    """NO-168: thời điểm trước 1970 → `ValueError` như `new_id`."""
+    with pytest.raises(ValueError, match="1970"):
+        ids.new_ulid(FakeClock(datetime(1969, 12, 31, 23, 59, 59, tzinfo=UTC)))
