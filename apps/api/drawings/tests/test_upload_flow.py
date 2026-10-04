@@ -286,16 +286,19 @@ def tiny_pool_app(api_env: None, fake_clock: FakeClock, monkeypatch: pytest.Monk
     reset_database_settings_cache()
 
 
-@pytest.mark.perf
-async def test_chunk_upload_does_not_hold_the_pool_k36(
-    tiny_pool_app: FastAPI, db_session: AsyncSession, sync_bus_reset: None
-) -> None:
-    """#6 đang `put` → pool rỗng và #8 vẫn trả dưới 1 s trên app chỉ có **một** kết nối."""
+async def _k36_chunk_during_put(
+    app: FastAPI, db_session: AsyncSession
+) -> tuple[tuple[int, httpx.Response, httpx.Response], float]:
+    """Dựng kịch bản K36: #6 kẹt trong `put`, gọi #8; trả `((kết nối đang mượn, phản hồi #8, phản hồi #6), giây #8)`.
+
+    `GatedStorage` giữ #6 trong lúc ghi kho; số kết nối pool đang mượn đếm khi #6 đã vào `put`, rồi đo
+    #8 trên app chỉ có **một** kết nối. Trần thời gian kiểm ở test `perf`, không ở đây.
+    """
     stage = await make_stage(db_session)
     data = upload_png(3000)
-    async with make_api_client(tiny_pool_app) as client:
-        gated = GatedStorage(tiny_pool_app.state.storage)
-        tiny_pool_app.state.storage = gated
+    async with make_api_client(app) as client:
+        gated = GatedStorage(app.state.storage)
+        app.state.storage = gated
         init = await client.post(
             init_path(stage.project_id, stage.level_id),
             json=init_body(stage.project_id, stage.level_id, size_bytes=len(data)),
@@ -308,16 +311,34 @@ async def test_chunk_upload_does_not_hold_the_pool_k36(
             client.post(chunks_path(stage.project_id, upload_id), json=chunk_body(data, 0), headers=stage.headers)
         )
         await asyncio.wait_for(gated.entered.wait(), CHUNK_WAIT_S)
-        assert tiny_pool_app.state.engine.pool.checkedout() == 0
+        checked_out = app.state.engine.pool.checkedout()
 
         started = time.perf_counter()
         progress = await client.get(progress_path(stage.project_id, upload_id), headers=stage.headers)
         elapsed = time.perf_counter() - started
         gated.release.set()
         chunk_response = await asyncio.wait_for(chunk, CHUNK_WAIT_S)
+    return (checked_out, progress, chunk_response), elapsed
 
+
+async def test_chunk_upload_does_not_hold_the_pool_k36(
+    tiny_pool_app: FastAPI, db_session: AsyncSession, sync_bus_reset: None
+) -> None:
+    """#6 đang `put` → pool rỗng, #8 và #6 đều 200 trên app chỉ có **một** kết nối (trần 1 s ở test `perf`)."""
+    (checked_out, progress, chunk_response), _ = await _k36_chunk_during_put(tiny_pool_app, db_session)
+
+    assert checked_out == 0
     assert progress.status_code == 200, progress.text
     assert chunk_response.status_code == 200, chunk_response.text
+
+
+@pytest.mark.perf
+async def test_chunk_upload_progress_stays_within_budget_during_put(
+    tiny_pool_app: FastAPI, db_session: AsyncSession, sync_bus_reset: None
+) -> None:
+    """#8 trả dưới 1 s trong lúc #6 đang `put` trên pool một kết nối, đo tuần tự ở bước 5b."""
+    _, elapsed = await _k36_chunk_during_put(tiny_pool_app, db_session)
+
     _log.info("K36 #8 trong lúc #6 đang ghi kho: %.3f s", elapsed)
     assert elapsed < PROGRESS_BUDGET_S
 
