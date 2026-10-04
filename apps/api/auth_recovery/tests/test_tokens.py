@@ -40,6 +40,7 @@ def _patch_send(monkeypatch: pytest.MonkeyPatch) -> list[SendTokenMailPayload]:
     sent: list[SendTokenMailPayload] = []
 
     def fake_send_task(name: str, payload: SendTokenMailPayload) -> None:
+        """Ghi payload đã gửi, kiểm đúng tên task."""
         assert name == tokens.SEND_TOKEN_MAIL_TASK
         sent.append(payload)
 
@@ -54,6 +55,7 @@ def _count_executes(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Iterat
     original_execute = db.execute
 
     async def counting_execute(statement: Executable, *args: Any, **kwargs: Any) -> Any:
+        """Đếm rồi chuyển tiếp `execute` thật."""
         counter[0] += 1
         return await original_execute(statement, *args, **kwargs)
 
@@ -62,6 +64,7 @@ def _count_executes(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Iterat
 
 
 async def _active_count(db: AsyncSession, *, user_id: str, purpose: TokenPurpose, clock: Clock) -> int:
+    """Số token còn hiệu lực của `(user_id, purpose)`."""
     rows = await db.execute(
         select(OneTimeToken.id).where(
             OneTimeToken.user_id == user_id, OneTimeToken.purpose == purpose, active_clause(clock.now())
@@ -87,12 +90,13 @@ def test_derive_token_changes_with_key_nonce_or_purpose() -> None:
     """Đổi khoá, nonce, hay mục đích → token khác (không đụng nhau khi xoay khoá)."""
     key, nonce = b"k" * 32, b"n" * NONCE_LEN
     base = derive_token(key, token_id="tok_A", purpose="invite", nonce=nonce)  # noqa: S106 — id giả của test
-    assert derive_token(b"z" * 32, token_id="tok_A", purpose="invite", nonce=nonce) != base  # noqa: S106
-    assert derive_token(key, token_id="tok_A", purpose="invite", nonce=b"m" * NONCE_LEN) != base  # noqa: S106
-    assert derive_token(key, token_id="tok_A", purpose="password_reset", nonce=nonce) != base  # noqa: S106
+    assert derive_token(b"z" * 32, token_id="tok_A", purpose="invite", nonce=nonce) != base  # noqa: S106 — id giả
+    assert derive_token(key, token_id="tok_A", purpose="invite", nonce=b"m" * NONCE_LEN) != base  # noqa: S106 — id giả
+    assert derive_token(key, token_id="tok_A", purpose="password_reset", nonce=nonce) != base  # noqa: S106 — id giả
 
 
 def test_hash_token_is_64_hex_chars() -> None:
+    """`hash_token` ra SHA-256 hex 64 ký tự."""
     digest = hash_token("bat-ky-token-nao")
     assert len(digest) == 64
     assert int(digest, 16) >= 0
@@ -145,6 +149,7 @@ async def test_issue_token_concurrent_same_user_keeps_one_active(
         user = await make_user(setup)
 
     async def run() -> None:
+        """Một giao dịch cấp token rồi commit."""
         async with db_sessionmaker() as db:
             await issue_token(db, user_id=user.id, purpose="password_reset", clock=fake_clock)
             await db.commit()
@@ -307,6 +312,7 @@ async def test_latest_invitations_runs_a_single_query(
 
 
 async def test_revoke_tokens_by_purpose_then_all(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """`revoke_tokens` thu hồi theo mục đích, rồi tất cả khi không chỉ mục đích."""
     user = await make_user(db_session)
     invite, _ = await seed_token(db_session, user_id=user.id, purpose="invite", clock=fake_clock, commit=False)
     reset_row, _ = await seed_token(
@@ -330,6 +336,7 @@ async def test_revoke_tokens_by_purpose_then_all(db_session: AsyncSession, fake_
 async def test_find_active_token_rejects_wrong_purpose_value_or_window(
     db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
+    """`find_active_token` từ chối sai mục đích, sai giá trị, hoặc ngoài cửa sổ hiệu lực."""
     user = await make_user(db_session)
     _, plain = await seed_token(db_session, user_id=user.id, purpose="password_reset", clock=fake_clock, commit=False)
     await db_session.commit()
@@ -343,6 +350,7 @@ async def test_find_active_token_rejects_wrong_purpose_value_or_window(
 
 
 async def test_consume_token_wins_once_then_loses(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """`consume_token` thắng đúng một lần, lần sau thua."""
     user = await make_user(db_session)
     row, _ = await seed_token(db_session, user_id=user.id, purpose="invite", clock=fake_clock, commit=False)
     await db_session.commit()
@@ -354,6 +362,7 @@ async def test_consume_token_wins_once_then_loses(db_session: AsyncSession, fake
 
 
 async def test_consume_token_false_when_expired_or_superseded(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """`consume_token` trả False với token hết hạn hoặc đã bị thay."""
     user = await make_user(db_session)
     now = fake_clock.now()
     expired, _ = await seed_token(
@@ -372,6 +381,7 @@ async def test_consume_token_false_when_expired_or_superseded(db_session: AsyncS
 
 
 def test_send_token_mail_payload_bounds_and_id_format() -> None:
+    """`SendTokenMailPayload` kiểm cận số id và định dạng id."""
     good_id = new_id("tok", SystemClock())
     assert SendTokenMailPayload(token_ids=[good_id]).token_ids == [good_id]
     with pytest.raises(ValidationError):
@@ -398,6 +408,7 @@ def test_send_token_mail_payload_bounds_and_id_format() -> None:
     ],
 )
 def test_recovery_settings_reject_non_positive(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cấu hình khôi phục từ chối giá trị không dương."""
     for bad in ("0", "-1"):
         with monkeypatch.context() as scoped:
             scoped.setenv(name, bad)
