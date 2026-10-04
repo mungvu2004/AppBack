@@ -1,10 +1,12 @@
 """DEBT-02 C07 (NO-272/246/278) — test khẳng định trần đồng hồ tường phải gắn `perf` (BE-00 §12).
 
 Quét tĩnh (AST) các tệp test đã rà trong cụm C07: một hàm `test_*` có `assert` cận trên về thời gian
-(`elapsed < …`, `perf_counter() - started <= …`) mà không mang `@pytest.mark.perf` là hỏng — dưới
-`pytest-xdist` (`-n 6`) trần đo tuần tự không giữ được. Hai luật đi kèm: test mang mã case
-(`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf` (`perf_case_named` của `tools/verify/steps.py`
-làm bước 5b hỏng), và không đặt `pytestmark = perf` cấp tệp (kéo cả test không có trần rời bước 5).
+(`elapsed < …`, `perf_counter() - started <= …`, `monotonic() - t0 < 1`) mà không mang `@pytest.mark.perf`
+là hỏng — dưới `pytest-xdist` (`-n 6`) trần đo tuần tự không giữ được. Hàm phụ (`_run…`) có trần thì hỏng
+trừ khi có test gọi nó và mọi test gọi nó đều mang `perf` (gọi bắc cầu qua hàm phụ khác không dò).
+Hai luật đi kèm: test mang mã case (`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf`
+(`perf_case_named` của `tools/verify/steps.py` làm bước 5b hỏng), và không đặt `pytestmark = perf` cấp tệp
+(kéo cả test không có trần rời bước 5).
 
 Giới hạn: đây là quét **cú pháp** (biến/thuộc tính/khoá tên `elapsed|duration|took`, lời gọi đồng hồ). Hạn
 chờ rộng (`wait_until(timeout_s=…)`, `wait_closed(WAIT_S)`) không phải cận trên đo được nên không bị quét —
@@ -20,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.verify.steps import _CASE_IN_NAME_RE
+from tools.verify.steps import CASE_IN_NAME_RE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCANNED = (
@@ -54,6 +56,8 @@ def _is_time(node: ast.expr) -> bool:
         return isinstance(node.slice, ast.Constant) and bool(_ELAPSED_NAME.search(str(node.slice.value)))
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         return node.func.attr in _CLOCKS
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return node.func.id in _CLOCKS
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub) and _is_time(node.left)
 
 
@@ -76,8 +80,20 @@ def _has_perf(node: ast.AST) -> bool:
     return any(isinstance(item, ast.Attribute) and item.attr == "perf" for item in ast.walk(node))
 
 
+def _calls(caller: ast.AST, name: str) -> bool:
+    """Thân `caller` nhắc tới hàm `name` (lời gọi trần `name(...)` hay `self.name(...)`)."""
+    return any(
+        (isinstance(n, ast.Name) and n.id == name) or (isinstance(n, ast.Attribute) and n.attr == name)
+        for n in ast.walk(caller)
+    )
+
+
 def violations(source: str) -> list[str]:
-    """Lỗi của một tệp test: trần chưa `perf`, `perf` mang mã case, `pytestmark = perf` cấp tệp."""
+    """Lỗi của một tệp test: trần chưa `perf`, `perf` mang mã case, `pytestmark = perf` cấp tệp.
+
+    Quét mọi hàm: test có trần phải `perf`; hàm phụ có trần hỏng khi không test nào gọi nó hoặc có test gọi
+    nó mà thiếu `perf` (trần trong hàm phụ chạy ở bước 5 qua test đó).
+    """
     tree = ast.parse(source)
     found = [
         f"dòng {stmt.lineno}: pytestmark perf cấp tệp"
@@ -92,15 +108,22 @@ def violations(source: str) -> list[str]:
         if isinstance(cls, ast.ClassDef) and any(_has_perf(d) for d in cls.decorator_list)
         for inner in ast.walk(cls)
     }
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or not node.name.startswith("test_"):
-            continue
-        marked = id(node) in class_marked or any(_has_perf(decorator) for decorator in node.decorator_list)
-        if marked and _CASE_IN_NAME_RE.search(node.name):
+    functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+    marked = {id(f) for f in functions if id(f) in class_marked or any(_has_perf(d) for d in f.decorator_list)}
+    tests = [f for f in functions if f.name.startswith("test_")]
+    for node in functions:
+        is_test = node.name.startswith("test_")
+        if is_test and id(node) in marked and CASE_IN_NAME_RE.search(node.name):
             found.append(f"{node.name}: perf không được mang mã case")
         ceiling = [a.lineno for a in ast.walk(node) if isinstance(a, ast.Assert) and _is_ceiling(a)]
-        if ceiling and not marked:
+        if not ceiling or id(node) in marked:
+            continue
+        if is_test:
             found.append(f"{node.name}: trần thời gian ở dòng {ceiling} nhưng thiếu @pytest.mark.perf")
+            continue
+        callers = [t for t in tests if _calls(t, node.name)]
+        if not callers or any(id(t) not in marked for t in callers):
+            found.append(f"{node.name}: hàm phụ có trần thời gian ở dòng {ceiling}, test gọi nó thiếu perf")
     return found
 
 
@@ -111,7 +134,10 @@ def test_scanned_files_mark_wall_clock_ceilings_perf(relative: str) -> None:
 
 
 def test_scanner_flags_each_violation_kind() -> None:
-    """Lưới quét tự kiểm: bắt đủ ba loại lỗi, và bỏ qua cận dưới, hạn chờ, test đã `perf`."""
+    """Lưới quét tự kiểm: bắt đủ ba loại lỗi (cả đồng hồ gọi tên trần, hàm phụ có trần).
+
+    Bỏ qua cận dưới, hạn chờ, test đã `perf` và hàm phụ chỉ test `perf` gọi.
+    """
     source = (
         "import pytest\n"
         "pytestmark = pytest.mark.perf\n"
@@ -122,12 +148,20 @@ def test_scanner_flags_each_violation_kind() -> None:
         "@pytest.mark.perf\ndef test_e():\n    assert elapsed <= 2\n"
         "def test_f():\n    assert outcome['elapsed'] <= 10\n"
         "@pytest.mark.perf\nclass TestG:\n    def test_g(self):\n        assert self.duration < 1\n"
+        "def test_h():\n    assert monotonic() - t0 < 1\n"
+        "def _x():\n    assert elapsed <= 2\n"
+        "def test_i():\n    _x()\n"
+        "def _y():\n    assert elapsed <= 2\n"
+        "@pytest.mark.perf\ndef test_j():\n    _y()\n"
     )
     found = violations(source)
-    assert len(found) == 5
+    assert len(found) == 7
     assert found[0].startswith("dòng 2")
     assert any("test_a" in item and "[4]" in item for item in found)
     assert any("test_b" in item for item in found)
     assert any("test_d__J09" in item and "mã case" in item for item in found)
     assert any("test_f" in item for item in found)
-    assert not any("test_c" in item or "test_e" in item or "test_g" in item for item in found)
+    assert any(item.startswith("test_h:") for item in found)
+    assert any(item.startswith("_x:") for item in found)
+    clean = {"test_c", "test_e", "test_g", "test_i", "test_j", "_y"}
+    assert not any(item.split(":")[0] in clean for item in found)

@@ -271,7 +271,10 @@ def test_evaluate__task_case_có_hậu_tố_không_được_tính() -> None:
 
 
 def test_evaluate__task_case_có_id_tham_số_được_tính() -> None:
-    """Test task parametrize (`__M01[<id>]`) được tính như test op (`_TEST_OP_CASE_RE` nhận `[...]`)."""
+    """Test task parametrize (`__M01[<id>]`) được tính như test op.
+
+    `_TEST_OP_CASE_RE` (`packages/core/case_names.py`) nhận đuôi `[...]`.
+    """
     tests = [TestResult(name=f"test_train__{c}", outcome="passed") for c in ("J01", "J06", "M01[iou-1.0]")]
     result = evaluate([], [], {}, tests, [], ["train"], [TaskRequirement(fn="train", require={"M01"})])
     assert not result.task_missing
