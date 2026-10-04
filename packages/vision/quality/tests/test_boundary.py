@@ -11,14 +11,15 @@ from typing import Final
 
 import pytest
 
-_BLOCKED: Final = ("sqlalchemy", "fastapi", "celery", "torch")
+from packages.testing.boundary import PURE_BLOCKED
+
 _PACKAGES: Final = ("packages.vision.preprocess", "packages.vision.quality")
 _TIMEOUT_S: Final = 120
 
 _SCRIPT: Final = f"""
 import sys
 
-for name in {_BLOCKED!r}:
+for name in {PURE_BLOCKED!r}:
     sys.modules[name] = None
 
 import importlib
@@ -55,7 +56,7 @@ def test_packages_import_without_web_db_and_ml_layers() -> None:
     assert result.stdout.strip().endswith("ok")
 
 
-@pytest.mark.parametrize("name", _BLOCKED)
+@pytest.mark.parametrize("name", PURE_BLOCKED)
 def test_blocked_module_really_raises_in_child(name: str) -> None:
     """Chốt chính phép chặn có tác dụng: nhập module bị chặn trong tiến trình con → chặn thật.
 
