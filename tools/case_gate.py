@@ -29,6 +29,8 @@ from tools.charter import BindRow, load_bind_rows
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # junit bước 5 (addopts) và bước 5b; file nào có thì đọc
 JUNIT_PATHS = (Path("/tmp/junit.xml"), Path("/tmp/junit-perf.xml"))
+# route hạ tầng/tệp ngoài hợp đồng FE: không có dòng BE-BIND, miễn cảnh báo "đã mount nhưng không có dòng"
+INFRA_OPS = frozenset({"files_read_object", "health_live", "health_ready"})
 
 # ---------------------------------------------------------------------------
 # Kiểu dữ liệu
@@ -256,7 +258,7 @@ def parse_junit(*paths: Path) -> list[TestResult]:
             skipped = case.find("skipped")
             if skipped is not None:
                 skip_type = skipped.get("type", "")
-                if skip_type == "pytest.xfail":
+                if skip_type.endswith(".xfail"):
                     is_xfail = True
                     outcome = "passed"  # xfail được coi là "qua" bước chạy, nhưng vẫn bị case_gate cấm
                 else:
@@ -453,7 +455,8 @@ def evaluate(
     for op in operations:
         row = rows_by_op.get(op.op)
         if row is None:
-            result.unmounted_warnings.append(op.op)
+            if op.op not in INFRA_OPS:
+                result.unmounted_warnings.append(op.op)
             continue
 
         found = specific_by_op.get(op.op, set()) | common_by_op.get(op.op, set())

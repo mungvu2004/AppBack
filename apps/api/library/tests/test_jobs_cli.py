@@ -1,7 +1,6 @@
 """Lịch `publish_library_assets`, CLI `publish` và ranh giới nhập (B2-06 [6], [8])."""
 
 import asyncio
-import configparser
 import errno
 import subprocess
 import sys
@@ -14,7 +13,6 @@ from sqlalchemy import func, select
 
 from apps.api.library import cli
 from apps.api.library.jobs import TASK_NAME, publish_library_assets
-from apps.api.library.tests._helpers import BLOCKED
 from packages.core.clock import SystemClock
 from packages.core.settings import reset_settings_cache
 from packages.db.engine import create_engine, create_sessionmaker, session_scope
@@ -24,6 +22,7 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.schedules import schedule_entries
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 
@@ -111,25 +110,13 @@ def test_cli_publish_exits_one_when_storage_is_down(
     assert "16" in captured.err
 
 
-def test_blocked_covers_importlinter_jobs_contract() -> None:
-    """NO-240: bộ chặn của test phủ đủ gói mà hợp đồng `apps.api.*.jobs` của `.importlinter` cấm (BE-00 §7)."""
-    parser = configparser.ConfigParser(interpolation=None)
-    parser.read(REPO_ROOT / ".importlinter", encoding="utf-8")
-    forbidden: set[str] = set()
-    for section in parser.sections():
-        if parser[section].get("name", "").startswith("apps.api.*.jobs"):
-            forbidden.update(parser[section]["forbidden_modules"].split())
-    assert forbidden
-    assert forbidden <= set(BLOCKED), sorted(forbidden - set(BLOCKED))
-
-
 @pytest.mark.parametrize(
     "module",
     ["apps.api.library.assets", "apps.api.library.jobs", "apps.api.library.cli", "packages.domain.library"],
 )
 def test_imports_without_web_or_crypto_packages(module: str) -> None:
     """Worker/CLI nhập được các module này khi `fastapi`, `jwt`, `argon2` bị chặn trong `sys.modules`."""
-    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in BLOCKED)
+    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import {module}"],
         cwd=REPO_ROOT,

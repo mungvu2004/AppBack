@@ -10,6 +10,7 @@ import pytest
 
 from apps.api.core import extensions
 from packages.core.settings import reset_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 
 SUBMODULE: Final = "probe"
 ATTR: Final = "PROBE"
@@ -20,7 +21,7 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 _BOUNDARY_CODE: Final = """
 import sys
 
-BLOCKED = {"fastapi", "starlette", "uvicorn", "jwt", "argon2"}
+BLOCKED = __BLOCKED__
 
 
 class Blocker:
@@ -31,8 +32,8 @@ class Blocker:
 
 
 sys.meta_path.insert(0, Blocker())
-import apps.api.core.extensions  # noqa: E402
-import apps.api.core.wire  # noqa: E402
+import apps.api.core.extensions  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
+import apps.api.core.wire  # noqa: E402 — nhập sau khi cài Blocker vào sys.meta_path
 
 print("ok")
 """
@@ -124,7 +125,7 @@ def test_override_is_per_app(storage_env: None, probe_package: Path) -> None:
 def test_wire_and_extensions_import_without_web_packages() -> None:
     """Hàm worker nhập được `wire` và `extensions` khi bốn gói web bị chặn (BE-00 §7)."""
     result = subprocess.run(  # noqa: S603 — lệnh cố định, chạy chính Python của venv
-        [sys.executable, "-c", _BOUNDARY_CODE],
+        [sys.executable, "-c", _BOUNDARY_CODE.replace("__BLOCKED__", repr(set(WORKER_BLOCKED)))],
         cwd=REPO_ROOT,
         env={"PYTHONPATH": str(REPO_ROOT), "PATH": "/usr/bin:/bin"},
         capture_output=True,

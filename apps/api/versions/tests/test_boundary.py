@@ -13,8 +13,9 @@ from typing import Final
 
 import pytest
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 WORKER_SAFE_MODULES: Final = (
     "apps.api.versions.snapshots",
     "apps.api.versions.messages",

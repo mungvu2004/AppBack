@@ -11,6 +11,7 @@ import pytest
 
 from packages.messaging.celery_app import AFTER_COMMIT_INLINE_ENV
 from packages.messaging.settings import get_messaging_settings, reset_messaging_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PROBE = """
@@ -23,7 +24,7 @@ from packages.messaging.schedules import beat_schedule, discover_jobs
 
 loaded = {
     "ml": [name for name in sys.modules if name == "apps.ml" or name.startswith("apps.ml.")],
-    "web": [name for name in ("fastapi", "starlette", "uvicorn", "jwt", "argon2") if name in sys.modules],
+    "web": [name for name in __WEB__ if name in sys.modules],
     "beat": list(main.app.conf.beat_schedule),
     "inline": os.environ.get("DB_AFTER_COMMIT_INLINE"),
     "pipeline_queue": main.app.conf.task_routes[0]("pipeline.x", [], {}, {})["queue"],
@@ -41,7 +42,12 @@ def import_worker(broker_url: str) -> dict[str, Any]:
     env = {key: value for key, value in os.environ.items() if key != AFTER_COMMIT_INLINE_ENV}
     env |= {"PYTHONPATH": str(REPO_ROOT), "REDIS_BROKER_URL": broker_url, "REDIS_CACHE_URL": broker_url}
     result = subprocess.run(  # noqa: S603 — lệnh cố định: python của môi trường + mã trong repo
-        [sys.executable, "-c", PROBE], capture_output=True, text=True, check=True, cwd=REPO_ROOT, env=env
+        [sys.executable, "-c", PROBE.replace("__WEB__", repr(WORKER_BLOCKED))],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO_ROOT,
+        env=env,
     )
     loaded: dict[str, Any] = json.loads(result.stdout)
     return loaded

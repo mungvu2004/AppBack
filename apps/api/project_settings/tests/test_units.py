@@ -19,9 +19,9 @@ from apps.api.project_settings.schemas import ProjectSettingsBodyIn
 from apps.api.project_settings.service import body_digest
 from apps.api.project_settings.tests.support import GOOD_BODY, seed_engineer_project
 from packages.db.models.project_settings import ProjectSettingsRow
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 
 
 def _body(**overrides: Any) -> ProjectSettingsBodyIn:
