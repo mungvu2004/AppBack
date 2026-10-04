@@ -60,7 +60,6 @@ from apps.ml.training_runner.tests import support
 from apps.ml.training_runner.tests.support import (
     Dataset,
     TinyTrainer,
-    ml_settings_cache,  # noqa: F401 — fixture autouse: cache `get_ml_settings` sạch quanh mỗi test
     put_bytes,
     tiny_onnx,
     train_payload,

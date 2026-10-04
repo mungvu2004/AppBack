@@ -38,7 +38,6 @@ import torch
 from pydantic import BaseModel
 
 from apps.ml.runtime.gpu import GPU_LOCK_NAME
-from apps.ml.runtime.settings import reset_ml_settings_cache
 from apps.ml.training_runner import keys, runner
 from apps.ml.training_runner import tasks as _tasks  # noqa: F401 — đăng ký START_TASK vào celery_test_app
 from apps.ml.training_runner.errors import GPU_LOCK_LOST, TRAINING_SLOT_LOST
@@ -48,7 +47,6 @@ from apps.ml.training_runner.tests.support import (
     Dataset,
     TinyTrainer,
     for_job,
-    ml_settings_cache,  # noqa: F401 — fixture autouse: cache `get_ml_settings` sạch quanh mỗi test
     put_dataset,
     queued_messages,
     read_object,
@@ -309,7 +307,6 @@ class M04:
     ) -> tuple[dict[str, object], list[str]]:
         """Một lượt `run_training_job` thật; trả payload `finished` và danh sách template log job."""
         self.monkeypatch.setenv("ML_DEVICE", device)
-        reset_ml_settings_cache()
         payload = train_payload(self.dataset)
         token = keys.new_token()
         self.redis.set(keys.claim_key(payload.job_id), token, nx=True, px=120_000)
@@ -345,8 +342,8 @@ def m04(claim_client: SyncRedis, local_storage: LocalDiskStorage, monkeypatch: p
     """Khoá slot/GPU TTL 600 ms (test không phải chờ 60 s), `gpu_slot` thật nhưng có theo dõi.
 
     `torch.cuda.is_available` luôn `True` để nhánh `cuda` đi hết đường thật; `ML_DEVICE` do mỗi
-    lượt `run` đặt; fixture `ml_settings_cache` (autouse, `support.py`) xoá cache trước và sau mỗi
-    test nên không ai thừa hưởng `ML_DEVICE` của ai.
+    lượt `run` đặt; fixture `ml_settings_cache` (autouse toàn cục, `packages/testing/fixtures/ml_settings.py`)
+    xoá cache trước và sau mỗi test nên không ai thừa hưởng `ML_DEVICE` của ai.
     """
     gpu_calls: list[float] = []
     real_gpu_slot = runner.gpu_slot  # type: ignore[attr-defined]  # vá theo tên module nội bộ, chu-ky B6-03b cho phép

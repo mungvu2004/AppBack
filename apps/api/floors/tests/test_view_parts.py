@@ -22,6 +22,7 @@ from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
 from packages.domain.permissions import Role
+from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
@@ -29,6 +30,16 @@ from packages.testing.fixtures.api import auth_headers
 from packages.testing.fixtures.clock import FakeClock
 
 PROJECTS_PATH = "/api/projects"
+
+
+@pytest.fixture(autouse=True)
+def _signer(drawing_signer: LocalDiskStorage) -> LocalDiskStorage:
+    """Khai thẳng chỗ phụ thuộc: `load_project_floors` ký URL bản vẽ qua `drawings.urls.signer()` (NO-265).
+
+    Test đếm SQL không qua `api_env` nên không có `STORAGE_*`; nó từng xanh nhờ bản cache `_default_signer`
+    do test khác làm ấm. Cùng lý do và cùng fixture như `test_lookup.py`/`test_service.py`.
+    """
+    return drawing_signer
 
 
 def _headers(user: User) -> dict[str, str]:

@@ -26,6 +26,11 @@ def _default_signer() -> ObjectStorage:
     return create_storage(get_storage_settings(), get_core_settings(), SystemClock())
 
 
+def reset_signer_cache() -> None:
+    """Chỉ cho test: quên kho dựng theo biến môi trường, lần gọi `signer()` sau dựng lại (NO-265)."""
+    _default_signer.cache_clear()
+
+
 def signer() -> ObjectStorage:
     """Kho để ký URL bản vẽ; bản test đã cài (`use_signer`) thắng bản theo môi trường."""
     return _test_signer if _test_signer is not None else _default_signer()
