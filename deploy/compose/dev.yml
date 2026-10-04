@@ -53,6 +53,8 @@ services:
 
   mailpit:
     image: axllent/mailpit:v1.20.0
+    environment:
+      MP_SMTP_DISABLE_RDNS: "true"  # NO-212: PTR chậm (~11s) không làm chậm thư
     logging:
       driver: json-file
       options:

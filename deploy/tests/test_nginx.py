@@ -442,7 +442,7 @@ def test_nginx_files_log_decision_is_location_scoped_not_request_uri() -> None:
     minh hành vi là probe thật 7 URI + `grep -c` token = 0, ghi trong báo cáo."""
     for path, nodes in _all_nginx_files().items():
         for node in walk(nodes):
-            if node.directive in {"access_log", "map"} and any("$request_uri" in a for a in node.args):
+            if node.directive == "access_log" and any("$request_uri" in a for a in node.args):
                 pytest.fail(f"{path}: {node.directive} {node.args} còn quyết định log theo $request_uri thô")
     assert len(set(_MALFORMED_FILES_URIS)) == 7, "probe phải có đúng 7 dạng URI méo khác nhau"
 
@@ -473,9 +473,8 @@ def test_nginx_proxy_common_survives_api_container_swap() -> None:
     timeout` + trần số lần/thời gian, và `proxy_connect_timeout` ngắn (≤ 2s) để một
     địa chỉ đã chết không giữ client chờ hết 5s rồi mới được thử lại.
 
-    Không có `upstream {}`: nginx mã nguồn mở giải tên trong khối đó đúng một lần
-    lúc nạp cấu hình và không giải lại (`resolve` chỉ có ở NGINX Plus), nên nó sẽ
-    khoá chết vào IP của container đã bị thay."""
+    `upstream {}` vẫn dùng được từ nginx OSS 1.27.3 (`zone` + `server … resolve`, xem
+    test `…__no198`); chọn biến + `resolver` vì đơn giản hơn và đã đo (NO-117)."""
     nodes = _require_snippet("snippets/proxy_common.conf")
     directives = {n.directive: n.args for n in nodes}
     assert directives.get("proxy_next_upstream") == ["error", "timeout"], (
@@ -488,10 +487,6 @@ def test_nginx_proxy_common_survives_api_container_swap() -> None:
     assert int(connect_timeout[0].removesuffix("s")) <= 2, (
         f"proxy_connect_timeout {connect_timeout[0]} quá dài cho một bridge Docker nội bộ"
     )
-    for path, nodes_of_file in _all_nginx_files().items():
-        assert not find_directive(nodes_of_file, "upstream"), (
-            f"{path}: cấm khối upstream {{}} — nginx OSS không giải lại tên trong đó"
-        )
 
 
 def test_nginx_no_autoindex_anywhere() -> None:
@@ -550,3 +545,41 @@ def test_nginx_error_bodies__carry_hsts_variable() -> None:
             assert headers.get("Strict-Transport-Security") == ["$hsts_header", "always"], f"{path}: {name}"
             maps = [n.args for n in files[path] if n.directive == "map" and n.args[-1:] == ["$hsts_header"]]
             assert maps, f"{path}: thiếu map $hsts_header"
+
+
+def _app_servers() -> Iterator[tuple[Path, Node]]:
+    """Các `server` phục vụ app (include `app_locations.conf`) của dev và prod."""
+    for env in ("dev", "prod"):
+        path = NGINX_ROOT / "templates" / env / "app.conf.template"
+        for server in find_directive(parse_nginx(path.read_text(encoding="utf-8")), "server"):
+            if any(c.directive == "include" and c.args[0].endswith("app_locations.conf") for c in server.children):
+                yield path, server
+
+
+def test_nginx_app_server_has_conditional_access_log_backstop__no197() -> None:
+    """NO-197: lỗi xảy ra TRƯỚC khi chọn location (400/414) không đi qua `access_log off`
+    của `location /api/files/`. Mức server phải có `access_log … if=$biến` làm lớp thứ hai
+    (map trên `$request_uri` chỉ được dùng cho việc này, không thay quyết định ở location)."""
+    servers = list(_app_servers())
+    assert len(servers) == 2, "phải thấy server app của cả dev lẫn prod"
+    for path, server in servers:
+        logs = [c for c in server.children if c.directive == "access_log"]
+        assert any(a.startswith("if=$") for c in logs for a in c.args), f"{path}: server app thiếu access_log if="
+
+
+def test_nginx_proxy_common_comment_has_no_false_resolve_claim__no198() -> None:
+    """NO-198: `resolve` trong `upstream{}` có ở OSS từ 1.27.3 (ảnh ghim 1.30.x); comment
+    của `proxy_common.conf` không được nói nó chỉ có ở NGINX Plus."""
+    text = require_path("deploy/nginx/snippets/proxy_common.conf").read_text(encoding="utf-8")
+    assert "chỉ có ở NGINX Plus" not in text, "proxy_common.conf: còn tiền đề sai về `resolve` chỉ có ở Plus"
+
+
+def test_nginx_upstream_block_if_any_is_resolvable__no198() -> None:
+    """NO-198: nếu có `upstream{}` thì phải có `zone` và `server … resolve` (điều kiện để
+    nginx giải lại tên); không cấm hẳn khối này."""
+    for path, nodes in _all_nginx_files().items():
+        for up in find_directive(nodes, "upstream"):
+            assert any(c.directive == "zone" for c in up.children), f"{path}: upstream thiếu zone"
+            servers = [c for c in up.children if c.directive == "server"]
+            assert servers
+            assert all("resolve" in c.args for c in servers), f"{path}: upstream server thiếu resolve"
