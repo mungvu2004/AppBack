@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 
@@ -185,15 +186,32 @@ async def test_on_after_commit__J09_failing_callback_is_logged(
 async def test_on_after_commit__J09_slow_callback_times_out(
     db_sessionmaker: async_sessionmaker[AsyncSession], caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Callback chậm quá `CALLBACK_TIMEOUT_S` → log `after_commit_failed` kèm `TimeoutError`, không chờ hết 5 s."""
-    with caplog.at_level(logging.WARNING):
-        async with session_scope(db_sessionmaker) as session:
-            await _begin(session)
-            on_after_commit(session, lambda: time.sleep(5))
-        await after_commit_idle(session)
-    # `wait_for` cắt ở CALLBACK_TIMEOUT_S nên lỗi là TimeoutError: callback không được chờ hết 5 s
-    record = next(item for item in caplog.records if item.message == "after_commit_failed")
-    assert record.__dict__["error"].startswith("TimeoutError")
+    """Callback treo quá `CALLBACK_TIMEOUT_S` → log `after_commit_failed` kèm `TimeoutError`, idle không chờ nó.
+
+    Tất định, không đồng hồ tường: callback chặn trên `release` (trần 10 s chỉ để luồng không treo mãi)
+    và chỉ đặt `finished` khi thoát. `after_commit_idle` trả mà `finished` chưa đặt nghĩa là `wait_for`
+    đã cắt — idle nào chờ callback xong thì phải ngồi hết 10 s rồi thấy `finished` đã đặt.
+    """
+    release = threading.Event()
+    finished = threading.Event()
+
+    def hang() -> None:
+        """Treo tới khi test nhả (hay hết 10 s), rồi báo đã thoát."""
+        release.wait(10)
+        finished.set()
+
+    try:
+        with caplog.at_level(logging.WARNING):
+            async with session_scope(db_sessionmaker) as session:
+                await _begin(session)
+                on_after_commit(session, hang)
+            await after_commit_idle(session)
+        assert not finished.is_set()
+        record = next(item for item in caplog.records if item.message == "after_commit_failed")
+        assert record.__dict__["error"].startswith("TimeoutError")
+    finally:
+        # Nhả luồng executor để test sau không mất một chỗ của nó
+        release.set()
 
 
 async def test_on_after_commit__J09_rejects_coroutine_function(
