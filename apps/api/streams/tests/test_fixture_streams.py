@@ -408,7 +408,7 @@ async def test_observer_is_called_once_with_status_and_matching_request_url(
     calls: list[tuple[pytest.Item, httpx.Response]] = []
 
     def probe(item: pytest.Item, response: httpx.Response) -> None:
-        """Hàm phụ: probe."""
+        """Observer thử: ghi `(item, response)` nhận được để test khẳng định số lần gọi và nội dung."""
         calls.append((item, response))
 
     observers = request.node.config.stash[API_RESPONSE_OBSERVERS]
