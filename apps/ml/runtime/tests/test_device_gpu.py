@@ -87,7 +87,7 @@ def test_gpu_slot_m04_contention(safe: SyncRedis) -> None:
     with gpu_slot(wait_s=0, ttl_ms=TTL_MS, renew_every_ms=RENEW_MS) as first:
         started = time.monotonic()
         with (
-            pytest.raises(TransientError, match="GPU đang bận"),
+            pytest.raises(TransientError, match="khoá gpu:0 đang bận"),
             gpu_slot(wait_s=1.0, ttl_ms=TTL_MS, renew_every_ms=RENEW_MS),
         ):
             pass
