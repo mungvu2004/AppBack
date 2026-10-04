@@ -200,7 +200,8 @@ async def test_on_after_commit__J09_does_not_block_event_loop(
         await _begin(session)
         on_after_commit(session, lambda: time.sleep(1))
         on_after_commit(session, _append(calls, "sau"))
-    await asyncio.sleep(0.01)  # coroutine khác vẫn chạy; nếu vòng bị chặn thì "sau" đã vào calls
+    # coroutine khác vẫn chạy; nếu vòng bị chặn thì "sau" đã vào calls
+    await asyncio.sleep(0.01)
     assert calls == []
     await after_commit_idle(session)
     assert calls == ["sau"]
