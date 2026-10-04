@@ -3,11 +3,13 @@
 Quét tĩnh (AST) các tệp test đã rà trong cụm C07: một hàm `test_*` có `assert` cận trên về thời gian
 (`elapsed < …`, `perf_counter() - started <= …`) mà không mang `@pytest.mark.perf` là hỏng — dưới
 `pytest-xdist` (`-n 6`) trần đo tuần tự không giữ được. Hai luật đi kèm: test mang mã case
-(`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf` (bước 5b không gộp được vào case gate),
+(`test_<op>__<case>`, CASE §2.3) **không bao giờ** gắn `perf` (`tools/verify/steps.py` `perf_case_named` làm bước 5b hỏng),
 và không đặt `pytestmark = perf` cấp tệp (kéo cả test không có trần rời bước 5).
 
-Hạn chờ rộng (`wait_until(timeout_s=…)`, `wait_closed(timeout_s=…)`) không phải cận trên đo được nên
-không bị quét: chỉ `assert` so sánh biến/phép trừ thời gian với một trần mới tính.
+Giới hạn: đây là quét **cú pháp** (biến/thuộc tính/khoá tên `elapsed|duration|took`, lời gọi đồng hồ). Hạn
+chờ rộng (`wait_until(timeout_s=…)`, `wait_closed(WAIT_S)`) không phải cận trên đo được nên không bị quét —
+việc phân biệt "chờ rộng" với "trần sát" là quyết định của người rà (`quyet-dinh.md` của C07), không phải của máy.
+Phạm vi là danh sách `SCANNED` (các tệp đã rà), không phải toàn repo: các tệp khác còn nợ ghi ở `DEBT.md`.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import re
 from pathlib import Path
 
 import pytest
+
+from tools.verify.steps import _CASE_IN_NAME_RE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCANNED = (
@@ -38,13 +42,16 @@ SCANNED = (
 )
 _CLOCKS = frozenset({"perf_counter", "monotonic", "time"})
 _ELAPSED_NAME = re.compile(r"elapsed|duration|took", re.IGNORECASE)
-_CASE_SUFFIX = re.compile(r"__[A-Z]\d{2}[a-z]?(?:[_\[]|$)")
 
 
 def _is_time(node: ast.expr) -> bool:
     """Biểu thức là một khoảng thời gian: biến `elapsed…`, lời gọi đồng hồ, hay `đồng_hồ − mốc`."""
     if isinstance(node, ast.Name):
         return bool(_ELAPSED_NAME.search(node.id))
+    if isinstance(node, ast.Attribute):
+        return bool(_ELAPSED_NAME.search(node.attr))
+    if isinstance(node, ast.Subscript):
+        return isinstance(node.slice, ast.Constant) and bool(_ELAPSED_NAME.search(str(node.slice.value)))
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         return node.func.attr in _CLOCKS
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub) and _is_time(node.left)
@@ -79,11 +86,17 @@ def violations(source: str) -> list[str]:
         and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in stmt.targets)
         and _has_perf(stmt.value)
     ]
+    class_marked = {
+        id(inner)
+        for cls in ast.walk(tree)
+        if isinstance(cls, ast.ClassDef) and any(_has_perf(d) for d in cls.decorator_list)
+        for inner in ast.walk(cls)
+    }
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or not node.name.startswith("test_"):
             continue
-        marked = any(_has_perf(decorator) for decorator in node.decorator_list)
-        if marked and _CASE_SUFFIX.search(node.name):
+        marked = id(node) in class_marked or any(_has_perf(decorator) for decorator in node.decorator_list)
+        if marked and _CASE_IN_NAME_RE.search(node.name):
             found.append(f"{node.name}: perf không được mang mã case")
         ceiling = [a.lineno for a in ast.walk(node) if isinstance(a, ast.Assert) and _is_ceiling(a)]
         if ceiling and not marked:
@@ -107,11 +120,14 @@ def test_scanner_flags_each_violation_kind() -> None:
         "def test_c():\n    assert time.monotonic() - started >= 1.0\n    assert x < 3\n"
         "@pytest.mark.perf\ndef test_d__J09():\n    assert elapsed < 2\n"
         "@pytest.mark.perf\ndef test_e():\n    assert elapsed <= 2\n"
+        "def test_f():\n    assert outcome['elapsed'] <= 10\n"
+        "@pytest.mark.perf\nclass TestG:\n    def test_g(self):\n        assert self.duration < 1\n"
     )
     found = violations(source)
-    assert len(found) == 4
+    assert len(found) == 5
     assert found[0].startswith("dòng 2")
     assert any("test_a" in item and "[4]" in item for item in found)
     assert any("test_b" in item for item in found)
     assert any("test_d__J09" in item and "mã case" in item for item in found)
-    assert not any("test_c" in item or "test_e" in item for item in found)
+    assert any("test_f" in item for item in found)
+    assert not any("test_c" in item or "test_e" in item or "test_g" in item for item in found)
