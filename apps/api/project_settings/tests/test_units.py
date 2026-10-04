@@ -44,6 +44,28 @@ def test_body__rejects_non_finite_or_non_number(bad: Any) -> None:
         _body(confidenceThreshold=bad)
 
 
+@pytest.mark.parametrize(
+    ("field", "raw"),
+    [
+        ("confidenceThreshold", -0.0004),
+        ("confidenceThreshold", 1.0004),
+        ("defaultScaleMmPerPx", 0.0099999),
+        ("defaultScaleMmPerPx", 1000.0000004),
+    ],
+)
+def test_body__range_is_checked_on_the_raw_number_not_the_rounded_one(field: str, raw: float) -> None:
+    """NO-214: số ngoài dải bị 422 dù làm tròn rồi lọt vào dải (`-0.0004` → `-0.000` không được ra dây `-0.0`)."""
+    with pytest.raises(ValidationError):
+        _body(**{field: raw})
+
+
+def test_body__negative_zero_is_normalized_to_zero() -> None:
+    """NO-214: JSON `-0.0` lọt dải nhưng không được ra `-0.000` (dây `-0.0`, băm khác `0.000`)."""
+    body = _body(confidenceThreshold=-0.0)
+    assert body.confidence_threshold == Decimal("0.000")
+    assert not body.confidence_threshold.is_signed()
+
+
 def test_digest__is_stable_and_sensitive() -> None:
     """Cùng cột → cùng băm 64 hex; đổi một trường → băm khác; số thập phân ghi bằng chuỗi."""
     columns = {"notes": "x", "n": 1, "d": Decimal("0.500")}
