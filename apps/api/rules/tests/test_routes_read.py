@@ -82,3 +82,23 @@ async def test_rules_read_config__stale_entries_filtered(
     again = await put_config(api_client, project.id, owner, replace_body(3, read.json()["overrides"]))
     assert again.status_code == 200
     assert again.json()["revision"] == 4
+
+
+async def test_rules_read_config__unknown_override_field_filtered(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Dòng SQL có trường ngoài lược đồ (`note`) trong override: N21 trả 200 với phần hợp lệ, không 500 (NO-250)."""
+    owner, project = await seed_admin_project(db_session)
+    stored = '{"DOOR-WIDTH": {"severity": "warning", "note": "x", "thresholds": {"door.minWidthMm": 700}}}'
+    await db_session.execute(
+        text("INSERT INTO rule_configs (project_id, revision, overrides) VALUES (:p, 2, CAST(:o AS jsonb))"),
+        {"p": project.id, "o": stored},
+    )
+    await db_session.commit()
+
+    read = await get_config(api_client, project.id, owner)
+    assert read.status_code == 200
+    assert read.json() == {
+        "revision": 2,
+        "overrides": {"DOOR-WIDTH": {"severity": "warning", "thresholds": {"door.minWidthMm": 700}}},
+    }
