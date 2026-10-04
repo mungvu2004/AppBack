@@ -1,3 +1,5 @@
+"""Hàm khoá object của `packages.storage.keys`: bố cục, luật id và loại ảnh do server đặt."""
+
 import re
 from collections.abc import Callable
 
@@ -17,6 +19,7 @@ DATASET_VERSION = "dsv_01ARZ3NDEKTSV4RRFFQ69G5FHB"
 
 
 def test_keys_follow_charter_layout() -> None:
+    """Mỗi hàm dựng khoá ra đúng bố cục hiến chương (BE-00 §8)."""
     upload = f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}"
     assert keys.upload_original(PROJECT, FLOOR, UPLOAD, "png") == f"{upload}/original.png"
     assert keys.upload_page(PROJECT, FLOOR, UPLOAD, 0) == f"{upload}/pages/0.png"
@@ -30,6 +33,7 @@ def test_keys_follow_charter_layout() -> None:
 
 
 def test_prefixes_end_with_slash() -> None:
+    """Tiền tố dự án và lượt tải kết thúc bằng `/`."""
     assert keys.project_prefix(PROJECT) == f"projects/{PROJECT}/"
     assert keys.upload_prefix(PROJECT, FLOOR, UPLOAD) == f"projects/{PROJECT}/floors/{FLOOR}/uploads/{UPLOAD}/"
 
@@ -102,6 +106,7 @@ def test_run_and_model_layout_comes_from_core(
     ],
 )
 def test_builders_reject_wrong_ids(build: Callable[[], str], match: str) -> None:
+    """Id hay tên sai luật → `ValueError` với thông điệp nêu đúng luật."""
     with pytest.raises(ValueError, match=match):
         build()
 

@@ -21,6 +21,7 @@ KEY = "library/sofa/preview.png"
 
 @pytest.fixture
 def core_settings(monkeypatch: pytest.MonkeyPatch) -> CoreSettings:
+    """`CoreSettings` của API ở môi trường test."""
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("PUBLIC_BASE_URL", APP_URL)
     monkeypatch.setenv("SECRET_KEY", "secret-du-dai-cho-factory-cua-b0-04")
@@ -29,6 +30,7 @@ def core_settings(monkeypatch: pytest.MonkeyPatch) -> CoreSettings:
 
 
 async def test_create_storage_local(core_settings: CoreSettings, fake_clock: FakeClock, tmp_path: Path) -> None:
+    """Kho local ký URL dưới `PUBLIC_BASE_URL` của app."""
     settings = StorageSettings(storage_backend="local", storage_local_root=str(tmp_path))
 
     storage = create_storage(settings, core_settings, fake_clock)
@@ -41,6 +43,7 @@ async def test_create_storage_local(core_settings: CoreSettings, fake_clock: Fak
 async def test_create_storage_s3_signs_with_the_public_endpoint(
     core_settings: CoreSettings, fake_clock: FakeClock
 ) -> None:
+    """Kho S3 ký URL bằng endpoint công khai."""
     storage = create_storage(s3_settings(), core_settings, fake_clock)
 
     assert isinstance(storage, S3Storage)
@@ -76,6 +79,7 @@ def test_create_storage_rejects_s3_on_the_app_origin(
 
 
 def test_create_storage_accepts_s3_on_another_origin_in_production(fake_clock: FakeClock) -> None:
+    """Production với S3 khác origin dựng được kho."""
     assert isinstance(create_storage(s3_settings(), app_settings("production"), fake_clock), S3Storage)
 
 
