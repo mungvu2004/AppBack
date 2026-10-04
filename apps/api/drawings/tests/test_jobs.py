@@ -43,9 +43,11 @@ class _FailingStorage(LocalDiskStorage):
     """Kho đĩa thật nhưng mọi lệnh xoá báo `DEPENDENCY_UNAVAILABLE` — kho ngoài mất kết nối."""
 
     async def delete(self, key: str) -> None:
+        """Xoá một khoá: luôn báo kho ngoài mất kết nối."""
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=1)
 
     async def delete_prefix(self, prefix: str) -> None:
+        """Xoá theo tiền tố: luôn báo kho ngoài mất kết nối."""
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=1)
 
 

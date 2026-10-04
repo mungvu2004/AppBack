@@ -75,6 +75,7 @@ class _EndMarker:
     PNG và JPEG: tìm dấu ở bất kỳ đâu, giữ lại `len(dấu) - 1` byte cuối mỗi lượt để dấu
     nằm vắt qua hai khúc vẫn thấy. PDF: `%%EOF` phải ở 1 KiB cuối nên chỉ giữ đuôi.
     Chỉ ba loại ấy tới được đây: bước 3 đã đổi mọi loại khác thành `FILE_TYPE_MISMATCH`.
+    Mọi dấu dài ≥ 2 byte nên `len(dấu) - 1 ≥ 1` (`data[-0:]` sẽ trả cả `data`).
     """
 
     def __init__(self, kind: str) -> None:
@@ -101,7 +102,7 @@ class _EndMarker:
             return
         keep = len(self._marker) - 1
         self._start += max(0, len(data) - keep)
-        self._buf = data[-keep:] if keep else b""
+        self._buf = data[-keep:]
 
     @property
     def complete(self) -> bool:
