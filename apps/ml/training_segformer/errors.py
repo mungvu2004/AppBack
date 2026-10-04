@@ -1,13 +1,15 @@
 """Mã lỗi của trainer SegFormer: hằng chuỗi cho `PermanentError(code)` (B0-05), không `ERRORS.define`.
 
 Runner B6-03b gửi chúng thành `failureCode`. `MODEL_CHECKSUM_MISMATCH`, `MODEL_FORMAT_UNSUPPORTED`
-cùng chuỗi với `apps.ml.runtime.errors`, `DATASET_SPLIT_EMPTY` cùng chuỗi với
-`apps.ml.training_runner.errors`, nhưng **không** nhập lại từ đó: cả hai module nhập
-`onnxruntime` lúc nạp, trái luật "nhập `trainer` không nhập `onnxruntime`" (khối [2]).
-Test so từng chuỗi với bản gốc để hai nơi không trôi.
+nhập từ `apps.ml.runtime.error_codes` (một nguồn, chỉ `typing` — không kéo `onnxruntime`, giữ luật
+"nhập `trainer` không nhập `onnxruntime`" của khối [2]); `DATASET_SPLIT_EMPTY`
+nhập từ `apps.ml.training_runner.errors` (cũng chỉ nhập `error_codes`).
 """
 
 from typing import Final
+
+from apps.ml.runtime.error_codes import MODEL_CHECKSUM_MISMATCH, MODEL_FORMAT_UNSUPPORTED
+from apps.ml.training_runner.errors import DATASET_SPLIT_EMPTY
 
 __all__ = [
     "DATASET_SAMPLE_INVALID",
@@ -20,9 +22,6 @@ __all__ = [
 ]
 
 TRAINING_BASE_MODEL_MISMATCH: Final = "TRAINING_BASE_MODEL_MISMATCH"
-MODEL_CHECKSUM_MISMATCH: Final = "MODEL_CHECKSUM_MISMATCH"
-MODEL_FORMAT_UNSUPPORTED: Final = "MODEL_FORMAT_UNSUPPORTED"
-DATASET_SPLIT_EMPTY: Final = "DATASET_SPLIT_EMPTY"
 DATASET_SAMPLE_INVALID: Final = "DATASET_SAMPLE_INVALID"
 TRAINING_LOSS_NOT_FINITE: Final = "TRAINING_LOSS_NOT_FINITE"
 MODEL_EXPORT_MISMATCH: Final = "MODEL_EXPORT_MISMATCH"

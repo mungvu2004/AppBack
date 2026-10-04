@@ -145,7 +145,7 @@ def test_train_from_pretrained_error_is_format_unsupported(tmp_path: Path) -> No
 
 
 def test_errors_match_runtime_and_runner_strings() -> None:
-    """`errors.py` không nhập lại `apps.ml.runtime.errors`/`training_runner.errors` nhưng chuỗi phải khớp."""
+    """Mã dùng chung của `errors.py` là chính chuỗi của `runtime`/`training_runner` (nhập từ nguồn nhẹ, C18b)."""
     assert MODEL_CHECKSUM_MISMATCH == RUNTIME_MODEL_CHECKSUM_MISMATCH
     assert MODEL_FORMAT_UNSUPPORTED == RUNTIME_MODEL_FORMAT_UNSUPPORTED
     assert DATASET_SPLIT_EMPTY == RUNNER_DATASET_SPLIT_EMPTY
