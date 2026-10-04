@@ -11,7 +11,6 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-import apps.api.auth_recovery.jobs  # noqa: F401 — nhập để đăng ký task `send_token_mail` với worker thật
 from apps.api.core.app import create_app
 from apps.api.users.tests.support import USERS, make_admin
 from packages.core.settings import get_core_settings

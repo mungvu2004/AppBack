@@ -99,7 +99,7 @@ def _url(operation: Operation) -> str:
 
 async def _send(client: httpx.AsyncClient, operation: Operation, **kwargs: object) -> httpx.Response:
     """Gửi đúng method của thao tác tới đường thật của nó."""
-    return await client.request(operation.method, _url(operation), **kwargs)  # type: ignore[arg-type]  # kwargs của httpx
+    return await client.request(operation.method, _url(operation), **kwargs)  # type: ignore[arg-type]  # kwargs httpx
 
 
 GRANTED_PROJECT_NAME: Final = "Dự án giả của case chung"
@@ -159,7 +159,7 @@ async def test_common__C05(operation: Operation, api_client: httpx.AsyncClient) 
 
     `BAD_TOKENS` lặp trong thân thay vì tham số hoá riêng (NO-129): tham số hoá hai
     chiều đổi id thành `test_common__C05[<token>-<op>]`, và `_TEST_COMMON_RE`
-    (`tools/case_gate.py`) chỉ tách đúng op khi id là `test_common__C05[<op>]`.
+    (`packages/core/case_names.py`) chỉ tách đúng op khi id là `test_common__C05[<op>]`.
     """
     for token in BAD_TOKENS:
         response = await _send(api_client, operation, headers={"Authorization": f"Bearer {token}"})

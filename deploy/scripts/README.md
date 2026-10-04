@@ -51,8 +51,8 @@ agent nào tự làm việc này).
 ```bash
 ssh deploy@<host> 'id; ls -la /opt/appback; stat -c "%a %U" /etc/appback/appback.env /etc/appback/ml.env'
 # id có nhóm docker; cả hai tệp → "600 deploy"
-ssh deploy@<host> "grep -E '^(SECRET_KEY|DATABASE_URL|SMTP_|MAIL_|REDIS_CACHE_URL|PUBLIC_BASE_URL)' /etc/appback/ml.env"
-# không in dòng nào (grep thoát 1)
+ssh deploy@<host> "grep -vE '^(#|\$|ML_|METRICS_)' /etc/appback/ml.env"
+# không in dòng nào (grep thoát 1): danh sách CHO PHÉP, nên biến lạ nào lọt vào cũng bị bắt
 ```
 
 ## 2. Khoá SSH riêng cho CI

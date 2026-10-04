@@ -28,7 +28,7 @@ from apps.ml.objects.tests.helpers import STEP, FlakyReads, infer_payload, put_s
 from apps.ml.objects.tests.onnx_models import make_const_yolo, make_runtime_broken_yolo, storage_ref, yolo_output
 from apps.ml.runtime import device, gpu, loader
 from apps.ml.runtime.loader import clear_session_cache, load_onnx
-from apps.ml.runtime.settings import MlSettings
+from apps.ml.runtime.settings import MlSettings, get_ml_settings
 from apps.ml.runtime.tasks_util import InferContext, StepOutput
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.messaging.celery_app import producer_app, send_task
@@ -391,6 +391,11 @@ def _forbidden_slot(**kwargs: object) -> object:
 def _forbidden_device(setting: str) -> str:
     """Thay `resolve_device` trong lượt test M04: suy luận luôn CPU, không hỏi `torch.cuda`."""
     raise AssertionError("bước suy luận không được chọn thiết bị (BE-00 §9)")
+
+
+def test_get_ml_settings__not_pinned_by_a_previous_test() -> None:
+    """Chặn tái phát NO-312: sau test vá `ML_DEVICE=cuda` (ở đây và ở `apps/ml/text`), cache không còn `cuda`."""
+    assert get_ml_settings().ml_device != "cuda"
 
 
 def test_objects_detect_rejects_another_family(

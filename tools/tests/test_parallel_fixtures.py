@@ -6,8 +6,12 @@ Hai điểm dùng chung giữa các tiến trình xdist:
   một lần → tên phải mang hậu tố tiến trình, không thì tiến trình sau `DROP … WITH (FORCE)` cái
   mà tiến trình trước đang nhân bản.
 - `packages/testing/fixtures/api.py`: `CASE_TRACE_FILE` là **một** file cho mọi tiến trình
-  (`case_gate` bước 5b/6 đọc nó). Mỗi vết là một `open("a")` + đúng một `write()` ngắn, nên
-  O_APPEND của Linux không cho hai dòng xen vào nhau — test dưới đo bằng tiến trình thật.
+  (`case_gate` bước 5b/6 đọc nó). Mỗi vết là một `open("a")` + một `write()` của một dòng ngắn —
+  ngắn hơn bộ đệm 8 KiB của `open()` nên ra đúng **một** `write(2)`, và Linux giữ khoá inode quanh
+  một `write(2)` O_APPEND trên file thường nên hai dòng không xen vào nhau (PIPE_BUF 4 KiB là luật
+  của pipe, không phải của file thường — NO-277). Dòng dài hơn bộ đệm có thể bị tách thành nhiều
+  `write(2)` và xen được; vết case chỉ có tên test, op, status, code nên không chạm tới. Test dưới
+  đo bằng tiến trình thật.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ from packages.testing.fixtures.worker_id import XDIST_WORKER_ENV
     ],
 )
 def test_tên_database_mẫu_theo_tiến_trình(monkeypatch: pytest.MonkeyPatch, worker: str, expected: str) -> None:
+    """Tên database mẫu mang hậu tố mã tiến trình xdist."""
     monkeypatch.setenv(XDIST_WORKER_ENV, worker)
     assert template_db_name() == expected
 
@@ -52,6 +57,7 @@ def test_tên_database_mẫu_ngoài_xdist_giữ_nguyên(monkeypatch: pytest.Monk
 
 
 def test_hai_tiến_trình_xdist_không_dùng_chung_database_mẫu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hai tiến trình xdist khác nhau ra hai tên database mẫu khác nhau."""
     monkeypatch.setenv(XDIST_WORKER_ENV, "gw0")
     first = template_db_name()
     monkeypatch.setenv(XDIST_WORKER_ENV, "gw1")
@@ -66,11 +72,15 @@ WRITERS = 6
 
 @dataclass
 class _FakeUrl:
+    """URL tối thiểu mà `trace_case` đọc (`path`)."""
+
     path: str = "/v1/things"
 
 
 @dataclass
 class _FakeRequest:
+    """Request tối thiểu mà `trace_case` đọc (`method`, `url`)."""
+
     method: str = "GET"
     url: _FakeUrl = field(default_factory=_FakeUrl)
 

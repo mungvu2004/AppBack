@@ -5,6 +5,7 @@ không nhân đôi khi `revision` không đổi, K18), nên `_seed` ghi một l�
 """
 
 import unicodedata
+from itertools import count
 from typing import Any
 
 import httpx
@@ -12,6 +13,7 @@ import pytest
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.core.pagination import decode_cursor, encode_cursor
 from apps.api.projects.tests.sql_count import count_sql
 from apps.api.spatial_write.tests._helpers import make_wall, simple_layer
 from apps.api.versions.tests._helpers import keep_snapshots
@@ -26,9 +28,33 @@ from apps.api.versions.tests._route_helpers import (
     versions_path,
 )
 from packages.core.clock import Clock
+from packages.core.errors import AppError
 from packages.db.models.floors import FloorRow
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
+
+
+def _forged(cursor: str) -> str:
+    """Cursor sửa một ký tự **giữa** MAC — đổi 6 bit dữ liệu thật, MAC chắc chắn lệch.
+
+    Không sửa 2 ký tự cuối: MAC 32 byte là 43 ký tự base64url, 2 bit cuối là đệm bị bỏ
+    khi giải (`apps/api/core/pagination.py` `_unb64`), nên sửa đuôi có thể ra đúng MAC cũ (NO-258).
+    """
+    head, mac = cursor.split(".")
+    middle = len(mac) // 2
+    swapped = "A" if mac[middle] != "A" else "B"
+    return f"{head}.{mac[:middle]}{swapped}{mac[middle + 1 :]}"
+
+
+def test_forged__mac_ending_in_padding_bits(storage_env: None) -> None:
+    """Cursor có MAC tận cùng `x[w-z]` (đuôi cũ `"xx"` trùng MAC thật) vẫn bị `_forged` làm hỏng (NO-258)."""
+    cursor = next(
+        signed
+        for index in count()
+        if (signed := encode_cursor("probe", {}, {"i": index}))[-2] == "x" and signed[-1] in "wxyz"
+    )
+    with pytest.raises(AppError, match="CURSOR_INVALID"):
+        decode_cursor(_forged(cursor), "probe", {})
 
 
 async def _seed(db: AsyncSession, stage: Stage, clock: Clock, count: int, *, first_base: int = 0) -> list[str]:
@@ -192,7 +218,7 @@ async def test_versions_list_versions__cursor_of_another_floor(
     cursor = (await list_versions(api_client, stage, limit=1)).json()["nextCursor"]
 
     other = await list_versions(api_client, stage, floor_id=stage.other_level_id, cursor=cursor)
-    forged = await list_versions(api_client, stage, cursor=cursor[:-2] + "xx")
+    forged = await list_versions(api_client, stage, cursor=_forged(cursor))
 
     assert (other.status_code, other.json()["code"]) == (422, "CURSOR_INVALID")
     assert (forged.status_code, forged.json()["code"]) == (422, "CURSOR_INVALID")

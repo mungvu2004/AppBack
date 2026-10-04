@@ -3,7 +3,10 @@
 import logging
 import os
 import socket
+import subprocess
+import sys
 import urllib.request
+from pathlib import Path
 
 import pytest
 from celery import _state as celery_state
@@ -34,6 +37,8 @@ from packages.observability.settings import reset_observability_settings_cache
 from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 from packages.testing.fixtures.services import refused_url
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 
 def _free_port() -> int:
     """Một cổng localhost còn rỗi — exporter phải nghe cổng cấu hình, không cổng ngẫu nhiên."""
@@ -50,11 +55,14 @@ def _stop_exporters() -> None:
 
 
 class Ping(TaskPayload):
+    """Payload nhỏ nhất của test gửi task."""
+
     schema_version: int = 1
     run_id: str
 
 
 def conf() -> MessagingSettings:
+    """Cấu hình messaging cố định, không đọc biến môi trường."""
     return MessagingSettings(redis_broker_url="redis://broker:6379/0", redis_cache_url="redis://cache:6379/0")
 
 
@@ -70,15 +78,18 @@ def conf() -> MessagingSettings:
     ],
 )
 def test_queue_is_derived_from_the_task_name_prefix(name: str, queue: str) -> None:
+    """Tên task → hàng theo tiền tố."""
     assert queue_for(name) == queue
     assert route_task(name, [], {}, {}) == {"queue": queue}
 
 
 def test_every_derived_queue_is_a_declared_queue() -> None:
+    """Mọi hàng suy ra từ tiền tố đều nằm trong `QUEUES`."""
     assert {queue_for(name) for name in ("pipeline.a", "ml.infer.a", "ml.training.a", "a")} == set(QUEUES)
 
 
 def test_create_celery_applies_the_charter_configuration() -> None:
+    """`create_celery` áp đúng cấu hình hiến chương."""
     settings = conf()
     app = create_celery("worker", settings)
 
@@ -110,6 +121,7 @@ def test_no_result_backend_is_configured() -> None:
 
 
 def test_create_celery_turns_on_inline_after_commit_callbacks() -> None:
+    """App chạy task bật cờ callback after-commit chạy tại chỗ."""
     create_celery("worker", conf())
 
     assert os.environ[AFTER_COMMIT_INLINE_ENV] == "1"
@@ -121,6 +133,7 @@ def test_after_commit_flag_does_not_leak_between_tests() -> None:
 
 
 def test_producer_app_is_built_once_and_never_becomes_current(monkeypatch: pytest.MonkeyPatch) -> None:
+    """App gửi dựng một lần và không thành app hiện hành."""
     monkeypatch.setenv("REDIS_BROKER_URL", "redis://broker:6379/0")
     monkeypatch.setenv("REDIS_CACHE_URL", "redis://cache:6379/0")
     reset_messaging_settings_cache()
@@ -158,6 +171,7 @@ def test_producer_app_does_not_set_the_inline_flag(messaging_env: None) -> None:
 
 
 def test_send_task_puts_one_message_on_the_queue_named_by_the_prefix(messaging_env: None) -> None:
+    """`send_task` đặt đúng một thông điệp lên hàng theo tiền tố."""
     client = broker_redis_sync(get_messaging_settings())
     try:
         client.delete(*QUEUES)
@@ -292,3 +306,18 @@ def test_a_busy_metrics_port_is_only_a_warning(
 
     assert "metrics_exporter_unavailable" in caplog.text
     assert exporter_module._instance is None
+
+
+def test_register_tasks__module_not_imported_before() -> None:
+    """Tiến trình mới chưa nhập `jobs` nào: `register_tasks` vẫn đưa task mail của B1-03 vào sổ (NO-211)."""
+    probe = (
+        "import sys\n"
+        "from celery import Celery\n"
+        "from packages.testing.fixtures.messaging import register_tasks\n"
+        "assert 'apps.api.auth_recovery.jobs' not in sys.modules\n"
+        "print('default.auth_recovery.send_token_mail' in register_tasks(Celery('probe')).tasks)\n"
+    )
+    result = subprocess.run(  # noqa: S603 — lệnh cố định: python của môi trường + đoạn mã trong test
+        [sys.executable, "-c", probe], cwd=REPO_ROOT, capture_output=True, text=True, check=True, timeout=120
+    )
+    assert result.stdout.strip() == "True"

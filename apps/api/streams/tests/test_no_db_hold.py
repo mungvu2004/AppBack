@@ -5,14 +5,22 @@ mọi truy vấn trong vòng đời luồng (`check_session`, nhà cung cấp) m
 `app.state.sessionmaker`. Nếu một ngày nào đó generator giữ lại session của request thì
 hai mươi luồng mở là hai mươi kết nối bị giam — pool `DB_POOL_SIZE` cạn và **mọi** route
 REST khác 503. Test này đo đúng điều đó bằng `engine.pool.checkedout()`.
+
+Đồng hồ `monotonic` của `sse` bị đứng trong test: recheck (`check_session` đọc Postgres khi
+cache phiên 5 s đã hết) và heartbeat không bao giờ tới hạn, nên lúc đo không có phiên ngắn
+hợp lệ nào đang bay — `checkedout()` chỉ còn đếm kết nối bị **giam** (NO-298: máy chậm, đo
+trúng 9 recheck đang chạy).
 """
 
 from contextlib import AsyncExitStack
+from itertools import repeat
+from time import monotonic
 from typing import Final
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.streams import sse
 from apps.api.streams.tests.fakes import progress_provider
 from apps.api.streams.tests.test_streams_open_progress import FAST, WAIT_S, progress_path
 from packages.testing.fixtures.auth import ORIGIN, REFRESH_PATH
@@ -28,8 +36,11 @@ async def test_open_streams_do_not_hold_postgres_connections(
     sse_open: SseOpen,
     db_session: AsyncSession,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """20 luồng của 5 người đang mở → `pool.checkedout() == 0` và request REST khác vẫn chạy."""
+    frozen = monotonic()
+    monkeypatch.setattr(sse, "monotonic", repeat(frozen).__next__)
     app = stream_app(providers=[progress_provider()], **FAST)
     async with AsyncExitStack() as stack:
         owners = [await stack.enter_async_context(signed_stream_user(app, db_session)) for _ in range(USERS)]

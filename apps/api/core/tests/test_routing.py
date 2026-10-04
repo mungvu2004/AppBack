@@ -236,14 +236,14 @@ async def _idempotency_count(maker: async_sessionmaker[AsyncSession]) -> int:
         return int((await session.execute(select(func.count()).select_from(IdempotencyRecord))).scalar_one())
 
 
-async def test_response_is_not_blocked_by_a_dead_broker(
-    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Broker chết sau commit: callback chạy trên executor riêng, request khác vẫn xong nhanh.
+async def _dead_broker_requests(
+    fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> tuple[tuple[httpx.Response, httpx.Response], float]:
+    """Dừng broker rồi gửi song song POST có callback sau commit và GET công khai; trả `((POST, GET), giây)`.
 
-    Callback sau commit là I/O **chặn** (`send_task`, `XADD`); chạy nó trên vòng sự
-    kiện thì một broker treo là cả API treo (BE-00 §7). Dùng một Redis thật, đời
-    sống ngắn, rồi dừng hẳn container — không mock (K23).
+    Callback sau commit là I/O **chặn** (`send_task`, `XADD`); chạy nó trên vòng sự kiện thì một
+    broker treo là cả API treo (BE-00 §7). Dùng một Redis thật, đời sống ngắn, rồi dừng hẳn
+    container — không mock (K23). Trần thời gian kiểm ở test `perf`, không ở đây.
     """
     container = ephemeral_redis(BROKER_POLICY)
     url = f"redis://{container.get_container_host_ip()}:{container.get_exposed_port(6379)}/0"
@@ -257,7 +257,7 @@ async def test_response_is_not_blocked_by_a_dead_broker(
         async with make_api_client(app) as client:
             container.stop()
             started = time.perf_counter()
-            blocked, other = await asyncio.gather(
+            responses = await asyncio.gather(
                 client.post("/api/sample/dead-broker", json={"name": "a"}, headers=headers),
                 client.get("/api/sample/public"),
             )
@@ -267,9 +267,26 @@ async def test_response_is_not_blocked_by_a_dead_broker(
             container.stop()
         reset_messaging_settings_cache()
         reset_producer_app()
+    return (responses[0], responses[1]), elapsed
+
+
+async def test_response_is_not_blocked_by_a_dead_broker(
+    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Broker chết sau commit: callback chạy trên executor riêng, cả hai request vẫn 200 (trần ở test `perf`)."""
+    (blocked, other), _ = await _dead_broker_requests(fake_clock, fake_principal, monkeypatch)
+
+    assert (blocked.status_code, other.status_code) == (200, 200)
+
+
+@pytest.mark.perf
+async def test_dead_broker_requests_finish_within_ceiling(
+    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Broker chết: hai request song song xong dưới 1 s, đo tuần tự ở bước 5b."""
+    _, elapsed = await _dead_broker_requests(fake_clock, fake_principal, monkeypatch)
 
     _log.info("dead_broker_elapsed %.3fs", elapsed)  # BE-00 §12: số đo in bằng logging
-    assert (blocked.status_code, other.status_code) == (200, 200)
     assert elapsed < DEAD_BROKER_CEILING_S, f"mất {elapsed:.3f}s, trần {DEAD_BROKER_CEILING_S}s"
 
 

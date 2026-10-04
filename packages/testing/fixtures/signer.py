@@ -7,15 +7,25 @@ mặt, **và** bản dựng xong nằm lại trong tiến trình. Hệ quả là
 chỉ vì một test khác trong cùng tiến trình đã làm ấm cache đó — đúng kiểu phụ thuộc thứ tự mà
 `pytest -n` phá vỡ (bước 5 chia file sang tiến trình khác là đỏ ngay).
 
-Fixture ở đây **không** `autouse`: module nào cần thì xin, để chỗ phụ thuộc hiện ra trong mã.
+`signer_cache` (autouse) xoá cache đó trước và sau mọi test (NO-265): mỗi test dựng kho từ biến
+môi trường **của mình**, không ăn bản của test khác. `drawing_signer` **không** autouse: module nào
+cần kho của test thì xin, để chỗ phụ thuộc hiện ra trong mã.
 """
 
 from collections.abc import Iterator
 
 import pytest
 
-from apps.api.drawings.urls import use_signer
+from apps.api.drawings.urls import reset_signer_cache, use_signer
 from packages.storage.local import LocalDiskStorage
+
+
+@pytest.fixture(autouse=True)
+def signer_cache() -> Iterator[None]:
+    """Xoá kho mặc định đã cache của `signer()` trước và sau mỗi test."""
+    reset_signer_cache()
+    yield
+    reset_signer_cache()
 
 
 @pytest.fixture

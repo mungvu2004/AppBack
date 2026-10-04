@@ -18,13 +18,19 @@ kiểm — ephemeral vẫn là container thật, chỉ đời sống ngắn hơn
 from __future__ import annotations
 
 import json
+import os
+import re
 import socket
+import sys
+import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
+from functools import cache
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
+from docker.errors import APIError, NotFound  # type: ignore[import-untyped]  # không có stub
 from filelock import FileLock
 
 # testcontainers 4.13 (bản trong uv.lock) không có py.typed, cũng không có gói stub
@@ -52,9 +58,102 @@ SHARED_STATE_PREFIX = "shared-service-"
 # phiên của tiến trình đó ngay khi tiến trình thoát. Dịch vụ dùng chung ở dưới sống lâu hơn tiến
 # trình đã dựng nó, nên để Ryuk bật là nó giật mất dịch vụ khỏi những tiến trình còn đang chạy.
 # Tắt Ryuk, dọn bằng bộ đếm người dùng của `_shared_container`; tắt luôn cũng bỏ được 6 container
-# Ryuk. Ngưỡng đã biết: phiên bị giết cứng (Ctrl-C, Docker Desktop tắt) để lại container dịch vụ —
-# dọn bằng script dọn Docker của người điều phối, như mọi container mồ côi khác.
+# Ryuk. Phiên bị giết cứng (SIGKILL, OOM) để lại container dịch vụ: mỗi container mang nhãn chủ
+# (`OWNER_LABEL`) và phiên kế dọn container có chủ đã chết (`sweep_orphans`, NO-281).
 testcontainers_config.ryuk_disabled = True
+
+OWNER_LABEL = "appback.test-owner"
+"""Nhãn `<hostname>:<pid tiến trình điều khiển pytest>` trên mọi container dịch vụ của test."""
+
+# Hostname mặc định của một container Docker là 12 ký tự hex đầu của id nó (container verify-run).
+_CONTAINER_HOSTNAME = re.compile(r"[0-9a-f]{12}")
+
+# Phiên (chủ) đã quét gần nhất trên máy này; gốc tạm chung của mọi tiến trình xdist (cùng gốc với basetemp
+# của pytest), không phải basetemp — `_start` còn được gọi từ `ephemeral_*` không có `tmp_path_factory`.
+_SWEEP_STATE = Path(tempfile.gettempdir()) / "appback-orphan-sweep.owner"
+
+
+def session_owner() -> str:
+    """Chủ của container dịch vụ: máy + tiến trình **điều khiển** của lượt pytest.
+
+    Trong tiến trình xdist chủ là tiến trình cha (bộ điều khiển `pytest -n`) chứ không phải chính
+    tiến trình con: container dùng chung sống lâu hơn tiến trình con đã dựng nó (`_shared_container`),
+    nhưng không bao giờ lâu hơn bộ điều khiển.
+    """
+    pid = os.getppid() if xdist_worker_id() else os.getpid()
+    return f"{socket.gethostname()}:{pid}"
+
+
+def _owner_alive(owner: str, client: Any) -> bool:
+    """Chủ còn sống không. Không chắc thì coi là sống — xoá nhầm là cắt dịch vụ của phiên khác.
+
+    Cùng máy: hỏi pid (`os.kill(pid, 0)`; `PermissionError` = tiến trình có thật của người khác).
+    Máy khác mà tên là hostname mặc định của container: chủ chết khi container đó không còn chạy
+    (container verify-run đã thoát). Tên khác: không có cách hỏi → giữ. Ngưỡng đã biết: hai máy
+    **cùng hostname** dùng chung một daemon Docker sẽ thấy pid của nhau là "chết" — verify-run (hostname
+    = id container), CI (mỗi job một máy) và `run.sh shell` không rơi vào đó.
+    """
+    host, _, pid = owner.rpartition(":")
+    if sys.platform == "win32":
+        # `os.kill(pid, 0)` trên Windows là `TerminateProcess`, không phải phép hỏi; test chỉ chạy trên Linux
+        return True
+    if host == socket.gethostname():
+        try:
+            # Nhãn hỏng (pid không phải số) → không biết chủ → giữ, như mọi trường hợp không chắc
+            # Pid quá lớn với `pid_t` (`OverflowError`) cũng là nhãn hỏng (review DEBT-02 #17)
+            with suppress(PermissionError, ValueError, OverflowError):
+                os.kill(int(pid), 0)
+        except ProcessLookupError:
+            return False
+        return True
+    if _CONTAINER_HOSTNAME.fullmatch(host):
+        return bool(client.api.containers(filters={"id": host}))
+    return True
+
+
+def sweep_orphans() -> list[str]:
+    """Xoá container dịch vụ mà phiên pytest chủ của nó đã chết; trả id đã xoá (NO-281).
+
+    Liệt kê bằng **một** lời gọi API cấp thấp (`client.api.containers`, trả id + nhãn). `containers.list()`
+    của SDK liệt kê rồi `get()` từng container: container của phiên khác bị xoá giữa hai bước làm `get()`
+    ném `NotFound` và hỏng `_start` của phiên này (NO-347).
+    """
+    client = DockerClient().client
+    removed: list[str] = []
+    for summary in client.api.containers(all=True, filters={"label": OWNER_LABEL}):
+        if not _owner_alive(summary["Labels"][OWNER_LABEL], client):
+            _remove_container(summary["Id"])
+            removed.append(summary["Id"])
+    return removed
+
+
+@cache
+def _sweep_once() -> None:
+    """`sweep_orphans` một lần mỗi **phiên**, ngay trước container đầu tiên của phiên được dựng.
+
+    `@cache` chặn lặp trong một tiến trình; `FileLock` + `_SWEEP_STATE` (chủ đã quét) chặn sáu tiến trình
+    xdist của cùng phiên quét lại sau nhau — trước đây cả sáu cùng `remove(force=True)` trên cùng
+    container mồ côi (review DEBT-02 #2). Phiên khác ghi đè chủ thì phiên này có thể quét thêm một lượt:
+    vô hại, `_remove_container` coi xoá trùng là đích đã đạt.
+    """
+    owner = session_owner()
+    with FileLock(f"{_SWEEP_STATE}.lock"):
+        if _SWEEP_STATE.exists() and _SWEEP_STATE.read_text(encoding="utf-8") == owner:
+            return
+        sweep_orphans()
+        _SWEEP_STATE.write_text(owner, encoding="utf-8")
+
+
+def _start[ContainerT: DockerContainer](container: ContainerT) -> ContainerT:
+    """Gắn nhãn chủ rồi khởi động — mọi container dịch vụ của test đi qua đây.
+
+    `with_kwargs` của testcontainers **thay** cả bộ kwargs, nên gộp với cái đã có; testcontainers tự
+    thêm nhãn phiên của nó vào `labels` lúc chạy. Chạm `_kwargs` riêng của testcontainers 4.13 (như
+    `_via_mapped_port`): nâng testcontainers thì chạy lại `tools/tests/test_orphan_sweep.py`.
+    """
+    _sweep_once()
+    container.with_kwargs(**{**container._kwargs, "labels": {OWNER_LABEL: session_owner()}})
+    return cast(ContainerT, container.start())
 
 
 def _redis(policy: str) -> RedisContainer:
@@ -91,10 +190,17 @@ def _remove_container(container_id: str) -> None:
 
     `NotFound` là đích đã đạt chứ không phải lỗi: container có thể đã biến mất (Docker khởi động
     lại, ai đó dọn tay). Để nó nổi lên là một lượt chạy sạch hoá thành lỗi teardown của fixture
-    phiên, ngay lúc đang giữ `FileLock` (review F-2). Mọi lỗi Docker khác vẫn nổi lên (R-16).
+    phiên, ngay lúc đang giữ `FileLock` (review F-2). 409 "removal … already in progress" cũng vậy: một
+    người dọn khác (phiên verify khác cùng daemon đang `sweep_orphans`) đang xoá đúng container này, kết
+    cục như nhau (review DEBT-02 #2). Mọi lỗi Docker khác vẫn nổi lên (R-16).
     """
-    with suppress(NotFound):
+    try:
         DockerClient().client.containers.get(container_id).remove(force=True)
+    except NotFound:
+        pass
+    except APIError as exc:
+        if exc.status_code != 409:
+            raise
 
 
 @contextmanager
@@ -165,7 +271,7 @@ def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
     def start() -> tuple[DockerContainer, str]:
         """Dựng container Postgres dùng chung và trả (container, URL)."""
-        pg = PostgresContainer(POSTGRES_IMAGE, driver="asyncpg").start()
+        pg = _start(PostgresContainer(POSTGRES_IMAGE, driver="asyncpg"))
         return pg, str(pg.get_connection_url())
 
     with _shared_container("postgres", tmp_path_factory, start) as url:
@@ -175,7 +281,7 @@ def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 @pytest.fixture(scope="session")
 def redis_broker_url() -> Iterator[str]:
     """URL Redis (chính sách `noeviction`) cho broker Celery, dùng chung cả phiên."""
-    container = _redis("noeviction").start()
+    container = _start(_redis("noeviction"))
     try:
         yield _redis_url(container)
     finally:
@@ -185,7 +291,7 @@ def redis_broker_url() -> Iterator[str]:
 @pytest.fixture(scope="session")
 def redis_cache_url() -> Iterator[str]:
     """URL Redis (chính sách `allkeys-lru`) cho cache, dùng chung cả phiên."""
-    container = _redis("allkeys-lru").start()
+    container = _start(_redis("allkeys-lru"))
     try:
         yield _redis_url(container)
     finally:
@@ -202,7 +308,7 @@ def minio_endpoint(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[s
 
     def start() -> tuple[DockerContainer, list[str]]:
         """Dựng container MinIO dùng chung và trả (container, cấu hình S3)."""
-        minio = MinioContainer(MINIO_IMAGE).start()
+        minio = _start(MinioContainer(MINIO_IMAGE))
         cfg = minio.get_config()
         # list chứ không tuple: giá trị đi qua JSON của `_shared_container`, mà JSON không có tuple
         return minio, [cfg["endpoint"], cfg["access_key"], cfg["secret_key"]]
@@ -226,7 +332,7 @@ def mailpit() -> Iterator[tuple[str, int, int]]:
         .with_exposed_ports(1025, 8025)
         .waiting_for(HttpWaitStrategy(8025, "/api/v1/info"))
     )
-    container.start()
+    _start(container)
     try:
         host = container.get_container_host_ip()
         yield host, int(container.get_exposed_port(1025)), int(container.get_exposed_port(8025))
@@ -244,14 +350,14 @@ def refused_url(scheme: str) -> str:
 
 def ephemeral_postgres() -> PostgresContainer:
     """Postgres tạm cho một test, đi qua cổng đã ánh xạ."""
-    return _via_mapped_port(PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")).start()
+    return _start(_via_mapped_port(PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")))
 
 
 def ephemeral_redis(policy: str) -> RedisContainer:
     """Redis tạm cho một test với chính sách `policy`, đi qua cổng đã ánh xạ."""
-    return _via_mapped_port(_redis(policy)).start()
+    return _start(_via_mapped_port(_redis(policy)))
 
 
 def ephemeral_minio() -> MinioContainer:
     """MinIO tạm cho một test, đi qua cổng đã ánh xạ."""
-    return _via_mapped_port(MinioContainer(MINIO_IMAGE)).start()
+    return _start(_via_mapped_port(MinioContainer(MINIO_IMAGE)))

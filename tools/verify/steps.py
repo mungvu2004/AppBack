@@ -15,7 +15,7 @@ import sys
 import threading
 import traceback
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -215,12 +215,12 @@ def step_coverage() -> StepOutcome:
 
 
 _PERF_EXPR = "perf and not gpu"
-_CASE_IN_NAME_RE = re.compile(r"__[A-Z]\d{2}[a-z]?(?:_|\[|$)")
+CASE_IN_NAME_RE = re.compile(r"__[A-Z]\d{2}[a-z]?(?:_|\[|$)")
 
 
 def perf_case_named(node_ids: list[str]) -> list[str]:
     """Test `perf` mang tên case (`__<caseid>`) → hỏng: case phải tính ở bước 5, dưới coverage."""
-    return [n for n in node_ids if _CASE_IN_NAME_RE.search(n.rsplit("::", 1)[-1])]
+    return [n for n in node_ids if CASE_IN_NAME_RE.search(n.rsplit("::", 1)[-1])]
 
 
 def _collect_perf(paths: list[str]) -> list[str]:
@@ -337,13 +337,40 @@ def run_steps(steps: Sequence[tuple[str, Callable[[], StepOutcome]]], wanted: se
     return outcomes
 
 
+@contextmanager
+def _cold_mypy_cache() -> Iterator[None]:
+    """Trong khối, `MYPY_CACHE_DIR` là `os.devnull` (mypy chạy nguội); ra khối trả riêng biến đó như cũ (NO-306).
+
+    Cache ấm `/work/mypy-${VERIFY_NAME}` đổi kết quả: băm nguồn khớp meta thì mypy coi module tươi và
+    phát lại lỗi (hay "Success") đã lưu, dù đầu vào hiện tại không còn sinh ra nó — `main` @ 30b78ae
+    đỏ bước 3 giả. Đo: cả repo nguội 212 s, ấm 5 s.
+    """
+    saved = os.environ.get("MYPY_CACHE_DIR")
+    os.environ["MYPY_CACHE_DIR"] = os.devnull
+    try:
+        yield
+    finally:
+        if saved is None:
+            del os.environ["MYPY_CACHE_DIR"]
+        else:
+            os.environ["MYPY_CACHE_DIR"] = saved
+
+
 def _run_verify(args: argparse.Namespace) -> int:
-    """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng"."""
+    """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng".
+
+    Cổng đầy đủ (không `--steps`, hay `--steps` gồm mọi bước) chạy mypy nguội — kết quả của nó quyết định
+    gộp; `--steps` của worker giữ cache ấm cho nhanh (xem trước, cổng mới là kết luận — NO-306).
+    """
     wanted = set(args.steps.split(",")) if args.steps else None
     # Không ai gõ bước "0": nó đi kèm khi lượt có bước cần runner Node.
     if wanted is not None and wanted & _RUNNER_STEPS:
         wanted.add("0")
-    outcomes = run_steps(_ALL_STEPS, wanted)
+    # `--steps` gồm mọi bước cũng là cổng đầy đủ: cache ấm ở đó là đường "đạt" giả (NO-306).
+    full_gate = wanted is None or wanted >= {number for number, _ in _ALL_STEPS}
+    mypy_cache: AbstractContextManager[None] = _cold_mypy_cache() if full_gate else nullcontext()
+    with mypy_cache:
+        outcomes = run_steps(_ALL_STEPS, wanted)
     # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất. Chép hỏng
     # là một dòng bảng "hỏng" (thoát 1), không phải traceback thay chỗ cả bảng (NO-075).
     try:

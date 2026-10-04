@@ -336,6 +336,45 @@ def test_main_verify_in_bảng_và_mã_thoát(
     assert steps.main(["verify", "--steps", "1"]) == 0
 
 
+@pytest.mark.parametrize(
+    ("argv", "seen"),
+    [([], os.devnull), (["--steps", "3"], "/work/mypy-x"), (["--steps", "4,3"], os.devnull)],
+)
+def test_verify__full_gate_runs_mypy_cold(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str], seen: str
+) -> None:
+    """NO-306: cổng đầy đủ (không `--steps` hay `--steps` gồm mọi bước) chạy bước 3 với `MYPY_CACHE_DIR=os.devnull`.
+
+    `--steps` thiếu bước giữ cache ấm. Sau lượt chỉ `MYPY_CACHE_DIR` được trả; biến bước khác đặt vẫn còn.
+    """
+    monkeypatch.setenv("MYPY_CACHE_DIR", "/work/mypy-x")
+    monkeypatch.setenv("VERIFY_PROBE", "trước")
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    cache_dirs: list[str] = []
+
+    def fake_mypy() -> steps.StepOutcome:
+        """Bước 3 giả: ghi lại `MYPY_CACHE_DIR` mà mypy sẽ thấy, và đổi một biến khác."""
+        cache_dirs.append(os.environ["MYPY_CACHE_DIR"])
+        os.environ["VERIFY_PROBE"] = "sau"
+        return steps.StepOutcome("3", "mypy --strict", steps.STATUS_OK)
+
+    monkeypatch.setattr(
+        steps, "_ALL_STEPS", [("3", fake_mypy), ("4", lambda: steps.StepOutcome("4", "lint", steps.STATUS_OK))]
+    )
+    assert steps.main(["verify", *argv]) == 0
+    assert cache_dirs == [seen]
+    assert os.environ["MYPY_CACHE_DIR"] == "/work/mypy-x"
+    assert os.environ["VERIFY_PROBE"] == "sau"
+
+
+def test_cold_mypy_cache__unset_variable_stays_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-306: không có `MYPY_CACHE_DIR` trước khối thì ra khối cũng không có (không để lại `os.devnull`)."""
+    monkeypatch.delenv("MYPY_CACHE_DIR", raising=False)
+    with steps._cold_mypy_cache():
+        assert os.environ["MYPY_CACHE_DIR"] == os.devnull
+    assert "MYPY_CACHE_DIR" not in os.environ
+
+
 # --- lock / openapi -----------------------------------------------------------------
 
 

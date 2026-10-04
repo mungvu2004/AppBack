@@ -37,6 +37,7 @@ from packages.messaging.redis import (
     streams_redis,
     sync_result,
 )
+from packages.messaging.schedules import discover_worker_tasks
 from packages.messaging.settings import get_messaging_settings, reset_messaging_settings_cache
 from packages.messaging.streams import EventBus
 from packages.messaging.tasks import reset_delivery_client
@@ -115,35 +116,51 @@ async def _flushed(client: AsyncRedis) -> AsyncIterator[AsyncRedis]:
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def streams_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
+    """Client async của DB Streams (`STREAM_DB`), `FLUSHDB` sau test."""
     async with _flushed(streams_redis()) as client:
         yield client
 
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def safe_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
+    """Client async của DB an toàn (`SAFE_DB`: khoá đăng nhập, hạn mức), `FLUSHDB` sau test."""
     async with _flushed(safe_redis()) as client:
         yield client
 
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def cache_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
+    """Client async của `redis-cache` (cache, rate limit), `FLUSHDB` sau test."""
     async with _flushed(cache_redis()) as client:
         yield client
 
 
 @pytest.fixture
 def event_bus(streams_client: AsyncRedis) -> EventBus:
+    """`EventBus` thật trên client Streams của test."""
     return EventBus(streams_client)
+
+
+def register_tasks(app: Celery) -> Celery:
+    """Nạp mọi module task như `apps/worker/celery_main.py` rồi trả lại `app` (NO-211).
+
+    `shared_task` chỉ vào sổ khi module của nó đã được nhập; không nạp ở đây thì worker
+    thật của test báo `Received unregistered task` hay không tuỳ test nào chạy trước.
+    Như worker thật, task `apps.ml.*.tasks` **không** được nạp (ảnh worker không có ML):
+    test của `apps/ml` vẫn tự nhập module task của mình.
+    """
+    discover_worker_tasks()
+    return app
 
 
 @pytest.fixture
 def celery_test_app(messaging_env: None) -> Celery:
-    """App Celery trên broker Redis thật.
+    """App Celery trên broker Redis thật, sổ task đầy đủ như worker thật (`register_tasks`).
 
     Cờ `DB_AFTER_COMMIT_INLINE` mà `create_celery` đặt do `producer_reset` (autouse)
     trả lại, nên ở đây không lặp lại việc đó.
     """
-    return create_celery("test", get_messaging_settings())
+    return register_tasks(create_celery("test", get_messaging_settings()))
 
 
 type WorkerFactory = Callable[[Sequence[str]], AbstractContextManager[None]]
@@ -160,6 +177,7 @@ def celery_worker_factory(celery_test_app: Celery) -> WorkerFactory:
 
     @contextmanager
     def factory(queues: Sequence[str]) -> Iterator[None]:
+        """Worker thật nghe đúng `queues`; hàng lạ → `ValueError` trước khi dựng."""
         unknown = set(queues) - set(QUEUES)
         if unknown:
             raise ValueError(f"hàng lạ: {sorted(unknown)}")

@@ -41,6 +41,7 @@ OP: Final = "streams_open_progress"
 PROJECT_ID: Final = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
 UPLOAD_ID: Final = "upl_01BX5ZZKBKACTAV9WEVGEMMVRZ"
 
+_log: Final = logging.getLogger(__name__)
 FAST: Final = {"stream_heartbeat_s": "0.2", "stream_recheck_s": "0.2", "stream_read_block_ms": "100"}
 """Nhịp nhỏ của test: 0,2 * 1,2 + 0,1 = 0,34 s, vẫn thoả ràng buộc S07 lúc nạp."""
 
@@ -300,92 +301,119 @@ async def test_streams_open_progress__S06_bad_id(
 # ---------------------------------------------------------------------------
 
 
+S07_CLOSE_BUDGETS: Final = {
+    "revoke_sessions": CLOSE_BUDGET_S,
+    "bump_token_version": CLOSE_BUDGET_S,
+    "disabled_user": CLOSE_BUDGET_CACHED_S,
+    "policy_revoked": CLOSE_BUDGET_S,
+}
+"""Trần đóng luồng theo kịch bản mất quyền (S07): `disabled_user` chờ hết TTL cache 1 s nên rộng hơn."""
+
+
+async def _s07_close_elapsed(
+    scenario: str,
+    stream_app: StreamAppFactory,
+    sse_open: SseOpen,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[float, FakePolicy]:
+    """Mở luồng, gây mất quyền theo `scenario`, trả (số giây tới lúc server đóng luồng, chính sách).
+
+    `wait_closed(WAIT_S)` ném `TimeoutError` nếu luồng không đóng — nên test case chỉ cần gọi hàm này;
+    phép so với trần `S07_CLOSE_BUDGETS` ở test `perf`.
+    """
+    _short_cache(monkeypatch)
+    policy = FakePolicy()
+    app = stream_app(providers=[progress_provider(policy=policy)], **FAST)
+    async with (
+        signed_stream_user(app, db_session) as owner,
+        sse_open(app, progress_path(), cookies=owner.cookies) as stream,
+    ):
+        await stream.next_frames(1, WAIT_S)
+        if scenario == "revoke_sessions":
+            await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
+            await db_session.commit()
+            await after_commit_idle(db_session)
+        elif scenario == "bump_token_version":
+            await bump_token_version(db_session, owner.user.id)
+            await db_session.commit()
+            await after_commit_idle(db_session)
+        elif scenario == "disabled_user":
+            await db_session.execute(update(User).where(User.id == owner.user.id).values(status="disabled"))
+            await db_session.commit()
+        else:
+            policy.allowed = False
+        return await stream.wait_closed(WAIT_S), policy
+
+
 async def test_streams_open_progress__S07(
     stream_app: StreamAppFactory,
     sse_open: SseOpen,
     db_session: AsyncSession,
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Thu hồi mọi phiên → luồng đóng ≤ 1 s, không gửi thêm khung nào."""
-    _short_cache(monkeypatch)
-    app = stream_app(providers=[progress_provider()], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, progress_path(), cookies=owner.cookies) as stream:
-            await stream.next_frames(1, WAIT_S)
-            await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
-            await db_session.commit()
-            await after_commit_idle(db_session)
-            elapsed = await stream.wait_closed(WAIT_S)
-        with capsys.disabled():
-            print(f"\n[S07] revoke_sessions: đóng sau {elapsed:.3f}s")
-        assert elapsed <= CLOSE_BUDGET_S
+    """Thu hồi mọi phiên → luồng đóng (trần 1 s ở test `perf` bên dưới), không gửi thêm khung nào."""
+    elapsed, _ = await _s07_close_elapsed("revoke_sessions", stream_app, sse_open, db_session, fake_clock, monkeypatch)
+    _log.info("s07_progress_revoke_sessions closed_after_s=%.3f", elapsed)
 
 
 async def test_streams_open_progress__S07_token_version(
     stream_app: StreamAppFactory,
     sse_open: SseOpen,
     db_session: AsyncSession,
+    fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`bump_token_version` (đổi vai) → `ver` của cookie lệch → luồng đóng ≤ 1 s."""
-    _short_cache(monkeypatch)
-    app = stream_app(providers=[progress_provider()], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, progress_path(), cookies=owner.cookies) as stream:
-            await stream.next_frames(1, WAIT_S)
-            await bump_token_version(db_session, owner.user.id)
-            await db_session.commit()
-            await after_commit_idle(db_session)
-            elapsed = await stream.wait_closed(WAIT_S)
-        with capsys.disabled():
-            print(f"\n[S07] bump_token_version: đóng sau {elapsed:.3f}s")
-        assert elapsed <= CLOSE_BUDGET_S
+    """`bump_token_version` (đổi vai) → `ver` của cookie lệch → luồng đóng."""
+    elapsed, _ = await _s07_close_elapsed(
+        "bump_token_version", stream_app, sse_open, db_session, fake_clock, monkeypatch
+    )
+    _log.info("s07_progress_bump_token_version closed_after_s=%.3f", elapsed)
 
 
 async def test_streams_open_progress__S07_disabled_user(
     stream_app: StreamAppFactory,
     sse_open: SseOpen,
     db_session: AsyncSession,
+    fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Người dùng bị vô hiệu **thẳng trong DB** (không xoá cache) → đóng ≤ 1,5 s (TTL cache 1 s)."""
-    _short_cache(monkeypatch)
-    app = stream_app(providers=[progress_provider()], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, progress_path(), cookies=owner.cookies) as stream:
-            await stream.next_frames(1, WAIT_S)
-            await db_session.execute(update(User).where(User.id == owner.user.id).values(status="disabled"))
-            await db_session.commit()
-            elapsed = await stream.wait_closed(WAIT_S)
-        with capsys.disabled():
-            print(f"\n[S07] status='disabled' (cache còn hạn): đóng sau {elapsed:.3f}s")
-        assert elapsed <= CLOSE_BUDGET_CACHED_S
+    """Người dùng bị vô hiệu **thẳng trong DB** (không xoá cache) → luồng đóng sau khi cache hết hạn (TTL 1 s)."""
+    elapsed, _ = await _s07_close_elapsed("disabled_user", stream_app, sse_open, db_session, fake_clock, monkeypatch)
+    _log.info("s07_progress_disabled_user closed_after_s=%.3f", elapsed)
 
 
 async def test_streams_open_progress__S07_policy_revoked(
     stream_app: StreamAppFactory,
     sse_open: SseOpen,
     db_session: AsyncSession,
+    fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Gỡ thành viên giữa chừng (chính sách đổi sang từ chối) → luồng đóng ≤ 1 s."""
-    _short_cache(monkeypatch)
-    policy = FakePolicy()
-    app = stream_app(providers=[progress_provider(policy=policy)], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, progress_path(), cookies=owner.cookies) as stream:
-            await stream.next_frames(1, WAIT_S)
-            policy.allowed = False
-            elapsed = await stream.wait_closed(WAIT_S)
-        with capsys.disabled():
-            print(f"\n[S07] policy.authorize từ chối: đóng sau {elapsed:.3f}s")
-        assert elapsed <= CLOSE_BUDGET_S
-        assert policy.calls > 1, "recheck phải gọi lại authorize, không chỉ lúc mở"
+    """Gỡ thành viên giữa chừng (chính sách đổi sang từ chối) → luồng đóng."""
+    elapsed, policy = await _s07_close_elapsed(
+        "policy_revoked", stream_app, sse_open, db_session, fake_clock, monkeypatch
+    )
+    _log.info("s07_progress_policy_revoked closed_after_s=%.3f", elapsed)
+    assert policy.calls > 1, "recheck phải gọi lại authorize, không chỉ lúc mở"
+
+
+@pytest.mark.perf
+@pytest.mark.parametrize("scenario", list(S07_CLOSE_BUDGETS))
+async def test_progress_stream_closes_within_budget_after_access_loss(
+    scenario: str,
+    stream_app: StreamAppFactory,
+    sse_open: SseOpen,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Trần S07 (≤ 1 s; 1,5 s khi chờ hết TTL cache) của từng kịch bản mất quyền, đo tuần tự ở bước 5b."""
+    elapsed, _ = await _s07_close_elapsed(scenario, stream_app, sse_open, db_session, fake_clock, monkeypatch)
+    _log.info("s07_progress_%s closed_after_s=%.3f", scenario, elapsed)
+    assert elapsed <= S07_CLOSE_BUDGETS[scenario]
 
 
 # ---------------------------------------------------------------------------

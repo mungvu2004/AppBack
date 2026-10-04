@@ -3,16 +3,18 @@
 K36: `prepare_page` ([6] bước 3) phải chạy **ngoài** session DB, không thì một trang PDF to
 giữ khoá kết nối cả lúc dựng ảnh — với `db_pool_size` nhỏ (ENV.md), vài lượt chạy song song đủ
 cạn pool. Bộ nhớ: tiền xử lý ảnh 40 MP (trần `DEFAULT_MAX_PIXELS`) không được vượt 1,5 GiB RSS
-của tiến trình con — đo bằng `resource.getrusage` trong `multiprocessing.get_context("spawn")`
-để không lẫn với bộ nhớ của tiến trình pytest. Ranh giới: `pipeline_orchestrate` là hàm worker
-nhập (BE-00 §7) — không được nhập `apps.ml`, `torch`, `onnxruntime`, `fastapi` (khối [9]).
+của tiến trình con — con `spawn` tự đọc `VmHWM` (`/proc/self/status`) rồi gửi về cha. Không dùng
+`resource.getrusage`: `RUSAGE_CHILDREN` của cha là đỉnh của **mọi** con đã kết thúc (NO-339), còn
+`RUSAGE_SELF.ru_maxrss` của con giữ mức nước cao **qua `execve`** nên mang cả RSS của cha pytest lúc fork
+(FIX-174, cổng W2 5b đỏ 4 282 204 KiB). `VmHWM` là đỉnh của bộ nhớ ảnh sau exec — chỉ Linux, cổng chạy Linux.
+Ranh giới: `pipeline_orchestrate` là hàm worker nhập (BE-00 §7) — không được nhập `apps.ml`,
+`torch`, `onnxruntime`, `fastapi` (khối [9]).
 """
 
 import ast
 import asyncio
 import logging
 import multiprocessing
-import resource
 import tempfile
 import threading
 from datetime import UTC, datetime
@@ -32,7 +34,23 @@ type Maker = async_sessionmaker[AsyncSession]
 _log = logging.getLogger(__name__)
 
 MEMORY_CEILING_KIB: Final = int(1.5 * 1024 * 1024)
-"""1,5 GiB tính bằng KiB — `ru_maxrss` của Linux vốn đã tính theo KiB."""
+"""1,5 GiB tính bằng KiB — `VmHWM` của `/proc/self/status` tính theo KiB."""
+
+PARENT_BALLAST_BYTES: Final = 768 * 1024 * 1024
+"""Bộ nhớ cha tự giữ trong test chặn FIX-174 — gấp 8 lần đỉnh đo được của một con rỗng
+(95 164 KiB, gồm cả lượt nhập lại mô-đun test, `W2/M/fix174.log`)."""
+
+
+def _peak_rss_kib() -> int:
+    """Đỉnh RSS (KiB) của **chính** tiến trình này kể từ `execve` — dòng `VmHWM` của `/proc/self/status`."""
+    with open("/proc/self/status", encoding="ascii") as status:
+        return next(int(line.split()[1]) for line in status if line.startswith("VmHWM:"))
+
+
+def _child_report_peak(queue: "multiprocessing.Queue[int]") -> None:
+    """Tiến trình con rỗng: không cấp phát gì, chỉ gửi đỉnh RSS của mình về cha."""
+    queue.put(_peak_rss_kib())
+
 
 FORBIDDEN_MODULES: Final = frozenset({"torch", "onnxruntime", "fastapi"})
 """Mô-đun cấm nhập tuyệt đối của một hàm worker (khối [9]); `apps.ml` xét riêng vì cùng gốc `apps`."""
@@ -115,11 +133,12 @@ async def test_run_pipeline_start_releases_pool_before_rendering(
 
 
 def _child_prepare_40mp(queue: "multiprocessing.Queue[int]") -> None:
-    """Tiến trình con: tiền xử lý một ảnh 40 MP rồi báo xong; đo ở tiến trình cha qua `RUSAGE_CHILDREN`."""
+    """Tiến trình con: tiền xử lý một ảnh 40 MP rồi gửi `ru_maxrss` (KiB) của **chính nó** về cha."""
     from PIL import Image
 
     from apps.worker.pipeline_orchestrate.preprocess import PagePlan, PageSource, prepare_page
     from apps.worker.pipeline_orchestrate.settings import get_orchestrate_settings
+    from apps.worker.pipeline_orchestrate.tests._helpers import LEVEL_ID
     from packages.core.clock import SystemClock
     from packages.core.ids import new_id
     from packages.vision.preprocess.tests.synthetic import encode
@@ -135,7 +154,7 @@ def _child_prepare_40mp(queue: "multiprocessing.Queue[int]") -> None:
             source = PageSource(
                 run_id=new_id("run", SystemClock()),
                 project_id=new_id("prj", SystemClock()),
-                level_id="L-ABCDEFGHIJ",
+                level_id=LEVEL_ID,
                 upload_id=new_id("upl", SystemClock()),
                 page_index=0,
                 original_key="original.png",
@@ -149,22 +168,42 @@ def _child_prepare_40mp(queue: "multiprocessing.Queue[int]") -> None:
             )
 
     asyncio.run(_go())
-    queue.put(0)
+    queue.put(_peak_rss_kib())
 
 
 @pytest.mark.perf
 def test_prepare_page_40mp_stays_under_memory_ceiling() -> None:
-    """Ảnh 40 MP trong tiến trình con `spawn`; `ru_maxrss` của con ≤ 1,5 GiB (khối [11] mục 3)."""
+    """Ảnh 40 MP trong tiến trình con `spawn`; `ru_maxrss` của con ≤ 1,5 GiB (khối [11] mục 3).
+
+    Đọc hàng **trước** `join` (khuôn `multiprocessing`: con chưa thoát khi còn dữ liệu chưa xả).
+    """
     ctx = multiprocessing.get_context("spawn")
     queue: multiprocessing.Queue[int] = ctx.Queue()
     process = ctx.Process(target=_child_prepare_40mp, args=(queue,))
     process.start()
-    process.join(timeout=60.0)
+    peak_kib = queue.get(timeout=60.0)
+    process.join(timeout=10.0)
     assert process.exitcode == 0
-    assert queue.get(timeout=1.0) == 0
-    peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-    _log.info("prepare_page_40mp_ru_maxrss_kib=%d", peak_kib)
-    assert peak_kib <= MEMORY_CEILING_KIB, f"ru_maxrss {peak_kib} KiB > trần {MEMORY_CEILING_KIB} KiB"
+    _log.info("prepare_page_40mp_peak_rss_kib=%d", peak_kib)
+    assert peak_kib <= MEMORY_CEILING_KIB, f"VmHWM {peak_kib} KiB > trần {MEMORY_CEILING_KIB} KiB"
+
+
+def test_peak_rss_kib__ignores_memory_of_the_parent() -> None:
+    """Con `spawn` rỗng của một cha đang giữ 768 MiB báo đỉnh của chính nó, không phải của cha (FIX-174).
+
+    `RUSAGE_SELF.ru_maxrss` giữ mức nước cao qua `execve` nên con rỗng báo ≥ 768 MiB; `VmHWM` thì không.
+    """
+    ballast = b"\x01" * PARENT_BALLAST_BYTES
+    ctx = multiprocessing.get_context("spawn")
+    queue: multiprocessing.Queue[int] = ctx.Queue()
+    process = ctx.Process(target=_child_report_peak, args=(queue,))
+    process.start()
+    peak_kib = queue.get(timeout=60.0)
+    process.join(timeout=10.0)
+    assert process.exitcode == 0
+    assert len(ballast) == PARENT_BALLAST_BYTES
+    _log.info("empty_child_peak_rss_kib=%d", peak_kib)
+    assert peak_kib < PARENT_BALLAST_BYTES // 1024 // 2
 
 
 def _imports_of(path: Path) -> set[str]:

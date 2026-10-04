@@ -8,15 +8,13 @@ import base64
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-import pytest
 from onnx import TensorProto, helper
 
-from apps.ml.runtime.settings import reset_ml_settings_cache
 from apps.ml.training_runner.errors import TrainingStopped
 from apps.ml.training_runner.keys import sample_key
 from packages.core.clock import SystemClock
@@ -31,22 +29,6 @@ from packages.storage.keys import dataset_object
 from packages.storage.port import ObjectStorage
 
 TINY_METRIC_VALUE: Final = 0.5
-
-
-@pytest.fixture(autouse=True)
-def ml_settings_cache() -> Iterator[None]:
-    """Xoá cache `get_ml_settings` **trước và sau** mỗi test nhập fixture này (autouse).
-
-    `get_ml_settings` là `lru_cache` theo tiến trình và `runner._hold_locks` đọc `ml_device` qua
-    nó. Test ở module khác vá `ML_DEVICE=cuda` rồi để ai đó gọi `get_ml_settings()` lần đầu là
-    ghim `cuda` vào cache cả tiến trình (`monkeypatch` trả biến môi trường, **không** trả cache) —
-    mọi lượt sau đòi khoá `gpu:0` và hỏng `ML_DEVICE_UNAVAILABLE`. Xoá *trước* nên test của ta
-    không phụ thuộc ai chạy trước (thứ tự xdist đổi mỗi lượt); xoá *sau* nên ta không làm bẩn
-    người sau. Không dùng `conftest.py` lồng (CLAUDE.md cấm): mỗi tệp test nhập fixture này.
-    """
-    reset_ml_settings_cache()
-    yield
-    reset_ml_settings_cache()
 
 
 def tiny_onnx() -> bytes:

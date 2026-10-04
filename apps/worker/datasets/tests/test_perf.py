@@ -5,16 +5,17 @@ verify, và không kết nối DB nào bị giữ trong lúc `put` đang chờ. 
 một lượt `put` lại rồi đọc `pool.checkedout()` của chính engine test — pool chỉ có 5 kết nối nên
 giữ session qua lượt ghi kho sẽ treo cả lượt dựng chứ không chỉ làm nó chậm.
 
-**Cả file gắn `perf`** (BE-00 §12, 2026-09-29): từ FIX-112 bước 5 chạy `pytest-xdist -n 6`, mỗi
-tiến trình chỉ còn ~1/6 CPU nên không trần đồng hồ tường nào đo tuần tự còn giữ được. Hai test ở
-đây đều bị ràng theo thời gian thật — một khẳng định `elapsed < BUDGET_S`, một chờ điều kiện bằng
-`asyncio.wait_for(..., timeout=BLOCK_WAIT_S)` — nên cả hai thuộc bước 5b (tuần tự, không coverage).
+**Chỉ test có trần thời gian gắn `perf`** (BE-00 §12, 2026-09-29): từ FIX-112 bước 5 chạy
+`pytest-xdist -n 6`, mỗi tiến trình chỉ còn ~1/6 CPU nên trần đồng hồ tường đo tuần tự không còn giữ
+được — `elapsed < BUDGET_S` thuộc bước 5b (tuần tự, không coverage), số đo in bằng `logging`. Test K22/K36
+(`checkedout() == 0`) chỉ chờ rộng `BLOCK_WAIT_S` chứ không khẳng định cận trên nên ở lại bước 5.
 
 Độ phủ **không** dựa vào file này: mọi dòng của `tasks.py`/`jobs.py` mà hai test đây đi qua đều là
 đường dựng bình thường, đã có test không-`perf` trong `test_tasks.py`/`test_jobs.py` gánh ở bước 5.
 """
 
 import asyncio
+import logging
 import time
 
 import pytest
@@ -34,7 +35,7 @@ from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.drawings import png_bytes
 from packages.testing.fixtures.clock import FakeClock
 
-pytestmark = pytest.mark.perf
+_log = logging.getLogger(__name__)
 
 Maker = async_sessionmaker[AsyncSession]
 
@@ -54,6 +55,7 @@ def _engine_of(maker: Maker) -> AsyncEngine:
     return bind
 
 
+@pytest.mark.perf
 async def test_build_dataset_version__perf_twenty_large_pages(
     db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, safe_client: AsyncRedis
 ) -> None:
@@ -76,6 +78,7 @@ async def test_build_dataset_version__perf_twenty_large_pages(
     await run_build_dataset_version(db_sessionmaker, local_storage, fake_clock, version_id=measured)
     elapsed = time.monotonic() - started
 
+    _log.info("build_dataset_version_elapsed_s=%.2f floors=%d", elapsed, FLOOR_COUNT)
     row = await read_version(db_sessionmaker, measured)
     assert sum((row.split_counts or {}).values()) == FLOOR_COUNT
     assert elapsed < BUDGET_S, f"lượt dựng {FLOOR_COUNT} tầng mất {elapsed:.1f}s, trần {BUDGET_S}s"

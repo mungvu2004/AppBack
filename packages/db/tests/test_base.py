@@ -27,6 +27,7 @@ FLOAT_REASON_MIN = 10
 
 
 def check_conventions(metadata: MetaData) -> list[str]:
+    """Mọi vi phạm quy ước W3/K20 của các bảng trong `metadata`, mỗi dòng một vi phạm."""
     problems: list[str] = []
     for table in metadata.sorted_tables:
         for name in ("created_at", "updated_at"):
@@ -55,6 +56,8 @@ class SampleBase(DeclarativeBase):
 
 
 class Good(SampleBase, TimestampMixin, SoftDeleteMixin):
+    """Model mẫu đúng quy ước: dấu thời gian, xoá mềm, cột mm và diện tích."""
+
     __tablename__ = "good"
     __table_args__ = (unique_active("uq_good_code_active", "code"),)
 
@@ -65,6 +68,8 @@ class Good(SampleBase, TimestampMixin, SoftDeleteMixin):
 
 
 class Child(SampleBase, TimestampMixin):
+    """Model mẫu con: khoá ngoại tới `good` (kiểm tên ràng buộc FK)."""
+
     __tablename__ = "child"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -76,27 +81,32 @@ CHILD: Table = cast("Table", Child.__table__)
 
 
 def test_real_metadata_follows_conventions() -> None:
+    """Mọi model thật của repo theo quy ước."""
     load_all_models()
     assert check_conventions(Base.metadata) == []
 
 
 def test_sample_models_follow_conventions() -> None:
+    """Model mẫu không vi phạm gì."""
     assert check_conventions(SampleBase.metadata) == []
 
 
 def test_naming_convention_applies() -> None:
+    """Ràng buộc được đặt tên theo `NAMING_CONVENTION`."""
     assert GOOD.primary_key.name == "pk_good"
     assert {constraint.name for constraint in CHILD.foreign_key_constraints} == {"fk_child_good_id_good"}
     assert [index.name for index in GOOD.indexes] == ["uq_good_code_active"]
 
 
 def test_unique_active_only_covers_live_rows() -> None:
+    """`unique_active` chỉ áp lên dòng chưa xoá mềm."""
     index = next(iter(GOOD.indexes))
     assert index.unique
     assert "deleted_at IS NULL" in str(index.dialect_options["postgresql"]["where"])
 
 
 def test_column_helpers_types() -> None:
+    """`mm_column`, `area_column` ra đúng kiểu cột."""
     assert isinstance(GOOD.c.width_mm.type, BigInteger)
     area = GOOD.c.area_m2.type
     assert isinstance(area, Numeric)
@@ -104,6 +114,7 @@ def test_column_helpers_types() -> None:
 
 
 def test_timestamps_and_soft_delete_columns() -> None:
+    """Mixin dấu thời gian và xoá mềm sinh đúng cột."""
     created = GOOD.c.created_at
     assert isinstance(created.type, DateTime)
     assert created.type.timezone
@@ -113,21 +124,27 @@ def test_timestamps_and_soft_delete_columns() -> None:
 
 
 @pytest.mark.parametrize(
-    ("column", "problem"),
+    ("name", "kind", "problem"),
     [
-        (mapped_column("when_at", DateTime()), "thiếu timezone=True"),
-        (mapped_column("width_mm", Float()), "mm phải là số nguyên"),
-        (mapped_column("score", Float()), "float_reason"),
+        ("when_at", DateTime, "thiếu timezone=True"),
+        ("width_mm", Float, "mm phải là số nguyên"),
+        ("score", Float, "float_reason"),
     ],
 )
-def test_conventions_catch_bad_columns(column: Any, problem: str) -> None:
+def test_conventions_catch_bad_columns(name: str, kind: type[Any], problem: str) -> None:
+    """Cột sai quy ước bị bắt; `Column` dựng mới mỗi lượt vì chỉ gắn được một bảng (NO-341)."""
+    column = mapped_column(name, kind())
     md = MetaData(naming_convention=NAMING_CONVENTION)
 
     class Bad(DeclarativeBase):
+        """Gốc khai báo trên metadata riêng của test."""
+
         metadata = md
         type_annotation_map: ClassVar[dict[Any, Any]] = dict(Base.type_annotation_map)
 
     class BadModel(Bad, TimestampMixin):
+        """Bảng mang cột sai quy ước của tham số."""
+
         __tablename__ = "bad"
         id: Mapped[int] = mapped_column(primary_key=True)
         extra: Mapped[Any] = column
@@ -136,12 +153,17 @@ def test_conventions_catch_bad_columns(column: Any, problem: str) -> None:
 
 
 def test_conventions_catch_missing_timestamps() -> None:
+    """Bảng thiếu `created_at`/`updated_at` bị bắt."""
     md = MetaData(naming_convention=NAMING_CONVENTION)
 
     class Bare(DeclarativeBase):
+        """Gốc khai báo trên metadata riêng của test."""
+
         metadata = md
 
     class NoStamps(Bare):
+        """Bảng không có dấu thời gian."""
+
         __tablename__ = "no_stamps"
         id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -151,13 +173,18 @@ def test_conventions_catch_missing_timestamps() -> None:
 
 
 def test_conventions_allow_float_with_reason() -> None:
+    """Cột số thực có `float_reason` được chấp nhận."""
     md = MetaData(naming_convention=NAMING_CONVENTION)
 
     class Measured(DeclarativeBase):
+        """Gốc khai báo trên metadata riêng của test."""
+
         metadata = md
         type_annotation_map: ClassVar[dict[Any, Any]] = dict(Base.type_annotation_map)
 
     class Measurement(Measured, TimestampMixin):
+        """Bảng có cột số thực kèm lý do."""
+
         __tablename__ = "measurement"
         id: Mapped[int] = mapped_column(primary_key=True)
         length: Mapped[float] = mapped_column(
@@ -168,13 +195,18 @@ def test_conventions_allow_float_with_reason() -> None:
 
 
 def test_created_at_nullable_is_a_problem() -> None:
+    """Dấu thời gian cho phép NULL bị bắt."""
     md = MetaData(naming_convention=NAMING_CONVENTION)
 
     class Loose(DeclarativeBase):
+        """Gốc khai báo trên metadata riêng của test."""
+
         metadata = md
         type_annotation_map: ClassVar[dict[Any, Any]] = dict(Base.type_annotation_map)
 
     class Nullable(Loose):
+        """Bảng có dấu thời gian cho phép NULL."""
+
         __tablename__ = "nullable_stamps"
         id: Mapped[int] = mapped_column(primary_key=True)
         created_at: Mapped[datetime | None] = mapped_column(default=None)

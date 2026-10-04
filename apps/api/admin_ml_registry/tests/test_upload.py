@@ -29,7 +29,7 @@ from typing import Any, Final
 
 import pytest
 from fastapi import FastAPI
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -386,9 +386,11 @@ async def test_upload_version_leaves_nothing_when_the_client_disconnects(
     sent: list[dict[str, Any]] = []
 
     async def receive() -> dict[str, Any]:
+        """Phát lần lượt các thông điệp ASGI đã dựng; hết thì báo `http.disconnect`."""
         return messages.popleft() if messages else {"type": "http.disconnect"}
 
     async def send(message: MutableMapping[str, Any]) -> None:
+        """Ghi lại thông điệp app gửi ra để test kiểm mã trạng thái phản hồi."""
         sent.append(dict(message))
 
     await api_app(_scope(_headers(fake_principal)), receive, send)
@@ -483,13 +485,14 @@ async def test_upload_version_streams_a_file_larger_than_the_sniffed_head(
     assert (info.size, info.sha256) == (len(weights), sha256(weights).hexdigest())
 
 
-async def test_upload_version_keeps_the_pool_free_while_streaming(
-    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """K36 — pool một kết nối: 64 MiB đang `put` không chặn một GET có DB, đỉnh RAM < 32 MiB.
+async def _k36_upload(
+    fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> tuple[tuple[Response, int, int], float]:
+    """Dựng kịch bản K36 trên pool một kết nối, trả `((phản hồi POST, kết nối đang mượn, đỉnh RAM), giây GET)`.
 
-    Pool cỡ 1 là phép thử thật: giữ kết nối trong lúc nhận tệp thì lượt GET song song hết chỗ
-    và chờ tới `pool_timeout`, chứ không xong trong dưới một giây.
+    64 MiB phát chậm qua N26; khi handler đã vào phần trọng số thì đếm kết nối pool đang mượn và đo
+    một GET có DB chạy song song. Pool cỡ 1 là phép thử thật: giữ kết nối trong lúc nhận tệp thì lượt
+    GET hết chỗ và chờ tới `pool_timeout`. Trần thời gian kiểm ở test `perf`, không ở đây.
     """
     monkeypatch.setenv("DB_POOL_SIZE", "1")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
@@ -510,12 +513,29 @@ async def test_upload_version_keeps_the_pool_free_while_streaming(
         tracemalloc.stop()
         monkeypatch.undo()
         reset_database_settings_cache()
+    return (response, checked_out, peak), elapsed
 
-    _log.info("k36_measured", extra={"getSeconds": elapsed, "peakBytes": peak, "checkedOut": checked_out})
+
+async def test_upload_version_keeps_the_pool_free_while_streaming(
+    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K36 — pool một kết nối: 64 MiB đang `put` không giữ kết nối, đỉnh RAM < 32 MiB (trần GET ở test `perf`)."""
+    (response, checked_out, peak), _ = await _k36_upload(fake_clock, fake_principal, monkeypatch)
+
     assert response.status_code == 201, response.text
     assert checked_out == 0
-    assert elapsed < GET_DEADLINE_S
     assert peak < MEMORY_CEILING_BYTES
+
+
+@pytest.mark.perf
+async def test_upload_version_get_beats_the_deadline_while_streaming(
+    api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K36 — trần thời gian: GET có DB song song với 64 MiB đang `put` xong dưới 1 s, đo tuần tự ở bước 5b."""
+    (_, checked_out, peak), elapsed = await _k36_upload(fake_clock, fake_principal, monkeypatch)
+
+    _log.info("k36_measured", extra={"getSeconds": elapsed, "peakBytes": peak, "checkedOut": checked_out})
+    assert elapsed < GET_DEADLINE_S
 
 
 def _scope(headers: dict[str, str]) -> dict[str, Any]:

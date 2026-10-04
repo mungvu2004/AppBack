@@ -376,6 +376,16 @@ async def test_signer_builds_storage_from_environment(api_env: None) -> None:
     assert await drawing_url(built, f"{project_prefix('prj_' + '0' * 26)}floors/L-ABCDEFGHIJ/uploads/x/a.png")
 
 
+async def test_signer__default_store_is_not_inherited_from_a_previous_test(
+    api_env: None, local_storage: LocalDiskStorage
+) -> None:
+    """Chặn tái phát NO-265: kho mặc định của `signer()` trỏ vào thư mục của **test này**, không phải bản cache cũ."""
+    use_signer(None)
+    key = f"{project_prefix('prj_' + '0' * 26)}floors/L-ABCDEFGHIJ/uploads/x/b.png"
+    await local_storage.put(key, b"png", content_type="image/png", max_bytes=10)
+    assert await signer().stat(key) is not None
+
+
 async def test_use_signer_refuses_outside_test_env(
     api_env: None, monkeypatch: pytest.MonkeyPatch, local_storage: LocalDiskStorage
 ) -> None:

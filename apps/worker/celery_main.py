@@ -13,13 +13,12 @@ from celery.signals import worker_init
 
 from packages.messaging.celery_app import create_celery
 from packages.messaging.redis import assert_broker_policy, broker_redis_sync
-from packages.messaging.schedules import beat_schedule, discover_jobs, discover_submodules
+from packages.messaging.schedules import beat_schedule, discover_worker_tasks
 
 app = create_celery("worker")
 
 # Nhập để `shared_task` của các module chủ vào sổ trước khi worker công bố hàng đợi.
-discover_submodules("apps.worker", "tasks")
-discover_jobs()
+discover_worker_tasks()
 
 app.conf.beat_schedule = beat_schedule()
 
