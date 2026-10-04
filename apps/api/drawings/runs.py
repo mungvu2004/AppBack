@@ -81,6 +81,7 @@ class _FloorFacts:
 
 
 def _snapshot(row: PipelineRunRow) -> RunRow:
+    """Bản chép bất biến của dòng lượt chạy, an toàn để dùng sau khi session đóng."""
     return RunRow(
         id=row.id,
         upload_id=row.upload_id,
