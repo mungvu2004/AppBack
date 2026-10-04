@@ -503,6 +503,7 @@ async def test_versions_restore_version__rescale_that_breaks_the_model_is_422(
 
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION"
+    assert "count" not in response.json()  # NO-244: không phải lỗi Pydantic nên không có số lỗi
     assert len(await versions_of(db_sessionmaker, stage.floor.pk)) == 1
 
 
