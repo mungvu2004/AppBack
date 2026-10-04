@@ -538,3 +538,15 @@ def test_nginx_error_bodies__carry_base_security_headers() -> None:
                 assert headers.get(header) == [value, "always"], (
                     f"{path}: {name} thiếu add_header {header} {value} always"
                 )
+
+
+def test_nginx_error_bodies__carry_hsts_variable() -> None:
+    """NO-331: 413/503 ở prod cũng mang HSTS như trang SPA — qua `$hsts_header` (rỗng ở dev nên nginx không gửi),
+    biến phải được khai bằng `map` trong mọi template include snippet lỗi."""
+    files = _entry_files_assembled()
+    for name in ("/__errors/413", "/__errors/503", "/__errors/413-files", "/__errors/503-files"):
+        for path, loc in _locations_matching(files, lambda loc, n=name: loc.args[-1:] == [n]):
+            headers = {n.args[0]: n.args[1:] for n in loc.children if n.directive == "add_header" and n.args}
+            assert headers.get("Strict-Transport-Security") == ["$hsts_header", "always"], f"{path}: {name}"
+            maps = [n.args for n in files[path] if n.directive == "map" and n.args[-1:] == ["$hsts_header"]]
+            assert maps, f"{path}: thiếu map $hsts_header"
