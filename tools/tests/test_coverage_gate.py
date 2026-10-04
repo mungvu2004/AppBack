@@ -49,8 +49,14 @@ class TestUnitOf:
         assert cg.unit_of("packages/__init__.py") is None
         assert cg.unit_of("apps/__init__.py") is None
 
+    def test_deploy_một_đơn_vị(self) -> None:
+        """Mọi tệp dưới `deploy/` (kể cả shell, Dockerfile) thuộc đơn vị `deploy` (NO-350)."""
+        assert cg.unit_of("deploy/docker/verify.Dockerfile") == "deploy"
+        assert cg.unit_of("deploy/scripts/tests/test_deploy.py") == "deploy"
+        assert cg.unit_of("tests/e2e/test_flow.py") == "tests"
+
     def test_ngoài_gốc_none(self) -> None:
-        assert cg.unit_of("deploy/docker/verify.Dockerfile") is None
+        assert cg.unit_of("docs/charter/BE-00.md") is None
 
 
 class TestThresholds:

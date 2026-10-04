@@ -187,6 +187,11 @@ def check_coverage_config(root: Path, report: Report) -> None:
 
 
 def unit_of(rel_path: str) -> str | None:
+    """Đơn vị (gói/app/thư mục gốc) của một đường tương đối; `None` nếu không thuộc đơn vị nào.
+
+    `deploy` và `tests` là đơn vị dù ngoài `[tool.coverage.run] source`: bước 5b chọn test `perf` theo
+    đơn vị bị chạm (NO-350); độ phủ của đơn vị không có tệp đo được là 100% (`Totals` rỗng), không đỏ.
+    """
     parts = Path(rel_path).parts
     if not parts:
         return None
@@ -196,8 +201,8 @@ def unit_of(rel_path: str) -> str | None:
     if parts[0] == "apps" and len(parts) >= 3:
         # file nằm thẳng trong apps/<app>/ (len==3, không có thư mục module) thuộc apps/<app>
         return f"apps/{parts[1]}" if len(parts) <= 3 else f"apps/{parts[1]}/{parts[2]}"
-    if parts[0] == "tools":
-        return "tools"
+    if parts[0] in ("tools", "deploy", "tests"):
+        return parts[0]
     return None
 
 
