@@ -20,8 +20,6 @@ from apps.worker.pipeline_build.errors import (
 )
 from apps.worker.pipeline_build.settings import get_pipeline_build_settings
 from packages.core.clock import SystemClock
-from packages.core.error_codes import NOT_FOUND
-from packages.core.errors import AppError
 from packages.messaging.celery_app import send_task
 from packages.messaging.payloads.pipeline import BuildStepPayload
 from packages.messaging.redis import ProcessLocal
@@ -35,7 +33,7 @@ from packages.ml_contracts.artifacts import (
     walls_from_json,
 )
 from packages.ml_contracts.payloads import StepResultPayload
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 
 _log: Final = logging.getLogger(__name__)
 
@@ -82,17 +80,14 @@ def _check_run_prefix(payload: BuildStepPayload) -> None:
 
 async def _read_artifact(storage: ObjectStorage, key: str, max_bytes: int) -> bytes:
     """Gom bytes của một artifact tới `max_bytes`; vượt trần hay khoá vắng → `PermanentError` (B5-05 [6])."""
-    data = bytearray()
-    try:
-        async for chunk in storage.open_read(key):
-            data += chunk
-            if len(data) > max_bytes:
-                raise PermanentError(PIPELINE_ARTIFACT_INVALID)
-    except AppError as exc:
-        if exc.code is NOT_FOUND:
-            raise PermanentError(PIPELINE_ARTIFACT_MISSING) from exc
-        raise  # DEPENDENCY_UNAVAILABLE nổi lên cho `define_task` thử lại (J02)
-    return bytes(data)
+    # DEPENDENCY_UNAVAILABLE nổi lên nguyên cho `define_task` thử lại (J02)
+    return await read_all_capped(
+        storage,
+        key,
+        max_bytes=max_bytes,
+        too_large=lambda: PermanentError(PIPELINE_ARTIFACT_INVALID),
+        on_missing=lambda: PermanentError(PIPELINE_ARTIFACT_MISSING),
+    )
 
 
 async def _read_inputs(
