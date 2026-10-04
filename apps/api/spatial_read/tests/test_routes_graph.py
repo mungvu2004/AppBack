@@ -5,6 +5,7 @@ danh sách thực thể nối theo đúng thứ tự ấy — H1 ngữ cảnh `n
 SQL của dự án 1 tầng và 8 tầng bằng nhau).
 """
 
+import re
 from decimal import Decimal
 
 import httpx
@@ -148,6 +149,20 @@ async def test_spatial_read_graph_query_count_is_flat(
     assert one.count == eight.count, eight.statements
 
 
+async def test_spatial_read_graph__reads_floors_table_once(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """NO-223: `pk` đi cùng `FloorOut` từ một câu `floors` duy nhất, không câu `{level_id: pk}` thứ hai."""
+    scene = await make_scene(db_session, floors=2)
+    for index, floor in enumerate(scene.floors):
+        await _fill(db_session, floor, index, fake_clock)
+    await db_session.commit()
+    with count_sql() as counter:
+        await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))
+    floors_reads = [sql for sql in counter.statements if re.search(r"\b(?:FROM|JOIN)\s+floors\b", sql)]
+    assert len(floors_reads) == 1, floors_reads
+
+
 async def test_spatial_read_graph_level_matches_floors_list(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
@@ -209,11 +224,10 @@ async def test_spatial_read_graph_when_floor_vanishes_mid_request(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Tầng xoá mềm **giữa** `floor_outs` và `_floor_pks` → 200 thiếu tầng đó, không `KeyError` 500.
+    """Tầng xoá mềm ngay **sau** câu `floors` duy nhất → 200, `levels` và `floorRevisions` vẫn đủ.
 
-    Hai câu lệnh ấy ở hai snapshot khác nhau (engine để mặc định `read committed`), nên tầng
-    biến mất khỏi bảng `pk` mà vẫn còn trong danh sách `FloorOut`. #33 và N16 có
-    `_floor_out_or_404` cho đúng cuộc đua này; N15 phải tự lọc.
+    `pk` đi cùng `FloorOut` từ một snapshot, nên không còn khe giữa hai câu đọc để lệch độ dài
+    hai danh sách (`zip(strict=True)`) hay `KeyError`. #33 và N16 có `_floor_out_or_404` riêng.
     """
     scene = await make_scene(db_session, floors=2)
     gone, kept = scene.floors
@@ -221,8 +235,8 @@ async def test_spatial_read_graph_when_floor_vanishes_mid_request(
         response = await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))
     assert response.status_code == 200
     body = response.json()
-    assert [level["id"] for level in body["graph"]["levels"]] == [kept.level_id]
-    assert [item["floorId"] for item in body["floorRevisions"]] == [kept.level_id]
+    assert [level["id"] for level in body["graph"]["levels"]] == [gone.level_id, kept.level_id]
+    assert [item["floorId"] for item in body["floorRevisions"]] == [gone.level_id, kept.level_id]
 
 
 async def test_spatial_read_graph_never_writes(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

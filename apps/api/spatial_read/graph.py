@@ -2,14 +2,14 @@
 
 **Không N+1.** Số truy vấn phải bằng nhau ở dự án 1 tầng và dự án 8 tầng, vì màn
 `SpatialJsonViewer` và `ExplodedView` gọi thẳng route này: một vòng cho dòng `projects`,
-một vòng `floor_outs` (kèm cổng bản vẽ), một vòng `load_documents`, một vòng `load_pages`,
+một vòng `floor_outs_with_pk` (kèm cổng bản vẽ), một vòng `load_documents`, một vòng `load_pages`,
 một vòng `project_rollups`. Mỗi thứ đúng một lượt, lấy theo lô `floor_pks`.
 
 **Đọc không ghi** ([6]): tầng chưa có dòng `floor_documents` dùng `empty_document(pk)` —
 `revision 0`, lớp rỗng — chứ không `ensure_document`. Một lượt `GET` không được đổi
 `updated_at` của dự án hay sinh dòng mà người dùng không yêu cầu.
 
-Thứ tự là hợp đồng: `floor_outs` đã sắp `(floor_order, pk)`, và mọi danh sách thực thể nối
+Thứ tự là hợp đồng: `floor_outs_with_pk` đã sắp `(floor_order, pk)`, và mọi danh sách thực thể nối
 theo đúng thứ tự tầng đó, nên H1 ngữ cảnh `n15` ("`levels` không giảm theo `order`") đúng
 cả khi hai tầng trùng `order`.
 """
@@ -17,7 +17,7 @@ cả khi hai tầng trùng `order`.
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.floors.lookup import floor_outs
+from apps.api.floors.lookup import floor_outs_with_pk
 from apps.api.projects.summaries import project_rollups
 from apps.api.spatial_read.assemble import effective_scale_source, level_out
 from apps.api.spatial_read.documents import empty_document, load_documents
@@ -31,7 +31,6 @@ from apps.api.spatial_read.wire import (
     dimensions_out,
     layer_out,
 )
-from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
 
 _DATUM_ELEVATION_MM = 0
@@ -54,23 +53,6 @@ def _building(name: str, address: str | None, gross_area: float, levels: list[Le
     )
 
 
-async def _floor_pks(db: AsyncSession, project_id: str) -> dict[str, int]:
-    """`{level_id: pk}` của tầng **chưa xoá**: `FloorOut` chỉ mang `level_id`, còn ba bảng
-    không gian khoá theo `pk`.
-
-    Lọc `deleted_at IS NULL` không phải để thừa: ràng buộc duy nhất của `level_id` chỉ áp cho
-    tầng còn sống, nên một tầng đã xoá có thể mang lại mã cũ và sẽ che mất tầng thật.
-    """
-    rows = (
-        await db.execute(
-            select(FloorRow.level_id, FloorRow.pk).where(
-                FloorRow.project_id == project_id, FloorRow.deleted_at.is_(None)
-            )
-        )
-    ).all()
-    return {level_id: pk for level_id, pk in rows}
-
-
 async def spatial_graph(db: AsyncSession, project_id: str, *, app: object | None = None) -> SpatialGraphDocumentOut:
     """Đồ thị + `floorRevisions` của một dự án; dự án chưa có tầng → hai danh sách rỗng.
 
@@ -78,12 +60,9 @@ async def spatial_graph(db: AsyncSession, project_id: str, *, app: object | None
     ở đây chắc chắn có — nó chỉ để lấy `name` và `address` mà `ProjectAccess` không mang.
     """
     project = (await db.execute(select(Project.name, Project.address).where(Project.id == project_id))).one()
-    floors = await floor_outs(db, project_id=project_id, app=app)
-    pk_of = await _floor_pks(db, project_id)
-    # Tầng xoá mềm chen vào giữa hai câu lệnh trên (hai snapshot `read committed`) còn trong
-    # `floors` nhưng đã rơi khỏi `pk_of`; bỏ nó đi thay vì `KeyError` → 500. #33 và N16 trả 404
-    # cho đúng cuộc đua này, N15 thì đồ thị thiếu một tầng vừa bị xoá mới là câu trả lời đúng.
-    pairs = [(floor, pk_of[floor.id]) for floor in floors if floor.id in pk_of]
+    # `pk` đi cùng `FloorOut` từ một câu `floors` (một snapshot): tầng xoá mềm sau câu ấy vẫn
+    # nằm trong đồ thị, đủ cả `levels` lẫn `floorRevisions`, thay vì lệch giữa hai câu đọc.
+    pairs = [(floor, pk) for pk, floor in await floor_outs_with_pk(db, project_id=project_id, app=app)]
     pks = [pk for _, pk in pairs]
     documents = await load_documents(db, pks)
     pages = await load_pages(db, pks, app=app)
