@@ -5,7 +5,8 @@ có thật trong `users` khi route ghi chạm FK (`project_memberships.user_id`)
 Một nguồn duy nhất: H2 và test nhập `SEED_ADMIN_ID` từ đây, không dựng tay.
 
 `password_hash=NULL` nên không đăng nhập bằng mật khẩu được; không có ở `production`/`staging`.
-Admin bị xoá mềm không được hồi sinh (dòng vẫn giữ id). Idempotent: `ON CONFLICT (id) DO NOTHING` (xung đột email vẫn nổi lỗi) — chạy lại không nhân bản, không ghi đè dòng đã sửa.
+Admin bị xoá mềm không được hồi sinh (dòng vẫn giữ id). Idempotent: `ON CONFLICT (id) DO NOTHING`
+(xung đột email vẫn nổi lỗi) — chạy lại không nhân bản, không ghi đè dòng đã sửa.
 """
 
 from typing import Final
