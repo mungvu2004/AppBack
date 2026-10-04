@@ -18,6 +18,7 @@ import numpy as np
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 from numpy.typing import NDArray
 
+from apps.ml.runtime.errors import MODEL_VERSION_FAMILY_MISMATCH
 from apps.ml.runtime.loader import load_onnx
 from apps.ml.runtime.tasks_util import StepOutput, infer_context, run_step, step_failed
 from apps.ml.walls.step import segment_page
@@ -29,11 +30,6 @@ __all__ = ["MODEL_VERSION_FAMILY_MISMATCH", "STEP", "segment_walls"]
 _log: Final = logging.getLogger(__name__)
 
 STEP: Final = "wallSegmentation"
-MODEL_VERSION_FAMILY_MISMATCH: Final = "MODEL_VERSION_FAMILY_MISMATCH"
-"""Payload trỏ bước hay họ model khác — hằng chuỗi, không khai trong `ERRORS` ([2]).
-
-Nợ: nên về `apps/ml/runtime/errors.py` (chủ B5-01) khi B5-02 và B5-04 hết khai trùng.
-"""
 
 
 async def _prepare(payload: InferStepPayload) -> ort.InferenceSession | None:
