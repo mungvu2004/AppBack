@@ -18,6 +18,7 @@ from apps.ml.text.reader import (
     MAX_TEXT_ITEMS,
     REC_HEIGHT_PX,
     REC_MAX_WIDTH_PX,
+    REC_MIN_WIDTH_PX,
     RapidOcrReader,
     _crop,
     _detect,
@@ -175,9 +176,10 @@ def test_best_prefers_upright_on_tie() -> None:
 
 
 def test_rec_widths_round_up_to_step() -> None:
-    """`W` là bội 80 ≥ bề rộng đã co, và không vượt trần."""
-    assert _rec_widths(100, 48) == (100, 160)
-    assert _rec_widths(48, 48) == (48, 80)
+    """`W` là bội 80 ≥ bề rộng đã co, không dưới sàn `REC_MIN_WIDTH_PX` (NO-254), không vượt trần."""
+    assert _rec_widths(100, 48) == (100, REC_MIN_WIDTH_PX)
+    assert _rec_widths(48, 48) == (48, REC_MIN_WIDTH_PX)
+    assert _rec_widths(330, 48) == (330, 400)
     assert _rec_widths(10_000, 48) == (REC_MAX_WIDTH_PX, REC_MAX_WIDTH_PX)
 
 

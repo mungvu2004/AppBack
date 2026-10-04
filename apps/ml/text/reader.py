@@ -55,6 +55,10 @@ MAX_TEXT_ITEMS: Final = 5000
 REC_WIDTH_STEP_PX: Final = 80
 """`W` làm tròn lên bội số này: vài khổ vào cố định cho ORT tái dùng kế hoạch của phiên."""
 
+REC_MIN_WIDTH_PX: Final = 320
+"""Sàn của `W`, bằng khổ `rec_img_shape` 48 × 320 của PP-OCR: tensor hẹp hơn làm số 0 cuối chuỗi
+ngắn đọc thành 8 (`8.000` → `8.008`); đo seed 100-109: 105/122 → 114/122 chữ kích thước (NO-254)."""
+
 MAX_CHARACTERS: Final = 20_000
 """Trần dòng của metadata `character` ([7]): bảng ký tự là dữ liệu của model không tin."""
 
@@ -249,9 +253,10 @@ def _crop(image: RgbImage, quad: NDArray[np.float32]) -> NDArray[np.uint8]:
 
 
 def _rec_widths(width: int, height: int) -> tuple[int, int]:
-    """`(rộng sau khi co, rộng tensor)`: giữ tỉ lệ về cao 48, đệm lên bội `REC_WIDTH_STEP_PX`."""
+    """`(rộng sau khi co, rộng tensor)`: giữ tỉ lệ về cao 48, đệm lên bội `REC_WIDTH_STEP_PX`, ≥ `REC_MIN_WIDTH_PX`."""
     resized = min(max(math.ceil(REC_HEIGHT_PX * width / height), 1), REC_MAX_WIDTH_PX)
-    padded = min(math.ceil(resized / REC_WIDTH_STEP_PX) * REC_WIDTH_STEP_PX, REC_MAX_WIDTH_PX)
+    stepped = math.ceil(resized / REC_WIDTH_STEP_PX) * REC_WIDTH_STEP_PX
+    padded = min(max(stepped, REC_MIN_WIDTH_PX), REC_MAX_WIDTH_PX)
     return resized, padded
 
 
