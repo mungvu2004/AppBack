@@ -7,12 +7,14 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from celery import current_app
 
 from packages.messaging.schedules import (
     MIN_PERIOD_S,
     beat_schedule,
     discover_jobs,
     discover_submodules,
+    discover_worker_tasks,
     periodic,
     schedule_entries,
 )
@@ -133,3 +135,10 @@ def test_a_submodule_that_fails_to_import_is_reported(probe_package: Path) -> No
 
 def test_discover_jobs_tolerates_apps_that_do_not_exist_yet() -> None:
     discover_jobs()
+
+
+def test_discover_worker_tasks_registers_a_known_worker_task() -> None:
+    """Một lời gọi nạp task của `apps/worker` vào sổ Celery như worker thật."""
+    discover_worker_tasks()
+
+    assert "pipeline.orchestrate.start" in current_app.tasks

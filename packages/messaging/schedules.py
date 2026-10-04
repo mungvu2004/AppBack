@@ -100,3 +100,12 @@ def discover_jobs() -> None:
     """Nhập mọi `apps.api.*.jobs` và `apps.worker.*.jobs` để sổ lịch đầy đủ."""
     discover_submodules("apps.api", "jobs")
     discover_submodules("apps.worker", "jobs")
+
+
+def discover_worker_tasks() -> None:
+    """Nhập mọi `apps.worker.*.tasks` rồi mọi `*.jobs`: sổ task đầy đủ như worker thật.
+
+    Một chỗ duy nhất cho `apps/worker/celery_main.py` và fixture test, để hai nơi không lệch nhau.
+    """
+    discover_submodules("apps.worker", "tasks")
+    discover_jobs()

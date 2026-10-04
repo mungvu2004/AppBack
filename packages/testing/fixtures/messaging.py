@@ -37,7 +37,7 @@ from packages.messaging.redis import (
     streams_redis,
     sync_result,
 )
-from packages.messaging.schedules import discover_jobs, discover_submodules
+from packages.messaging.schedules import discover_worker_tasks
 from packages.messaging.settings import get_messaging_settings, reset_messaging_settings_cache
 from packages.messaging.streams import EventBus
 from packages.messaging.tasks import reset_delivery_client
@@ -149,8 +149,7 @@ def register_tasks(app: Celery) -> Celery:
     Như worker thật, task `apps.ml.*.tasks` **không** được nạp (ảnh worker không có ML):
     test của `apps/ml` vẫn tự nhập module task của mình.
     """
-    discover_submodules("apps.worker", "tasks")
-    discover_jobs()
+    discover_worker_tasks()
     return app
 
 
