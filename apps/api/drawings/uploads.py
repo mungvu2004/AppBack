@@ -41,7 +41,8 @@ from packages.core.error_codes import (
 from packages.core.ids import new_id
 from packages.db.models.drawings import UploadChunkRow, UploadRow
 from packages.db.models.floors import FloorRow
-from packages.storage.keys import check_key, upload_original, upload_prefix
+from packages.storage import keys
+from packages.storage.keys import upload_original
 from packages.storage.port import ObjectStorage
 
 OCTET_STREAM: Final = "application/octet-stream"
@@ -87,16 +88,6 @@ class UploadFacts:
     def original_key(self) -> str:
         """Khoá `original.<đuôi>` của lượt tải (`keys.upload_original`, B2-04 [5])."""
         return upload_original(self.project_id, self.level_id, self.id, file_extension(self.file_name))
-
-
-def chunk_key(project_id: str, level_id: str, upload_id: str, index: int, sha256: str) -> str:
-    """Khoá object của một khúc: `<upload_prefix>chunks/{i}/{sha256}` (B2-04 [5]).
-
-    Băm nằm **trong** khoá nên gửi lại đúng khúc ấy là ghi đè chính nó, còn gửi lại một
-    nội dung khác là một object mới: `#7` so danh sách khoá trước và sau khi nối tệp để
-    bắt đúng trường hợp thứ hai (409 `UPLOAD_CHUNKS_CHANGED`).
-    """
-    return check_key(f"{upload_prefix(project_id, level_id, upload_id)}chunks/{index}/{sha256}")
 
 
 def file_extension(file_name: str) -> str:
@@ -298,7 +289,7 @@ async def upload_chunk(
     await db.rollback()
     data = _decode_chunk(body.chunk, index=body.chunk_index, chunk_count=facts.chunk_count, chunk_bytes=chunk_bytes)
     sha256 = await asyncio.to_thread(_digest, data)
-    key = chunk_key(facts.project_id, facts.level_id, facts.id, body.chunk_index, sha256)
+    key = keys.upload_chunk(facts.project_id, facts.level_id, facts.id, body.chunk_index, sha256)
     await storage.put(key, data, content_type=OCTET_STREAM, max_bytes=chunk_bytes)
 
     await _save_chunk(db, upload_id=facts.id, index=body.chunk_index, size=len(data), sha256=sha256, key=key)
