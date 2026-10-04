@@ -58,8 +58,8 @@ def test_minio_init_generates_real_policies_from_templates_into_tmp() -> None:
     assert text.count(substitution) == 1, (
         f"init.sh: thay thế __BUCKET__ phải nằm ở đúng MỘT chỗ (hàm dùng chung), có {text.count(substitution)}"
     )
-    assert "/tmp/app-policy.json" in text, "init.sh: chính sách app thật phải sinh vào /tmp"  # noqa: S108
-    assert "/tmp/ml-policy.json" in text, "init.sh: chính sách ml thật phải sinh vào /tmp"  # noqa: S108
+    assert "/tmp/app-policy.json" in text, "init.sh: chính sách app phải sinh vào /tmp"  # noqa: S108 — trong container
+    assert "/tmp/ml-policy.json" in text, "init.sh: chính sách ml phải sinh vào /tmp"  # noqa: S108 — trong container
     policy_create_lines = [line for line in text.splitlines() if "mc admin policy create" in line]
     assert len(policy_create_lines) == 2, (
         f"init.sh: phải có đúng hai lệnh mc admin policy create, có {policy_create_lines}"
@@ -130,7 +130,8 @@ def _run_init(tmp_path: Path, policy_out: str, policy_rc: int) -> tuple[int, str
         "S3_ENDPOINT": "http://x", "MINIO_ROOT_USER": "r", "MINIO_ROOT_PASSWORD": "p", "S3_BUCKET": "b",
         "S3_ACCESS_KEY": "keep", "S3_SECRET_KEY": "s", "S3_ML_ACCESS_KEY": "mlkeep", "S3_ML_SECRET_KEY": "s",
     }  # fmt: skip
-    result = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True, check=False)  # noqa: S603, S607 — bash có sẵn
+    cmd = ["bash", str(script)]
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True, check=False)  # noqa: S603 — lệnh cố định
     log = tmp_path / "log"
     return result.returncode, log.read_text(encoding="utf-8") if log.exists() else ""
 
