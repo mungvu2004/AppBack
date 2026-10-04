@@ -92,6 +92,7 @@ class DatasetVersionRow(Base, TimestampMixin):
             "failure_code IS NULL OR (status = 'failed' AND failure_code ~ '" + FAILURE_CODE_PATTERN + "')",
             name="failure_code",
         ),
+        CheckConstraint("(failure_code IS NOT NULL) = (status = 'failed')", name="failure_code_failed"),
         Index(f"uq_{DATASET_VERSIONS}_dataset_id_sequence", "dataset_id", "sequence", unique=True),
         Index(
             f"uq_{DATASET_VERSIONS}_dataset_id_building",

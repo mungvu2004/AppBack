@@ -15,6 +15,7 @@ from apps.api.admin_ml_datasets.settings import get_ml_datasets_settings, reset_
 
 
 def test_errors__status_and_failure_codes() -> None:
+    """Mã lỗi 409 và các mã `failure_code` khớp hợp đồng."""
     assert (DATASET_NAME_TAKEN.status, DATASET_BUILD_IN_PROGRESS.status) == (409, 409)
     assert {DATASET_EMPTY, DATASET_TOO_LARGE, DATASET_FAMILY_UNSUPPORTED, DATASET_BUILD_TIMEOUT} == {
         "DATASET_EMPTY",
@@ -25,6 +26,7 @@ def test_errors__status_and_failure_codes() -> None:
 
 
 def test_settings__defaults_and_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mặc định của settings và ghi đè bằng biến môi trường."""
     reset_ml_datasets_settings_cache()
     defaults = get_ml_datasets_settings()
     assert defaults.dataset_max_samples == 2000
@@ -39,6 +41,7 @@ def test_settings__defaults_and_env_override(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_settings__rejects_non_positive() -> None:
+    """Settings từ chối giá trị không dương."""
     from apps.api.admin_ml_datasets.settings import MlDatasetsSettings
 
     with pytest.raises(ValidationError):
