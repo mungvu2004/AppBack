@@ -164,6 +164,28 @@ def test_mask_url_userinfo_password(raw: str, masked: str) -> None:
     assert mask(raw) == masked
 
 
+@pytest.mark.parametrize(
+    ("raw", "masked"),
+    [
+        ("env S3_SECRET_KEY=abc failed", f"env S3_SECRET_KEY={MASK} failed"),
+        ("login password=xyz&next=/", f"login password={MASK}&next=/"),
+        ("POSTGRES_PASSWORD: hunter2, retry", f"POSTGRES_PASSWORD: {MASK}, retry"),
+        ('{"secret_key": "k1", "email": "a@b.vn"}', f'{{"secret_key": "{MASK}", "email": "a@b.vn"}}'),
+        ("input_value='SECRET_KEY=abc password=xyz'", f"input_value='SECRET_KEY={MASK} password={MASK}'"),
+        ("tokenCount=3 passwordPolicy=strict at 12:30", "tokenCount=3 passwordPolicy=strict at 12:30"),
+    ],
+)
+def test_mask_key_value_in_free_text(raw: str, masked: str) -> None:
+    """`KEY=giá trị`/`KEY: giá trị` của khoá nhạy cảm trong chuỗi tự do bị che, khoá khác giữ nguyên (FIX-344)."""
+    assert mask(raw) == masked
+
+
+@pytest.mark.parametrize("key", ["S3_SECRET_KEY", "SECRET_KEY", "SMTP_PASSWORD", "MINIO_ROOT_PASSWORD", "claim_token"])
+def test_mask_masks_secret_suffix_keys(key: str) -> None:
+    """Khoá kết thúc bằng hậu tố bí mật (`…_SECRET_KEY`, `…_PASSWORD`, `…_token`) bị che như khoá trong danh sách."""
+    assert mask({key: SENSITIVE}) == {key: MASK}
+
+
 def test_mask_truncates_long_string() -> None:
     """Kiểm test mask truncates long string."""
     masked = str(mask("x" * 5000))
