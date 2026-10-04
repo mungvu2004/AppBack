@@ -69,6 +69,15 @@ class Gate:
         self._open.set()
 
 
+def _summary(response: httpx.Response) -> tuple[int, str | None, object]:
+    """`(status, Retry-After, code)` của một phản hồi; thân không phải object JSON → `code` là `None`."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    return response.status_code, response.headers.get("Retry-After"), body.get("code") if isinstance(body, dict) else None
+
+
 @pytest.mark.parametrize("round_number", [1, 2])
 async def test_quality_set_corners__queue_capacity(
     api_client: httpx.AsyncClient,
@@ -105,13 +114,17 @@ async def test_quality_set_corners__queue_capacity(
         gate.open()
     accepted = await asyncio.gather(*(tasks - rejected))
 
-    assert sorted(t.result().status_code for t in rejected) == [503, 503, 503]
-    assert {t.result().headers["Retry-After"] for t in rejected} == {"2"}
-    assert {t.result().json()["code"] for t in rejected} == {"DEPENDENCY_UNAVAILABLE"}
-    assert [r.status_code for r in accepted] == [200, 200]
-    assert gate.calls == 2, "việc bị 503 không được chạy sau đó"
     counts = [await run_count(db_sessionmaker, drawn.floor.pk) for drawn in stage.floors]
-    assert sorted(counts) == [0, 0, 0, 1, 1]
+    observed = (
+        sorted(_summary(t.result()) for t in rejected),
+        sorted(r.status_code for r in accepted),
+        gate.calls,  # 2: việc bị 503 không được chạy sau đó
+        sorted(counts),
+    )
+    expected = ([(503, "2", "DEPENDENCY_UNAVAILABLE")] * 3, [200, 200], 2, [0, 0, 0, 1, 1])
+    # Đỏ thì in đủ 5 phản hồi (status, Retry-After, thân) — phân biệt 503 hàng chờ với 503 của DB (NO-264).
+    replies = [(t.result().status_code, t.result().headers.get("Retry-After"), t.result().text[:300]) for t in tasks]
+    assert observed == expected, replies
 
 
 @pytest.fixture
