@@ -439,3 +439,17 @@ def test_restore_window_elapsed__boundary(fake_clock: FakeClock) -> None:
     assert restore_window_elapsed(None, fake_clock) is False
     assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window - 1), fake_clock) is False
     assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window), fake_clock) is True
+
+
+async def test_record_step_fails_the_run_exactly_at_the_window_edge(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Biên cửa sổ: đúng `FLOOR_RESTORE_WINDOW_S` giây sau khi xoá là đã hết (nửa mở [0, window))."""
+    scene, run = await _started_run(db_session, fake_clock)
+    scene.floor.deleted_at = fake_clock.now()
+    await unregister_floor(db_session, project_id=scene.project.id, floor_level_id=scene.floor.level_id)
+    await db_session.flush()
+    fake_clock.advance(timedelta(seconds=get_floors_settings().floor_restore_window_s))
+
+    assert await record_step(db_session, run_id=run.id, step="preprocess", status="running", clock=fake_clock) is None
+    assert (await read_run(db_session, run.id)).error_code == FLOOR_DELETED

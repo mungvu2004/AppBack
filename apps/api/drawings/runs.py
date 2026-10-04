@@ -320,7 +320,8 @@ def _apply(run: PipelineRunRow, *, step: str, status: str, error_code: str | Non
 def restore_window_elapsed(deleted_at: datetime | None, clock: Clock) -> bool:
     """Tầng xoá mềm đã qua `FLOOR_RESTORE_WINDOW_S` chưa (BE-00 §7, A8): chưa xoá → `False`, đúng mốc → `True`.
 
-    Luật duy nhất của cửa sổ khôi phục: `_out_of_window` và `pipeline_persist` cùng gọi (NO-297).
+    Luật duy nhất của cửa sổ khôi phục (nửa mở `[0, window)`: BE-00 §7 "còn trong" cửa sổ là còn, đúng
+    mốc là hết): `_out_of_window`, `pipeline_persist`, `floors.create_floor` và `claim_entity_ids` cùng gọi.
     """
     if deleted_at is None:
         return False
