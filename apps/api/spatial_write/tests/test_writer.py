@@ -11,11 +11,12 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.projects.summaries import project_rollups
 from apps.api.spatial_read.tests._helpers import make_scene, other_session
+from apps.api.spatial_write import writer
 from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN, LAYER_LEVEL_MISMATCH, REVIEW_BY_AI_FORBIDDEN
 from apps.api.spatial_write.settings import get_spatial_write_settings, reset_spatial_write_settings_cache
 from apps.api.spatial_write.tests._helpers import (
@@ -33,12 +34,12 @@ from apps.api.spatial_write.tests._helpers import (
     write,
 )
 from apps.api.spatial_write.writer import LayerWrite, body_sha256, write_layer
-from packages.core.errors import SYSTEM_PIPELINE, AppError
+from packages.core.errors import MISSING, SYSTEM_PIPELINE, AppError
 from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import ProjectFloorSummary
 from packages.db.models.spatial import FloorEntityIdRow
-from packages.domain.spatial import Opening, SpatialLayer
+from packages.domain.spatial import Opening, SpatialLayer, diff_layers
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
@@ -290,6 +291,73 @@ async def test_spatial_write_layer_logs_writer_name_at_write_time(
 
     assert {row.changed_by for row in rows} == {actor_id}
     assert {row.changed_by_name for row in rows} == {actor_name}
+
+
+async def test_write_log__chunked_rows_equal_diff_in_order(
+    db_session: AsyncSession, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nhật ký chia nhiều khúc (khúc 2 dòng): từng dòng bằng hệt `diff_layers`, `id` tăng đúng thứ tự diff.
+
+    Lượt hai xoá một tường để có cả dòng `removed` (SQL NULL) lẫn dòng có giá trị JSON (NO-296).
+    """
+    monkeypatch.setattr(writer, "_LOG_CHUNK_ROWS", 2)
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    two = simple_layer(
+        floor.level_id, walls=(make_wall(floor.level_id), make_wall(floor.level_id, entity_id="W-TESTWALL02"))
+    )
+    first = await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, layer=two)
+    second = await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        base_revision=1,
+        layer=simple_layer(floor.level_id),
+    )
+    empty = SpatialLayer(walls=(), openings=(), rooms=(), furniture=())
+    expected = [(1, change) for change in diff_layers(empty, first.layer)]
+    expected += [(2, change) for change in diff_layers(first.layer, second.layer)]
+    rows = await log_rows(db_session, floor.pk)
+
+    assert len(expected) > 2 * 2
+    assert [(row.revision, row.entity_type, row.entity_id, row.field, row.value, row.removed) for row in rows] == [
+        (revision, c.entity_type, c.entity_id, c.field, None if c.value is MISSING else c.value, c.value is MISSING)
+        for revision, c in expected
+    ]
+    assert {(row.changed_at, row.changed_by, row.changed_by_name) for row in rows} == {
+        (fake_clock.now(), scene.owner.id, scene.owner.name)
+    }
+    assert any(row.removed for row in rows)
+
+
+async def test_write_log__one_statement_per_chunk(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Một lượt ghi vài chục dòng nhật ký đi **một** câu đơn, không `executemany` mỗi dòng (~80 µs/dòng, NO-296).
+
+    Chỉ dựa vào câu SQL gửi tới DB (listener `before_cursor_execute`), không dựa vào tên nội bộ của
+    `writer`, nên chạy được trên cả bản ghi lô `executemany` cũ — và đỏ ở khẳng định.
+    """
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    statements: list[bool] = []
+
+    def spy(_conn: object, _cursor: object, statement: str, _params: object, _context: object, many: bool) -> None:
+        """Ghi `executemany` của mỗi câu chèn vào `floor_change_log`."""
+        if statement.lstrip().upper().startswith("INSERT INTO FLOOR_CHANGE_LOG"):
+            statements.append(many)
+
+    connection = (await db_session.connection()).sync_connection
+    event.listen(connection, "before_cursor_execute", spy)
+    try:
+        result = await write(
+            db_session, floor=floor, actor=scene.owner, clock=fake_clock, layer=simple_layer(floor.level_id)
+        )
+    finally:
+        event.remove(connection, "before_cursor_execute", spy)
+    rows = len(diff_layers(SpatialLayer(walls=(), openings=(), rooms=(), furniture=()), result.layer))
+
+    assert rows > 1
+    assert statements == [False], f"{rows} dòng nhật ký đi {len(statements)} câu, executemany={statements}"
 
 
 async def test_spatial_write_layer_logs_deletions_without_value(
