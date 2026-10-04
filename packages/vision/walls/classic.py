@@ -1,4 +1,4 @@
-"""Mask tường cổ điển bằng ngưỡng Otsu + mở hình thái (B5-02 [6], việc B).
+"""Mask tường cổ điển bằng ngưỡng Otsu + hình thái: mở rồi lấp khe cửa sổ (B5-02 [6], việc B).
 
 Không mô hình học máy: ngưỡng xám BT.601 rồi Otsu tách mực, mở hình thái loại nét mảnh
 hơn bề dày tường tối thiểu (chữ, đường kích thước, cung cửa), rồi lấp khe cửa sổ (nét
@@ -79,6 +79,9 @@ def _bridge_windows(ink: NDArray[np.uint8], walls: NDArray[np.uint8], size: int)
     hai tường (đường trục, bệ cửa đi) mảnh hơn `size` nên bị xoá như mọi nét mảnh khác.
     Độ dài đóng kẹp ở `_MAX_SPAN_PER_K x size + 1`: một khối tô đặc (khung tên, logo) làm
     distance lớn nhất phình ra, không được kéo phép đóng nối mọi thứ quanh nó.
+    Giới hạn đã đo trên CubiCasa5K (24 mẫu có cầu thang/lan can): IoU tường 0,379 → 0,483
+    nhưng cụm nét song song mà phép mở đã coi là tường (sàn ván, bậc thang dày ≥ k) bị lấp
+    kín thêm — mặt nạ đầu vào đã sai ở đó, phép lấp khuếch đại nó.
     """
     measured = 2 * math.ceil(float(cv2.distanceTransform(walls, cv2.DIST_L2, 5).max())) + 1
     span = min(measured, _MAX_SPAN_PER_K * size + 1)
