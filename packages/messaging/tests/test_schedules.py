@@ -63,6 +63,7 @@ def test_a_period_below_the_floor_is_refused() -> None:
 
 def test_the_floor_itself_is_allowed() -> None:
     """Chu kỳ đúng bằng trần tối thiểu được nhận và vào `beat_schedule`."""
+
     @periodic("tests.jobs.exactly_one_minute", timedelta(seconds=MIN_PERIOD_S))
     def exactly_one_minute() -> None:
         """Đúng chu kỳ tối thiểu."""
