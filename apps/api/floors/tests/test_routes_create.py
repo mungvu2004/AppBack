@@ -1,7 +1,7 @@
 """Test hợp đồng của #10 `floors_create_floor` (B2-03 [2], [6], [8]).
 
 Route (`router.py`, `service.py`, `lookup.py`) và model (`packages/db/models/floors.py`,
-`packages/testing/factories/floors.py`) chưa hợp nhất trên nhánh này — việc R/D. Mọi test
+`packages/testing/factories/floors.py`) đã hợp nhất. Mọi test
 chỉ mồi qua factory/model đã chốt tên và gọi HTTP theo đúng hợp đồng; không nhập `router`,
 `service`, `lookup`, `view_parts`, `resolvers`, `errors`.
 

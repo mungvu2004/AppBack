@@ -1,6 +1,6 @@
 """Test hợp đồng của #34 `floors_patch_spatial_floor` (B2-03 [2], [6], [8]).
 
-Route (`router.py`, `service.py`, `lookup.py`) chưa hợp nhất trên nhánh này. Ma trận case:
+Route (`router.py`, `service.py`, `lookup.py`) đã hợp nhất. Ma trận case:
 G → C01 C02 C03 C06 C07 C08 C16 C17 C18.
 """
 

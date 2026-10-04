@@ -109,9 +109,11 @@ class FloorReorderIn(WireRequest):
 
     Luật thật (1-`FLOORS_MAX` phần tử, không trùng, khoá lạ → 422 `field:"floorIds"`) chỉ sống
     ở `resolvers._parsed_floor_ids` (một nguồn, R-07): resolver đọc thân thô **trước** khi
-    FastAPI ràng buộc `body` này, nên lỗi resolver luôn thắng và `floor_ids` ở đây luôn đã
-    hợp lệ khi tới tay handler — lớp này chỉ còn nhiệm vụ tài liệu hoá hợp đồng, không kiểm gì
-    thêm ngoài kiểu (`list[str]`, `extra="forbid"` của `WireRequest`).
+    FastAPI ràng buộc `body` này, nên lỗi resolver thắng mọi lỗi **sau** bước giải JSON (thân
+    JSON hỏng thì FastAPI giải trước mọi dependency → 400 `MALFORMED_JSON`, `core/routing.py`),
+    và `floor_ids` ở đây luôn đã hợp lệ khi tới tay handler — lớp này chỉ còn nhiệm vụ tài liệu hoá
+    hợp đồng, không kiểm gì thêm
+    ngoài kiểu (`list[str]`, `extra="forbid"` của `WireRequest`).
     """
 
     floor_ids: list[str]

@@ -51,14 +51,17 @@ def _floor_out(row: FloorRow, area_m2: Decimal | None, drawings: Mapping[str, Se
 
 async def _load_floor_outs(
     db: AsyncSession, project_ids: Sequence[str], *, floor_pks: Sequence[int] | None = None, app: object | None = None
-) -> dict[str, list[FloorOut]]:
-    """Lõi dùng chung của `floor_outs` và `floor_outs_by_project` (dinh-chinh §9, R-07).
+) -> dict[str, list[tuple[int, FloorOut]]]:
+    """Lõi dùng chung của `floor_outs`, `floor_outs_with_pk` và `floor_outs_by_project` (dinh-chinh §9, R-07).
+
+    Mỗi phần tử là `(FloorRow.pk, FloorOut)`: `FloorOut` chỉ mang `level_id`, còn người gọi cần
+    `pk` (khoá của bảng không gian) thì lấy từ cùng câu SQL, không đọc `floors` lần hai.
 
     Một truy vấn `floors` ⟕ `project_floor_summaries` cho cả lô `project_ids`, chỉ tầng
     chưa xoá, sắp `(project_id, floor_order, pk)`; số câu SQL không đổi theo số tầng hay
     số dự án. Trả **mọi** id được hỏi, kể cả dự án không tầng nào (`[]`).
     """
-    result: dict[str, list[FloorOut]] = {project_id: [] for project_id in project_ids}
+    result: dict[str, list[tuple[int, FloorOut]]] = {project_id: [] for project_id in project_ids}
     if not project_ids:
         return result
     stmt = (
@@ -79,7 +82,7 @@ async def _load_floor_outs(
     drawings = await _drawings_of(db, [row.FloorRow.pk for row in rows], app=app)
     for row in rows:
         floor_row: FloorRow = row.FloorRow
-        result[floor_row.project_id].append(_floor_out(floor_row, row.area_m2, drawings))
+        result[floor_row.project_id].append((floor_row.pk, _floor_out(floor_row, row.area_m2, drawings)))
     return result
 
 
@@ -87,13 +90,21 @@ async def floor_outs_by_project(
     db: AsyncSession, project_ids: Sequence[str], *, app: object | None = None
 ) -> dict[str, list[FloorOut]]:
     """`FloorOut` chưa xoá của mỗi dự án trong `project_ids` (cổng `project.floors` của B2-01)."""
-    return await _load_floor_outs(db, list(project_ids), app=app)
+    loaded = await _load_floor_outs(db, list(project_ids), app=app)
+    return {project_id: [out for _, out in pairs] for project_id, pairs in loaded.items()}
 
 
 async def floor_outs(
     db: AsyncSession, *, project_id: str, floor_pks: Sequence[int] | None = None, app: object | None = None
 ) -> list[FloorOut]:
     """`FloorOut` chưa xoá của một dự án, lọc `floor_pks` nếu có (lọc trong SQL, không ở Python)."""
+    return [out for _, out in await floor_outs_with_pk(db, project_id=project_id, floor_pks=floor_pks, app=app)]
+
+
+async def floor_outs_with_pk(
+    db: AsyncSession, *, project_id: str, floor_pks: Sequence[int] | None = None, app: object | None = None
+) -> list[tuple[int, FloorOut]]:
+    """Như `floor_outs` nhưng mỗi tầng đi kèm `FloorRow.pk`, cùng thứ tự và cùng một câu SQL."""
     return (await _load_floor_outs(db, [project_id], floor_pks=floor_pks, app=app))[project_id]
 
 
