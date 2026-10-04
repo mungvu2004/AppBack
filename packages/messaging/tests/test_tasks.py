@@ -203,10 +203,10 @@ def apply_task(task: Any, run_id: str, **options: Any) -> Any:
 
 
 def test_payload_without_a_schema_version_field_is_refused() -> None:
-    """Test: test payload without a schema version field is refused."""
+    """Payload không có trường `schema_version` bị từ chối khi khai task."""
+
     class NoVersion(BaseModel):
-        """Lớp: NoVersion."""
-        pass
+        """Payload thiếu `schema_version`."""
 
     with pytest.raises(TypeError, match="schema_version"):
         define_task(name="tests.tasks.never", payload=NoVersion, on_failed=record_failure)
