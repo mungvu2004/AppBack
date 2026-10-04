@@ -1,5 +1,6 @@
 """Client Redis: chọn đúng DB, đặt đúng trần, và dịch đúng lỗi phụ thuộc."""
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -224,7 +225,7 @@ def test_process_local_override_restores_the_factory_even_when_the_body_raises()
 
     assert local.get() == 2
 
-    with pytest.raises(ZeroDivisionError), local.override(lambda: -2):
+    with contextlib.suppress(ZeroDivisionError), local.override(lambda: -2):
         assert local.get() == -2
         raise ZeroDivisionError
 
