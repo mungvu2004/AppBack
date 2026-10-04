@@ -20,6 +20,7 @@ GROUP_KEY = "prj_00000000000000000000001"
 
 
 def _meta(sample_id: str) -> SampleMeta:
+    """Metadata mẫu hợp lệ cho `sample_id` cho trước."""
     return SampleMeta(
         sample_id=sample_id,
         group_key=GROUP_KEY,
@@ -31,11 +32,13 @@ def _meta(sample_id: str) -> SampleMeta:
 
 
 async def _chunks(*parts: bytes) -> AsyncIterator[bytes]:
+    """Async iterable trả lần lượt từng phần byte."""
     for part in parts:
         yield part
 
 
 async def _read_manifest(storage: LocalDiskStorage, version_id: str) -> bytes:
+    """Đọc trọn `manifest.jsonl` của phiên bản từ kho."""
     key = dataset_object(version_id, "manifest.jsonl")
     body = b""
     async for chunk in storage.open_read(key):
@@ -46,6 +49,7 @@ async def _read_manifest(storage: LocalDiskStorage, version_id: str) -> bytes:
 async def test_add_sample_and_finish__manifest_matches_objects(
     local_storage: LocalDiskStorage, fake_clock: Clock
 ) -> None:
+    """Manifest khớp từng object đã ghi (băm, kích thước) và khoá là `dataset_object` của đường mẫu."""
     version_id = new_id("dsv", fake_clock)
     writer = SampleWriter(local_storage, version_id)
     image = b"fake-image-bytes-0001"
@@ -77,6 +81,7 @@ async def test_add_sample_and_finish__manifest_matches_objects(
 
 
 async def test_add_sample__walls_and_objects_optional(local_storage: LocalDiskStorage, fake_clock: Clock) -> None:
+    """Không có `walls`/`objects` thì chỉ ghi `image` và `meta`."""
     version_id = new_id("dsv", fake_clock)
     writer = SampleWriter(local_storage, version_id)
     await writer.add_sample(
@@ -92,6 +97,7 @@ async def test_add_sample__walls_and_objects_optional(local_storage: LocalDiskSt
 async def test_add_sample__async_iterable_image_not_buffered_whole(
     local_storage: LocalDiskStorage, fake_clock: Clock
 ) -> None:
+    """Ảnh là async iterable vẫn ghi đủ byte mà không gom hết vào RAM."""
     version_id = new_id("dsv", fake_clock)
     writer = SampleWriter(local_storage, version_id)
     parts = (b"chunk-one-", b"chunk-two-", b"chunk-three")
@@ -114,6 +120,7 @@ async def test_add_sample__async_iterable_image_not_buffered_whole(
 async def test_add_sample__over_max_bytes_raises_dataset_too_large(
     local_storage: LocalDiskStorage, fake_clock: Clock
 ) -> None:
+    """Vượt `max_bytes` cộng dồn thì `PermanentError(DATASET_TOO_LARGE)`."""
     version_id = new_id("dsv", fake_clock)
     writer = SampleWriter(local_storage, version_id, max_bytes=10)
     with pytest.raises(PermanentError) as excinfo:
@@ -129,6 +136,7 @@ async def test_add_sample__over_max_bytes_raises_dataset_too_large(
 
 
 async def test_finish__zero_samples_does_not_raise(local_storage: LocalDiskStorage, fake_clock: Clock) -> None:
+    """0 mẫu: `finish` không ném lỗi, đếm đủ ba split bằng 0."""
     version_id = new_id("dsv", fake_clock)
     writer = SampleWriter(local_storage, version_id)
     manifest_sha, split_counts = await writer.finish()
@@ -141,10 +149,12 @@ async def test_finish__zero_samples_does_not_raise(local_storage: LocalDiskStora
 async def test_add_sample__before_put_called_before_every_put(
     local_storage: LocalDiskStorage, fake_clock: Clock
 ) -> None:
+    """Điểm kiểm `before_put` được gọi trước mỗi `put`."""
     version_id = new_id("dsv", fake_clock)
     calls = 0
 
     async def before_put() -> None:
+        """Đếm số lần được gọi."""
         nonlocal calls
         calls += 1
 
@@ -160,12 +170,14 @@ async def test_add_sample__before_put_called_before_every_put(
 async def test_add_sample__before_put_stop_signal_propagates(
     local_storage: LocalDiskStorage, fake_clock: Clock
 ) -> None:
+    """Lỗi mất khoá ném từ `before_put` nổi lên nguyên vẹn."""
     version_id = new_id("dsv", fake_clock)
 
     class _LockLostError(Exception):
-        pass
+        """Tín hiệu mất khoá của test."""
 
     async def before_put() -> None:
+        """Mô phỏng mất khoá giữa chừng."""
         raise _LockLostError
 
     writer = SampleWriter(local_storage, version_id, before_put=before_put)
