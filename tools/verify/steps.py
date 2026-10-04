@@ -182,9 +182,9 @@ def pytest_workers() -> str:
     Đo 2026-10-05, một cổng chạy một mình, 8383 test, container cổng 12 CPU / 11,5 GB (NO-271, NO-280):
     `-n 4` 571 s (đỉnh RAM VM 8,7 GiB) · `-n 6` 505 s (8,5 GiB) · `-n 8` 513 s (10,1 GiB), cả ba xanh,
     không chập chờn. `-n 6` nhanh nhất; `-n 8` không nhanh hơn mà chỉ còn chừa ~1,4 GiB cho VM. RAM
-    gần như nằm hết ở container `verify-run`: mỗi tiến trình pytest nạp `torch` ~2 GB PSS, còn
-    ~10 container dịch vụ cộng lại chỉ ~0,5 GB — nên số tiến trình là số nhân của RAM. Hai cổng
-    cùng lúc (2 × ~8,5 GiB) vẫn vượt VM, ENV §4 giữ "một cổng đầy đủ" (đặt 3 khi chạy cạnh).
+    gần như nằm hết ở container `verify-run`: mỗi tiến trình pytest nạp `torch` ~2 GiB PSS, còn
+    ~10 container dịch vụ cộng lại chỉ ~0,5 GiB — nên số tiến trình là số nhân của RAM. Hai cổng
+    cùng lúc (2 lần ~8,5 GiB) vẫn vượt VM, ENV §4 giữ "một cổng đầy đủ" (đặt 3 khi chạy cạnh).
     Giá trị rỗng hay lạ → dùng mặc định chứ không truyền tiếp cho pytest (xdist báo lỗi dùng sai,
     bước 5 hỏng vì cấu hình chứ không vì mã).
     """
