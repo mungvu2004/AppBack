@@ -166,6 +166,7 @@ async def test_library_publish_other_app_error_propagates(
     """Chỉ `DEPENDENCY_UNAVAILABLE` bị nuốt: lỗi có mã khác (ở đây 413) đi tiếp lên người gọi."""
 
     async def too_large(*_args: Any, **_kwargs: Any) -> Any:
+        """`put` vượt `max_bytes`."""
         raise PAYLOAD_TOO_LARGE.error()
 
     monkeypatch.setattr(local_storage, "put", too_large)
@@ -186,6 +187,7 @@ async def test_library_publish_mismatch_not_published(
     real_put = local_storage.put
 
     async def corrupting(key: str, data: bytes, **kwargs: Any) -> Any:
+        """`put` thật rồi làm hỏng byte đã lưu."""
         return await real_put(key, data[:-1] + bytes([data[-1] ^ 1]), **kwargs)
 
     monkeypatch.setattr(local_storage, "put", corrupting)
@@ -209,6 +211,7 @@ async def test_library_publish_holds_no_db_connection_during_put(
     real_put = local_storage.put
 
     async def watching(key: str, data: bytes, **kwargs: Any) -> Any:
+        """Ghi số kết nối đang mượn rồi gọi `put` thật."""
         checked_out.append(pool.checkedout())
         return await real_put(key, data, **kwargs)
 

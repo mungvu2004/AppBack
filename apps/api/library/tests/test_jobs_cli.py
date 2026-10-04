@@ -98,6 +98,7 @@ def test_cli_publish_exits_one_when_storage_is_down(
     """Đĩa đầy (ENOSPC → `DEPENDENCY_UNAVAILABLE`): mọi mục `failed`, lỗi ra stderr, thoát 1."""
 
     def full_disk(_path: Path) -> NoReturn:
+        """Giả lập đĩa đầy."""
         raise OSError(errno.ENOSPC, "no space left")
 
     broken = LocalDiskStorage(tmp_path / "broken", SystemClock(), "https://appback.test", _open=full_disk)
