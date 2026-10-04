@@ -33,6 +33,7 @@ from packages.testing.fixtures.messaging import queued_payloads
 
 _log: Final = logging.getLogger(__name__)
 
+
 @pytest.fixture
 def cpu_queue(messaging_env: None) -> SyncRedis:
     """Client broker đã `DEL` hàng `pipeline.cpu`.

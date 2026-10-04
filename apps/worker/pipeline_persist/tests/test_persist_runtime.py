@@ -29,7 +29,15 @@ from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN
 from apps.worker.pipeline_build.errors import PIPELINE_ARTIFACT_INVALID, PIPELINE_ARTIFACT_MISSING
 from apps.worker.pipeline_persist import service, tasks
 from apps.worker.pipeline_persist.constants import STEP
-from apps.worker.pipeline_persist.tests.helpers import CPU_QUEUE, Arranged, Maker, arrange, broken_layer, open_run_at_build, put_layer
+from apps.worker.pipeline_persist.tests.helpers import (
+    CPU_QUEUE,
+    Arranged,
+    Maker,
+    arrange,
+    broken_layer,
+    open_run_at_build,
+    put_layer,
+)
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.settings import reset_settings_cache
