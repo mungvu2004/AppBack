@@ -259,6 +259,26 @@ async def test_latest_invitations_returns_latest_unused_even_expired(
     assert result[expired_user.id].expires_at == expired_row.expires_at
 
 
+async def test_latest_invitations__excludes_failed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """NO-150: lời mời bị máy chủ nhận từ chối vĩnh viễn (`failed_at`) không còn là lời mời "đã gửi"."""
+    ok_user = await make_user(db_session)
+    bounced_user = await make_user(db_session)
+    await seed_token(db_session, user_id=ok_user.id, purpose="invite", clock=fake_clock, commit=False)
+    await seed_token(
+        db_session,
+        user_id=bounced_user.id,
+        purpose="invite",
+        clock=fake_clock,
+        failed_at=fake_clock.now(),
+        commit=False,
+    )
+    await db_session.commit()
+
+    result = await latest_invitations(db_session, [ok_user.id, bounced_user.id])
+
+    assert set(result) == {ok_user.id}
+
+
 async def test_latest_invitations_empty_input_runs_no_query(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

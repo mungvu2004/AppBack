@@ -165,7 +165,11 @@ def _dispatch_batches(token_ids: list[str]) -> None:
 
 
 async def latest_invitations(db: AsyncSession, user_ids: Sequence[str]) -> dict[str, InvitationWindow]:
-    """Lời mời mới nhất chưa dùng/chưa bị thay của mỗi người, **kể cả đã hết hạn**; một truy vấn."""
+    """Lời mời mới nhất chưa dùng/chưa bị thay của mỗi người, **kể cả đã hết hạn**; một truy vấn.
+
+    Bỏ lời mời bị máy chủ thư từ chối vĩnh viễn (`failed_at`, NO-150): nó chưa từng tới người nhận
+    nên không phải lời mời "đã gửi"; màn quản trị coi như chưa mời và cho gửi lại.
+    """
     if not user_ids:
         return {}
     stmt = (
@@ -176,6 +180,7 @@ async def latest_invitations(db: AsyncSession, user_ids: Sequence[str]) -> dict[
             OneTimeToken.purpose == "invite",
             OneTimeToken.used_at.is_(None),
             OneTimeToken.superseded_at.is_(None),
+            OneTimeToken.failed_at.is_(None),
         )
         .order_by(OneTimeToken.user_id, OneTimeToken.created_at.desc())
     )
