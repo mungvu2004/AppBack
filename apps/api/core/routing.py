@@ -240,9 +240,13 @@ class AppRoute(APIRoute):
             self.dependant.dependencies.append(get_dependant(path=self.path_format, call=_path_declaration(undeclared)))
 
     def _guard_builders(self) -> list[Callable[["AppRoute"], Callable[[Request], Awaitable[None]]]]:
-        """Guard nào áp cho route này — chỉ gắn cái thật sự cần, để route GET không đọc thân."""
+        """Guard nào áp cho route này — chỉ gắn cái thật sự cần, để route GET không đọc thân.
+
+        W21 xét tham số của **đường** (`param_convertors`), không của endpoint: cổng quyền như `require_project`
+        đọc thẳng `request.path_params`, nên endpoint có thể không khai tham số đường nào (NO-351).
+        """
         builders: list[Callable[[AppRoute], Callable[[Request], Awaitable[None]]]] = []
-        if self.dependant.body_params and self.dependant.path_params:
+        if self.dependant.body_params and self.param_convertors:
             builders.append(_path_body_guard)
         if self.options.versioned:
             builders.append(_versioned_guard)
