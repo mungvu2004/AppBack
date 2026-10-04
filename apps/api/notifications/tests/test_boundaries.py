@@ -19,7 +19,7 @@ WORKER_MODULES: Final = ("service", "payload", "messages", "kinds", "settings", 
 
 @pytest.mark.parametrize("module", WORKER_MODULES)
 def test_boundary__worker_modules_import_without_web_libraries(module: str) -> None:
-    """Nhập được khi `fastapi`, `starlette`, `uvicorn`, `jwt`, `argon2` bị chặn trong `sys.modules` (BE-00 §7 "Hàm worker nhập")."""
+    """Nhập được khi 5 gói web/mật mã (ranh giới `.importlinter`) bị chặn trong `sys.modules` (BE-00 §7)."""
     code = (
         "import sys\n"
         "for name in ('fastapi', 'starlette', 'uvicorn', 'jwt', 'argon2'):\n"
