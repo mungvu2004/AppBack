@@ -146,18 +146,14 @@ class WriteScope:
     admins: tuple[str, ...]
 
     def forbid_self(self) -> None:
-        """#41, #42, #46: mục tiêu là chính người thực hiện → 422 `USER_SELF_MODIFICATION`."""
-        if self.target.id == self.actor_id:
-            raise USER_SELF_MODIFICATION.error()
+        """#41, #42, #46: mục tiêu là chính người thực hiện → 422.
 
-    def forbid_last_admin(self) -> None:
-        """Mục tiêu là admin `active` duy nhất → 422 `USER_LAST_ADMIN`.
-
-        Người thực hiện luôn nằm trong tập nên với tập 1 người thì mục tiêu chính là họ và
-        `forbid_self` đã chặn trước; đây là lớp chốt cuối nếu thứ tự kiểm đổi (C14).
+        `lock_admin_set` đòi người thực hiện nằm trong `admins`, nên "mục tiêu là admin `active` duy nhất" chỉ xảy ra
+        khi mục tiêu là chính họ: bất biến ra trước — `USER_LAST_ADMIN` (B1-05 [6] bước 3, C14), không thì
+        `USER_SELF_MODIFICATION` (NO-206).
         """
-        if self.target.id in self.admins and len(self.admins) == 1:
-            raise USER_LAST_ADMIN.error()
+        if self.target.id == self.actor_id:
+            raise (USER_LAST_ADMIN if len(self.admins) == 1 else USER_SELF_MODIFICATION).error()
 
 
 # --------------------------------------------------------------------------- khoá
@@ -293,7 +289,6 @@ async def change_role(
     scope = await open_scope(db, actor_id, user_id)
     scope.forbid_self()
     if scope.target.role != role:
-        scope.forbid_last_admin()
         scope.target.role = role
         await bump_token_version(db, user_id)
         await _log_activity(db, scope, ActivityKind.USER_ROLE_CHANGE, clock)
@@ -307,7 +302,6 @@ async def disable_user(
     scope = await open_scope(db, actor_id, user_id)
     scope.forbid_self()
     if scope.target.status != "disabled":
-        scope.forbid_last_admin()
         scope.target.status = "disabled"
         await revoke_sessions(db, user_id=user_id, reason="disabled", clock=clock)
         await bump_token_version(db, user_id)
@@ -455,7 +449,6 @@ async def delete_user(
     scope = await open_scope(db, actor_id, user_id)
     _require_confirm(scope.target, confirm_email)
     scope.forbid_self()
-    scope.forbid_last_admin()
     view = await _view_of(db, storage, scope.target)
     scope.target.deleted_at = clock.now()
     scope.target.status = "disabled"

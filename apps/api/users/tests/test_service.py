@@ -1,8 +1,4 @@
-"""Hàm thuần và cấu hình của `apps/api/users/service.py` (không cần app, không cần DB).
-
-`USER_LAST_ADMIN` chỉ chạm được qua HTTP khi thứ tự kiểm đổi (người thực hiện luôn nằm trong tập
-admin nên `USER_SELF_MODIFICATION` chặn trước); lớp chốt ấy được kiểm ở đây trực tiếp.
-"""
+"""Hàm thuần và cấu hình của `apps/api/users/service.py` (không cần app, không cần DB)."""
 
 import logging
 
@@ -19,18 +15,20 @@ def _user(user_id: str, *, status: str = "active") -> User:
     return User(id=user_id, email=f"{user_id}@example.com", email_normalized=f"{user_id}@example.com", status=status)
 
 
-def test_forbid_last_admin_blocks_the_only_admin() -> None:
-    """Tập admin một người và mục tiêu là người đó → `USER_LAST_ADMIN`."""
-    scope = WriteScope(actor_id="usr_a", target=_user("usr_b"), admins=("usr_b",))
+@pytest.mark.parametrize(
+    ("admins", "code"), [(("usr_a",), "USER_LAST_ADMIN"), (("usr_a", "usr_b"), "USER_SELF_MODIFICATION")]
+)
+def test_forbid_self_reports_last_admin_first(admins: tuple[str, ...], code: str) -> None:
+    """Tự sửa mình: admin `active` duy nhất → `USER_LAST_ADMIN`, còn admin khác → `USER_SELF_MODIFICATION` (NO-206)."""
+    scope = WriteScope(actor_id="usr_a", target=_user("usr_a"), admins=admins)
     with pytest.raises(AppError) as caught:
-        scope.forbid_last_admin()
-    assert caught.value.code.code == "USER_LAST_ADMIN"
+        scope.forbid_self()
+    assert caught.value.code.code == code
 
 
-def test_forbid_last_admin_allows_when_others_remain_or_target_is_not_admin() -> None:
-    """Còn admin khác, hoặc mục tiêu không nằm trong tập → không ném."""
-    WriteScope(actor_id="usr_a", target=_user("usr_b"), admins=("usr_a", "usr_b")).forbid_last_admin()
-    WriteScope(actor_id="usr_a", target=_user("usr_c"), admins=("usr_a",)).forbid_last_admin()
+def test_forbid_self_allows_another_target() -> None:
+    """Mục tiêu là người khác → không ném, kể cả khi người thực hiện là admin duy nhất."""
+    WriteScope(actor_id="usr_a", target=_user("usr_b"), admins=("usr_a",)).forbid_self()
 
 
 def test_pending_or_taken_rejects_missing_and_non_pending() -> None:

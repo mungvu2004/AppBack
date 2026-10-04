@@ -28,6 +28,7 @@ KEYS = {"email", "id", "lastActiveAt", "name", "projectCount", "role", "status"}
 
 
 def _role_path(user_id: str) -> str:
+    """Đường #41 của một người."""
     return f"{USERS}/{user_id}/role"
 
 
@@ -140,10 +141,21 @@ async def test_users_change_role_same_role_writes_nothing(
 
 
 async def test_users_change_role_self_is_rejected(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tự đổi vai chính mình → 422 `USER_SELF_MODIFICATION`."""
+    """Tự đổi vai chính mình khi còn admin khác → 422 `USER_SELF_MODIFICATION`."""
     admin = await make_admin(db_session)
+    await make_admin(db_session)
     response = await send(api_client, admin, "PATCH", _role_path(admin.id), json=_role_body(admin, "viewer"))
     assert (response.status_code, response.json()["code"]) == (422, "USER_SELF_MODIFICATION")
+    assert (await reload(db_session, admin.id)).role == "admin"
+
+
+async def test_users_change_role_last_admin_is_rejected(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """NO-206: admin `active` duy nhất tự hạ vai → 422 `USER_LAST_ADMIN` (bất biến ra trước "tự sửa mình")."""
+    admin = await make_admin(db_session)
+    response = await send(api_client, admin, "PATCH", _role_path(admin.id), json=_role_body(admin, "viewer"))
+    assert (response.status_code, response.json()["code"]) == (422, "USER_LAST_ADMIN")
     assert (await reload(db_session, admin.id)).role == "admin"
 
 
@@ -184,6 +196,7 @@ async def test_users_change_role_revokes_old_access_token(
 
 
 def _path(user_id: str, action: str) -> str:
+    """Đường #42/#43 (`disable`/`enable`) của một người."""
     return f"{USERS}/{user_id}/{action}"
 
 
@@ -257,13 +270,18 @@ async def test_users_disable_user__C08(api_client: httpx.AsyncClient, db_session
 async def test_users_disable_user_twice_and_self(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đã `disabled` → 200, không ghi thêm gì; tự vô hiệu mình → 422 `USER_SELF_MODIFICATION`."""
+    """Đã `disabled` → 200, không ghi thêm gì; tự vô hiệu mình → 422 `USER_LAST_ADMIN` khi là admin duy nhất
+    (NO-206), `USER_SELF_MODIFICATION` khi còn admin khác."""
     admin, target = await make_admin(db_session), await make_user(db_session, status="disabled")
     response = await send(api_client, admin, "POST", _path(target.id, "disable"), json={})
     assert (response.status_code, response.json()["status"]) == (200, "disabled")
     await _wrote_nothing(db_sessionmaker, db_session, target, 0)
+    last = await send(api_client, admin, "POST", _path(admin.id, "disable"), json={})
+    assert (last.status_code, last.json()["code"]) == (422, "USER_LAST_ADMIN")
+    await make_admin(db_session)
     own = await send(api_client, admin, "POST", _path(admin.id, "disable"), json={})
     assert (own.status_code, own.json()["code"]) == (422, "USER_SELF_MODIFICATION")
+    assert (await reload(db_session, admin.id)).status == "active"
 
 
 async def test_users_disable_user_kills_every_session(

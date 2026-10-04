@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.core.auth import Principal
+from apps.api.core.openapi import real_app
 from apps.api.core.routing import (
     DEFAULT_BODY_LIMIT,
     AppRoute,
@@ -44,6 +45,8 @@ _log: Final = logging.getLogger(__name__)
 
 CHUNK: Final = b"x" * 65536
 HUGE_CHUNKS: Final = 1024
+_W21_GUARD: Final = "_path_body_guard.<locals>.guard"
+"""Tên đủ của guard W21 trong cây dependency (`apps/api/core/routing.py`)."""
 DEAD_BROKER_CEILING_S: Final = 1.0
 """BE-00 §7: callback sau commit không được giữ đường trả response."""
 
@@ -117,6 +120,32 @@ async def test_path_body_match_writes(
     )
     assert response.status_code == 200
     assert await sample_row_ids(sample_app.state.sessionmaker) == ["prj-1"]
+
+
+async def test_path_body_guard__path_param_only_in_dependency(
+    sample_client: httpx.AsyncClient, fake_principal: Principal
+) -> None:
+    """NO-351: tham số đường chỉ dependency đọc vẫn được guard W21 so → 422 `PATH_BODY_MISMATCH`, không `VALIDATION`."""
+    response = await sample_client.post(
+        "/api/sample/projects/prj-1/notes",
+        json={"projectId": "prj-2", "name": "a"},
+        headers=_headers(fake_principal),
+    )
+    body = response.json()
+    assert (response.status_code, body["code"], body.get("field")) == (422, "PATH_BODY_MISMATCH", "projectId")
+
+
+def test_path_body_guard__every_real_write_with_path_params() -> None:
+    """NO-351: mọi route thật có thân và tham số đường đều mang guard W21, kể cả khi endpoint không khai tham số."""
+    missing = [
+        route.name
+        for route in real_app().routes
+        if isinstance(route, AppRoute)
+        and route.dependant.body_params
+        and route.param_convertors
+        and not any(getattr(sub.call, "__qualname__", "") == _W21_GUARD for sub in route.dependant.dependencies)
+    ]
+    assert missing == []
 
 
 async def test_versioned_route_without_base_version_is_428(

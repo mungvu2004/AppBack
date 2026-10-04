@@ -170,6 +170,17 @@ async def sample_create_project_item(project_id: str, body: ProjectItemBody, db:
     return ItemOut(name=body.name)
 
 
+def read_project_path(request: Request) -> None:
+    """Cổng mẫu đọc thẳng `request.path_params` như `require_project`; endpoint không khai `project_id` (NO-351)."""
+    request.state.sample_project = request.path_params["project_id"]
+
+
+@router.post("/projects/{project_id}/notes", response_model=ItemOut, dependencies=[Depends(read_project_path)])
+async def sample_create_project_note(body: ItemBody) -> ItemOut:
+    """Tham số đường chỉ dependency đọc, thân `extra="forbid"` không có `projectId` → guard W21 vẫn phải chạy."""
+    return ItemOut(name=body.name)
+
+
 @router.put("/versions/{project_id}", response_model=ItemOut)
 @route_options(versioned=True)
 async def sample_replace_version(project_id: str, body: VersionedItemBody) -> ItemOut:

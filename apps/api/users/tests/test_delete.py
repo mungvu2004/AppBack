@@ -141,10 +141,21 @@ async def test_users_delete_user_confirm_email_is_compared_normalized(
 
 
 async def test_users_delete_user_self_is_rejected(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tự xoá chính mình → 422 `USER_SELF_MODIFICATION`."""
+    """Tự xoá chính mình khi còn admin khác → 422 `USER_SELF_MODIFICATION`."""
     admin = await make_admin(db_session)
+    await make_admin(db_session)
     response = await send(api_client, admin, "DELETE", f"{USERS}/{admin.id}", json=_delete(admin.id, admin.email))
     assert (response.status_code, response.json()["code"]) == (422, "USER_SELF_MODIFICATION")
+    assert (await reload(db_session, admin.id)).deleted_at is None
+
+
+async def test_users_delete_user_last_admin_is_rejected(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """NO-206: admin `active` duy nhất tự xoá → 422 `USER_LAST_ADMIN`, không xoá gì."""
+    admin = await make_admin(db_session)
+    response = await send(api_client, admin, "DELETE", f"{USERS}/{admin.id}", json=_delete(admin.id, admin.email))
+    assert (response.status_code, response.json()["code"]) == (422, "USER_LAST_ADMIN")
     assert (await reload(db_session, admin.id)).deleted_at is None
 
 
@@ -182,7 +193,8 @@ async def test_users_delete_user_removes_memberships_and_logs_orphans(
     assert (response.status_code, response.json()["projectCount"]) == (200, 2)
     assert (await count_projects_of_users(db_session, [target.id]))[target.id] == 0
     logged = [record for record in caplog.records if record.getMessage() == "project_orphaned"]
-    assert [(r.projectId, r.userId) for r in logged] == [(orphan.id, target.id)]  # type: ignore[attr-defined]  # `extra` của log
+    pairs = [(r.projectId, r.userId) for r in logged]  # type: ignore[attr-defined]  # `extra` của log
+    assert pairs == [(orphan.id, target.id)]
     assert shared.id not in {r.projectId for r in logged}  # type: ignore[attr-defined]  # `extra` của log
 
 
