@@ -156,6 +156,7 @@
 | FIX-171 | 2026-10-04 | B5-01 | NO-322, NO-323 | DEBT-02 W2/C08: scan() bỏ tệp test nên import ultralytics trần tái sinh NO-322 | `df46a99` (nhánh `fix/debt-02-w2-cache`) |
 | FIX-172 | 2026-10-04 | B2-03 | NO-265 | DEBT-02 W2/C08: test đếm SQL của `view_parts` chỉ xanh nhờ `_default_signer` do test khác làm ấm | `d3c8838` (nhánh `fix/debt-02-w2-cache`) |
 | FIX-173 | 2026-10-04 | B5-06a | NO-218, NO-295, NO-339 | DEBT-02 W2/C14: đo RSS sai tiến trình (NO-339), J01 không qua đường gửi thật (NO-218), J06 khẳng định rỗng và dọn test | `fce473e`, `c2489b7` (nhánh `fix/debt-02-w2-pipeline`) |
+| FIX-174 | 2026-10-04 | B5-06a | NO-339 | DEBT-02 W2/M cổng 1 đỏ (5b): con `spawn` đo `RUSAGE_SELF.ru_maxrss` mang theo RSS của cha pytest qua `execve` | `84ad46c` (nhánh `fix/debt-02-w2`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -1593,3 +1594,13 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
   `test_orchestrate_start_smoke_stays_under_ceiling` dùng chung đường `_run_smoke` với `__J01_smoke`, khẳng định ≤ 5 s (B5-06a [8], trần đặc tả).
   Số đo 0,320 s (perf), 0,299 s (smoke), cả hai mã thoát 0 (`perf14.log`); verify bước 1–4 đạt (`verify14b.log`). Dòng `time.sleep(0.05)` trong
   diff là vòng chờ có sẵn của smoke, chỉ dời vào `_run_smoke`, không phải vòng chờ mới.
+
+## FIX-174 cho B5-06a — con `spawn` đo `RUSAGE_SELF.ru_maxrss` mang theo RSS của cha pytest qua `execve` (NO-339)
+
+- **[1 TRIỆU CHỨNG]** Cổng W2 `gate-1.log` (3ca726b, -n 4) bước 5b đỏ: `test_prepare_page_40mp_stays_under_memory_ceiling` — `ru_maxrss 4282204 KiB > trần 1572864 KiB`; mã thoát 1. Bước 1–5 đạt.
+- **[2 TÁI HIỆN]** `run.sh shell < W2/M/rss2.sh`: con spawn không cấp phát gì của cha 1,8 GiB → `ru_maxrss 1859640 KiB`, `VmHWM 15420 KiB`; test 40 MP sau cha 1,8 GiB → `2002592 KiB > trần`, mã thoát 1 (`rss2.log`).
+- **[3 BẰNG CHỨNG]** Linux giữ mức nước cao RSS của bộ nhớ cũ vào `signal->maxrss` khi `execve`, nên `RUSAGE_SELF` của con spawn ≥ RSS của cha lúc fork; cách đo của FIX-173 (`test_start_runtime.py` `_child_prepare_40mp`) chỉ đúng khi cha nhỏ (lượt kiểm C14 chạy test lẻ).
+- **[4 KHOANH VÙNG]** `apps/worker/pipeline_orchestrate/tests/test_start_runtime.py` (B5-06a), chỉ test.
+- **[5 SỬA NHỎ NHẤT]** `_peak_rss_kib()` đọc `VmHWM` của `/proc/self/status` (đỉnh của ảnh sau exec; chỉ Linux, cổng chạy Linux); con 40 MP gửi số đó; bỏ `import resource`. Trần 1,5 GiB giữ nguyên (đặc tả [11] mục 3).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_peak_rss_kib__ignores_memory_of_the_parent` (không perf): cha giữ 768 MiB, con rỗng phải báo < 384 MiB. Đột biến về `RUSAGE_SELF` → `944744` đỏ, mã thoát 1; bản sửa → `95164` xanh. Test 40 MP sau cha 1,8 GiB → `980016 KiB`, mã thoát 0 (`fix174.log`).
+- **[7 NGHIỆM THU]** Tiền kiểm đích + cổng 2 đầy đủ ở việc gộp M (`gate-2.log`).
