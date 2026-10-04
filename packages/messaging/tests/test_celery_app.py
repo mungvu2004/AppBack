@@ -3,7 +3,10 @@
 import logging
 import os
 import socket
+import subprocess
+import sys
 import urllib.request
+from pathlib import Path
 
 import pytest
 from celery import _state as celery_state
@@ -33,6 +36,8 @@ from packages.observability import exporter as exporter_module
 from packages.observability.settings import reset_observability_settings_cache
 from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 from packages.testing.fixtures.services import refused_url
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _free_port() -> int:
@@ -292,3 +297,18 @@ def test_a_busy_metrics_port_is_only_a_warning(
 
     assert "metrics_exporter_unavailable" in caplog.text
     assert exporter_module._instance is None
+
+
+def test_register_tasks__module_not_imported_before() -> None:
+    """Tiến trình mới chưa nhập `jobs` nào: `register_tasks` vẫn đưa task mail của B1-03 vào sổ (NO-211)."""
+    probe = (
+        "import sys\n"
+        "from celery import Celery\n"
+        "from packages.testing.fixtures.messaging import register_tasks\n"
+        "assert 'apps.api.auth_recovery.jobs' not in sys.modules\n"
+        "print('default.auth_recovery.send_token_mail' in register_tasks(Celery('probe')).tasks)\n"
+    )
+    result = subprocess.run(  # noqa: S603 — lệnh cố định: python của môi trường + đoạn mã trong test
+        [sys.executable, "-c", probe], cwd=REPO_ROOT, capture_output=True, text=True, check=True, timeout=120
+    )
+    assert result.stdout.strip() == "True"

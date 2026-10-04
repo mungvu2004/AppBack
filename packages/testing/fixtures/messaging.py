@@ -37,6 +37,7 @@ from packages.messaging.redis import (
     streams_redis,
     sync_result,
 )
+from packages.messaging.schedules import discover_jobs, discover_submodules
 from packages.messaging.settings import get_messaging_settings, reset_messaging_settings_cache
 from packages.messaging.streams import EventBus
 from packages.messaging.tasks import reset_delivery_client
@@ -136,14 +137,27 @@ def event_bus(streams_client: AsyncRedis) -> EventBus:
     return EventBus(streams_client)
 
 
+def register_tasks(app: Celery) -> Celery:
+    """Nạp mọi module task như `apps/worker/celery_main.py` rồi trả lại `app` (NO-211).
+
+    `shared_task` chỉ vào sổ khi module của nó đã được nhập; không nạp ở đây thì worker
+    thật của test báo `Received unregistered task` hay không tuỳ test nào chạy trước.
+    Như worker thật, task `apps.ml.*.tasks` **không** được nạp (ảnh worker không có ML):
+    test của `apps/ml` vẫn tự nhập module task của mình.
+    """
+    discover_submodules("apps.worker", "tasks")
+    discover_jobs()
+    return app
+
+
 @pytest.fixture
 def celery_test_app(messaging_env: None) -> Celery:
-    """App Celery trên broker Redis thật.
+    """App Celery trên broker Redis thật, sổ task đầy đủ như worker thật (`register_tasks`).
 
     Cờ `DB_AFTER_COMMIT_INLINE` mà `create_celery` đặt do `producer_reset` (autouse)
     trả lại, nên ở đây không lặp lại việc đó.
     """
-    return create_celery("test", get_messaging_settings())
+    return register_tasks(create_celery("test", get_messaging_settings()))
 
 
 type WorkerFactory = Callable[[Sequence[str]], AbstractContextManager[None]]
