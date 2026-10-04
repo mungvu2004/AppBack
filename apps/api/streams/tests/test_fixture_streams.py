@@ -383,6 +383,21 @@ async def test_await_start_times_out_reading_an_error_body(sse_open: SseOpen, mo
             pass
 
 
+class _EarlyExitApp(Starlette):
+    """Gửi `http.response.start` kiểu SSE rồi thoát, không gửi thân nào."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Mở luồng `text/event-stream` rồi `return` ngay."""
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/event-stream")]})
+
+
+async def test_next_frames_raises_when_the_app_exits_without_sending_a_body(sse_open: SseOpen) -> None:
+    """App thoát sau `http.response.start` mà không gửi thêm gì → `_pull` ném `RuntimeError` (NO-192)."""
+    async with sse_open(_EarlyExitApp(), "/bat-ky") as stream:
+        with pytest.raises(RuntimeError, match=re.escape("kết thúc mà không gửi thêm")):
+            await stream.next_frames(1)
+
+
 # -- Observer (vết case, H1) ------------------------------------------------------------------------
 
 
@@ -393,6 +408,7 @@ async def test_observer_is_called_once_with_status_and_matching_request_url(
     calls: list[tuple[pytest.Item, httpx.Response]] = []
 
     def probe(item: pytest.Item, response: httpx.Response) -> None:
+        """Observer thử: ghi `(item, response)` nhận được để test khẳng định số lần gọi và nội dung."""
         calls.append((item, response))
 
     observers = request.node.config.stash[API_RESPONSE_OBSERVERS]

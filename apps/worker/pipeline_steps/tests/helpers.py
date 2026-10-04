@@ -9,7 +9,6 @@ sản xuất (`start_run` → lõi `run_pipeline_start` của B5-06a) thay vì `
 dòng ghim và tiền tố artifact đều đúng hình dạng mà lõi `step_done` sẽ kiểm lại dưới khoá.
 """
 
-import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -337,16 +336,6 @@ def sweep_env(
     reset_database_settings_cache()
     reset_steps_settings_cache()
     reset_sync_bus_cache()
-
-
-def queued_tasks(client: SyncRedis, queue: str) -> list[str]:
-    """Tên task của mọi thông điệp đang nằm trên một hàng, **mới nhất trước**.
-
-    `queued_payloads` chỉ bóc `args[0]`, mà mấy test ở đây phân biệt **task nào** đã gửi — tên
-    nằm ở `headers.task` của phong bì kombu, không ở thân. kombu `LPUSH` rồi `BRPOP`, nên `LRANGE`
-    trả ngược thứ tự gửi.
-    """
-    return [json.loads(raw)["headers"]["task"] for raw in client.lrange(queue, 0, -1)]
 
 
 PAGE_BYTES: Final = b"%PDF-1.4 fake page for purge tests"

@@ -1,11 +1,8 @@
 """Seed toà mẫu A14 cho dev/ci: một dự án, bốn tầng, mỗi tầng một tài liệu không gian (B3-02 [5]).
 
-`.importlinter` `db-isolated` cấm `packages.db` nhập `apps.api`, nên seed **không** gọi
-`codec`, `counts` hay `entity_ids` của `apps.api.spatial_read`: nó dựng cùng hình dạng
-bằng `packages.domain.spatial` (nợ trùng lặp có kiểm, đường nâng cấp: chuyển ba hàm thuần
-sang domain). `apps/api/spatial_read/tests/test_seed.py` giữ hai phía không lệch nhau:
-`document` == `codec.document_to_json`, dòng đếm == `counts.layer_counts`, id ==
-`codec.entity_ids`.
+`.importlinter` `db-isolated` cấm `packages.db` nhập `apps.api`, nên seed gọi ba hàm thuần
+`document_to_json`, `layer_counts`, `entity_ids` của `packages.domain.spatial` — chính các hàm
+mà `apps.api.spatial_read` (`codec`, `counts`) chuyển tiếp, nên hai phía không thể lệch nhau.
 
 Idempotent bằng khoá tự nhiên: mọi `INSERT` là `ON CONFLICT DO NOTHING`; `floors.pk` do
 DB cấp nên tầng tra lại theo `(project_id, level_id)` thay vì ép `pk`. Không tạo người
@@ -23,13 +20,14 @@ from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project, ProjectFloorSummary
 from packages.db.models.spatial import FloorDocumentRow, FloorEntityIdRow
 from packages.domain.spatial import (
-    Dimension,
     Level,
     SpatialGraph,
     SpatialLayer,
+    document_to_json,
+    entity_ids,
+    layer_counts,
     polygon_area_m2,
     sample_building,
-    total_area_m2,
 )
 
 ORDER: Final = 50
@@ -65,16 +63,6 @@ def _layer_of(graph: SpatialGraph, level: Level) -> SpatialLayer:
         rooms=tuple(room for room in graph.rooms if room.level_id == level.id),
         furniture=tuple(item for item in graph.furniture if item.level_id == level.id),
     )
-
-
-def _dump(model: Any) -> dict[str, Any]:
-    """Dạng dây của một mô hình (cùng tham số với `codec.document_to_json`)."""
-    return dict(model.model_dump(mode="json", by_alias=True, exclude_none=True))
-
-
-def _document(layer: SpatialLayer, dimensions: tuple[Dimension, ...]) -> dict[str, Any]:
-    """Cột `document` của một tầng: `{layer, axes: [], dimensions}`."""
-    return {"layer": _dump(layer), "axes": [], "dimensions": [_dump(item) for item in dimensions]}
 
 
 async def _floor_pks(session: AsyncSession, level_ids: list[str]) -> dict[str, int]:
@@ -118,14 +106,15 @@ async def seed(session: AsyncSession) -> None:
     for level in graph.levels:
         layer = _layer_of(graph, level)
         dimensions = tuple(item for item in graph.dimensions if item.level_id == level.id)
+        counts = layer_counts(layer)
         summaries.append(
             {
                 "project_id": SEED_PROJECT_ID,
                 "floor_level_id": level.id,
                 "floor_order": level.order,
-                "walls_total": len(layer.walls),
-                "walls_reviewed": sum(1 for wall in layer.walls if wall.reviewed),
-                "area_m2": total_area_m2([room.outline for room in layer.rooms]) if layer.rooms else None,
+                "walls_total": counts.walls_total,
+                "walls_reviewed": counts.walls_reviewed,
+                "area_m2": counts.area_m2,
             }
         )
         documents.append(
@@ -133,13 +122,13 @@ async def seed(session: AsyncSession) -> None:
                 "floor_pk": pks[level.id],
                 "revision": 0,
                 "schema_version": _SCHEMA_VERSION,
-                "document": _document(layer, dimensions),
+                "document": document_to_json(layer, (), dimensions),
                 "scale_source": "none",
             }
         )
         entity_rows += [
-            {"project_id": SEED_PROJECT_ID, "entity_id": entity.id, "floor_pk": pks[level.id]}
-            for entity in layer.entities()
+            {"project_id": SEED_PROJECT_ID, "entity_id": entity_id, "floor_pk": pks[level.id]}
+            for entity_id in sorted(entity_ids(layer))
         ]
     for model, rows in (
         (ProjectFloorSummary, summaries),

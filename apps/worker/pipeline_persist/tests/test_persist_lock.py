@@ -21,22 +21,19 @@ from decimal import Decimal
 from typing import Final
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import RunRow, lock_run
 from apps.api.versions.snapshots import VersionRow, create_version
 from apps.worker.pipeline_build.build import BuiltLayer
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_persist import service
-from apps.worker.pipeline_persist.tests.helpers import Arranged, open_run_at_build, put_layer, sample_built
+from apps.worker.pipeline_persist.tests.helpers import Arranged, Maker, arrange, sample_built
 from packages.core.ids import SPATIAL_PREFIX
 from packages.domain.spatial.model import Point, Segment, SpatialLayer, Wall
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.spatial import make_floor_document
 from packages.testing.fixtures.clock import FakeClock
-
-type Maker = async_sessionmaker[AsyncSession]
 
 WAIT_S: Final = 30.0
 """Trần **chờ** chống treo cho lõi và cho bên chờ khoá — không phải trần hiệu năng."""
@@ -110,13 +107,8 @@ async def _arrange(
     `FOR UPDATE` trên đó — chờ một dòng người khác vừa chèn chưa commit là ca khác (chờ khoá index),
     không phải ca [8] muốn kiểm.
     """
-    arranged = await open_run_at_build(maker, clock)
-    async with maker() as db:
-        await make_floor_document(db, floor_pk=arranged.floor_pk, clock=clock)
-        await db.commit()
     build = make_built if make_built is not None else (lambda level: _built(sample_built(level).layer))
-    await put_layer(storage, arranged, build(arranged.level_id).to_json())
-    return arranged
+    return await arrange(maker, storage, clock, build=build, with_document=True)
 
 
 async def _timed_hold(

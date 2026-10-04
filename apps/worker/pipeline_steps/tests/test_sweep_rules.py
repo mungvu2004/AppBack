@@ -35,7 +35,6 @@ from apps.worker.pipeline_steps.tests.helpers import (
     REQUEUE_AFTER_S,
     Maker,
     arrange_run,
-    queued_tasks,
     read_count,
     run_row,
     set_idle,
@@ -54,7 +53,7 @@ from packages.ml_contracts.families import MODEL_FAMILIES
 from packages.ml_contracts.payloads import InferStepPayload
 from packages.storage.local import LocalDiskStorage
 from packages.testing.fixtures.clock import FakeClock
-from packages.testing.fixtures.messaging import queued_payloads
+from packages.testing.fixtures.messaging import queued_payloads, queued_tasks
 
 clean_queues = helpers.clean_queues
 sweep_env = helpers.sweep_env
@@ -322,6 +321,28 @@ async def test_requeue_one_skips_run_that_changed_after_selection(
     await _requeue_one(db_sessionmaker, arranged.run_id, fake_clock, settings)
 
     assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
+    assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
+
+
+async def test_requeue_one_keeps_run_whose_family_finished_after_selection(
+    sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Kết quả họ ML tới giữa chọn lô và `lock_run` → mốc im đọc lại dưới khoá thấy `last_used_at` mới.
+
+    Gọi `_requeue_one` trực tiếp (lượt vừa được chọn khi còn im) vì `_CANDIDATES` đã loại lượt tươi
+    nên một lượt quét trọn vẹn không đi tới nhánh `sweep_run_fresh`. Bỏ `m.last_used_at` khỏi
+    `_IDLE_MARK` thì lượt bị coi là im, gửi lại bước và đốt một lượt `step_requeue_count`.
+    """
+    arranged = await arrange_run(db_sessionmaker, local_storage, fake_clock)
+    await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
+    async with db_sessionmaker() as db:
+        await record_used(db, run_id=arranged.run_id, family=MODEL_FAMILIES[0], used="classic")
+        await db.commit()
+
+    await _requeue_one(db_sessionmaker, arranged.run_id, fake_clock, get_steps_settings())
+
+    assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
+    assert await read_count(db_sessionmaker, arranged.run_id) == 0
     assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
 
 

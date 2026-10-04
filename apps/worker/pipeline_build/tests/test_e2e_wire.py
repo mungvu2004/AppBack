@@ -4,39 +4,24 @@ Không đọc DB, không nhập `apps.ml.*`; chỉ dùng `render_plan` (packages
 """
 
 import json
-from datetime import UTC, datetime
-from decimal import Decimal
-from typing import Any, Final
+from typing import Any
 
 import pytest
 
-from apps.worker.pipeline_build.build import BuiltLayer, build_layer
-from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.build import BuiltLayer
+from apps.worker.pipeline_build.tests.helpers import SPATIAL_LEVEL_ID, build_from_plan
 from packages.domain.spatial import ai_reviewed_ids
 from packages.domain.spatial.integrity import check_integrity, has_critical
 from packages.domain.spatial.model import SpatialLayer
-from packages.ml_contracts.artifacts import ObjectsResult, TextResult, WallsResult
 from packages.ml_contracts.synthetic import EVAL_SET_SEEDS, render_plan
 from packages.testing.fixtures.clock import FakeClock
 
-_FALLBACK_MM_PER_PX = Decimal("10")
-_LEVEL_ID: Final = new_spatial_id("level", FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)))
-"""Id tầng hợp mẫu W4 (`LevelIdStr`); test cần id thật, không phải chuỗi tuỳ ý."""
+_LEVEL_ID = SPATIAL_LEVEL_ID
 
 
 def _build_from_seed(seed: int, clock: FakeClock) -> BuiltLayer:
     """Dựng `BuiltLayer` từ đáp án tổng hợp `seed`, đầu vào đổi thẳng sang các `*Result`."""
-    plan = render_plan(seed)
-    return build_layer(
-        level_id=_LEVEL_ID,
-        walls=WallsResult(walls=plan.walls),
-        objects=ObjectsResult(detections=plan.detections),
-        text=TextResult(items=plan.texts),
-        width_px=plan.pixels.shape[1],
-        height_px=plan.pixels.shape[0],
-        fallback_mm_per_px=_FALLBACK_MM_PER_PX,
-        clock=clock,
-    )
+    return build_from_plan(render_plan(seed), clock)
 
 
 @pytest.mark.parametrize("seed", list(EVAL_SET_SEEDS))

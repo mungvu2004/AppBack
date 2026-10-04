@@ -43,7 +43,7 @@ không nhập gói suy luận ([9])."""
 @pytest_asyncio.fixture(loop_scope="function")
 async def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
     """Môi trường một tiến trình duy nhất cho task thật (và app thật khi e2e cần), dùng chung
-    giữa `test_runtime.py` (B) và `tests/e2e/test_pipeline_e2e.py` (C) — gom theo R-02.
+    giữa `test_runtime.py` và `tests/e2e/test_pipeline_e2e.py` — gom theo R-02.
 
     Task tự đọc biến môi trường trên vòng sự kiện của chính nó (không truyền fixture object
     vào task). `ML_BACKEND` chỉ e2e dùng nhưng đặt chung ở đây vô hại (chỉ một biến môi trường).

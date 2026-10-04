@@ -1,7 +1,7 @@
 """Test tích hợp của `service.run_quality`/`fail_quality` trên dịch vụ thật (B5-07 [8]).
 
 Postgres, Redis, kho đĩa đều thật (K23): không mock session, `load_document`, `record_step`
-hay Redis. Phần J01/J03/J06/J10/K36/Redis treo là của việc B — ở đây chỉ phần của việc A theo
+hay Redis. Phần J01/J03/J06/J10/K36/Redis treo nằm ở `test_runtime.py` — ở đây chỉ phần lõi theo
 checklist [8].
 """
 
@@ -137,7 +137,7 @@ async def test_run_quality__before_persist_skips_without_writing(
 ) -> None:
     """`persisted_revision` còn NULL (chưa qua B5-06b) → `skipped`, bước/kho/stream không đổi.
 
-    F3: `_phase_one` trả `before_persist` riêng với `closed`, nên nhánh J10 (XREVRANGE + phát
+    `_phase_one` trả `before_persist` riêng với `closed`, nên nhánh J10 (XREVRANGE + phát
     lại) không chạy cho lượt còn đang `running` — số sự kiện `upload_stream` phải giữ nguyên.
     """
     arranged = await open_run_at_build(db_sessionmaker, fake_clock, storage=local_storage)
@@ -242,7 +242,7 @@ async def test_run_quality__floor_deleted_past_window_fails_run(
     fake_clock: FakeClock,
     quality_env: None,
 ) -> None:
-    """Tầng xoá mềm quá cửa sổ trước bước 4 → `skipped`, lượt `failed` `FLOOR_DELETED` (F1).
+    """Tầng xoá mềm quá cửa sổ trước bước 4 → `skipped`, lượt `failed` `FLOOR_DELETED`.
 
     `record_step` tự `_abandon(FLOOR_DELETED)` rồi trả `None`; pha 3 không được `rollback` bản
     ghi đó, chỉ coi `None` là `skipped` sau khi đã commit (K33: không tự ghi `pipeline_runs`,
