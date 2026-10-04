@@ -40,7 +40,10 @@ Nhánh > 400 dòng logic → ghi `P2 MNT-05` và nói rõ nếu đáng tách.
 - Dòng đầu commit sai mẫu Conventional Commits, hoặc thiếu trailer `Prompt: <mã>`.
 - Diff đụng file cấm: `docs/charter/*`, `openapi.json`, `tools/contract/APPFRONT_SHA`,
   `uv.lock` sửa tay (lock phải sinh bằng `run.sh lock`, diff chỉ được là hệ quả của
-  `pyproject.toml` trong cùng nhánh).
+  `pyproject.toml` trong cùng nhánh). Ngoại lệ duy nhất cho `docs/charter/*` (người điều phối sửa
+  sau khi người dùng duyệt câu chữ, BE-00 §2): mọi commit chạm `docs/charter/*` chỉ chạm tài liệu
+  (không `.py`, không `tools/**`) và mang trailer `Charter-Approved: <đường tệp duyệt hoặc dòng DEBT ghi
+  "người dùng duyệt <ngày>">` trỏ tới bản duyệt có thật; phán quyết dẫn đường đó. Thiếu một → REJECT.
 - Có `# pragma: no cover`, `pragma: no branch`, `# type: ignore` không mã, `# noqa` trần,
   `skip`/`xfail` mới, hay hạ ngưỡng cổng (K24).
 
