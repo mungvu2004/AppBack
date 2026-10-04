@@ -134,6 +134,16 @@ async def cache_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
         yield client
 
 
+async def db_client_count(client: AsyncRedis) -> int:
+    """Số kết nối đang mở vào **DB của `client`** trên máy chủ Redis.
+
+    `CLIENT LIST` thô đếm cả máy chủ, mà Redis của test là một bản cho mọi tiến trình `pytest -n`
+    (mỗi tiến trình một khối DB, NO-270): kết nối của tiến trình khác sẽ lọt vào phép đếm.
+    """
+    db = int(client.connection_pool.connection_kwargs["db"])
+    return sum(1 for entry in await client.client_list() if int(entry["db"]) == db)
+
+
 @pytest.fixture
 def event_bus(streams_client: AsyncRedis) -> EventBus:
     """`EventBus` thật trên client Streams của test."""

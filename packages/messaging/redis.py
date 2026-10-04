@@ -3,7 +3,8 @@
 Một instance `redis-broker` mang ba DB tách nhau — broker Celery (0), Streams sự
 kiện (1), trạng thái an toàn như khoá đăng nhập và khoá GPU (2) — và instance
 `redis-cache` mang cache/rate-limit (0). Tách bằng số hiệu DB chứ không bằng tiền
-tố khoá để `FLUSHDB` của một vai không xoá vai khác.
+tố khoá để `FLUSHDB` của một vai không xoá vai khác. Số vai là độ lệch trên DB gốc
+của URL (`with_db`), URL `/0` thì trùng số tuyệt đối ở trên.
 
 Mọi client đặt **trần kết nối, trần đọc và ngân sách thử lại tường minh** (R-24): mặc
 định của `redis-py` là chờ vô hạn, đủ để một Redis treo giữ luôn worker hay tiến trình
@@ -113,9 +114,16 @@ class ProcessLocal[ResourceT]:
 
 
 def with_db(url: str, db: int) -> str:
-    """Đổi số hiệu DB trong URL Redis; giữ nguyên scheme, thông tin đăng nhập và query."""
+    """URL tới DB của vai `db`: số DB **gốc** trong URL (vắng = 0) cộng độ lệch vai; giữ scheme, đăng nhập, query.
+
+    URL triển khai luôn là `/0` (`deploy/compose/env.example`), nên kết quả vẫn đúng số vai như trước.
+    URL `/<n>` dời cả khối vai lên `n`: Celery (dùng `REDIS_BROKER_URL` nguyên trạng, `celery_app.py`) và
+    `broker_redis()` cùng thấy một DB, và nhiều tiến trình test chung một Redis, mỗi tiến trình một khối DB,
+    không `FLUSHDB` lên nhau (NO-270).
+    """
     parts = urlsplit(url)
-    return urlunsplit((parts.scheme, parts.netloc, f"/{db}", parts.query, parts.fragment))
+    base = int(parts.path.strip("/") or 0)
+    return urlunsplit((parts.scheme, parts.netloc, f"/{base + db}", parts.query, parts.fragment))
 
 
 def sync_result[ResultT](result: Any, kind: Callable[[Any], ResultT]) -> ResultT:

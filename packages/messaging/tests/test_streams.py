@@ -23,7 +23,7 @@ from packages.messaging.streams import (
     user_stream,
 )
 from packages.testing.fixtures.clock import FakeClock
-from packages.testing.fixtures.messaging import ephemeral_broker
+from packages.testing.fixtures.messaging import db_client_count, ephemeral_broker
 from packages.testing.fixtures.services import ephemeral_redis, refused_url
 
 DEDUPE_TTL_S = 60
@@ -298,11 +298,11 @@ async def test_a_dropped_reader_does_not_leak_a_redis_connection(
     event_bus: EventBus, streams_client: AsyncRedis, stream: str
 ) -> None:
     """S05: client rớt giữa lúc chặn thì kết nối phải được dọn."""
-    before = len(await streams_client.client_list())
+    before = await db_client_count(streams_client)
     reader = streams_redis()
     blocked = asyncio.create_task(EventBus(reader).read_after(stream, FIRST_ID, block_ms=MAX_BLOCK_MS))
     await asyncio.sleep(0.2)
-    assert len(await streams_client.client_list()) == before + 1
+    assert await db_client_count(streams_client) == before + 1
 
     blocked.cancel()
     with suppress(asyncio.CancelledError):
@@ -310,7 +310,7 @@ async def test_a_dropped_reader_does_not_leak_a_redis_connection(
     await reader.aclose()
     await asyncio.sleep(0.2)
 
-    assert len(await streams_client.client_list()) == before
+    assert await db_client_count(streams_client) == before
 
 
 async def test_publish_reports_a_stopped_redis_as_dependency_unavailable(

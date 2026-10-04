@@ -40,6 +40,22 @@ def test_broker_url_must_be_redis(url: str) -> None:
         MessagingSettings(redis_broker_url=url, redis_cache_url=CACHE)
 
 
+@pytest.mark.parametrize(
+    ("name", "url"), [("REDIS_BROKER_URL", "redis://b:6379/db0"), ("REDIS_CACHE_URL", "redis://c:6379/-1")]
+)
+def test_redis_url__non_numeric_database_path_is_rejected_with_its_variable(name: str, url: str) -> None:
+    """NO-270: đường dẫn URL là DB gốc mà vai cộng lên (`with_db`), nên không phải số thì hỏng ngay, có tên biến."""
+    urls = {"REDIS_BROKER_URL": BROKER, "REDIS_CACHE_URL": CACHE} | {name: url}
+    with pytest.raises(ValidationError, match=f"{name}: đường dẫn phải là số hiệu DB"):
+        MessagingSettings(redis_broker_url=urls["REDIS_BROKER_URL"], redis_cache_url=urls["REDIS_CACHE_URL"])
+
+
+@pytest.mark.parametrize("url", ["redis://b:6379", "redis://b:6379/", "redis://b:6379/7"])
+def test_redis_url__empty_or_numeric_database_path_is_accepted(url: str) -> None:
+    """Đường dẫn vắng (nền 0) hay là số DB đều hợp lệ."""
+    assert MessagingSettings(redis_broker_url=url, redis_cache_url=CACHE).redis_broker_url == url
+
+
 def test_cache_url_is_checked_too() -> None:
     with pytest.raises(ValidationError, match="REDIS_CACHE_URL"):
         MessagingSettings(redis_broker_url=BROKER, redis_cache_url="postgres://x")

@@ -1,6 +1,8 @@
 """Client Redis: chọn đúng DB, đặt đúng trần, và dịch đúng lỗi phụ thuộc."""
 
 import os
+import subprocess
+import sys
 from collections.abc import Callable
 
 import pytest
@@ -43,6 +45,7 @@ from packages.messaging.redis import (
 )
 from packages.messaging.settings import MessagingSettings
 from packages.testing.fixtures.messaging import ephemeral_broker
+from packages.testing.fixtures.services import ephemeral_redis
 
 
 @pytest.mark.parametrize(
@@ -50,10 +53,12 @@ from packages.testing.fixtures.messaging import ephemeral_broker
     [
         ("redis://host:6379/0", 2, "redis://host:6379/2"),
         ("redis://host:6379", 1, "redis://host:6379/1"),
-        ("rediss://user:pw@host:6379/9?ssl_cert_reqs=none", 1, "rediss://user:pw@host:6379/1?ssl_cert_reqs=none"),
+        ("redis://host:6379/", 2, "redis://host:6379/2"),
+        ("rediss://user:pw@host:6379/9?ssl_cert_reqs=none", 1, "rediss://user:pw@host:6379/10?ssl_cert_reqs=none"),
     ],
 )
-def test_with_db_replaces_only_the_database_number(url: str, db: int, expected: str) -> None:
+def test_with_db_offsets_the_url_database_by_the_role(url: str, db: int, expected: str) -> None:
+    """Số vai cộng lên DB gốc của URL (vắng = 0); scheme, đăng nhập, query giữ nguyên (NO-270)."""
     assert with_db(url, db) == expected
 
 
@@ -287,3 +292,27 @@ def test_broker_policy_rejects_an_evicting_instance(redis_cache_url: str) -> Non
             assert_broker_policy(client)
     finally:
         client.close()
+
+
+def test_with_db__two_processes_on_one_redis_keep_their_own_roles() -> None:
+    """NO-270: hai tiến trình chung **một** Redis, URL khác số DB gốc, không `FLUSHDB` lên nhau.
+
+    Đây là điều kiện để mọi tiến trình `pytest -n` dùng chung một container Redis (như Postgres/MinIO):
+    vai (`STREAM_DB`…) phải là độ lệch **trên** số DB của URL, không phải số DB tuyệt đối. Tiến trình
+    thứ hai là tiến trình Python thật, chỉ biết `REDIS_BROKER_URL` của nó.
+    """
+    container = ephemeral_redis("noeviction")
+    try:
+        base = f"redis://{container.get_container_host_ip()}:{container.get_exposed_port(6379)}"
+        mine = streams_redis_sync(MessagingSettings(redis_broker_url=f"{base}/0"))
+        try:
+            mine.set("NO-270", "của tiến trình 0")
+            other = "from packages.messaging.redis import streams_redis_sync; streams_redis_sync().flushdb()"
+            env = os.environ | {"REDIS_BROKER_URL": f"{base}/{SAFE_DB + 1}"}
+            subprocess.run([sys.executable, "-c", other], env=env, check=True, timeout=60)
+
+            assert mine.get("NO-270") == "của tiến trình 0"
+        finally:
+            mine.close()
+    finally:
+        container.stop()

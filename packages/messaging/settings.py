@@ -20,10 +20,17 @@ MAX_BACKOFF_STEPS: Final = 10
 
 
 def _check_redis_url(name: str, value: str) -> str:
-    """URL Redis tuyệt đối, có host; số hiệu DB do gói tự đặt nên đường dẫn bị bỏ qua."""
+    """URL Redis tuyệt đối, có host; đường dẫn vắng hoặc là số DB **gốc** mà vai cộng lên (`with_db`).
+
+    Đường dẫn không phải số bị từ chối ngay ở đây, có tên biến — để lọt thì nó chỉ nổ lúc dựng client
+    đầu tiên, với một `ValueError` không nói biến nào sai (R-17).
+    """
     parts = urlsplit(value)
     if parts.scheme not in _SCHEMES or not parts.hostname:
         raise ValueError(f"{name} phải là URL redis(s):// có host: {value!r}")
+    db = parts.path.strip("/")
+    if db and not db.isdigit():
+        raise ValueError(f"{name}: đường dẫn phải là số hiệu DB, nhận {parts.path!r}")
     return value
 
 
