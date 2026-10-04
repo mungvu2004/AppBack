@@ -169,13 +169,12 @@ forbidden_modules =
 name = mã sản phẩm không nhập packages.testing (FIX-114; chỉ test được nhập)
 type = forbidden
 # `**` chứ không `*`: test nằm ở **hai** cấp (`packages/domain/rules_ai/tests`,
-# `tools/contract/tests`) lẫn một cấp (`packages/core/tests`, `tools/tests`) — mẫu một cấp
+# `packages/vision/walls/tests`) lẫn một cấp (`packages/core/tests`, `tools/tests`) — mẫu một cấp
 # làm lần nhập đầu tiên từ thư mục hai cấp đỏ oan (review F-5).
 ignore_imports =
     packages.**.tests.** -> packages.testing.**
     apps.**.tests.** -> packages.testing.**
     tools.tests.** -> packages.testing.**
-    tools.**.tests.** -> packages.testing.**
 unmatched_ignore_imports_alerting = warn
 source_modules =
     packages.core
