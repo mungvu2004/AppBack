@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.wire import WireModel
-from apps.api.drawings.drawings import drawing_url
+from apps.api.drawings.drawings import drawing_urls
 from apps.api.drawings.scales import NO_SCALE, load_scales, scale_mm
 from apps.api.drawings.urls import signer
 from apps.api.projects.parts import FLOOR_DRAWINGS, ViewPart
@@ -40,14 +40,15 @@ async def load(
         return {}
     scales = await load_scales(db, [row.floor_pk for row in rows], app=app)
     storage = signer()
+    urls = await drawing_urls(storage, [row.page_key for row in rows])  # một lô cho mọi tầng (NO-207)
     out: dict[str, Sequence[WireModel]] = {}
-    for row in rows:
+    for row, url in zip(rows, urls, strict=True):
         scale = scales.get(row.floor_pk, NO_SCALE)
         out[str(row.floor_pk)] = [
             DrawingOut(
                 id=row.id,
                 name=row.name,
-                url=await drawing_url(storage, row.page_key),
+                url=url,
                 width_mm=scale_mm(row.width_px, scale),
                 height_mm=scale_mm(row.height_px, scale),
                 uploaded_at=row.uploaded_at,
