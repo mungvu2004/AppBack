@@ -15,6 +15,7 @@ from apps.api.projects.wire import (
     project_summary_out,
     summary_member_out,
     user_out,
+    user_outs,
 )
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
@@ -101,6 +102,19 @@ async def test_user_out_omits_avatar_url_when_never_uploaded(local_storage: Loca
     """`avatar_key` vắng (chưa từng tải ảnh) → `avatarUrl` vắng dù có kho (NO-135)."""
     dumped = (await user_out(_user(), local_storage)).model_dump(by_alias=True)
     assert "avatarUrl" not in dumped
+
+
+async def test_user_outs_signs_the_whole_batch_in_order(local_storage: LocalDiskStorage) -> None:
+    """NO-207: lô trộn người có/không ảnh ra đúng thứ tự, mỗi phần tử y hệt `user_out` đơn."""
+    with_avatar, without = _user(), _user()
+    with_avatar.avatar_key = avatar(with_avatar.id, "0" * 26, "jpg")
+    without.avatar_key = None
+
+    batch = await user_outs([without, with_avatar], local_storage)
+
+    assert batch == [await user_out(without, local_storage), await user_out(with_avatar, local_storage)]
+    assert batch[0].avatar_url is None
+    assert batch[1].avatar_url is not None
 
 
 async def test_user_out_signs_avatar_url_via_b1_04(local_storage: LocalDiskStorage) -> None:

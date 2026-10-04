@@ -38,7 +38,7 @@ from apps.api.projects.wire import (
     ProjectRollup,
     ProjectSummaryOut,
     project_summary_out,
-    user_out,
+    user_outs,
 )
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND
@@ -119,9 +119,11 @@ async def _project_outs(
     storage: ObjectStorage | None,
 ) -> list[ProjectOut]:
     """Ba mảnh đã tải theo lô → `ProjectOut`; dự án vắng khoá trong `floors` nghĩa là `[]` (B2-01 [6])."""
+    # Ký avatar của thành viên mọi dự án trong một lô (NO-207), rồi chia lại theo dự án.
+    signed = iter(await user_outs([row for project in projects for row in members[project.id]], storage))
     outs = []
     for project in projects:
-        member_outs = [await user_out(row, storage) for row in members[project.id]]
+        member_outs = [next(signed) for _ in members[project.id]]
         outs.append(
             ProjectOut(
                 id=project.id,
