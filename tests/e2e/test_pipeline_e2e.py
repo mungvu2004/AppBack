@@ -2,9 +2,9 @@
 
 Dịch vụ thật (K23): Postgres, hai Redis, kho đĩa `local_storage`, Celery nghe bốn hàng
 (`pool="solo"`), `ML_BACKEND=fake`. Không `task_always_eager`, không mock DB/Redis/storage/task.
-`pipeline_quality` là mảnh cuối của dây (bước `qualityCheck`) nên hai test ở đây chỉ chạy hết tới
-`completed` sau khi `feature/b5-07-core` cho `service.py` thật (trước đó `run_quality` ném
-`NotImplementedError`, bước `qualityCheck` sẽ `failed`/`INTERNAL`, không tới `completed`).
+`pipeline_quality` là mảnh cuối của dây (bước `qualityCheck`). Bốn test: khung ảnh tổng hợp
+(không cần dịch vụ), `C01_pipeline` và hai ca chạy lại (giữ mục đã duyệt, đổi tỉ lệ trang) — ba test
+sau chạy cả pipeline tới `completed`.
 """
 
 import asyncio
@@ -94,7 +94,7 @@ async def e2e_env(process_env: None) -> AsyncIterator[None]:
 
     Chỉ e2e được nhập `apps.ml` ([9]); `pipeline_quality` dùng chung `process_env` không cần
     phần ML nên lời gọi này đứng riêng ở đây, không trong `tests/helpers.py`. Thiếu
-    `reset_infer_context` làm lượt e2e thứ hai trong cùng tiến trình đọc kho ML cũ (C2). Cache
+    `reset_infer_context` làm lượt e2e thứ hai trong cùng tiến trình đọc kho ML cũ. Cache
     `get_ml_settings` do fixture autouse `ml_settings_cache` dọn quanh mọi test (NO-312).
     """
     reset_infer_context()
@@ -248,7 +248,14 @@ def _layer_lists(body: dict[str, Any]) -> tuple[list[Any], list[Any], list[Any],
 
 
 def _assert_pipeline_layer(
-    walls: list[Any], openings: list[Any], rooms: list[Any], furniture: list[Any], plan: Any, scale: float, start: float
+    plan: Any,
+    *,
+    walls: list[Any],
+    openings: list[Any],
+    rooms: list[Any],
+    furniture: list[Any],
+    scale: float,
+    start: float,
 ) -> None:
     """Khẳng định + log số đo [6]: tối thiểu nửa số tường `plan`, ≥1 mỗi loại khác, tỉ lệ lệch
     ≤5%, mọi mục AI chưa duyệt."""
@@ -394,7 +401,9 @@ async def test_spatial_read_layer__C01_pipeline(
     body = await _fetch_layer(e2e_client, headers, project_id, level_id)
     walls, openings, rooms, furniture = _layer_lists(body)
     scale = body["level"]["scaleMillimetresPerPixel"]
-    _assert_pipeline_layer(walls, openings, rooms, furniture, plan, scale, start)
+    _assert_pipeline_layer(
+        plan, walls=walls, openings=openings, rooms=rooms, furniture=furniture, scale=scale, start=start
+    )
 
     notifications = await e2e_client.get("/api/notifications", headers=headers)
     assert notifications.status_code == 200, notifications.text

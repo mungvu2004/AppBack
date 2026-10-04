@@ -1,8 +1,8 @@
 """Runtime của `pipeline.quality.run`: task thật, Redis treo, K36 (B5-07 [8] "runtime").
 
-Chia việc với test lõi (việc A, `test_rules.py`): ở đây chỉ ca phải đi qua **dây** thật — hàm
+Tách với test lõi (`test_service.py`): ở đây chỉ ca phải đi qua **dây** thật — hàm
 task mỏng, `define_task`/`on_failed`, hàng `pipeline.cpu`, pool CSDL, client Redis — còn luật
-nghiệp vụ từng bước của `run_quality` kiểm ở lõi. Cảnh dùng chung: `open_run_at_quality` (A)
+nghiệp vụ từng bước của `run_quality` kiểm ở lõi. Cảnh dùng chung: `open_run_at_quality`
 dựng lượt đứng ở `qualityCheck` trên cảnh `pipeline_persist` + lõi `run_persist` thật (K23:
 Postgres, Redis, kho đĩa thật — không mock).
 """
