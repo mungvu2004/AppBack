@@ -15,4 +15,4 @@ def test_parse_role__valid_and_unknown() -> None:
 
 def test_sessions__reuses_core_parse_role() -> None:
     """`sessions.py` không có `_role` riêng — nhập `parse_role` của `core.auth`."""
-    assert sessions.parse_role is auth.parse_role
+    assert vars(sessions)["parse_role"] is auth.parse_role
