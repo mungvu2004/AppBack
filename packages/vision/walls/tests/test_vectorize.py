@@ -61,6 +61,7 @@ def _shares(walls: tuple[WallSegment, ...], count: int, tol: float = 1.0) -> int
 
 
 def test_horizontal_bar_gives_one_segment() -> None:
+    """Thanh ngang → một đoạn, hai mút đúng chỗ (± 2 px), bề dày đo ≈ `THICK`."""
     walls = vectorize(_bars(((50, 150), (350, 150))))
     assert len(walls) == 1
     assert abs(walls[0].start[0] - 50.0) <= 2.0
@@ -69,12 +70,14 @@ def test_horizontal_bar_gives_one_segment() -> None:
 
 
 def test_corner_gives_two_segments_sharing_the_corner() -> None:
+    """Góc chữ L → hai đoạn dùng chung đúng một đầu mút ở góc."""
     walls = vectorize(_bars(((60, 60), (60, 240)), ((60, 240), (340, 240))))
     assert len(walls) == 2
     assert _shares(walls, 2) == 1
 
 
 def test_tee_gives_two_segments_meeting_on_the_through_wall() -> None:
+    """Chữ T → tường xuyên một đoạn ngang, chân chữ T dừng trên tim tường xuyên."""
     walls = vectorize(_bars(((40, 120), (360, 120)), ((200, 120), (200, 260))))
     assert len(walls) == 2
     through = max(walls, key=lambda w: w.end[0] - w.start[0])
@@ -85,11 +88,13 @@ def test_tee_gives_two_segments_meeting_on_the_through_wall() -> None:
 
 
 def test_cross_gives_two_segments() -> None:
+    """Chữ thập → hai đoạn xuyên nút (gộp thẳng hàng qua giao điểm)."""
     walls = vectorize(_bars(((40, 150), (360, 150)), ((200, 40), (200, 260))))
     assert len(walls) == 2
 
 
 def test_rectangle_frame_gives_four_segments_and_four_corners() -> None:
+    """Khung chữ nhật (vòng kín) → bốn đoạn, bốn góc mỗi góc hai đoạn dùng chung."""
     corners = [(60, 60), (340, 60), (340, 240), (60, 240)]
     walls = vectorize(_bars(*zip(corners, corners[1:] + corners[:1], strict=True)))
     assert len(walls) == 4
@@ -97,6 +102,7 @@ def test_rectangle_frame_gives_four_segments_and_four_corners() -> None:
 
 
 def test_bar_tilted_three_degrees_is_snapped_horizontal() -> None:
+    """Thanh lệch 3° (≤ 5°) bị ép về ngang."""
     drop = round(300 * math.tan(math.radians(3.0)))
     walls = vectorize(_bars(((50, 150), (350, 150 + drop))))
     assert len(walls) == 1
@@ -104,6 +110,7 @@ def test_bar_tilted_three_degrees_is_snapped_horizontal() -> None:
 
 
 def test_bar_tilted_thirty_degrees_keeps_its_angle() -> None:
+    """Thanh lệch 30° giữ góc (± 1°), không ép trục."""
     drop = round(250 * math.tan(math.radians(30.0)))
     walls = vectorize(_bars(((70, 60), (320, 60 + drop))))
     assert len(walls) == 1
@@ -112,6 +119,7 @@ def test_bar_tilted_thirty_degrees_keeps_its_angle() -> None:
 
 
 def test_isolated_block_is_dropped_as_short() -> None:
+    """Khối vuông cô lập cỡ bề dày tường không thành tường, đếm một `short`."""
     canvas = _canvas()
     cv2.rectangle(canvas, (100, 100), (100 + THICK - 1, 100 + THICK - 1), 1, cv2.FILLED)
     result = vectorize_with_stats(np.asarray(canvas > 0))
@@ -152,38 +160,45 @@ def test_spur_branch_is_pruned() -> None:
 
 
 def test_empty_mask_gives_no_walls() -> None:
+    """Mặt nạ rỗng → không đoạn nào, `dropped` đủ hai khoá bằng 0."""
     result = vectorize_with_stats(np.zeros(SHAPE, np.bool_))
     assert result.walls == ()
     assert result.dropped == {"spur": 0, "short": 0}
 
 
 def test_three_dimensional_mask_is_rejected() -> None:
+    """Mảng 3 chiều → `ValueError`."""
     with pytest.raises(ValueError, match="2 chiều"):
         vectorize(np.zeros((4, 4, 3), np.bool_))
 
 
 def test_non_boolean_mask_is_rejected() -> None:
+    """Mảng không phải bool → `ValueError`."""
     with pytest.raises(ValueError, match="bool"):
         vectorize(np.zeros(SHAPE, np.uint8))
 
 
 def test_confidence_stays_in_unit_range() -> None:
+    """Độ tin của mọi đoạn nằm trong [0, 1]."""
     walls = vectorize(_bars(((40, 120), (360, 120)), ((200, 120), (200, 260))))
     assert walls
     assert all(0.0 <= wall.confidence <= 1.0 for wall in walls)
 
 
 def test_two_calls_give_the_same_result() -> None:
+    """Hai lần gọi trên cùng mặt nạ cho cùng kết quả (tất định)."""
     mask = _bars(((60, 60), (60, 240)), ((60, 240), (340, 240)))
     assert vectorize(mask) == vectorize(mask)
 
 
 def test_rotating_the_mask_keeps_the_segment_count() -> None:
+    """Xoay mặt nạ 90° không đổi số đoạn."""
     mask = _bars(((40, 120), (360, 120)), ((200, 120), (200, 260)))
     assert len(vectorize(np.ascontiguousarray(np.rot90(mask)))) == len(vectorize(mask))
 
 
 def test_wall_touching_the_border_stays_inside_the_image() -> None:
+    """Tường chạm mép ảnh: mọi đầu mút bị kẹp trong khung ảnh."""
     height, width = SHAPE
     walls = vectorize(_bars(((0, 150), (width - 1, 150))))
     assert walls
@@ -193,6 +208,7 @@ def test_wall_touching_the_border_stays_inside_the_image() -> None:
 
 
 def test_diagonal_pair_averages_the_shared_endpoint() -> None:
+    """Hai thanh chéo nối nhau vẫn ra đoạn, độ tin trong [0, 1]."""
     walls = vectorize(_bars(((40, 40), (200, 130)), ((200, 130), (360, 220))))
     assert len(walls) >= 1
     assert all(0.0 <= wall.confidence <= 1.0 for wall in walls)
@@ -204,6 +220,7 @@ def _stub(index: int, length: float) -> WallSegment:
 
 
 def test_keep_longest_drops_the_shortest_segment() -> None:
+    """Vượt `MAX_WALLS` một đoạn → bỏ đoạn ngắn nhất, kết quả sắp theo `(start, end)`."""
     walls = tuple(_stub(i, 100.0 + i) for i in range(20_001))
     kept = keep_longest(walls)
     assert len(kept) == 20_000
@@ -212,6 +229,7 @@ def test_keep_longest_drops_the_shortest_segment() -> None:
 
 
 def test_keep_longest_passes_short_lists_through() -> None:
+    """Danh sách dưới trần đi qua nguyên vẹn."""
     walls = (_stub(0, 50.0), _stub(1, 60.0))
     assert keep_longest(walls) == walls
 

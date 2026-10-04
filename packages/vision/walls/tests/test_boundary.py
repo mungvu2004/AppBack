@@ -52,7 +52,7 @@ def test_module_imports_with_ml_and_db_blocked(module: str) -> None:
 @pytest.mark.parametrize("name", _BLOCKED)
 def test_blocking_really_raises(name: str) -> None:
     """Phép chặn có tác dụng: nhập chính module bị chặn trong tiến trình con → lỗi."""
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(  # noqa: S603 — lệnh cố định, tên lấy từ `_BLOCKED`
         [sys.executable, "-c", f"import sys; sys.modules[{name!r}] = None; import {name}"],
         capture_output=True,
         text=True,

@@ -88,7 +88,10 @@ def _skeletonize(mask: NDArray[np.bool_]) -> NDArray[np.bool_]:
     Chép sang bộ đệm ghi được vì `skeletonize` ghi tại chỗ, còn mặt nạ đáp án của
     `render_plan` là mảng chỉ đọc.
     """
-    thinned = skeletonize(np.array(mask, dtype=np.bool_), method="zhang")  # type: ignore[no-untyped-call]
+    thinned = skeletonize(  # type: ignore[no-untyped-call]  # skimage chưa có chú kiểu
+        np.array(mask, dtype=np.bool_),
+        method="zhang",
+    )
     return np.asarray(thinned, dtype=np.bool_)
 
 
