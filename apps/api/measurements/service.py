@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.auth import Principal
 from apps.api.measurements.errors import MEASUREMENT_ID_TAKEN, MEASUREMENT_LIMIT_REACHED
-from apps.api.measurements.locks import lock_project_scope
 from apps.api.measurements.schemas import MeasurementPoint, MeasurementRecord, MeasurementRecordIn
 from apps.api.measurements.settings import get_measurements_settings
 from apps.api.projects.summaries import touch_project
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND
 from packages.core.ids import is_measurement_id
+from packages.db.locks import lock_project_scope
 from packages.db.models.measurements import MeasurementRow
 
 LOCK_SCOPE: Final = "measurements"

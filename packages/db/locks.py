@@ -1,4 +1,4 @@
-"""Khoá tư vấn theo dự án dùng chung cho phép đo và khuôn (B2-07 [6] "Khoá", BE-00 §7)."""
+"""Khoá tư vấn theo dự án dùng chung (BE-00 §7); phép đo và khuôn (B2-07 [6] "Khoá") là hai nơi gọi đầu tiên."""
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

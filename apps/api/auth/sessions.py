@@ -45,7 +45,7 @@ from apps.api.auth.tokens import (
     refresh_cookie_value,
     token_hash,
 )
-from apps.api.core.auth import ROLES, Principal, Role
+from apps.api.core.auth import Principal, Role, parse_role
 from packages.core.clock import Clock
 from packages.core.error_codes import SESSION_REVOKED, UNAUTHENTICATED
 from packages.core.errors import ErrorCode
@@ -534,7 +534,7 @@ class _Snapshot:
         """Ảnh chụp của một trạng thái vừa đọc từ Postgres."""
         return cls(
             user_id=state.user_id,
-            role=_role(state.role),
+            role=parse_role(state.role),
             ver=state.token_version,
             status=DELETED if state.deleted else state.status,
             revoked=state.revoked,
@@ -550,7 +550,7 @@ class _Snapshot:
             raise TypeError("ảnh chụp phiên sai kiểu")
         return cls(
             user_id=str(data["userId"]),
-            role=_role(data["role"]),
+            role=parse_role(data["role"]),
             ver=data["ver"],
             status=str(data["status"]),
             revoked=data["revoked"],
@@ -576,15 +576,6 @@ class _Snapshot:
         """Phiên sống, người `active`, `ver` khớp `token_version`, phiên đúng của `sub`."""
         alive = not self.revoked and self.idle_exp > now and self.abs_exp > now
         return alive and self.status == "active" and self.ver == ver and self.user_id == user_id
-
-
-def _role(value: object) -> Role:
-    """Vai hợp lệ, hay `ValueError` (dữ liệu cache hỏng không được thành `Principal`)."""
-    if value not in ROLES:
-        raise ValueError(f"vai lạ: {value!r}")
-    # Không `cast`: từ FIX-090, `ROLES` là `tuple[Role, ...]` của gương quyền, nên chính
-    # phép `in` đã thu hẹp kiểu — `cast` ở đây là thừa và `mypy --strict` từ chối nó.
-    return value
 
 
 async def _load_snapshot(maker: async_sessionmaker[AsyncSession], sid: str) -> _Snapshot | None:

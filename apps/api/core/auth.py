@@ -32,6 +32,7 @@ __all__ = [
     "TokenVerifier",
     "current_principal",
     "fake_token",
+    "parse_role",
 ]
 
 FAKE_PREFIX: Final = "fake:"
@@ -85,13 +86,13 @@ class FakeTokenVerifier:
         if len(parts) != _FAKE_PARTS or parts[0] != FAKE_PREFIX.rstrip(":"):
             raise UNAUTHENTICATED.error()
         try:
-            return Principal(user_id=parts[1], session_id=parts[2], role=_role(parts[3]))
+            return Principal(user_id=parts[1], session_id=parts[2], role=parse_role(parts[3]))
         except ValueError as exc:
             raise UNAUTHENTICATED.error() from exc
 
 
-def _role(value: str) -> Role:
-    """Ép chuỗi về `Role`; `Principal.__post_init__` từ chối giá trị lạ."""
+def parse_role(value: object) -> Role:
+    """Ép giá trị về `Role`; lạ → `ValueError` (nguồn duy nhất, `auth.sessions` nhập lại)."""
     if value not in ROLES:
         raise ValueError(f"vai lạ: {value!r}")
     return value

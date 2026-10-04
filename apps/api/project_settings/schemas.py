@@ -5,7 +5,6 @@ làm tròn `ROUND_HALF_UP` trước khi kiểm dải; **ra** là `float` (số J
 """
 
 import math
-import unicodedata
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Final, Literal
 
@@ -13,27 +12,23 @@ from pydantic import BeforeValidator, Field, StringConstraints
 
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.project_settings.read import ProjectSettingsValue
-from packages.core.text import nfc
+from packages.core.text import clean_text
 
 BuildingType = Literal["residential", "commercial", "industrial", "mixed", "other"]
 LengthUnit = Literal["mm", "m"]
 
 NOTES_MAX: Final = 500
-_BIDI: Final = frozenset("‎‏‪‫‬‭‮⁦⁧⁨⁩")
-_ALLOWED_CONTROLS: Final = frozenset("\n\t")
+_ALLOWED_CONTROLS: Final = "\n\t"
 
 
 def _clean_notes(value: Any) -> Any:
     """Trim + NFC; ký tự điều khiển (trừ xuống dòng và tab) hay định hướng → `ValueError` (422 `field`)."""
     if not isinstance(value, str):
         return value
-    text = nfc(value.strip())
-    bad = next(
-        (ch for ch in text if ch in _BIDI or (unicodedata.category(ch) == "Cc" and ch not in _ALLOWED_CONTROLS)), None
-    )
-    if bad is not None:
-        raise ValueError(f"ghi chú chứa ký tự điều khiển hoặc định hướng U+{ord(bad):04X}")
-    return text
+    try:
+        return clean_text(value, bidi_marks=True, allow_controls=_ALLOWED_CONTROLS)
+    except ValueError as exc:
+        raise ValueError(f"ghi chú: {exc}") from exc
 
 
 def _rounded(places: int) -> BeforeValidator:

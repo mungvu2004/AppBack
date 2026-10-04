@@ -16,26 +16,19 @@ Ba thân đều **khai** khoá id của đường (`projectId`, `floorId`, `uplo
 thân với đường; giá trị chỉ dùng để so, không bao giờ dùng để tra (K09).
 """
 
-import unicodedata
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import BeforeValidator, Field
 
 from apps.api.core.pagination import CursorPage
 from apps.api.core.wire import WireDatetime, WireModel, WireRequest
-from packages.core.text import nfc
+from packages.core.text import clean_text
 
 FILE_NAME_MAX: Final = 255
 PAGE_INDEX_MAX: Final = 19
 MIME_TYPE_MAX: Final = 255
 
 _FORBIDDEN_CHARS: Final = frozenset("/\\")
-_BIDI: Final = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
-"""U+202A-202E, U+2066-2069 — bản sao thứ tư của luật Cc/bidi (`DEBT.md` `NO-169`).
-
-Đường nâng cấp vẫn là gom về `packages/core/text.py` (B0-02) rồi bốn module gọi lại; không
-tự gộp ở đây vì `packages/core` ngoài whitelist của B2-04.
-"""
 
 
 def clean_file_name(value: Any) -> Any:
@@ -47,10 +40,13 @@ def clean_file_name(value: Any) -> Any:
     """
     if not isinstance(value, str):
         return value
-    text = nfc(value.strip())
+    try:
+        text = clean_text(value)
+    except ValueError as exc:
+        raise ValueError(f"fileName: {exc}") from exc
     if not 1 <= len(text) <= FILE_NAME_MAX:
         raise ValueError(f"fileName phải 1-{FILE_NAME_MAX} ký tự sau chuẩn hoá")
-    bad = next((ch for ch in text if ch in _FORBIDDEN_CHARS or ch in _BIDI or unicodedata.category(ch) == "Cc"), None)
+    bad = next((ch for ch in text if ch in _FORBIDDEN_CHARS), None)
     if bad is not None:
         raise ValueError(f"fileName chứa ký tự cấm U+{ord(bad):04X}")
     return text

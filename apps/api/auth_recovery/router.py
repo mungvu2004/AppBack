@@ -19,7 +19,6 @@ qua đúng một dòng ngay sau `await` — coverage không đo được nhánh 
 SQLAlchemy async/greenlet (NO-130); hàm đồng bộ thuần thì đo bình thường.
 """
 
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Annotated, Final, Literal
@@ -44,7 +43,7 @@ from apps.api.core.routing import public_router
 from apps.api.core.wire import WireRequest
 from packages.core.clock import Clock
 from packages.core.errors import ERRORS, ErrorCode
-from packages.core.text import normalize_email
+from packages.core.text import clean_text, normalize_email
 from packages.db.hooks import on_after_commit
 from packages.db.models.auth import User
 from packages.db.models.auth_recovery import OneTimeToken
@@ -61,17 +60,12 @@ FULL_NAME_MAX: Final = 120
 _NOBODY_ID: Final = "usr_00000000000000000000000000"
 """Id không bao giờ khớp thật — giữ đúng dạng truy vấn của nhánh "có người" cho C27."""
 
-_BIDI_OVERRIDE: Final = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
-"""U+202A-202E (LRE/RLE/PDF/LRO/RLO) và U+2066-2069 (LRI/RLI/FSI/PDI) — cấm trong `fullName`."""
-
 
 def _validate_full_name(value: str) -> str:
     """NFC + trim; 1-120 ký tự; cấm ký tự điều khiển (Cc) và ký tự đảo chiều song hướng."""
-    normalized = unicodedata.normalize("NFC", value).strip()
+    normalized = clean_text(value)
     if not 1 <= len(normalized) <= FULL_NAME_MAX:
         raise ValueError("fullName sai độ dài")
-    if any(unicodedata.category(ch) == "Cc" or ch in _BIDI_OVERRIDE for ch in normalized):
-        raise ValueError("fullName chứa ký tự cấm")
     return normalized
 
 

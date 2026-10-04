@@ -38,18 +38,28 @@ _MEASUREMENT_RE: Final = re.compile(r"MS-[0-9]{4,15}")
 
 
 def _check_prefix(prefix: str) -> None:
+    """Tiền tố ngoài `IdPrefix` → `ValueError` (lỗi của người gọi)."""
     if prefix not in _PREFIXES:
         raise ValueError(f"tiền tố id lạ: {prefix!r}")
 
 
-def new_id(prefix: IdPrefix, clock: Clock) -> str:
-    _check_prefix(prefix)
+def new_ulid(clock: Clock) -> str:
+    """Thân ULID trần (26 ký tự Crockford HOA): 48 bit mili giây của `clock.now()` + 80 bit `secrets`.
+
+    Nguồn duy nhất của bộ sinh: `new_id` ghép tiền tố vào đây, còn tên object ảnh đại diện,
+    `level_id` và khoá trang bản vẽ gọi thẳng (NO-168). Trước 1970 → `ValueError`.
+    """
     ms = (clock.now() - _EPOCH) // timedelta(milliseconds=1)
     if ms < 0:  # trần 48 bit (năm 10889) nằm ngoài datetime.max
         raise ValueError("ULID không biểu diễn được thời điểm trước 1970")
     value = (ms << 80) | secrets.randbits(80)
-    body = "".join(_CROCKFORD[(value >> shift) & 31] for shift in range(125, -1, -5))
-    return f"{prefix}_{body}"
+    return "".join(_CROCKFORD[(value >> shift) & 31] for shift in range(125, -1, -5))
+
+
+def new_id(prefix: IdPrefix, clock: Clock) -> str:
+    """`<prefix>_<ULID>` mới; tiền tố ngoài `IdPrefix` → `ValueError`."""
+    _check_prefix(prefix)
+    return f"{prefix}_{new_ulid(clock)}"
 
 
 def is_ulid(value: str) -> bool:
@@ -80,8 +90,10 @@ def check_id(prefix: IdPrefix, value: str) -> str:
 
 
 def is_spatial_id(kind: SpatialKind, value: str) -> bool:
+    """`value` là id không gian của `kind`: `<chữ>-<base36 HOA 10-64>`."""
     return re.fullmatch(f"{SPATIAL_PREFIX[kind]}-[0-9A-Z]{{10,64}}", value) is not None
 
 
 def is_measurement_id(value: str) -> bool:
+    """`value` là id phép đo `MS-<4-15 chữ số>`."""
     return _MEASUREMENT_RE.fullmatch(value) is not None

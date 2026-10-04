@@ -18,7 +18,7 @@ from apps.api.floors.locks import lock_project_floors as lock_project_floors
 from apps.api.projects.parts import FLOOR_DRAWINGS, view_part
 from apps.api.projects.wire import DrawingOut, FloorOut
 from packages.core.clock import Clock
-from packages.core.ids import new_id
+from packages.core.ids import new_ulid
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import ProjectFloorSummary
 
@@ -108,10 +108,5 @@ async def get_floor(db: AsyncSession, *, project_id: str, level_id: str, for_upd
 
 
 def new_level_id(clock: Clock) -> str:
-    """`level_id` mới, `is_spatial_id("level", …)` đúng (dinh-chinh §7): `L-` + thân ULID của `new_id`.
-
-    `packages/core/ids.py` (B0-02) không có hàm sinh ULID trần và không được sửa (K27); nợ đã
-    ghi ở `DEBT.md` `NO-168` (đường nâng cấp: thêm `new_ulid(clock)` công khai vào B0-02, đổi
-    chỗ này gọi nó — cùng nợ với `apps/api/me/router.py`).
-    """
-    return "L-" + new_id("job", clock).split("_", 1)[1]
+    """`level_id` mới, `is_spatial_id("level", …)` đúng (dinh-chinh §7): `L-` + `new_ulid`."""
+    return "L-" + new_ulid(clock)

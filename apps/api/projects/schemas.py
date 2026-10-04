@@ -13,7 +13,6 @@ Ba luật của FE mà lớp này phải giữ:
   trên mọi màn, nên cùng một cổng chặn.
 """
 
-import unicodedata
 from collections.abc import Sequence
 from typing import Annotated, Any, Final
 
@@ -21,15 +20,12 @@ from pydantic import BeforeValidator, JsonValue, StringConstraints, field_valida
 
 from apps.api.core.wire import WireRequest
 from apps.api.projects.parts import FloorDraft
-from packages.core.text import nfc
+from packages.core.text import clean_text as clean_text_core
 
 NAME_MIN: Final = 3
 NAME_MAX: Final = 80
 CODE_MAX: Final = 32
 ADDRESS_MAX: Final = 200
-
-_BIDI: Final = frozenset("‎‏‪‫‬‭‮⁦⁧⁨⁩")
-"""Ký tự định hướng bị cấm; không thuộc Cc nên `unicodedata.category` không bắt được."""
 
 
 def clean_text(value: Any) -> Any:
@@ -40,11 +36,7 @@ def clean_text(value: Any) -> Any:
     """
     if not isinstance(value, str):
         return value
-    text = nfc(value.strip())
-    bad = next((ch for ch in text if ch in _BIDI or unicodedata.category(ch) == "Cc"), None)
-    if bad is not None:
-        raise ValueError(f"chuỗi chứa ký tự điều khiển hoặc định hướng U+{ord(bad):04X}")
-    return text
+    return clean_text_core(value, bidi_marks=True)
 
 
 def _reject_null(value: Any) -> Any:
