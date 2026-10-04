@@ -44,10 +44,12 @@ def periodic(name: str, every: timedelta) -> Callable[[Callable[[], Any]], Any]:
         raise ValueError(f"chu kỳ phải ≥ {MIN_PERIOD_S} giây, nhận {every.total_seconds()}")
 
     def decorator(fn: Callable[[], Any]) -> Any:
+        """Đăng ký `fn` thành task lịch tên `name` trên hàng suy từ tên, ghi vào sổ lịch."""
         register_task(name, fn)
         _SCHEDULES[name] = ScheduleEntry(name=name, every=every, function=fn.__name__)
 
         def body() -> None:
+            """Thân task Celery: chạy hàm lịch, kể cả hàm `async` trên vòng sự kiện dùng chung."""
             run_maybe_async(fn)
 
         body.__name__ = fn.__name__
