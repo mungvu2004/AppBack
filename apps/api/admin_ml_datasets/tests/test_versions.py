@@ -21,6 +21,7 @@ MANIFEST = "a" * 64
 
 
 async def _building_count(sessionmaker: async_sessionmaker[AsyncSession], dataset_id: str) -> int:
+    """Số bản `building` của dataset, đếm bằng session riêng."""
     async with sessionmaker() as db:
         stmt = (
             select(func.count())
@@ -33,6 +34,7 @@ async def _building_count(sessionmaker: async_sessionmaker[AsyncSession], datase
 async def _start(
     db: AsyncSession, *, dataset_id: str, clock: FakeClock, created_by: str, project_ids: list[str] | None = None
 ) -> DatasetVersionRow | None:
+    """`start_version` nguồn `approvedFloors` trong session `db`."""
     return await start_version(
         db, dataset_id=dataset_id, source="approvedFloors", project_ids=project_ids, created_by=created_by, clock=clock
     )
@@ -41,6 +43,7 @@ async def _start(
 async def _start_and_commit(
     sessionmaker: async_sessionmaker[AsyncSession], *, dataset_id: str, clock: FakeClock, created_by: str
 ) -> DatasetVersionRow | None:
+    """`_start` rồi commit trong session riêng."""
     async with sessionmaker() as db:
         row = await _start(db, dataset_id=dataset_id, clock=clock, created_by=created_by)
         await db.commit()
@@ -133,6 +136,7 @@ async def test_touch_finish_fail__building_true_else_false(db_session: AsyncSess
 
 
 async def test_fail_version__building_to_failed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """`building` → `failed` ghi `failure_code` và trả `True`."""
     dataset = await make_dataset(db_session, family="wallSegmentation")
     version = await make_dataset_version(db_session, dataset=dataset, status="building")
 
@@ -147,6 +151,7 @@ async def test_fail_version__building_to_failed(db_session: AsyncSession, fake_c
 
 
 async def test_touch_version__unknown_id_is_false(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Id lạ thì `touch_version` trả `False`."""
     assert not await touch_version(db_session, version_id="dsv_MISSING", clock=fake_clock)
 
 
@@ -156,6 +161,7 @@ async def test_touch_version__unknown_id_is_false(db_session: AsyncSession, fake
 
 
 async def test_check_ready_requires_manifest_and_split_counts(db_session: AsyncSession) -> None:
+    """Bản `ready` thiếu manifest và split_counts bị CHECK chặn."""
     dataset = await make_dataset(db_session, family="wallSegmentation")
     row = DatasetVersionRow(
         id="dsv_01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -171,6 +177,7 @@ async def test_check_ready_requires_manifest_and_split_counts(db_session: AsyncS
 
 
 async def test_check_failed_requires_failure_code_format(db_session: AsyncSession) -> None:
+    """`failure_code` sai định dạng bị CHECK chặn."""
     dataset = await make_dataset(db_session, family="wallSegmentation")
     row = DatasetVersionRow(
         id="dsv_01ARZ3NDEKTSV4RRFFQ69G5FAW",
@@ -179,6 +186,22 @@ async def test_check_failed_requires_failure_code_format(db_session: AsyncSessio
         status="failed",
         source="approvedFloors",
         failure_code="lowercase-not-allowed",
+        created_by="usr_a",
+    )
+    db_session.add(row)
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+async def test_check_failed_requires_failure_code(db_session: AsyncSession) -> None:
+    """Dòng `failed` không có `failure_code` bị CHECK hai chiều chặn (NO-275, cùng K02 với `manifest_ready`)."""
+    dataset = await make_dataset(db_session, family="wallSegmentation")
+    row = DatasetVersionRow(
+        id="dsv_01ARZ3NDEKTSV4RRFFQ69G5FAX",
+        dataset_id=dataset.id,
+        sequence=1,
+        status="failed",
+        source="approvedFloors",
         created_by="usr_a",
     )
     db_session.add(row)

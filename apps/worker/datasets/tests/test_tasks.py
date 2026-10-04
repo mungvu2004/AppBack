@@ -910,6 +910,7 @@ class _ClockThatStealsTheLock:
     """
 
     def __init__(self, inner: FakeClock, *, version_id: str) -> None:
+        """Bọc đồng hồ `inner` cho bản `version_id`; `stolen` đánh dấu đã bị cướp."""
         self._inner = inner
         self._version_id = version_id
         self.stolen = False

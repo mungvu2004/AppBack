@@ -15,6 +15,7 @@ from packages.testing.fixtures.clock import FakeClock
 
 
 async def _get(client: httpx.AsyncClient, principal: Principal, path: str, **params: str | int) -> httpx.Response:
+    """GET `path` bằng header của `principal`."""
     return await client.get(path, headers=auth_headers(principal), params=params)
 
 

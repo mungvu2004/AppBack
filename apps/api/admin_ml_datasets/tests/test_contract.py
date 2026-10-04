@@ -39,6 +39,7 @@ _BODIES: Final[dict[str, dict[str, Any]]] = {
 
 
 def _route(app: FastAPI, name: str) -> AppRoute:
+    """Route theo tên; chưa mount thì `KeyError`."""
     for route in app.routes:
         if isinstance(route, AppRoute) and route.name == name:
             return route
@@ -46,10 +47,12 @@ def _route(app: FastAPI, name: str) -> AppRoute:
 
 
 def _engineer_headers(clock: FakeClock) -> dict[str, str]:
+    """Header Bearer của một kỹ sư (không phải admin)."""
     return {"Authorization": f"Bearer {fake_token(Principal(new_id('usr', clock), 'sid-eng', 'engineer'))}"}
 
 
 async def _forbidden_for_engineer(client: AsyncClient, clock: FakeClock, op: str) -> None:
+    """Gọi `op` bằng kỹ sư: phải 403 `FORBIDDEN`."""
     _op, method, path = next(row for row in _ROUTES if row[0] == op)
     response = await client.request(method, path, headers=_engineer_headers(clock), json=_BODIES.get(op))
 
@@ -83,6 +86,7 @@ async def test_ml_build_dataset_version__C07(api_client: AsyncClient, fake_clock
 
 
 def test_ml_datasets_routes_are_all_admin_only(api_app: FastAPI) -> None:
+    """Mọi route dataset đều bảo vệ và đúng phương thức dây."""
     routes = [_route(api_app, op) for op, _method, _path in _ROUTES]
 
     assert [route.wire_method for route in routes] == [method for _op, method, _path in _ROUTES]
@@ -90,11 +94,13 @@ def test_ml_datasets_routes_are_all_admin_only(api_app: FastAPI) -> None:
 
 
 def test_ml_create_dataset_rejects_unknown_keys() -> None:
+    """`CreateDatasetIn` từ chối khoá lạ."""
     with pytest.raises(ValueError, match="unexpected"):
         CreateDatasetIn(name="x", family=WALL, unexpected=1)
 
 
 def test_build_dataset_version_in_rejects_empty_project_ids() -> None:
+    """`projectIds` rỗng bị từ chối, vắng mặt thì là `None`."""
     with pytest.raises(ValueError, match="at least 1 item"):
         BuildDatasetVersionIn(projectIds=[])
     assert BuildDatasetVersionIn().project_ids is None
@@ -110,6 +116,7 @@ async def test_dataset_out_omits_internal_columns(db_session: AsyncSession) -> N
 
 
 async def test_dataset_version_out_split_counts_and_failure_code_are_exclusive(db_session: AsyncSession) -> None:
+    """`splitCounts` chỉ có ở bản `ready`, `failureCode` chỉ có ở bản `failed`."""
     dataset = await make_dataset(db_session, family=WALL)
     ready = await make_dataset_version(db_session, dataset=dataset, status="ready", sequence=1)
     failed = await make_dataset_version(db_session, dataset=dataset, status="failed", sequence=2)

@@ -10,7 +10,8 @@ ngay khi nhận thông điệp, nên gửi trong giao dịch là gửi một id 
 """
 
 import re
-from typing import Final, cast
+from datetime import datetime
+from typing import Any, Final, cast
 
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -126,7 +127,7 @@ async def register_trained_version(
     `training_job_id`) để hai lượt chạy song song không tạo hai dòng, cũng không bắt
     `IntegrityError`; lượt thua chờ lượt thắng commit rồi đọc lại dòng để phân xử.
     """
-    clean_label = _check_registration(
+    values = _checked_values(
         version_id=version_id,
         family=family,
         label=label,
@@ -136,28 +137,9 @@ async def register_trained_version(
         training_job_id=training_job_id,
         dataset_version_id=dataset_version_id,
         creator_id=creator_id,
+        now=clock.now(),
     )
-    now = clock.now()
-    insert_stmt = (
-        insert(ModelVersionRow)
-        .values(
-            id=version_id,
-            family=family,
-            label=clean_label,
-            weights_format=weights_format,
-            checksum_sha256=checksum_sha256,
-            weights_key=weights_key,
-            training_job_id=training_job_id,
-            dataset_version_id=dataset_version_id,
-            evaluation_status="pending",
-            evaluation_attempts=0,
-            creator_id=creator_id,
-            created_at=now,
-            updated_at=now,
-        )
-        .on_conflict_do_nothing()
-        .returning(ModelVersionRow.id)
-    )
+    insert_stmt = insert(ModelVersionRow).values(**values).on_conflict_do_nothing().returning(ModelVersionRow.id)
     if (await db.execute(insert_stmt)).scalar_one_or_none() is None:
         await _resolve_conflict(db, version_id=version_id, training_job_id=training_job_id)
     return version_id
@@ -176,7 +158,7 @@ def clean_label(value: str) -> str:
     return cleaned
 
 
-def _check_registration(
+def _checked_values(
     *,
     version_id: str,
     family: str,
@@ -187,8 +169,9 @@ def _check_registration(
     training_job_id: str,
     dataset_version_id: str,
     creator_id: str,
-) -> str:
-    """Kiểm tham số của `register_trained_version`; trả nhãn đã `nfc(strip)`. Sai → `ValueError`."""
+    now: datetime,
+) -> dict[str, Any]:
+    """Kiểm tham số của `register_trained_version`; trả cột của dòng mới (nhãn đã `nfc(strip)`). Sai → `ValueError`."""
     check_id("mdl", version_id)
     check_id("job", training_job_id)
     check_id("dsv", dataset_version_id)
@@ -203,7 +186,21 @@ def _check_registration(
         raise ValueError(f"weights_key phải nằm dưới {prefix}: {weights_key!r}")
     if not 1 <= len(creator_id) <= CREATOR_MAX:
         raise ValueError(f"creator_id phải có 1-{CREATOR_MAX} ký tự")
-    return clean_label(label)
+    return {
+        "id": version_id,
+        "family": family,
+        "label": clean_label(label),
+        "weights_format": weights_format,
+        "checksum_sha256": checksum_sha256,
+        "weights_key": weights_key,
+        "training_job_id": training_job_id,
+        "dataset_version_id": dataset_version_id,
+        "evaluation_status": "pending",
+        "evaluation_attempts": 0,
+        "creator_id": creator_id,
+        "created_at": now,
+        "updated_at": now,
+    }
 
 
 async def _resolve_conflict(db: AsyncSession, *, version_id: str, training_job_id: str) -> None:
@@ -263,19 +260,27 @@ def _check_family_metrics(family: ModelFamily, metrics: dict[str, float] | None)
         raise ValueError(f"họ {family} chỉ có số đo {FAMILY_METRIC[family]}")
 
 
-async def request_evaluation(db: AsyncSession, *, version_id: str, clock: Clock) -> bool:
-    """Xin đánh giá lại một bản `pending|running`: `attempts + 1`, `requested_at = now`.
+async def request_evaluation_locked(db: AsyncSession, row: ModelVersionRow, clock: Clock) -> None:
+    """Xin đánh giá lại cho `row` **đã nằm dưới khoá** và còn `pending|running`: `attempts + 1`.
 
-    Đăng ký gửi task sau commit qua `enqueue_evaluation`. Bản không có, hay đã `completed`
-    hoặc `failed` → `False`, không ghi và không gửi gì.
+    Dùng chung cho `request_evaluation` và lịch requeue (lô đã `FOR UPDATE SKIP LOCKED`, không
+    khoá lại từng dòng). Đăng ký gửi task sau commit qua `enqueue_evaluation`.
     """
-    row = await _locked(db, version_id)
-    if row is None or row.evaluation_status not in _OPEN:
-        return False
     now = clock.now()
     row.evaluation_attempts += 1
     row.evaluation_requested_at = now
     row.updated_at = now
     await db.flush()
     enqueue_evaluation(db, row)
+
+
+async def request_evaluation(db: AsyncSession, *, version_id: str, clock: Clock) -> bool:
+    """Xin đánh giá lại một bản `pending|running`: `attempts + 1`, `requested_at = now`.
+
+    Bản không có, hay đã `completed` hoặc `failed` → `False`, không ghi và không gửi gì.
+    """
+    row = await _locked(db, version_id)
+    if row is None or row.evaluation_status not in _OPEN:
+        return False
+    await request_evaluation_locked(db, row, clock)
     return True

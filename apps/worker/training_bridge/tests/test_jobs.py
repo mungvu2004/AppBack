@@ -534,6 +534,39 @@ async def test_purge_training_job_artifacts__J06(
     assert await local_storage.stat(key) is None
 
 
+async def test_purge_training_job_artifacts__rival_beat_wins_the_mark(
+    db_session: AsyncSession,
+    db_sessionmaker: Maker,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    messaging_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lịch khác ghi `artifacts_purged_at` giữa `delete_prefix` và `UPDATE`: lượt này không đếm job, không đè mốc."""
+    fake_clock.set(datetime.now(UTC))
+    dsv = await _ready_dataset_version(db_session)
+    ended = fake_clock.now() - timedelta(seconds=get_training_settings().training_purge_after_s + 60)
+    failed = await make_training_job(
+        db_session, dataset_version_id=dsv, status="failed", created_at=ended - timedelta(minutes=1), ended_at=ended
+    )
+    rival_mark = fake_clock.now() - timedelta(seconds=5)
+    real_delete_prefix = local_storage.delete_prefix
+
+    async def racing_delete_prefix(prefix: str) -> None:
+        """Xoá thật rồi để "lịch khác" ghi mốc dọn trước khi lượt này kịp `UPDATE`."""
+        await real_delete_prefix(prefix)
+        async with db_sessionmaker.begin() as db:
+            await db.execute(
+                update(TrainingJobRow).where(TrainingJobRow.id == failed.id).values(artifacts_purged_at=rival_mark)
+            )
+
+    monkeypatch.setattr(local_storage, "delete_prefix", racing_delete_prefix)
+
+    assert await run_purge_training_job_artifacts(db_sessionmaker, local_storage, fake_clock) == 0
+
+    assert (await _read_job(db_sessionmaker, failed.id)).artifacts_purged_at == rival_mark
+
+
 async def test_purge_training_job_artifacts_skips_the_whole_batch_when_redis_is_down(
     db_session: AsyncSession,
     db_sessionmaker: Maker,

@@ -320,6 +320,7 @@ class AtPutStorage:
         error: BaseException | None = None,
         hook: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        """Bọc `inner`; ở lần `put` thứ `at_put` chạy `hook` rồi ném `error` (nếu có)."""
         self._inner = inner
         self._at_put = at_put
         self._error = error
