@@ -15,7 +15,7 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
-from docker.errors import NotFound  # type: ignore[import-untyped]
+from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
 
 from packages.testing.fixtures import services
 from packages.testing.fixtures.services import SHARED_STATE_PREFIX, _shared_container
@@ -26,6 +26,8 @@ KEY = "svc"
 
 @dataclass
 class _FakeWrapped:
+    """Container Docker giả: chỉ có `id`."""
+
     id: str
 
 
@@ -37,9 +39,11 @@ class _FakeContainer:
     stopped: list[str] = field(default_factory=list)
 
     def get_wrapped_container(self) -> _FakeWrapped:
+        """Container Docker bên dưới (giả), mang `id`."""
         return _FakeWrapped(self.id)
 
     def stop(self) -> None:
+        """Ghi lại lần dừng thay vì gọi Docker."""
         self.stopped.append(self.id)
 
 
@@ -51,12 +55,14 @@ class _FakeTempPathFactory:
     worker: str
 
     def getbasetemp(self) -> Path:
+        """Basetemp của tiến trình: `<gốc>/popen-<worker>`, tạo nếu chưa có."""
         base = self.root / f"popen-{self.worker}"
         base.mkdir(parents=True, exist_ok=True)
         return base
 
 
 def _factory(root: Path, worker: str) -> pytest.TempPathFactory:
+    """`TempPathFactory` giả của tiến trình `worker` dưới gốc `root`."""
     return cast(pytest.TempPathFactory, _FakeTempPathFactory(root, worker))
 
 
@@ -68,6 +74,7 @@ class _Starter:
     containers: list[_FakeContainer] = field(default_factory=list)
 
     def __call__(self) -> tuple[_FakeContainer, str]:
+        """Dựng một container giả mới, trả (container, endpoint)."""
         container = _FakeContainer(id=f"cid-{len(self.calls)}")
         self.calls.append(container.id)
         self.containers.append(container)
@@ -75,6 +82,7 @@ class _Starter:
 
 
 def _state(root: Path) -> dict[str, object]:
+    """Nội dung file trạng thái của dịch vụ `KEY` dưới gốc `root`."""
     return cast(dict[str, object], json.loads((root / f"{SHARED_STATE_PREFIX}{KEY}.json").read_text(encoding="utf-8")))
 
 
