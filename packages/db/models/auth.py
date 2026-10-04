@@ -22,11 +22,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column
 
 from packages.db.base import Base, SoftDeleteMixin, TimestampMixin, unique_active
+from packages.domain.permissions import ROLES
 
 USERS: Final = "users"
 SESSIONS: Final = "refresh_sessions"
 
-ROLES: Final = ("admin", "engineer", "viewer")
 STATUSES: Final = ("active", "pending", "disabled")
 LANGUAGES: Final = ("vi", "en")
 RevokeReason = Literal[
