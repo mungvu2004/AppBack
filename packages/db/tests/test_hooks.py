@@ -170,6 +170,7 @@ async def test_on_after_commit__J09_failing_callback_is_logged(
 async def test_on_after_commit__J09_slow_callback_times_out(
     db_sessionmaker: async_sessionmaker[AsyncSession], caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Callback chậm quá `CALLBACK_TIMEOUT_S` → log `after_commit_failed` kèm `TimeoutError`, không chờ hết 5 s."""
     with caplog.at_level(logging.WARNING):
         async with session_scope(db_sessionmaker) as session:
             await _begin(session)
@@ -194,6 +195,7 @@ async def test_on_after_commit__J09_rejects_coroutine_function(
 async def test_on_after_commit__J09_does_not_block_event_loop(
     db_sessionmaker: async_sessionmaker[AsyncSession], calls: list[str]
 ) -> None:
+    """Callback chặn 1 s chạy ngoài vòng sự kiện: coroutine khác vẫn chạy, `calls` còn rỗng tới khi idle."""
     async with session_scope(db_sessionmaker) as session:
         await _begin(session)
         on_after_commit(session, lambda: time.sleep(1))
@@ -234,6 +236,7 @@ def test_on_after_commit__J09_inline_in_worker_runner(
 def test_on_after_commit__J09_inline_slow_callback_caps_at_timeout(
     db_url: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Chạy tại chỗ (worker): callback chậm bị cắt ở `CALLBACK_TIMEOUT_S`, log `after_commit_failed` kèm `TimeoutError`."""
     monkeypatch.setenv(INLINE_ENV, "1")
 
     async def work(maker: async_sessionmaker[AsyncSession]) -> None:
