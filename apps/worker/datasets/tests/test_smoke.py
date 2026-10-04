@@ -156,7 +156,7 @@ def test_build_dataset_version_smoke(celery_test_app: object, broker: SyncRedis)
     """
     version_id = asyncio.run(_seed_building(stalled=False))
 
-    result = celery_test_app.tasks[BUILD_VERSION_TASK].apply(  # type: ignore[attr-defined]
+    result = celery_test_app.tasks[BUILD_VERSION_TASK].apply(  # type: ignore[attr-defined]  # `tasks` là mapping động
         args=({"schema_version": 1, "dataset_version_id": version_id},)
     )
     reset_database_settings_cache()

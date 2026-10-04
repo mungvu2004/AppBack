@@ -136,6 +136,7 @@ class _Beat:
     """
 
     def __init__(self, clock: Clock) -> None:
+        """Bắt đầu đếm từ `clock.now()` với 0 mẫu."""
         self._clock = clock
         self._at = clock.now()
         self._samples = 0
