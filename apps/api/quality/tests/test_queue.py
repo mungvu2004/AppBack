@@ -75,7 +75,8 @@ def _summary(response: httpx.Response) -> tuple[int, str | None, object]:
         body = response.json()
     except ValueError:
         body = None
-    return response.status_code, response.headers.get("Retry-After"), body.get("code") if isinstance(body, dict) else None
+    code = body.get("code") if isinstance(body, dict) else None
+    return response.status_code, response.headers.get("Retry-After"), code
 
 
 @pytest.mark.parametrize("round_number", [1, 2])
