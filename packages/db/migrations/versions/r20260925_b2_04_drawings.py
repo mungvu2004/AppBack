@@ -2,7 +2,7 @@
 
 Revision ID: r20260925_b2_04
 Revises: r20260925_b2_02
-Create Date: 2026-09-25
+Create Date: 2026-09-25 09:36:08.000000+00:00
 
 Bốn bảng mới của lượt tải bản vẽ (B2-04 [5], BE-00 §6.1): expand thuần, không đụng bảng
 nào đang có. Hằng số chép tay từ `packages/db/models/drawings.py`, không nhập module model
