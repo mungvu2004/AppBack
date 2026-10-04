@@ -14,7 +14,6 @@ from packages.messaging.schedules import (
     beat_schedule,
     discover_jobs,
     discover_submodules,
-    discover_worker_tasks,
     periodic,
     schedule_entries,
 )
