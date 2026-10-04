@@ -979,3 +979,16 @@ def test_bước_5b__junit_perf_vẫn_chép_khi_perf_hỏng(perf_junit: Path, mo
     )
     assert steps.step_perf().status == steps.STATUS_FAIL
     assert (perf_junit / "20261003T000000Z-abc.perf.junit.xml").is_file()
+
+
+# --- NO-350: deploy/ là đơn vị của bước 5b ------
+
+
+def test_5b_deploy_bị_chạm_chạy_perf_của_deploy(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """File dưới `deploy/` bị chạm thì bước 5b chạy pytest perf trong `deploy` (NO-350)."""
+    (repo / "deploy").mkdir()
+    monkeypatch.setenv("VERIFY_CHANGED", "deploy/scripts/healthcheck.sh")
+    fake = _fake(monkeypatch, **{"--collect-only": (0, "deploy/scripts/tests/test_p.py::test_speed\n")})
+    assert steps.step_perf().status == steps.STATUS_OK
+    perf_run = [c for c in fake.calls if "--junitxml=/tmp/junit-perf.xml" in c]
+    assert perf_run == [["pytest", "-m", "perf and not gpu", "--junitxml=/tmp/junit-perf.xml", "deploy"]]
