@@ -18,7 +18,7 @@ from typing import Final
 from sqlalchemy import ColumnElement, DateTime, Interval, func, literal, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.admin_ml_registry.registry import request_evaluation
+from apps.api.admin_ml_registry.registry import request_evaluation_locked
 from apps.api.admin_ml_registry.settings import get_ml_registry_settings
 from packages.core.clock import Clock, SystemClock
 from packages.core.object_keys import MODELS_PREFIX
@@ -76,7 +76,7 @@ async def run_model_evaluation_requeue(
         rows = (await db.execute(stmt)).scalars().all()
         for row in rows:
             if row.evaluation_attempts < settings.model_eval_max_attempts:
-                await request_evaluation(db, version_id=row.id, clock=clock)
+                await request_evaluation_locked(db, row, clock)
             else:
                 row.evaluation_status = "failed"
                 row.evaluation_error_code = EXHAUSTED_CODE

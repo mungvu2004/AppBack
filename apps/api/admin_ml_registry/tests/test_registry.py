@@ -103,6 +103,7 @@ async def test_active_versions_runs_one_query(db_session: AsyncSession) -> None:
     engine = db_session.get_bind()
 
     def record(_conn: object, _cursor: object, statement: str, *_rest: object) -> None:
+        """Ghi mọi câu SQL đi qua engine."""
         statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", record)
@@ -172,6 +173,7 @@ async def test_register_trained_version_concurrent_same_args_makes_one_row(
     args = _register_args(fake_clock)
 
     async def attempt() -> str:
+        """Một lượt đăng ký bản huấn luyện trong session riêng, commit rồi trả id."""
         async with db_sessionmaker() as db:
             version_id = await register_trained_version(db, **args)
             await db.commit()
@@ -190,6 +192,7 @@ async def test_register_trained_version_concurrent_same_job_different_id_loses_w
     job_id = new_id("job", fake_clock)
 
     async def attempt() -> str:
+        """Một lượt đăng ký cùng `training_job_id` trong session riêng, commit rồi trả id."""
         async with db_sessionmaker() as db:
             version_id = await register_trained_version(db, **_register_args(fake_clock, training_job_id=job_id))
             await db.commit()
