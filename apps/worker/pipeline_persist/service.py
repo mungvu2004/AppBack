@@ -22,8 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.drawings import current_drawing
 from apps.api.drawings.errors import FLOOR_DELETED
-from apps.api.drawings.runs import lock_run, publish_progress_after_commit, record_step
-from apps.api.floors.settings import get_floors_settings
+from apps.api.drawings.runs import lock_run, publish_progress_after_commit, record_step, restore_window_elapsed
 from apps.api.notifications.messages import ai_completed
 from apps.api.notifications.service import notify
 from apps.api.projects.memberships import is_member
@@ -44,7 +43,7 @@ from apps.worker.pipeline_persist.context import PersistContext, load_context
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.merge import make_merge
 from packages.core.clock import Clock
-from packages.core.error_codes import NOT_FOUND, VALIDATION
+from packages.core.error_codes import VALIDATION
 from packages.core.errors import SYSTEM_PIPELINE, AppError
 from packages.db.engine import session_scope
 from packages.db.hooks import after_commit_idle, on_after_commit
@@ -52,7 +51,7 @@ from packages.messaging.celery_app import send_task
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.messaging.tasks import PermanentError
 from packages.storage.keys import run_artifact
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 
 _log: Final = logging.getLogger(__name__)
 
@@ -79,18 +78,15 @@ async def _read_built(storage: ObjectStorage, ctx: PersistContext) -> BuiltLayer
     """
     key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, ctx.run_id, STEP, LAYER_ARTIFACT)
     max_bytes = get_pipeline_build_settings().PIPELINE_ARTIFACT_MAX_BYTES
-    data = bytearray()
+    data = await read_all_capped(
+        storage,
+        key,
+        max_bytes=max_bytes,
+        too_large=lambda: PermanentError(PIPELINE_ARTIFACT_INVALID),
+        on_missing=lambda: PermanentError(PIPELINE_ARTIFACT_MISSING),
+    )
     try:
-        async for chunk in storage.open_read(key):
-            data += chunk
-            if len(data) > max_bytes:
-                raise PermanentError(PIPELINE_ARTIFACT_INVALID)
-    except AppError as exc:
-        if exc.code is NOT_FOUND:
-            raise PermanentError(PIPELINE_ARTIFACT_MISSING) from exc
-        raise
-    try:
-        return BuiltLayer.from_json(bytes(data))
+        return BuiltLayer.from_json(data)
     except ValueError as exc:
         raise PermanentError(PIPELINE_ARTIFACT_INVALID) from exc
 
@@ -98,16 +94,15 @@ async def _read_built(storage: ObjectStorage, ctx: PersistContext) -> BuiltLayer
 def _floor_state(ctx: PersistContext, clock: Clock) -> Literal["live", "deferred", "gone"]:
     """Tầng còn ghi được, còn trong cửa sổ khôi phục, hay đã mất hẳn (BE-00 §7).
 
-    Dự án xoá không có cửa sổ: tầng theo dự án nên `gone` ngay. Cùng luật với
-    `runs._out_of_window`, viết lại vì hàm đó riêng tư của B2-04.
+    Dự án xoá không có cửa sổ: tầng theo dự án nên `gone` ngay. Luật cửa sổ là
+    `restore_window_elapsed` của B2-04, dùng chung với `runs.record_step`.
     """
     if ctx.project_deleted:
         return "gone"
     deleted_at: datetime | None = ctx.floor_deleted_at
     if deleted_at is None:
         return "live"
-    window = get_floors_settings().floor_restore_window_s
-    return "deferred" if (clock.now() - deleted_at).total_seconds() < window else "gone"
+    return "gone" if restore_window_elapsed(deleted_at, clock) else "deferred"
 
 
 async def _write_ai_layer(db: AsyncSession, ctx: PersistContext, built: BuiltLayer, clock: Clock) -> WriteResult:
