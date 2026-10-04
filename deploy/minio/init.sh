@@ -43,8 +43,21 @@ attach_policy_if_missing() {
 #         newkeybbb
 #         oldkeyaaa
 # Chính sách chưa gắn ai thì lệnh chỉ in dòng "Query time:" và vẫn thoát 0.
+#
+# `mc` lỗi hoặc đầu ra mất mốc "Query time:" (đổi định dạng) thì trả 1 — danh sách rỗng
+# do lỗi KHÔNG được hiểu là "không còn ai" (NO-199, hỏng ngầm theo hướng mở). Không dùng
+# ống: `sh` POSIX không có pipefail nên mã thoát của mc sẽ bị nuốt.
 users_with_policy() {
-  mc admin policy entities "${alias_name}" --policy "$1" 2>/dev/null | {
+  entities_out="$(mc admin policy entities "${alias_name}" --policy "$1")" || return 1
+  case "${entities_out}" in
+    *"Query time:"*) ;;
+    *)
+      echo "minio-init: đầu ra mc admin policy entities không nhận ra — không thu hồi được khoá cũ" >&2
+      return 1
+      ;;
+  esac
+  printf '%s
+' "${entities_out}" | {
     in_users=0
     while IFS= read -r line; do
       trimmed="${line#"${line%%[![:space:]]*}"}"
@@ -67,7 +80,8 @@ users_with_policy() {
 revoke_stale_users() {
   policy_name="$1"
   keep="$2"
-  for user in $(users_with_policy "${policy_name}"); do
+  stale_candidates="$(users_with_policy "${policy_name}")" || exit 1
+  for user in ${stale_candidates}; do
     if [ "${user}" != "${keep}" ]; then
       mc admin user remove "${alias_name}" "${user}"
     fi

@@ -74,3 +74,14 @@ def test_drill_compare_sai_so_doi_so_khong_xoa_backup_target_thua_ke(tmp_path: P
     assert inherited.is_dir()
     assert marker.exists()
     _assert_cleanup_used_fake_docker(log)
+
+
+def test_drill_storage_is_parameter_not_hardcoded__no_c16b(tmp_path: Path) -> None:
+    """Diễn tập phải chạy được cả kho `local` (FIX-215 lọt hồi quy umask vì drill ép `s3`):
+    `DRILL_STORAGE` quyết định `APPBACK_STORAGE`, giá trị lạ → thoát 2 trước mọi lệnh docker."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert 'APPBACK_STORAGE="s3"' not in text, "drill.sh còn ép APPBACK_STORAGE=s3"
+    log = tmp_path / "log"
+    result = run_script(SCRIPT, [], bin_dir=_bin_dir(tmp_path), env={"FAKE_LOG": str(log), "DRILL_STORAGE": "bogus"})
+    assert result.returncode == 2, result.stderr
+    assert "DRILL_STORAGE" in result.stderr

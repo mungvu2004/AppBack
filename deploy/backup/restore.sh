@@ -48,34 +48,47 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$APPBACK_SCRIPTS_DIR/lib.sh"
 
 # 1) SHA-256 mọi tệp trong manifest.files TRƯỚC khi dừng bất cứ gì (B0-10 [2]).
-if ! python3 - "$backup_dir" "$manifest" <<'PY'
-import hashlib
-import json
-import sys
-from pathlib import Path
-
-backup_dir = Path(sys.argv[1])
-manifest = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-for rel, expected in manifest["files"].items():
-    path = backup_dir / rel
-    if not path.is_file():
-        print(f"thieu tep trong manifest: {rel}", file=sys.stderr)
-        sys.exit(1)
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    if digest.hexdigest() != expected:
-        print(f"sha256 lech: {rel}", file=sys.stderr)
-        sys.exit(1)
-PY
-then
+# Đọc manifest bằng grep, không python3 (NO-189): mỗi cặp `"<đường>": "<64 hex>"` (bất kể
+# thụt/xuống dòng — cả bản indent=2 của backup.sh lẫn bản gọn của json.dumps mặc định).
+# Chỉ `files` có giá trị 64 hex, nên không lẫn với khoá khác.
+if ! grep -q '"files"' "$manifest"; then
+  echo "loi: manifest khong co khoa files" >&2
+  echo "loi: kiem SHA-256 that bai" >&2
+  exit 3
+fi
+verify_failed=0
+while IFS= read -r pair; do
+  [[ "$pair" =~ ^\"(.*)\"[[:space:]]*:[[:space:]]*\"([0-9a-f]{64})\"$ ]]
+  expected="${BASH_REMATCH[2]}"
+  rel="$(json_unescape "${BASH_REMATCH[1]}")"
+  if [[ ! -f "$backup_dir/$rel" ]]; then
+    echo "thieu tep trong manifest: $rel" >&2
+    verify_failed=1
+    break
+  fi
+  actual="$(sha256sum "$backup_dir/$rel")"
+  if [[ "${actual%% *}" != "$expected" ]]; then
+    echo "sha256 lech: $rel" >&2
+    verify_failed=1
+    break
+  fi
+done < <(grep -oE '"([^"\\]|\\.)*"[[:space:]]*:[[:space:]]*"[0-9a-f]{64}"' "$manifest")
+if [[ "$verify_failed" -ne 0 ]]; then
   echo "loi: kiem SHA-256 that bai" >&2
   exit 3
 fi
 
-storage="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["storage"])' "$manifest")"
-encrypted="$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["encrypted"]).lower())' "$manifest")"
+# Giá trị chuỗi/bool của khoá cấp một trong manifest ($1 = tên khoá), rỗng nếu không thấy.
+manifest_value() {
+  local found
+  found="$(grep -oE "\"$1\"[[:space:]]*:[[:space:]]*(\"[^\"]*\"|true|false)" "$manifest" | head -n 1)" || true
+  found="${found#*:}"
+  found="${found#"${found%%[![:space:]]*}"}"
+  found="${found#\"}"
+  printf '%s' "${found%\"}"
+}
+storage="$(manifest_value storage)"
+encrypted="$(manifest_value encrypted)"
 
 # Kiểm `storage` hợp lệ NGAY sau khi đọc, TRƯỚC mọi lệnh giải mã/dừng dịch vụ/DROP DATABASE
 # (review round 1 P2 SEC-01/LOG-02: trước đây chỉ kiểm ở bước 6, sau khi đã drop DB — biên
@@ -84,6 +97,13 @@ case "$storage" in
   s3 | local) ;;
   *)
     echo "loi: storage la khong hop le trong manifest: $storage" >&2
+    exit 1
+    ;;
+esac
+case "$encrypted" in
+  true | false) ;;
+  *)
+    echo "loi: encrypted la khong hop le trong manifest: $encrypted" >&2
     exit 1
     ;;
 esac

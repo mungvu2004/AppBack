@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, run_script
+from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, fake_bin, run_script
 
 SCRIPT = REPO_ROOT / "deploy" / "scripts" / "smoke.sh"
 
@@ -71,3 +71,25 @@ def test_smoke_missing_argument_exits_2(tmp_path: Path) -> None:
     """Không đối số → thoát 2, không gọi HTTP."""
     result = run_script(SCRIPT, [], env={"HOME": str(tmp_path)})
     assert result.returncode == 2
+
+
+def test_smoke_does_not_need_python3__no189(tmp_path: Path) -> None:
+    """NO-189: kiểm khoá "code" của /api/nope không được dựa vào `python3` — máy Windows có
+    shim rỗng của Microsoft Store (thoát 1). Shim giả đứng đầu PATH; smoke vẫn phải đạt."""
+    shim = fake_bin(tmp_path / "bin", {"python3": "exit 9\n"})
+    with HttpStub(FULL_ROUTES) as stub:
+        result = run_script(SCRIPT, [stub.url], bin_dir=shim, env={"FAKE_LOG": str(tmp_path / "log")})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.count("đạt") == 5
+
+
+def test_no_deploy_script_calls_host_python3__no189() -> None:
+    """NO-189 (R-19, mọi chỗ cùng lỗi): không `deploy/**/*.sh` nào gọi `python3` trên host —
+    máy Windows có shim rỗng của Microsoft Store. Python chạy trong container là `python -m …`.
+    Cùng với shim `python3` hỏng mà `run_script` đặt cho MỌI script khi chạy test."""
+    offenders = []
+    for script in sorted((REPO_ROOT / "deploy").rglob("*.sh")):
+        for number, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
+            if "python3" in line and not line.lstrip().startswith("#"):
+                offenders.append(f"{script.relative_to(REPO_ROOT).as_posix()}:{number}")
+    assert not offenders, f"còn gọi python3 trên host: {offenders}"

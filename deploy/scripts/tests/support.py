@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
@@ -128,6 +129,7 @@ def run_script(
     bin_dir: Path | None = None,
     stdin: str | None = None,
     timeout: float = 60,
+    broken_python3: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Chạy `bash <script> <args>`, môi trường hiện tại + `env`, `bin_dir` đứng đầu `PATH`.
 
@@ -138,17 +140,25 @@ def run_script(
     `swap_api` chậm thêm 11s không lý do (review round 1 R-05).
     """
     full_env = {**os.environ, "APPBACK_API_SWAP_SETTLE_S": "0", **(env or {})}
-    if bin_dir is not None:
-        full_env["PATH"] = f"{bin_dir}{os.pathsep}{full_env.get('PATH', '')}"
-    return subprocess.run(  # noqa: S603 — script của repo, đối số do test đặt
-        ["bash", str(script), *args],  # noqa: S607 — "bash" có sẵn trên PATH
-        env=full_env,
-        input=stdin,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    # Mọi script chạy với `python3` là shim hỏng (như shim Microsoft Store, NO-189): script nào
+    # còn gọi `python3` trên host thì test của nó đỏ, không cần test riêng từng script.
+    # `broken_python3=False` chỉ cho bước lấy từ workflow GitHub (chạy trên runner có python3 thật).
+    with tempfile.TemporaryDirectory() as shim_root:
+        shim = fake_bin(Path(shim_root), {"python3": "exit 9\n"}) if broken_python3 else Path(shim_root)
+        search = [str(shim), full_env.get("PATH", "")]
+        if bin_dir is not None:
+            search.insert(0, str(bin_dir))
+        full_env["PATH"] = os.pathsep.join(search)
+        full_env.setdefault("FAKE_LOG", str(Path(shim_root) / "shim.log"))
+        return subprocess.run(  # noqa: S603 — script của repo, đối số do test đặt
+            ["bash", str(script), *args],  # noqa: S607 — "bash" có sẵn trên PATH
+            env=full_env,
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
 
 
 def read_log(log: Path) -> Iterator[str]:

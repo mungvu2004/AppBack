@@ -233,6 +233,13 @@ bash scripts/rollback.sh                          # về previous_tag
 bash scripts/rollback.sh v1.2.2                    # về tag chỉ định
 ```
 
+`deploy.sh` tự chạy `python -m apps.api.library.cli publish` sau migrate (thư viện `.glb`
+không rỗng tới lượt lịch đầu); hỏng bước này chỉ cảnh báo, beat publish lại theo lịch.
+Khi triển khai tay không qua `deploy.sh`, chạy lệnh đó sau migrate + seed.
+`restore.sh` **không** chạy `publish`: nó đổ lại cả CSDL lẫn bucket/volume object từ cùng một
+bản sao lưu nên thư viện `.glb` đã có đủ; chạy lại `publish` chỉ cần khi khôi phục sang kho
+object trống.
+
 **Kiểm:** `cat current_tag`; `curl -fsS http://127.0.0.1/api/health`;
 `docker compose ps` chỉ có một `api` đang chạy sau khi lệnh kết thúc.
 
@@ -255,6 +262,8 @@ lưu/khôi phục vẫn đúng sau mỗi đợt đổi lớn.
 
 - [ ] VPS (§1): Docker, người dùng `deploy`, tường lửa 22/80/443, cấu trúc
       `/opt/appback/`, `appback.env` và `ml.env` quyền 600.
+- [ ] `appback.env` có `SMTP_HOST` và `MAIL_FROM` (bắt buộc — thiếu thì `docker compose` trên prod
+      hỏng ngay) cùng các biến `SMTP_*`/`MAIL_*` còn lại (bảng "Biến môi trường").
 - [ ] Khoá SSH riêng cho CI + `known_hosts` (§2).
 - [ ] Secret GitHub `STAGING_*`, `BACKUP_TARGET`, `BACKUP_AGE_RECIPIENT` (§3);
       `ALERT_WEBHOOK_URL` đặt ở Environment `alerts` (§4).
@@ -285,5 +294,8 @@ hành cần đặt tay trong `appback.env` hoặc secret GitHub:
 | `BACKUP_TARGET` | `/var/backups/appback` | secret GitHub + `appback.env` (§3) |
 | `BACKUP_AGE_RECIPIENT` | rỗng → không mã hoá | secret GitHub + `appback.env` (§8, **bắt buộc** trước khi bản sao lưu rời máy) |
 | `BACKUP_AGE_IDENTITY` | rỗng | chỉ đặt tạm lúc khôi phục thật (§8) |
+| `SMTP_HOST` | **bắt buộc** | `appback.env` — máy chủ SMTP; thiếu thì mọi lệnh `docker compose` trên prod hỏng ngay lúc nội suy (`base.yml`) |
+| `MAIL_FROM` | **bắt buộc** | `appback.env` — địa chỉ người gửi; thiếu như `SMTP_HOST` |
+| `MAIL_BACKEND`, `SMTP_PORT`, `SMTP_STARTTLS`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TIMEOUT_S` | `smtp`, `587`, `true`, rỗng, rỗng, `10` | `appback.env` (rỗng cả hai `SMTP_USERNAME`/`SMTP_PASSWORD` = SMTP không xác thực) |
 | `APPBACK_STORAGE` | `s3` | `appback.env` (`local` nếu dùng volume `local-storage` thay MinIO) |
 | `APPBACK_API_SWAP_SETTLE_S` | `11` | không cần đặt tay — chỉnh chỉ khi đổi `valid=…` của `resolver` trong `deploy/nginx/templates/{dev,prod}/app.conf.template` (>= TTL mới + 1s biên); `0` để tắt khi kiểm |
