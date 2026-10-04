@@ -184,6 +184,7 @@ async def test_process_avatar_huge_declared_dims_is_too_large_and_decoder_never_
     original_load = ImageFile.ImageFile.load
 
     def _counting_load(self: ImageFile.ImageFile) -> object:
+        """Đếm số lần bộ giải mã `ImageFile.load` được gọi."""
         nonlocal calls
         calls += 1
         return original_load(self)
@@ -229,6 +230,7 @@ async def test_process_avatar_concurrency_gate_returns_503(monkeypatch: pytest.M
     monkeypatch.setattr(avatar, "_DECODE_WAIT_S", 0.05)
 
     async def _hold_slot() -> None:
+        """Giữ một chỗ giải mã cho tới khi test cho phép nhả."""
         async with avatar._decode_slot():
             await asyncio.sleep(0.2)
 
@@ -272,6 +274,7 @@ async def test_avatar_url_absolute_and_no_stat_call(
     original_stat = local_storage.stat
 
     async def _counting_stat(k: str) -> object:
+        """Đếm lời gọi `stat` rồi chuyển cho bản thật."""
         nonlocal calls
         calls += 1
         return await original_stat(k)
