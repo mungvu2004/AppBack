@@ -106,15 +106,19 @@ async def run_notification_trim(sessionmaker: async_sessionmaker[AsyncSession], 
         .group_by(NotificationRow.user_id)
         .having(func.count() > settings.notifications_keep_max)
     )
-    ranked = select(
-        NotificationRow.id,
-        func.row_number()
-        .over(
-            partition_by=NotificationRow.user_id,
-            order_by=(NotificationRow.created_at.desc(), NotificationRow.id.desc()),
+    ranked = (
+        select(
+            NotificationRow.id,
+            func.row_number()
+            .over(
+                partition_by=NotificationRow.user_id,
+                order_by=(NotificationRow.created_at.desc(), NotificationRow.id.desc()),
+            )
+            .label("rn"),
         )
-        .label("rn"),
-    ).where(NotificationRow.user_id.in_(over_cap)).subquery()
+        .where(NotificationRow.user_id.in_(over_cap))
+        .subquery()
+    )
     overflow = select(ranked.c.id).where(ranked.c.rn > settings.notifications_keep_max)
     removed = await _delete_batches(sessionmaker, hidden, batch)
     removed += await _delete_batches(sessionmaker, overflow, batch)
