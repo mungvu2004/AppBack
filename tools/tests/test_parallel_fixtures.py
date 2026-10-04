@@ -6,8 +6,12 @@ Hai điểm dùng chung giữa các tiến trình xdist:
   một lần → tên phải mang hậu tố tiến trình, không thì tiến trình sau `DROP … WITH (FORCE)` cái
   mà tiến trình trước đang nhân bản.
 - `packages/testing/fixtures/api.py`: `CASE_TRACE_FILE` là **một** file cho mọi tiến trình
-  (`case_gate` bước 5b/6 đọc nó). Mỗi vết là một `open("a")` + đúng một `write()` ngắn, nên
-  O_APPEND của Linux không cho hai dòng xen vào nhau — test dưới đo bằng tiến trình thật.
+  (`case_gate` bước 5b/6 đọc nó). Mỗi vết là một `open("a")` + một `write()` của một dòng ngắn —
+  ngắn hơn bộ đệm 8 KiB của `open()` nên ra đúng **một** `write(2)`, và Linux giữ khoá inode quanh
+  một `write(2)` O_APPEND trên file thường nên hai dòng không xen vào nhau (PIPE_BUF 4 KiB là luật
+  của pipe, không phải của file thường — NO-277). Dòng dài hơn bộ đệm có thể bị tách thành nhiều
+  `write(2)` và xen được; vết case chỉ có tên test, op, status, code nên không chạm tới. Test dưới
+  đo bằng tiến trình thật.
 """
 
 from __future__ import annotations

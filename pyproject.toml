@@ -39,6 +39,8 @@ dev = [
     "pytest-xdist",
     # FIX-114: khoá liên tiến trình để các tiến trình xdist chia nhau một bộ dịch vụ
     "filelock",
+    # NO-282: nhập trực tiếp ở `packages/testing/fixtures/services.py` — khai rõ, ghim đúng bản trong uv.lock
+    "docker==7.2.0",
     "coverage",
     "httpx",
     "schemathesis",
