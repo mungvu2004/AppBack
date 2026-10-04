@@ -1,14 +1,17 @@
-"""Mask tường cổ điển bằng ngưỡng Otsu + mở hình thái (B5-02 [6], việc B).
+"""Mask tường cổ điển bằng ngưỡng Otsu + hình thái: mở rồi lấp khe cửa sổ (B5-02 [6], việc B).
 
 Không mô hình học máy: ngưỡng xám BT.601 rồi Otsu tách mực, mở hình thái loại nét mảnh
-hơn bề dày tường tối thiểu (chữ, đường kích thước, cung cửa). Gói này không nhập
+hơn bề dày tường tối thiểu (chữ, đường kích thước, cung cửa), rồi lấp khe cửa sổ (nét
+mảnh song song nối hai đầu tường) mà phép mở đã xoá. Gói này không nhập
 `ml_contracts`/`messaging`/`storage`/`db`/`apps.*`.
 """
 
+import math
 from typing import Final
 
 import cv2
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from numpy.typing import NDArray
 
 from packages.vision.preprocess.types import RgbImage
@@ -18,6 +21,22 @@ _WALL_MM: Final = 110.0
 _PAPER_SCALE: Final = 1.1
 _EDGE_TO_WALL_RATIO: Final = 270.0
 _THICKNESS_FRACTION: Final = 0.6
+_MAX_SPAN_PER_K: Final = 8
+"""Trần độ dài phép đóng lấp cửa sổ, theo `k`: `k` ≈ 0,6 x vách 110 mm nên `8k` ≈ 530 mm,
+dư cho cả cửa sổ chỉ vẽ hai nét mép trên tường 400 mm; trang tổng hợp cần ≤ 15 px (`k` = 3 → 25)."""
+_HATCH_GAP_RATIO: Final = 1.3
+"""Khe dài nhất / khe ngắn nhất trong chuỗi nét liền kề còn coi là cách đều (bậc, ván lặp đều)."""
+_HATCH_WIDTH_RATIO: Final = 2.0
+"""Nét dày nhất / nét mảnh nhất trong chuỗi nét còn coi là cùng một loại nét."""
+_HATCH_WALL_STROKES: Final = 4
+"""Số nét dày ≥ k cách đều tối thiểu để bỏ khỏi tường (NO-348): tường rỗng có hai nét, hai tường rỗng sát
+nhau là bốn nét gần đều nhưng ít khi đều tới 1,3. Đo 24 mẫu CubiCasa5K (`quyet-dinh.md` §C10c): ngưỡng 3 làm
+IoU tường 0,483 → 0,417, ngưỡng 4 với khe ≤ 1,3 giữ 0,481 và bớt 63 % điểm lấp sai ở cầu thang/lan can."""
+_HATCH_INK_STROKES: Final = 5
+"""Số nét mực cách đều tối thiểu để không lấp vùng giữa: cửa sổ có ba nét, cộng mép đồ đạc sát nó là bốn.
+
+Đây là lớp bảo vệ cửa sổ thật sự: ở 8 mm/px khe cửa sổ/khe tới mép đồ đạc là 12/19 = 1,58, chỉ vừa
+quá `_HATCH_GAP_RATIO`; đừng hạ xuống 4."""
 
 
 def default_min_thickness_px(width_px: int, height_px: int, px_per_paper_mm: float | None = None) -> int:
@@ -35,15 +54,130 @@ def default_min_thickness_px(width_px: int, height_px: int, px_per_paper_mm: flo
 
 
 def classic_wall_mask(img: RgbImage, *, min_thickness_px: int) -> NDArray[np.bool_]:
-    """Mực (tối) → `True` sau ngưỡng Otsu, rồi mở hình thái `k x k` xoá nét mảnh hơn tường.
+    """Mực (tối) → `True` sau ngưỡng Otsu, mở hình thái `k x k` xoá nét mảnh hơn tường, lấp cửa sổ.
 
     `min_thickness_px < 1` → `ValueError` (không có kernel hợp lệ). Không sửa `img.pixels`:
-    `cv2.cvtColor`/`cv2.threshold`/`cv2.morphologyEx` đều nhận mảng và trả mảng mới.
+    các hàm `cv2` ở đây đều nhận mảng và trả mảng mới.
     """
     if min_thickness_px < 1:
         raise ValueError(f"min_thickness_px phải ≥ 1, nhận {min_thickness_px}")
     gray = cv2.cvtColor(img.pixels, cv2.COLOR_RGB2GRAY)
-    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (min_thickness_px, min_thickness_px))
-    opened = cv2.morphologyEx(ink, cv2.MORPH_OPEN, kernel)
-    return opened.astype(np.bool_)
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    ink = np.asarray(otsu, np.uint8)
+    opened = _open_square(ink, min_thickness_px)
+    measured = 2 * math.ceil(float(cv2.distanceTransform(opened, cv2.DIST_L2, 5).max())) + 1
+    span = min(measured, _MAX_SPAN_PER_K * min_thickness_px + 1)
+    walls = opened > 0
+    stacked_rows = _hatch_strokes(walls.T, span, _HATCH_WALL_STROKES).T
+    stacked_cols = _hatch_strokes(walls, span, _HATCH_WALL_STROKES)
+    walls &= ~stacked_rows & ~stacked_cols
+    return _bridge_windows(ink, walls, (stacked_rows, stacked_cols), span, min_thickness_px)
+
+
+def _open_square(ink: NDArray[np.uint8], size: int) -> NDArray[np.uint8]:
+    """Mở hình thái đúng nghĩa bằng hình vuông `size x size`, không dời ảnh khi `size` chẵn.
+
+    `cv2.morphologyEx(MORPH_OPEN)` co rồi giãn với **cùng** neo `size // 2`; kernel chẵn
+    thì cửa sổ không đối xứng nên kết quả lệch 1 px. Giãn phải dùng kernel phản chiếu:
+    neo `size - 1 - a` với `a` là neo lúc co. Kernel lẻ hai neo trùng nhau, như cũ.
+    """
+    kernel = np.ones((size, size), np.uint8)
+    erode_at = (size - 1) // 2
+    dilate_at = size - 1 - erode_at
+    eroded = cv2.erode(ink, kernel, anchor=(erode_at, erode_at))
+    return np.asarray(cv2.dilate(eroded, kernel, anchor=(dilate_at, dilate_at)), np.uint8)
+
+
+def _bridge_windows(
+    ink: NDArray[np.uint8],
+    is_wall: NDArray[np.bool_],
+    hatch: tuple[NDArray[np.bool_], NDArray[np.bool_]],
+    span: int,
+    size: int,
+) -> NDArray[np.bool_]:
+    """Lấp khe cửa sổ: dải nét mảnh xếp chồng nối kín hai đầu tường thẳng hàng thành tường.
+
+    Cửa sổ vẽ bằng các nét 1 px song song tường, cách nhau ≤ ½ bề dày, nên phép mở xoá
+    mất nó dù đáp án coi là tường. Đóng hình thái **vuông góc** với hướng tường (dài bằng
+    bề dày tường dày nhất đo được, lẻ nên không lệch tâm) lấp khoảng giữa các nét; chỉ giữ
+    đoạn liền theo hướng tường có tường ở **cả hai** đầu. Khe cửa đi không có nét nên không
+    bị lấp; lòng phòng không có nét liền suốt từ tường này sang tường kia nên cũng không.
+    Cuối cùng mở lại `size x size`: dải cửa sổ dày bằng tường nên còn, một nét lẻ 1 px nối
+    hai tường (đường trục, bệ cửa đi) mảnh hơn `size` nên bị xoá như mọi nét mảnh khác.
+    `span` (độ dài phép đóng) do `classic_wall_mask` đo: bề dày tường dày nhất, kẹp ở
+    `_MAX_SPAN_PER_K x size + 1` để một khối tô đặc (khung tên, logo) không kéo phép đóng
+    nối mọi thứ quanh nó. Không lấp vùng phủ của cụm nét song song (NO-348): `hatch` là
+    `(nét xếp theo cột, nét xếp theo hàng)` dày ≥ `size` mà `classic_wall_mask` đã bỏ khỏi
+    tường, cộng chuỗi ≥ `_HATCH_INK_STROKES` nét mực cách đều (bậc, ván mảnh hơn `size`).
+    """
+    strokes = ink > 0
+    thick_rows, thick_cols = hatch
+    thin_rows = _hatch_strokes(strokes.T, span, _HATCH_INK_STROKES).T
+    thin_cols = _hatch_strokes(strokes, span, _HATCH_INK_STROKES)
+    across_rows = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((span, 1), np.uint8)) > 0
+    across_cols = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((1, span), np.uint8)) > 0
+    across_rows &= ~_stacked(thick_rows | thin_rows, (span, 1))
+    across_cols &= ~_stacked(thick_cols | thin_cols, (1, span))
+    horizontal = _closed_runs(across_rows & ~is_wall, is_wall)
+    vertical = _closed_runs((across_cols & ~is_wall).T, is_wall.T).T
+    return _open_square((is_wall | horizontal | vertical).astype(np.uint8), size) > 0
+
+
+def _closed_runs(candidate: NDArray[np.bool_], walls: NDArray[np.bool_]) -> NDArray[np.bool_]:
+    """Các đoạn liền theo hàng của `candidate` có điểm tường ngay trước **và** ngay sau.
+
+    Đánh số đoạn bằng tổng dồn các điểm bắt đầu (theo thứ tự hàng), nên điểm đầu và điểm
+    cuối thứ `i` cùng thuộc đoạn `i`; chạm mép ảnh coi như không có tường. Nhãn `int32` (ảnh
+    ≤ 2^31 điểm) để ảnh 40 MP không tốn thêm 320 MB cho bảng nhãn `int64`.
+    """
+    rows, cols = candidate.shape
+    pad_c = np.zeros((rows, cols + 2), np.bool_)
+    pad_w = np.zeros((rows, cols + 2), np.bool_)
+    pad_c[:, 1:-1] = candidate
+    pad_w[:, 1:-1] = walls
+    starts = pad_c[:, 1:-1] & ~pad_c[:, :-2]
+    ends = pad_c[:, 1:-1] & ~pad_c[:, 2:]
+    closed = pad_w[:, :-2][starts] & pad_w[:, 2:][ends]
+    label = np.cumsum(starts.ravel(), dtype=np.int32).reshape(rows, cols)
+    keep = np.zeros(closed.size + 1, np.bool_)
+    keep[1:] = closed
+    return candidate & keep[label]
+
+
+def _hatch_strokes(mask: NDArray[np.bool_], span: int, count: int) -> NDArray[np.bool_]:
+    """Điểm thuộc chuỗi ≥ `count` nét song song cách đều trên từng hàng (sàn ván, bậc thang, hatch).
+
+    `count` đoạn liền kề trên cùng một hàng là nét hatch khi mọi khe giữa chúng ≤ `span`, khe
+    dài nhất ≤ `_HATCH_GAP_RATIO` lần khe ngắn nhất và đoạn dày nhất ≤ `_HATCH_WIDTH_RATIO`
+    lần đoạn mảnh nhất. Gọi trên mảng chuyển vị để xét theo cột. Làm trên mảng dàn phẳng có
+    đệm một ô mỗi đầu hàng nên đoạn không bao giờ vắt qua hai hàng.
+    """
+    rows, cols = mask.shape
+    padded = np.zeros((rows, cols + 2), np.bool_)
+    padded[:, 1:-1] = mask
+    flat = padded.ravel()
+    starts = np.flatnonzero(flat[1:] & ~flat[:-1]) + 1
+    ends = np.flatnonzero(flat[:-1] & ~flat[1:]) + 1
+    marked = np.zeros(starts.size + 1, np.bool_)
+    if starts.size >= count:
+        row = starts // (cols + 2)
+        gaps = sliding_window_view(starts[1:] - ends[:-1], count - 1)
+        widths = sliding_window_view(ends - starts, count)
+        rows_same = sliding_window_view(row[1:] == row[:-1], count - 1).all(axis=1)
+        chain = (
+            rows_same
+            & (gaps.max(axis=1) <= span)
+            & (gaps.max(axis=1) <= _HATCH_GAP_RATIO * gaps.min(axis=1))
+            & (widths.max(axis=1) <= _HATCH_WIDTH_RATIO * widths.min(axis=1))
+        )
+        for shift in range(count):
+            marked[1 + shift : 1 + shift + chain.size] |= chain
+    label = np.zeros(flat.size, np.int32)
+    label[starts] = 1
+    np.cumsum(label, dtype=np.int32, out=label)
+    return (flat & marked[label]).reshape(rows, cols + 2)[:, 1:-1]
+
+
+def _stacked(strokes: NDArray[np.bool_], shape: tuple[int, int]) -> NDArray[np.bool_]:
+    """Vùng phủ của cụm nét hatch: đóng theo `shape` (cột hay hàng dài `span`) để gồm cả khe giữa các nét."""
+    return np.asarray(cv2.morphologyEx(strokes.astype(np.uint8), cv2.MORPH_CLOSE, np.ones(shape, np.uint8)), np.bool_)

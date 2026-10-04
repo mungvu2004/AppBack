@@ -79,7 +79,9 @@ def _mask_of(
     """Mặt nạ tường của trang và tên nhánh đã dựng nó.
 
     `ML_BACKEND=fake` thắng mọi thứ (M01: không model nào được nạp trong lượt giả);
-    `ModelRef` cổ điển (`is_classic`) không có gì để nạp nên đi đường hình thái; còn lại
+    `ModelRef` cổ điển (`is_classic`) không có gì để nạp nên đi đường hình thái
+    (`classic_wall_mask`: mở bỏ nét mảnh rồi lấp khe cửa sổ, nên mặt nạ có thể chứa điểm
+    không có mực — dải giữa các nét cửa sổ, tường vẽ rỗng hai nét); còn lại
     `prepare` đã nạp `session` nên `cast` thay cho một nhánh chết không test nổi.
 
     Lệch khỏi prompt: `classic_wall_mask` nhận `RgbImage` của `packages.vision.preprocess`
