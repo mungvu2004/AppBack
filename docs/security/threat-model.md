@@ -58,7 +58,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | api → hàng đợi → worker | T | Sửa payload (khoá lạ, id chéo dự án) | `extra="forbid"`, mẫu `ObjectKey`/`Sha256`/`RunId` (B-18); worker kiểm lại dưới `lock_run` (B-19) | không đáng kể · B5-06 |
 | api → hàng đợi → worker | R | Chối tác vụ | `pipeline_result_ignored` log có `run_id` (`pipeline_persist/service.py:71`), `record_step` | không đáng kể · B5-06 |
 | api → hàng đợi → worker | I | Rò thông tin qua log/lỗi | Log chỉ id và mã (B-22) | không đáng kể · B5-06 |
-| api → hàng đợi → worker | D | Dồn hàng bằng tải lên hàng loạt | Một lượt dở/tầng, `rate_limit` 60/phút/người, `prefetch=1` (B-26) | Không hạn mức theo dự án, một hàng `ml.infer` concurrency 1 → dự án khác chờ lâu (chưa kiểm — thiếu ảnh) · B2-05a/B5-06 |
+| api → hàng đợi → worker | D | Dồn hàng bằng tải lên hàng loạt | Một lượt dở/tầng, `rate_limit` 60/phút/người, `prefetch=1` (B-26) | Không hạn mức theo dự án, một hàng `ml.infer` concurrency 1 → dự án khác chờ lâu; đo sống: FIFO concurrency 1, lượt `running` không bị quét bù đánh hỏng (B-26, W10/L-07) · B2-05a/B5-06 |
 | api → hàng đợi → worker | E | Payload nâng quyền | Worker tải lại dòng DB, không tin id trong payload (B-19) | không đáng kể · B5-06 |
 
 ### worker ↔ ml (kết quả không tin)
@@ -145,7 +145,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | api ↔ MinIO | S | Giả MinIO | mạng nội bộ, khoá riêng `ml` theo tiền tố (`deploy/minio/ml-policy.json`; thuộc việc D) | — |
 | api ↔ MinIO | T | Ghi đè object bằng khoá `..` | `check_key` chặn `..`/ký tự điều khiển (C-21) | — |
 | api ↔ MinIO | R | Chối tải lên | metadata SHA-256 ở `ObjectInfo` (`packages/storage/local.py:105-112`) | — |
-| api ↔ MinIO | I | Lộ object cho người ngoài | URL ký ≥ 60 phút, token tệp có MAC (C-19, C-20); S3 khác origin + `nosniff` → việc D | S3 khác origin sống qua nginx · chưa kiểm — thiếu ảnh · B0-08 |
+| api ↔ MinIO | I | Lộ object cho người ngoài | URL ký ≥ 60 phút, token tệp có MAC (C-19, C-20); S3 khác origin + `nosniff` → việc D | S3 khác origin + vhost `nosniff`/`CSP sandbox` đo sống đạt (D-08, W10/L-01, L-02) · B0-08 |
 | api ↔ MinIO | D | MinIO chết/đĩa đầy | 503 `DEPENDENCY_UNAVAILABLE` (C-03); trần thân (C-38) | — |
 | api ↔ MinIO | E | `ml` ghi ngoài tiền tố | chính sách MinIO theo tiền tố — thuộc việc D (V1) | — |
 
@@ -156,7 +156,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | URL ký và `/api/files` | S | Giả token | HMAC-SHA256 khoá con `file`, `compare_digest` (C-20) | — |
 | URL ký và `/api/files` | T | Sửa một byte hay đổi khoá trong token | MAC trên `k\|e\|d\|n`; sửa → 404 (C-20, C-21) | — |
 | URL ký và `/api/files` | R | Chối truy cập | token không vào log (cố ý): truy vết bằng `requestId`/`routeTemplate` (C-07) | không truy được ai đã dùng token · B0-04 (chủ ý) |
-| URL ký và `/api/files` | I | Token lộ qua log/metric/referrer | log chỉ `routeTemplate` (C-07); nhãn metric là mẫu đường (C-45); `Referrer-Policy: same-origin`; nginx `access_log off` (C-08) | log nginx/uvicorn sống chưa kiểm (C-08) · B0-08 |
+| URL ký và `/api/files` | I | Token lộ qua log/metric/referrer | log chỉ `routeTemplate` (C-07); nhãn metric là mẫu đường (C-45); `Referrer-Policy: same-origin`; nginx `access_log off` (C-08) | log nginx/uvicorn sống: token không vào log (C-08, W10/L-01) · B0-08 |
 | URL ký và `/api/files` | D | Liên tục thử token rác | cùng 404, không chạm đĩa với token hỏng (`verify_token` trước `stat`) — không có hạn mức riêng | không hạn mức IP cho `/api/files` (chi phí HMAC thấp) · B0-06 |
 | URL ký và `/api/files` | E | Đọc object ngoài khoá được ký | khoá nằm trong MAC; `..` bị chặn; `inline` chỉ ảnh đã sniff (`apps/api/files/router.py:51-53`) | — |
 
@@ -178,7 +178,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | sao lưu và khôi phục | S | Giả bản sao lưu khi khôi phục | SHA-256 theo manifest kiểm trước khi dừng dịch vụ (`deploy/backup/restore.sh`, B0-10) | — |
 | sao lưu và khôi phục | T | Sửa bản sao lưu | manifest SHA-256; `age` xác thực tính toàn vẹn khi giải (C-16) | — |
 | sao lưu và khôi phục | R | Không áp dụng — không có hành vi người dùng; nhật ký chạy ở systemd/journald | — | — |
-| sao lưu và khôi phục | I | Lộ bản sao lưu (hash mật khẩu, dữ liệu dự án) | `age` khi có recipient (C-16); quyền tệp (C-17) | quyền 0644 mặc định → SEC-040; mặc định không mã hoá (C-18) → Nợ hiến chương · B0-10 |
+| sao lưu và khôi phục | I | Lộ bản sao lưu (hash mật khẩu, dữ liệu dự án) | `age` khi có recipient (C-16); quyền tệp (C-17) | quyền 0644 mặc định → SEC-040; production không mã hoá (C-18) → SEC-044, đã vá FIX-339 (staging: Nợ hiến chương) · B0-10 |
 | sao lưu và khôi phục | D | Bản sao lưu dở làm đầy đĩa | xoá thư mục dở khi lỗi, xoay vòng 7 bản + tuần (`backup.sh:37-77,99`, B0-10) | — |
 | sao lưu và khôi phục | E | Khôi phục chạy bởi người không có quyền | chạy dưới `User=deploy` (`appback-backup.service`); khoá `age` cất ngoài máy (B0-10 [6]) | — |
 
@@ -187,10 +187,10 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | ranh giới | chữ | mối đe doạ | biện pháp (dẫn #) | rủi ro tồn dư · chủ |
 |---|---|---|---|---|
 | trình duyệt ↔ nginx | S | Giả mạo origin để ghi bằng cookie | `Origin` bắt buộc cho ghi cookie, lạ → 403 (A-10); luồng chặn `Origin` lạ (D-11) | cờ cookie đo tầng app ở A-09; qua nginx chưa đo (thiếu ảnh) · B1-01 |
-| trình duyệt ↔ nginx | T | Hạ cấp http, chèn nội dung | 301 sang https, HSTS (D-07) | HSTS/TLS chưa đo, thiếu ảnh · B0-08 |
+| trình duyệt ↔ nginx | T | Hạ cấp http, chèn nội dung | 301 sang https, HSTS (D-07) | HSTS + 301 đo sống đạt (D-07, W10/L-01) · B0-08 |
 | trình duyệt ↔ nginx | R | Không truy vết yêu cầu | `X-Request-Id` ở mọi phản hồi kể cả lỗi nginx (D-01, D-05) | — |
 | trình duyệt ↔ nginx | I | Lộ nội dung qua sniff, framing, referrer, cache lỗi | App đủ bốn header (D-01…D-03); CSP (D-06); lỗi do nginx sinh thiếu header (D-05) | thân lỗi nginx thiếu header · B0-08 (SEC-060) |
-| trình duyệt ↔ nginx | D | Thân lớn, dồn yêu cầu | `client_max_body_size 8m` (`app_locations.conf:3`), 413 của app (D-02), 429 (D-03) | giới hạn nginx chưa đo sống · B0-08 |
+| trình duyệt ↔ nginx | D | Thân lớn, dồn yêu cầu | `client_max_body_size 8m` (`app_locations.conf:3`), 413 của app (D-02), 429 (D-03) | trần 8 MiB/512 MiB N26 đo sống đạt (C-39, W10/L-01) · B0-08 |
 | trình duyệt ↔ nginx | E | Gọi chéo origin để chiếm quyền | không CORS (D-09) | — |
 
 ### nginx ↔ api
@@ -220,5 +220,5 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 Mỗi dòng STRIDE có cột tồn dư kèm prompt chủ. Ba lỗ có chủ ý của v1 (không mở `SEC-*`):
 
 - admin dựng dataset từ tầng của mọi dự án, xuyên ranh giới thành viên · B6-02;
-- giấy phép CC BY-NC (CubiCasa), NVIDIA phi thương mại (mit-b0/b1), AGPL (YOLO) chảy vào bản được kích hoạt (D-24, D-25; D5 của kế hoạch) · B5-01, B6-01, B6-02b;
+- giấy phép CC BY-NC (CubiCasa), NVIDIA phi thương mại (mit-b0/b1), AGPL (YOLO) chảy vào bản được kích hoạt (D-24, D-25; D5 của kế hoạch; giấy phép CubiCasa nay in ở báo cáo nhập — FIX-343, SEC-063, chưa chặn kích hoạt) · B5-01, B6-01, B6-02b;
 - bản sao trang trong `ml/datasets/*` còn sống sau khi dự án bị xoá · B6-02, B2-01.
