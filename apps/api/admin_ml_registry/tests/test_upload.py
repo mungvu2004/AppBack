@@ -386,9 +386,11 @@ async def test_upload_version_leaves_nothing_when_the_client_disconnects(
     sent: list[dict[str, Any]] = []
 
     async def receive() -> dict[str, Any]:
+        """Phát lần lượt các thông điệp ASGI đã dựng; hết thì báo `http.disconnect`."""
         return messages.popleft() if messages else {"type": "http.disconnect"}
 
     async def send(message: MutableMapping[str, Any]) -> None:
+        """Ghi lại thông điệp app gửi ra để test kiểm mã trạng thái phản hồi."""
         sent.append(dict(message))
 
     await api_app(_scope(_headers(fake_principal)), receive, send)
