@@ -94,12 +94,12 @@ def _plan_of(item: CatalogueItem) -> _Plan:
 
 
 def _same_shas(known: _Known, plan: _Plan) -> bool:
-    """Đúng khi dòng đã phát hành và cả hai `sha256` khớp tài sản vừa dựng."""
-    return (
-        known.published_at is not None
-        and known.model_sha256 == plan.model.sha256
-        and known.preview_sha256 == plan.preview.sha256
-    )
+    """Đúng khi dòng đã phát hành và `model_sha256` khớp tài sản vừa dựng.
+
+    Không so `preview_sha256`: byte PNG phụ thuộc bản zlib, nên so nó làm hai môi trường khác bản zlib `put` lại
+    ảnh và đặt lại `published_at` mỗi lượt. Ảnh lệch được `_ensure` vá ở lượt kiểm kế tiếp (`library_verify_after_s`).
+    """
+    return known.published_at is not None and known.model_sha256 == plan.model.sha256
 
 
 def _needs_work(known: _Known, plan: _Plan, now: datetime, verify_after: timedelta) -> bool:

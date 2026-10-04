@@ -18,7 +18,7 @@ from packages.testing.fixtures.clock import FakeClock
 
 LIST_PATH: Final = "/api/library"
 FILES_PATH: Final = "/api/files/"
-BLOCKED: Final = ("fastapi", "jwt", "argon2")
+BLOCKED: Final = ("fastapi", "starlette", "uvicorn", "jwt", "argon2")
 
 
 def item_path(item_id: str) -> str:
