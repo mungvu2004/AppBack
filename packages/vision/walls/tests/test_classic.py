@@ -94,6 +94,51 @@ def test_classic_wall_mask__single_line_between_walls_is_not_wall() -> None:
     assert np.array_equal(mask, truth)
 
 
+def _two_walls_with_strokes(rows: tuple[tuple[int, int], ...]) -> tuple[RgbImage, NDArray[np.bool_]]:
+    """Hai vách dọc 12 px, giữa chúng các nét ngang dày (hàng `[y0, y1)`) nối kín từ vách này sang vách kia.
+
+    Đáp án chỉ có hai vách; nét ngang do bên gọi quyết định có thuộc tường hay không.
+    """
+    canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+    truth = np.zeros((200, 200), dtype=np.bool_)
+    truth[20:180, 40:52] = True
+    truth[20:180, 150:162] = True
+    canvas[truth] = (0, 0, 0)
+    for y0, y1 in rows:
+        canvas[y0:y1, 52:150] = (0, 0, 0)
+    return RgbImage(canvas), truth
+
+
+def test_classic_wall_mask__evenly_spaced_strokes_between_walls_are_not_wall() -> None:
+    """Năm nét 4 px cách đều 10 px giữa hai vách (bậc thang, sàn ván — NO-348) không thành tường."""
+    img, truth = _two_walls_with_strokes(((60, 64), (74, 78), (88, 92), (102, 106), (116, 120)))
+    mask = classic_wall_mask(img, min_thickness_px=3)
+    assert np.array_equal(mask, truth)
+
+
+def test_classic_wall_mask__four_evenly_spaced_strokes_between_walls_are_not_wall() -> None:
+    """Bốn nét 4 px cách đều giữa hai vách (ngưỡng nhỏ nhất của cụm hatch dày) cũng không thành tường."""
+    img, truth = _two_walls_with_strokes(((60, 64), (74, 78), (88, 92), (102, 106)))
+    mask = classic_wall_mask(img, min_thickness_px=3)
+    assert np.array_equal(mask, truth)
+
+
+def test_classic_wall_mask__hollow_two_line_wall_is_filled() -> None:
+    """Tường rỗng vẽ hai nét 4 px cách 8 px giữa hai vách được lấp thành một dải tường đặc."""
+    img, truth = _two_walls_with_strokes(((60, 64), (72, 76)))
+    truth[60:76, 52:150] = True
+    mask = classic_wall_mask(img, min_thickness_px=3)
+    assert np.array_equal(mask, truth)
+
+
+def test_classic_wall_mask__single_dot_gives_empty_mask() -> None:
+    """Trang chỉ có một chấm mực: không đủ nét cho chuỗi hatch nào, mặt nạ rỗng."""
+    canvas = np.full((50, 50, 3), 255, dtype=np.uint8)
+    canvas[25, 25] = (0, 0, 0)
+    mask = classic_wall_mask(RgbImage(canvas), min_thickness_px=3)
+    assert not mask.any()
+
+
 @pytest.mark.parametrize(
     ("width_px", "height_px", "px_per_paper_mm", "expected"),
     [
