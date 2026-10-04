@@ -246,10 +246,14 @@ def test_infer_context_builds_without_the_api_secrets() -> None:
     """Tiến trình mới với môi trường `ml` production dựng được kho S3 (FIX-091, NO-085).
 
     Tiến trình riêng vì cache cấu hình của tiến trình test đã giữ `SECRET_KEY`. Dựng kho
-    không mở kết nối nào tới MinIO, nên không cần dịch vụ thật.
+    không mở kết nối nào tới MinIO, nên không cần dịch vụ thật. Tiến trình không `CoreSettings`
+    nhận lớp con không ký URL của `S3Storage` (`packages/storage/factory.py`, 45b5ece) — so `isinstance`.
     """
     env = {name: value for name, value in os.environ.items() if name not in _API_ONLY} | _ML_PROD_ENV
-    code = "from apps.ml.runtime.tasks_util import infer_context; print(type(infer_context().storage).__name__)"
+    code = (
+        "from apps.ml.runtime.tasks_util import infer_context; from packages.storage.s3 import S3Storage; "
+        "print(isinstance(infer_context().storage, S3Storage))"
+    )
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", code],
         cwd=Path(__file__).resolve().parents[4],
@@ -260,4 +264,4 @@ def test_infer_context_builds_without_the_api_secrets() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "S3Storage"
+    assert result.stdout.strip() == "True"

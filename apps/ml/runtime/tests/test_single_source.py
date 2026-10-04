@@ -5,6 +5,8 @@ cao hơn nó.
 """
 
 import ast
+import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -35,23 +37,35 @@ def _sources(root: Path) -> list[Path]:
     return [p for p in root.rglob("*.py") if "tests" not in p.relative_to(ML_ROOT).parts]
 
 
-LOCK_MODULES = ("gpu.py", "lease.py")
-"""Module khoá giữ chỗ của `runtime`: hằng công khai của chúng là nguồn duy nhất (NO-308, NO-314)."""
+SOURCE_MODULES = ("gpu.py", "lease.py", "errors.py", "error_codes.py")
+"""Module nguồn của `runtime`: khoá giữ chỗ (NO-308, NO-314) và mã lỗi `ml` (NO-285, C18b)."""
 
 
 def test_runtime_constants__not_redeclared() -> None:
-    """Hằng khoá giữ chỗ của `runtime` và `MODEL_VERSION_FAMILY_MISMATCH` không có bản sao khác trong `apps/ml`."""
-    lock_files = [RUNTIME / name for name in LOCK_MODULES]
-    owned = Counter(name for path in lock_files for name in _module_constants(path) if not name.startswith("_"))
+    """Hằng công khai của khoá giữ chỗ và mã lỗi `runtime` không có bản sao nào khác trong `apps/ml` (R-07)."""
+    owners = [RUNTIME / name for name in SOURCE_MODULES if (RUNTIME / name).exists()]
+    owned = Counter(name for path in owners for name in _module_constants(path) if not name.startswith("_"))
     assert [name for name, count in owned.items() if count > 1] == []
-    watched = owned.keys() | {"MODEL_VERSION_FAMILY_MISMATCH"}
     copies = sorted(
         f"{path.relative_to(ML_ROOT).as_posix()}:{name}"
         for path in _sources(ML_ROOT)
-        if path not in lock_files and path != RUNTIME / "errors.py"
-        for name in _module_constants(path) & watched
+        if path not in owners
+        for name in _module_constants(path) & owned.keys()
     )
     assert copies == []
+
+
+def test_error_codes__import_light() -> None:
+    """`runtime.error_codes` và người nhập nó (trainer, hộp cát) không kéo `onnxruntime`/`torch` lúc nhập."""
+    probe = (
+        "import sys; import apps.ml.runtime.error_codes, apps.ml.ml_eval.sandbox, apps.ml.training_segformer.errors, "
+        "apps.ml.training_runner.errors; "
+        "assert not {'torch', 'onnxruntime'} & set(sys.modules), sorted({'torch', 'onnxruntime'} & set(sys.modules))"
+    )
+    completed = subprocess.run(  # noqa: S603 — argv cố định, không dữ liệu ngoài
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_model_version_family_mismatch__declared_in_runtime_errors() -> None:
