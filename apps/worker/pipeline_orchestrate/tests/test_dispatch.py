@@ -7,7 +7,7 @@ không có vòng sự kiện chờ callback lên lịch xong — ở đây gọi
 """
 
 from collections.abc import Iterator
-from typing import Final, cast
+from typing import cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.worker.pipeline_orchestrate.dispatch import INFER_TASKS, queue_infer
 from apps.worker.pipeline_orchestrate.keys import run_prefix
 from apps.worker.pipeline_orchestrate.pins import RunPins
+from apps.worker.pipeline_orchestrate.tests._helpers import LEVEL_ID, ML_QUEUE
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.db.hooks import after_commit_idle
@@ -23,9 +24,6 @@ from packages.ml_contracts.families import MODEL_FAMILIES, ModelFamily
 from packages.storage.keys import upload_page
 from packages.testing.factories.pipeline_orchestrate import classic_ref
 from packages.testing.fixtures.messaging import queued_payloads
-
-QUEUE: Final = "ml.infer"
-_LEVEL: Final = "L-ABCDEFGHIJ"
 
 
 def _pins(*, run_id: str, used: dict[ModelFamily, str] | None = None) -> RunPins:
@@ -43,8 +41,8 @@ def _scene(run_id: str) -> tuple[str, str]:
     """`(run_prefix, page_key)` cùng dự án/tầng/lượt tải — `InferStepPayload` kiểm chéo hai khoá này."""
     clock = SystemClock()
     project_id, upload_id = new_id("prj", clock), new_id("upl", clock)
-    prefix = run_prefix(project_id=project_id, level_id=_LEVEL, upload_id=upload_id, run_id=run_id)
-    page_key = upload_page(project_id, _LEVEL, upload_id, 0)
+    prefix = run_prefix(project_id=project_id, level_id=LEVEL_ID, upload_id=upload_id, run_id=run_id)
+    page_key = upload_page(project_id, LEVEL_ID, upload_id, 0)
     return prefix, page_key
 
 
@@ -52,9 +50,9 @@ def _scene(run_id: str) -> tuple[str, str]:
 def broker(messaging_env: None) -> Iterator[SyncRedis]:
     """Client broker thật, hàng `ml.infer` sạch ở đầu và cuối test."""
     client = broker_redis_sync()
-    client.delete(QUEUE)
+    client.delete(ML_QUEUE)
     yield client
-    client.delete(QUEUE)
+    client.delete(ML_QUEUE)
     client.close()
 
 
@@ -75,7 +73,7 @@ async def test_queue_infer_sends_all_three_when_used_is_empty(db_session: AsyncS
     assert set(queued) == set(MODEL_FAMILIES)
     await db_session.commit()
     await after_commit_idle(db_session)
-    payloads = queued_payloads(broker, QUEUE)
+    payloads = queued_payloads(broker, ML_QUEUE)
     assert len(payloads) == 3
     by_step = {item["step"]: item for item in payloads}
     for family in INFER_TASKS:
@@ -102,7 +100,7 @@ async def test_queue_infer_skips_families_already_used(db_session: AsyncSession,
     assert len(queued) == 2
     await db_session.commit()
     await after_commit_idle(db_session)
-    payloads = queued_payloads(broker, QUEUE)
+    payloads = queued_payloads(broker, ML_QUEUE)
     assert len(payloads) == 2
     assert all(item["step"] != "wallSegmentation" for item in payloads)
 
@@ -121,4 +119,4 @@ async def test_queue_infer_rollback_leaves_queue_empty(db_session: AsyncSession,
     )
     await db_session.rollback()
     await after_commit_idle(db_session)
-    assert queued_payloads(broker, QUEUE) == []
+    assert queued_payloads(broker, ML_QUEUE) == []

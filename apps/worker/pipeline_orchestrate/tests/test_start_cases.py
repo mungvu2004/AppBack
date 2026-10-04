@@ -22,18 +22,17 @@ from typing import Final
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 from PIL import Image
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.drawings.runs import RunRow, start_run
+from apps.api.drawings.runs import RunRow
 from apps.api.drawings.tests._helpers import Scene, make_scene
 from apps.worker.pipeline_orchestrate import tasks
 from apps.worker.pipeline_orchestrate.settings import OrchestrateSettings
 from apps.worker.pipeline_orchestrate.start import fail_pipeline_start_core, run_pipeline_start
+from apps.worker.pipeline_orchestrate.tests._helpers import ML_QUEUE, floor_drawings, open_run, run_row
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, IMAGE_TOO_LARGE, PDF_UNREADABLE
 from packages.core.errors import AppError
 from packages.core.settings import reset_settings_cache
-from packages.db.hooks import after_commit_idle
 from packages.db.models.drawings import DrawingRow, PipelineRunRow
 from packages.db.settings import reset_database_settings_cache
 from packages.messaging.payloads.drawings import PipelineStartPayload
@@ -49,20 +48,13 @@ from packages.vision.preprocess.tests.synthetic import encode, jpeg_with_orienta
 
 type Maker = async_sessionmaker[AsyncSession]
 
-ML_QUEUE: Final = "ml.infer"
+START_QUEUE: Final = "pipeline.cpu"
+"""Hàng worker `pipeline.cpu` nghe (`apps/worker/celery_main.py`), nơi `send_start_after_commit` xếp `start`."""
+
 J01_WAIT_S: Final = 30.0
 """Trần **chờ** hàng ML của `__J01_smoke` — chống treo, không phải trần hiệu năng (xem docstring test)."""
 
 _log = logging.getLogger(__name__)
-
-
-async def _open_run(maker: Maker, upload_id: str, clock: FakeClock) -> RunRow:
-    """Mở một lượt chạy và commit (task `start` chỉ chạy sau khi B2-04 đã ghi dòng lượt)."""
-    async with maker() as db:
-        run = await start_run(db, upload_id=upload_id, clock=clock)
-        await db.commit()
-    await after_commit_idle(db)
-    return run
 
 
 async def _upload_and_run(
@@ -75,22 +67,21 @@ async def _upload_and_run(
             db, storage, project=scene.project, floor=scene.floor, data=data, file_name=file_name
         )
         await db.commit()
-    run = await _open_run(maker, upload.id, clock)
+    run = await open_run(maker, upload.id, clock)
     return scene, run
 
 
 async def _run_row(maker: Maker, run_id: str) -> PipelineRunRow:
-    """Dòng `pipeline_runs` đọc lại trên session mới — trạng thái task đã commit, không cache."""
+    """`run_row` trên session mới — trạng thái task đã commit, không cache."""
     async with maker() as db:
-        row = (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == run_id))).scalar_one()
-        await db.refresh(row)
-        return row
+        return await run_row(db, run_id)
 
 
-async def _drawing_of(maker: Maker, floor_pk: int) -> DrawingRow | None:
-    """Bản vẽ hiện có của tầng, hay `None` — dùng để khẳng định task không ghi trang nào."""
+async def _only_drawing(maker: Maker, floor_pk: int) -> DrawingRow:
+    """Bản vẽ duy nhất của tầng — task ghi đúng một dòng `drawings`."""
     async with maker() as db:
-        return (await db.execute(select(DrawingRow).where(DrawingRow.floor_pk == floor_pk))).scalars().first()
+        [drawing] = await floor_drawings(db, floor_pk)
+    return drawing
 
 
 class _FlakyPut(LocalDiskStorage):
@@ -114,9 +105,13 @@ class _FlakyPut(LocalDiskStorage):
 
 @pytest.fixture
 def clean_ml_queue(messaging_env: None) -> SyncRedis:
-    """Hàng `ml.infer` dùng chung cả phiên; xoá trước khi đếm (BE-00 §12)."""
+    """Hàng `ml.infer` và `pipeline.cpu` dùng chung cả phiên; xoá trước khi đếm (BE-00 §12).
+
+    `pipeline.cpu` tích thông điệp `start` của mọi `start_run` trước đó trong tiến trình (broker một
+    bản mỗi tiến trình xdist, không xoá chéo) — xoá để J01 đếm đúng một thông điệp của chính nó.
+    """
     client = broker_redis_sync()
-    client.delete(ML_QUEUE)
+    client.delete(ML_QUEUE, START_QUEUE)
     return client
 
 
@@ -152,7 +147,12 @@ def test_orchestrate_pipeline_start__J01_smoke(
     celery_worker_factory: WorkerFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Task thật (BE-00 §7 "Test task"), **không** gọi `after_commit_idle`: đủ ba `ml.infer.*`.
+    """Đường gửi thật → task thật (BE-00 §7 "Test task"): đủ ba `ml.infer.*` (NO-218).
+
+    Không tự `apply_async`: thông điệp duy nhất là của `start_run` → `send_start_after_commit` →
+    `send_task(START_TASK)` **theo tên** lên `pipeline.cpu`, khẳng định ngay trước khi dựng worker
+    (callback sau commit lỗi chỉ được ghi log, không ném). Worker thật nhận đúng tên ấy — tên khai
+    ở `tasks.py` lệch `START_TASK` thì không có `ml.infer.*` nào.
 
     `DB_AFTER_COMMIT_INLINE=1` (đặt bởi `create_celery` cho app thử) chạy callback sau commit
     tại chỗ trong luồng worker, nên không cần chờ riêng. Task tự dựng `worker_sessionmaker()`
@@ -172,10 +172,10 @@ def test_orchestrate_pipeline_start__J01_smoke(
         _upload_and_run(db_sessionmaker, local_storage, data=data, file_name="plan.jpg", clock=fake_clock)
     )
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
+    assert queued_payloads(clean_ml_queue, START_QUEUE) == [payload.model_dump(mode="json")]
 
     start = time.monotonic()
-    with celery_worker_factory(["pipeline.cpu"]):
-        tasks.orchestrate_pipeline_start.apply_async(args=[payload.model_dump(mode="json")])
+    with celery_worker_factory([START_QUEUE]):
         deadline = start + J01_WAIT_S
         while time.monotonic() < deadline and clean_ml_queue.llen(ML_QUEUE) < 3:
             time.sleep(0.05)
@@ -232,7 +232,7 @@ async def test_orchestrate_pipeline_start__J03(
     Pillow), nên một JPEG 2000x2000 tự co xuống dưới trần trước khi kiểm được — không phải ca
     cần thử ở đây.
     """
-    small_settings = OrchestrateSettings(PIPELINE_MAX_PIXELS=1_000_000)
+    small_settings = OrchestrateSettings(pipeline_max_pixels=1_000_000)
     data = encode(Image.new("RGB", (2000, 2000), (10, 20, 30)), "PNG")
     _scene, run = await _upload_and_run(
         db_sessionmaker, local_storage, data=data, file_name="big.png", clock=fake_clock
@@ -305,8 +305,7 @@ async def test_orchestrate_pipeline_start__U01(
     scene, run = await _upload_and_run(db_sessionmaker, local_storage, data=data, file_name="rot.jpg", clock=fake_clock)
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
     await run_pipeline_start(payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
-    drawing = await _drawing_of(db_sessionmaker, scene.floor.pk)
-    assert drawing is not None
+    drawing = await _only_drawing(db_sessionmaker, scene.floor.pk)
     assert (drawing.width_px, drawing.height_px) == (480, 640)
 
 
@@ -358,7 +357,7 @@ async def test_orchestrate_pipeline_start__U06(
     db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
     """Trang PDF khổ 5.000pt, trần `PIPELINE_MAX_PIXELS=4_000_000` → DPI hạ để `w x h <=` trần."""
-    settings = OrchestrateSettings(PIPELINE_MAX_PIXELS=4_000_000)
+    settings = OrchestrateSettings(pipeline_max_pixels=4_000_000)
     data = make_pdf(1, size=(5000.0, 5000.0))
     scene, run = await _upload_and_run(
         db_sessionmaker, local_storage, data=data, file_name="huge.pdf", clock=fake_clock
@@ -367,6 +366,5 @@ async def test_orchestrate_pipeline_start__U06(
     await run_pipeline_start(
         payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock, settings=settings
     )
-    drawing = await _drawing_of(db_sessionmaker, scene.floor.pk)
-    assert drawing is not None
+    drawing = await _only_drawing(db_sessionmaker, scene.floor.pk)
     assert drawing.width_px * drawing.height_px <= 4_000_000

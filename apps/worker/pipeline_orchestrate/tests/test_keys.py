@@ -1,6 +1,7 @@
 """`keys.run_prefix` (B5-06a [8] mục "Khoá"): phần chung của mọi artifact một lượt chạy."""
 
 from apps.worker.pipeline_orchestrate.keys import run_prefix
+from apps.worker.pipeline_orchestrate.tests._helpers import LEVEL_ID
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.storage.keys import run_artifact
@@ -11,7 +12,7 @@ def test_run_prefix_matches_run_artifact_layout() -> None:
     clock = SystemClock()
     kwargs = {
         "project_id": new_id("prj", clock),
-        "level_id": "L-ABCDEFGHIJ",
+        "level_id": LEVEL_ID,
         "upload_id": new_id("upl", clock),
         "run_id": new_id("run", clock),
     }

@@ -3,9 +3,10 @@
 K36: `prepare_page` ([6] bước 3) phải chạy **ngoài** session DB, không thì một trang PDF to
 giữ khoá kết nối cả lúc dựng ảnh — với `db_pool_size` nhỏ (ENV.md), vài lượt chạy song song đủ
 cạn pool. Bộ nhớ: tiền xử lý ảnh 40 MP (trần `DEFAULT_MAX_PIXELS`) không được vượt 1,5 GiB RSS
-của tiến trình con — đo bằng `resource.getrusage` trong `multiprocessing.get_context("spawn")`
-để không lẫn với bộ nhớ của tiến trình pytest. Ranh giới: `pipeline_orchestrate` là hàm worker
-nhập (BE-00 §7) — không được nhập `apps.ml`, `torch`, `onnxruntime`, `fastapi` (khối [9]).
+của tiến trình con — con `spawn` tự đo `RUSAGE_SELF` rồi gửi về cha; `RUSAGE_CHILDREN` của cha
+là đỉnh của **mọi** con đã kết thúc trong tiến trình pytest nên lẫn con của test khác (NO-339).
+Ranh giới: `pipeline_orchestrate` là hàm worker nhập (BE-00 §7) — không được nhập `apps.ml`,
+`torch`, `onnxruntime`, `fastapi` (khối [9]).
 """
 
 import ast
@@ -115,11 +116,12 @@ async def test_run_pipeline_start_releases_pool_before_rendering(
 
 
 def _child_prepare_40mp(queue: "multiprocessing.Queue[int]") -> None:
-    """Tiến trình con: tiền xử lý một ảnh 40 MP rồi báo xong; đo ở tiến trình cha qua `RUSAGE_CHILDREN`."""
+    """Tiến trình con: tiền xử lý một ảnh 40 MP rồi gửi `ru_maxrss` (KiB) của **chính nó** về cha."""
     from PIL import Image
 
     from apps.worker.pipeline_orchestrate.preprocess import PagePlan, PageSource, prepare_page
     from apps.worker.pipeline_orchestrate.settings import get_orchestrate_settings
+    from apps.worker.pipeline_orchestrate.tests._helpers import LEVEL_ID
     from packages.core.clock import SystemClock
     from packages.core.ids import new_id
     from packages.vision.preprocess.tests.synthetic import encode
@@ -135,7 +137,7 @@ def _child_prepare_40mp(queue: "multiprocessing.Queue[int]") -> None:
             source = PageSource(
                 run_id=new_id("run", SystemClock()),
                 project_id=new_id("prj", SystemClock()),
-                level_id="L-ABCDEFGHIJ",
+                level_id=LEVEL_ID,
                 upload_id=new_id("upl", SystemClock()),
                 page_index=0,
                 original_key="original.png",
@@ -149,20 +151,22 @@ def _child_prepare_40mp(queue: "multiprocessing.Queue[int]") -> None:
             )
 
     asyncio.run(_go())
-    queue.put(0)
+    queue.put(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 
 @pytest.mark.perf
 def test_prepare_page_40mp_stays_under_memory_ceiling() -> None:
-    """Ảnh 40 MP trong tiến trình con `spawn`; `ru_maxrss` của con ≤ 1,5 GiB (khối [11] mục 3)."""
+    """Ảnh 40 MP trong tiến trình con `spawn`; `ru_maxrss` của con ≤ 1,5 GiB (khối [11] mục 3).
+
+    Đọc hàng **trước** `join` (khuôn `multiprocessing`: con chưa thoát khi còn dữ liệu chưa xả).
+    """
     ctx = multiprocessing.get_context("spawn")
     queue: multiprocessing.Queue[int] = ctx.Queue()
     process = ctx.Process(target=_child_prepare_40mp, args=(queue,))
     process.start()
-    process.join(timeout=60.0)
+    peak_kib = queue.get(timeout=60.0)
+    process.join(timeout=10.0)
     assert process.exitcode == 0
-    assert queue.get(timeout=1.0) == 0
-    peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     _log.info("prepare_page_40mp_ru_maxrss_kib=%d", peak_kib)
     assert peak_kib <= MEMORY_CEILING_KIB, f"ru_maxrss {peak_kib} KiB > trần {MEMORY_CEILING_KIB} KiB"
 
