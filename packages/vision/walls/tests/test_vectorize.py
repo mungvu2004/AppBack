@@ -139,9 +139,13 @@ def test_isolated_block_beside_a_wall_keeps_the_wall() -> None:
 
 
 def test_spur_branch_is_pruned() -> None:
+    """Gai 1 px nhô khỏi mặt tường (đầu tự do trên biên mặt nạ) là râu thinning: bị cắt.
+
+    Nét 4 px trước đây là cùng hình với vách thật thu nhỏ (NO-288), nên mẫu râu là nét 1 px.
+    """
     canvas = _canvas()
     _draw(canvas, (40, 150), (360, 150))
-    cv2.line(canvas, (200, 150), (200, 162), 1, 4)
+    cv2.line(canvas, (200, 150), (200, 158), 1, 1)
     result = vectorize_with_stats(np.asarray(canvas > 0))
     assert result.dropped["spur"] > 0
     assert len(result.walls) == 1
@@ -210,3 +214,41 @@ def test_keep_longest_drops_the_shortest_segment() -> None:
 def test_keep_longest_passes_short_lists_through() -> None:
     walls = (_stub(0, 50.0), _stub(1, 60.0))
     assert keep_longest(walls) == walls
+
+
+def _stub_on_outer_wall(
+    mm_per_px: float, partition_mm: int, face_mm: int, outer_mm: int = 220
+) -> tuple[NDArray[np.bool_], int, int]:
+    """Tường bao `outer_mm` nằm ngang, vách `partition_mm` chĩa xuống dài `face_mm` từ mặt trong rồi hở.
+
+    Giống đoạn vách giữa tường bao và khe cửa của `render_plan` (cửa cách tim vách ≥ 300 mm).
+    Trả mặt nạ, bề dày vách (px) và `y` mép dưới của vách.
+    """
+    outer = math.floor(outer_mm / mm_per_px + 0.5)
+    partition = math.floor(partition_mm / mm_per_px + 0.5)
+    face = math.floor(face_mm / mm_per_px + 0.5)
+    mask = np.zeros((300, 600), np.bool_)
+    mask[60 : 60 + outer, 50:550] = True
+    left = 300 - partition // 2
+    mask[60 + outer : 60 + outer + face, left : left + partition] = True
+    return mask, partition, 60 + outer + face
+
+
+@pytest.mark.parametrize("mm_per_px", [8.0, 10.0, 12.5])
+@pytest.mark.parametrize("partition_mm", [110, 150])
+@pytest.mark.parametrize("face_mm", [120, 150, 190])
+def test_vectorize__short_thin_wall_on_thick_wall_is_kept(mm_per_px: float, partition_mm: int, face_mm: int) -> None:
+    """Vách 110/150 mm ngắn chạm tường bao 220 mm là tường thật, không bị cắt như râu thinning."""
+    mask, partition, bottom = _stub_on_outer_wall(mm_per_px, partition_mm, face_mm)
+    stubs = [w for w in vectorize(mask) if w.start[0] == w.end[0] and abs(w.start[0] - 300) <= partition]
+    assert stubs, "mất vách ngắn"
+    assert abs(max(w.end[1] for w in stubs) - bottom) <= 3.0
+
+
+@pytest.mark.parametrize("mm_per_px", [8.0, 12.5])
+def test_vectorize__very_thin_wall_on_very_thick_wall_is_kept(mm_per_px: float) -> None:
+    """Vách 100 mm chạm tường 400 mm (T/J ≈ 0,2, mọi ngưỡng tỉ lệ đều cắt) vẫn là tường."""
+    mask, partition, bottom = _stub_on_outer_wall(mm_per_px, 100, 190, outer_mm=400)
+    stubs = [w for w in vectorize(mask) if w.start[0] == w.end[0] and abs(w.start[0] - 300) <= partition]
+    assert stubs, "mất vách ngắn"
+    assert abs(max(w.end[1] for w in stubs) - bottom) <= 3.0

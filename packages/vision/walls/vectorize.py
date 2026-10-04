@@ -31,12 +31,13 @@ _MIN_EPSILON: Final = 1.5
 _EPSILON_RATIO: Final = 0.25
 _SPUR_RATIO: Final = 2.0
 """Nhánh cụt dài hơn ngần này lần distance tại nút giao thì là tường thật (bước 4)."""
-_SPUR_TIP_RATIO: Final = 0.5
-"""Đầu tự do của nhánh cụt phải mảnh hơn ngần này lần nút giao mới coi là râu thinning.
+_SPUR_TIP_PX: Final = 1.7
+"""Đầu tự do của râu thinning nằm trên điểm biên mặt nạ: distance ≤ ngần này (px) mới là râu.
 
-Đo trên `render_plan(104)`: đoạn tường thật cạnh khe cửa dài 28,4 px ≤ 2 x 16,0 nhưng đầu
-tự do có distance 9,0 (mặt tường thật) nên giữ; râu ở chỗ nhô ra có distance 2,0 so với nút
-giao 6,4 nên bỏ. Không có điều kiện này thì tường cạnh cửa biến mất (khối [8], khe ô mở).
+`DIST_L2` mask 5 cho điểm biên 1,0 hay 1,4; tâm dải mảnh nhất còn sau phép mở `k ≥ 3`
+có distance 2,0, vách 110 mm trên `render_plan` có 4,0-7,0. 1,7 nằm giữa khoảng trống
+lượng tử (1,4; 2,0) nên không sát số đo nào. Tiêu chí tỉ lệ `T/J < 0,5` cũ cắt nhầm vách
+110 mm chạm tường bao 220 mm (T/J = 0,40) và mọi vách rất mảnh chạm tường rất dày (NO-288).
 """
 MAX_WALLS: Final = 20_000
 """Trần số tường của `WallsResult` (B5-01); `keep_longest` cắt về đúng trần này."""
@@ -227,14 +228,14 @@ def _path_length(graph: _Graph, path: NDArray[np.int32]) -> float:
 def _is_spur(graph: _Graph, path: NDArray[np.int32]) -> bool:
     """Nhánh cụt: đúng một đầu là nút bậc ≤ 1, dài ≤ 2 x distance tại nút giao (bước 4).
 
-    Thêm điều kiện đầu tự do phải nằm ở góc chứ không ở mặt tường (`_SPUR_TIP_RATIO`):
-    đoạn tường thật còn lại cạnh một khe cửa cũng ngắn, bỏ nó là mất tường thật.
+    Thêm điều kiện đầu tự do nằm trên biên mặt nạ (`_SPUR_TIP_PX`): râu Zhang-Suen chạy ra
+    góc nên đầu nó có distance ≈ 1; vách thật ngắn (cạnh khe cửa) dừng giữa bề dày của nó.
     """
     head, tail = int(graph.node_of[path[0]]), int(graph.node_of[path[-1]])
     if head == tail or graph.node_leaf[head] == graph.node_leaf[tail]:
         return False
     junction, tip = (tail, head) if graph.node_leaf[head] else (head, tail)
-    if graph.node_dist[tip] >= _SPUR_TIP_RATIO * graph.node_dist[junction]:
+    if graph.node_dist[tip] > _SPUR_TIP_PX:
         return False
     return bool(_path_length(graph, path) <= _SPUR_RATIO * graph.node_dist[junction])
 
@@ -452,19 +453,22 @@ def _resolve(alias: dict[_Key, _Key], key: _Key) -> _Key:
     return key
 
 
-def _drop_short(segs: list[_Seg]) -> tuple[list[_Seg], int]:
+def _drop_short(segs: list[_Seg], graph: _Graph) -> tuple[list[_Seg], int]:
     """Bỏ đoạn ngắn hơn bề dày của nó (bước 10); trả số đoạn thật sự mất.
 
     Đoạn ngắn mà **hai** đầu đều nối đoạn khác chỉ là vát góc do `approxPolyDP` cắt
-    khúc cua vuông: nó được hấp thụ (nhập hai khoá làm một để hai đoạn kia gặp nhau ở
+    khúc cua vuông: nó được hấp thụ (nhập hai khoá làm một để hai đầu kia gặp nhau ở
     giao điểm, bước 8) chứ không phải tường bị mất, nên không đếm vào `short`.
+    Đoạn một đầu là lá riêng, đầu kia không phải lá được tính cả phần bước 9 sẽ kéo dài ở
+    đầu lá (distance tại đó): vách ngắn chạm tường dày không bị bỏ chỉ vì xương hụt ½
+    bề dày ở đầu tự do (NO-288).
     """
     uses = Counter(key for seg in segs for key in (seg.a_key, seg.b_key))
     alias: dict[_Key, _Key] = {}
     keep: list[_Seg] = []
     short = 0
     for seg in segs:
-        if seg.length() >= seg.thickness:
+        if seg.length() + _leaf_reach(seg, uses, graph) >= seg.thickness:
             keep.append(seg)
         elif uses[seg.a_key] > 1 and uses[seg.b_key] > 1:
             alias[seg.b_key] = seg.a_key
@@ -474,6 +478,19 @@ def _drop_short(segs: list[_Seg]) -> tuple[list[_Seg], int]:
         seg.a_key = _resolve(alias, seg.a_key)
         seg.b_key = _resolve(alias, seg.b_key)
     return keep, short
+
+
+def _leaf_reach(seg: _Seg, uses: Counter[_Key], graph: _Graph) -> float:
+    """Phần `_extend_leaves` sẽ kéo dài đoạn: distance tại đầu lá riêng khi đầu kia không phải lá.
+
+    Đầu kia là nút giao hay đỉnh DP — kể cả nút giao chữ T mà `_fuse` đã nuốt khoá của tường
+    xuyên nên chỉ còn đoạn này dùng. Đoạn cô lập (hai đầu đều lá) không được cộng, bỏ như cũ.
+    """
+    for leaf, other in ((seg.a_key, seg.b_key), (seg.b_key, seg.a_key)):
+        other_is_leaf = other[0] == 0 and bool(graph.node_leaf[other[1]])
+        if uses[leaf] == 1 and leaf[0] == 0 and graph.node_leaf[leaf[1]] and not other_is_leaf:
+            return float(graph.node_dist[leaf[1]])
+    return 0.0
 
 
 def _ends_by_key(segs: list[_Seg]) -> dict[_Key, list[tuple[_Seg, bool]]]:
@@ -577,7 +594,7 @@ def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
     raw = [seg for index, path in enumerate(graph.branches) for seg in _branch_segments(index, path, graph, dist, mask)]
     for seg in raw:
         seg.axis = _snap_axis(seg)
-    fused, tiny = _drop_short([_fuse(members) for members in _groups(raw)])
+    fused, tiny = _drop_short([_fuse(members) for members in _groups(raw)], graph)
     shared = _ends_by_key(fused)
     _place_shared(shared)
     _extend_leaves(shared, graph)
