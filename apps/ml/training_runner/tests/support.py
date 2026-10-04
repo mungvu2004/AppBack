@@ -28,9 +28,6 @@ from packages.ml_contracts.synthetic import render_plan
 from packages.storage.keys import dataset_object
 from packages.storage.port import ObjectStorage
 
-# Nhập lại (không định nghĩa lại, R-02): test_runner/test_runtime nhập tên này từ đây.
-from packages.testing.fixtures.ml_settings import ml_settings_cache as ml_settings_cache
-
 TINY_METRIC_VALUE: Final = 0.5
 
 
