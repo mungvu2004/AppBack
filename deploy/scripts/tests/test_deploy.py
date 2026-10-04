@@ -403,7 +403,7 @@ def test_lib_json_escape_roundtrips_through_json_and_unescape__no189() -> None:
     lib = REPO_ROOT / "deploy" / "scripts" / "lib.sh"
     for original in ('a"b', "c\\d", "x\ny\tz", 'tệp "lạ"\\n.bin', ""):
         out = subprocess.run(  # noqa: S603 — bash + tham số cố định của test
-            ["bash", "-c", f'source "{lib.as_posix()}"; e="$(json_escape "$ORIGINAL")"; printf %s "$e"'],  # noqa: S607 — bash
+            ["bash", "-c", f'source "{lib.as_posix()}"; json_escape "$ORIGINAL"'],  # noqa: S607 — bash
             env={**os.environ, "ORIGINAL": original},
             capture_output=True, text=True, check=True, encoding="utf-8",
         )  # fmt: skip
