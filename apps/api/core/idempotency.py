@@ -79,7 +79,7 @@ class Replay(Exception):  # noqa: N818 — không phải lỗi: đây là lối 
 def check_key(raw: str) -> str:
     """Header sai mẫu → 422 `VALIDATION` (fail-closed: không im lặng bỏ qua idempotency)."""
     if not _KEY_RE.fullmatch(raw):
-        raise VALIDATION.error(field=KEY_FIELD, count=1)
+        raise VALIDATION.error(field=KEY_FIELD)
     return raw
 
 
