@@ -170,9 +170,7 @@ async def test_send_token_mail__J03(
         await run_send_token_mail(db_sessionmaker, fake_clock, [row.id])
     assert excinfo.value.code == MAIL_REJECTED
 
-    record = next(
-        r for r in caplog.records if r.msg == "token_mail_failed" and getattr(r, "token_id", None) == row.id
-    )
+    record = next(r for r in caplog.records if r.msg == "token_mail_failed" and getattr(r, "token_id", None) == row.id)
     assert record.smtp_code == 550  # type: ignore[attr-defined]  # LogRecord nhận thuộc tính từ `extra=`
 
     async with db_sessionmaker() as check:
