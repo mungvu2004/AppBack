@@ -5,14 +5,13 @@ R-07): kiểm lại đúng luật tên/mm mà không tin bên gọi (kể cả B
 """
 
 import math
-import unicodedata
 from typing import Annotated, Any, Final
 
 from pydantic import BeforeValidator, JsonValue, field_validator
 
 from apps.api.core.wire import WireRequest
 from packages.core.ids import is_spatial_id
-from packages.core.text import nfc
+from packages.core.text import clean_text
 
 NAME_MAX: Final = 120
 ORDER_MIN: Final = 0
@@ -23,24 +22,14 @@ HEIGHT_MIN: Final = 2_000
 HEIGHT_MAX: Final = 10_000
 _ROUND_TOLERANCE: Final = 0.01
 
-_BIDI: Final = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
-"""U+202A-202E, U+2066-2069 (B2-03 [2]) - hẹp hơn `_BIDI` của `apps/api/projects/schemas.py`.
-
-Bản sao thứ ba của luật Cc/bidi (nợ `DEBT.md` `NO-169`, cùng `apps/api/auth_recovery/router.py`
-và `apps/api/me/schemas.py`): đường nâng cấp là gom về một hàm dùng chung ở `packages/core/text.py`
-(B0-02), ba module gọi lại — không tự gộp ở đây vì `packages/core` ngoài whitelist B2-03."""
-
 
 def clean_name(value: Any) -> Any:
     """Trim + NFC rồi 1-120 ký tự, cấm Cc và ký tự đảo chiều; không phải chuỗi thì trả nguyên."""
     if not isinstance(value, str):
         return value
-    text = nfc(value.strip())
+    text = clean_text(value)
     if not 1 <= len(text) <= NAME_MAX:
         raise ValueError(f"name phải 1-{NAME_MAX} ký tự sau chuẩn hoá")
-    bad = next((ch for ch in text if ch in _BIDI or unicodedata.category(ch) == "Cc"), None)
-    if bad is not None:
-        raise ValueError(f"name chứa ký tự cấm U+{ord(bad):04X}")
     return text
 
 
