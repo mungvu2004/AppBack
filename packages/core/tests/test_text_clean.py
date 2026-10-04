@@ -2,7 +2,7 @@
 
 import pytest
 
-from packages.core.text import clean_text
+from packages.core.text import clean_text, first_forbidden_char
 
 
 def test_clean_text__trims_and_composes_nfc() -> None:
@@ -30,3 +30,11 @@ def test_clean_text__allow_controls_is_explicit() -> None:
     assert clean_text("a\nb\tc", allow_controls="\n\t") == "a\nb\tc"
     with pytest.raises(ValueError, match=r"U\+0000"):
         clean_text("a\x00b", allow_controls="\n\t")
+
+
+def test_first_forbidden_char__reports_first_or_none() -> None:
+    """`first_forbidden_char` trả ký tự cấm đầu tiên; chuỗi sạch → `None`."""
+    assert first_forbidden_char("abc") is None
+    assert first_forbidden_char("a\x00b\u202ec") == "\x00"
+    assert first_forbidden_char("a\u200eb") is None
+    assert first_forbidden_char("a\u200eb", bidi_marks=True) == "\u200e"

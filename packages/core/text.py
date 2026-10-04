@@ -19,6 +19,18 @@ def normalize_email(s: str) -> str:
     return nfc(s).strip().casefold()
 
 
+def first_forbidden_char(text: str, *, bidi_marks: bool = False, allow_controls: str = "") -> str | None:
+    """Ký tự cấm đầu tiên của `text` (Cc không nằm trong `allow_controls`, hay đảo chiều), không có → `None`.
+
+    Một nguồn dữ liệu của luật Cc/bidi: `clean_text` ném lỗi qua đây, còn `packages.domain`
+    (hợp đồng từ chối, không trim) dùng thẳng vị từ này (NO-169).
+    """
+    blocked = _BIDI_OVERRIDE | _BIDI_MARKS if bidi_marks else _BIDI_OVERRIDE
+    return next(
+        (ch for ch in text if ch in blocked or (unicodedata.category(ch) == "Cc" and ch not in allow_controls)), None
+    )
+
+
 def clean_text(value: str, *, bidi_marks: bool = False, allow_controls: str = "") -> str:
     """`nfc(value.strip())`; ký tự điều khiển (Cc) hay đảo chiều → `ValueError` nêu điểm mã.
 
@@ -28,10 +40,7 @@ def clean_text(value: str, *, bidi_marks: bool = False, allow_controls: str = ""
     `allow_controls` miễn một số ký tự Cc (ghi chú cho xuống dòng/tab).
     """
     text = nfc(value.strip())
-    blocked = _BIDI_OVERRIDE | _BIDI_MARKS if bidi_marks else _BIDI_OVERRIDE
-    bad = next(
-        (ch for ch in text if ch in blocked or (unicodedata.category(ch) == "Cc" and ch not in allow_controls)), None
-    )
+    bad = first_forbidden_char(text, bidi_marks=bidi_marks, allow_controls=allow_controls)
     if bad is not None:
         raise ValueError(f"chuỗi chứa ký tự cấm U+{ord(bad):04X}")
     return text
