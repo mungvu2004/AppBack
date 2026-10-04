@@ -34,6 +34,29 @@ APPBACK_TAG_RE='^(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12}|[a-z0-9][a-z0-9._-]{0
 DRY_RUN="${DRY_RUN:-0}"
 STEP_NO=0
 
+# Thoát chuỗi "$1" thành thân một chuỗi JSON (không có dấu nháy bao): `\`, `"` và ký tự điều
+# khiển thường gặp. Thay `python3 json.dumps` — máy Windows chỉ có shim rỗng của Microsoft
+# Store (NO-189); dùng chung cho manifest.json (backup.sh) và thân cảnh báo (healthcheck.sh).
+# Mẫu/thay thế đặt trong biến có nháy vì dạng `${s//\\/…}` đếm sai số dấu `\` giữa các bản bash.
+json_escape() {
+  local s="$1" bs=$'\\' q='"'
+  s=${s//"$bs"/"$bs$bs"}
+  s=${s//"$q"/"$bs$q"}
+  s=${s//$'\n'/"${bs}n"}
+  s=${s//$'\r'/"${bs}r"}
+  s=${s//$'\t'/"${bs}t"}
+  printf '%s' "$s"
+}
+
+# Ngược của json_escape cho một khoá chuỗi đọc từ manifest.json: `\"` → `"`, còn `\\`, `\n`,
+# `\uXXXX`… do `printf %b` giải (đọc được cả manifest cũ do python json.dumps ghi, vốn thoát
+# ký tự ngoài ASCII thành \uXXXX).
+json_unescape() {
+  local bs=$'\\' q='"'
+  local s=${1//"$bs$q"/"$q"}
+  printf '%b' "$s"
+}
+
 # Đúng mẫu tag hợp đồng §2 (release, sha-<12>, hoặc nhánh tự do cho diễn tập).
 validate_tag() {
   [[ "$1" =~ $APPBACK_TAG_RE ]]

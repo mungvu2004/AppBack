@@ -236,6 +236,9 @@ bash scripts/rollback.sh v1.2.2                    # về tag chỉ định
 `deploy.sh` tự chạy `python -m apps.api.library.cli publish` sau migrate (thư viện `.glb`
 không rỗng tới lượt lịch đầu); hỏng bước này chỉ cảnh báo, beat publish lại theo lịch.
 Khi triển khai tay không qua `deploy.sh`, chạy lệnh đó sau migrate + seed.
+`restore.sh` **không** chạy `publish`: nó đổ lại cả CSDL lẫn bucket/volume object từ cùng một
+bản sao lưu nên thư viện `.glb` đã có đủ; chạy lại `publish` chỉ cần khi khôi phục sang kho
+object trống.
 
 **Kiểm:** `cat current_tag`; `curl -fsS http://127.0.0.1/api/health`;
 `docker compose ps` chỉ có một `api` đang chạy sau khi lệnh kết thúc.

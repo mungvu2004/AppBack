@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -384,3 +385,32 @@ def test_readme_lists_required_smtp_vars__no196() -> None:
     for name in required:
         assert re.search(rf"^\| `{name}` \|", readme, re.MULTILINE), f"README: thiếu dòng bảng {name}"
         assert name in section12, f"README §12: không nhắc {name}"
+
+
+def test_readme_restore_documents_library_publish_decision__no242() -> None:
+    """NO-242 / C17b: `restore.sh` không chạy `publish` (nó đổ lại CSDL + object cùng một bản
+    sao lưu) — quyết định đó phải được README ghi rõ cạnh lệnh `publish`, và `restore.sh` đúng
+    là không gọi nó."""
+    readme = (REPO_ROOT / "deploy" / "scripts" / "README.md").read_text(encoding="utf-8")
+    assert re.search(r"`restore\.sh` \*\*không\*\* chạy `publish`", readme), "README: thiếu quyết định restore/publish"
+    restore = (REPO_ROOT / "deploy" / "backup" / "restore.sh").read_text(encoding="utf-8")
+    assert "library.cli" not in restore
+
+
+def test_lib_json_escape_roundtrips_through_json_and_unescape__no189() -> None:
+    """`json_escape` (thay `python3 json.dumps`) cho chuỗi mà `json.loads` đọc lại đúng, và
+    `json_unescape` đảo ngược nó — kể cả dấu `"`, `\\`, xuống dòng, tab và chữ Việt."""
+    lib = REPO_ROOT / "deploy" / "scripts" / "lib.sh"
+    for original in ('a"b', "c\\d", "x\ny\tz", 'tệp "lạ"\\n.bin', ""):
+        out = subprocess.run(  # noqa: S603 — bash + tham số cố định của test
+            ["bash", "-c", f'source "{lib.as_posix()}"; e="$(json_escape "$ORIGINAL")"; printf %s "$e"'],  # noqa: S607 — bash
+            env={**os.environ, "ORIGINAL": original},
+            capture_output=True, text=True, check=True, encoding="utf-8",
+        )  # fmt: skip
+        assert json.loads(f'"{out.stdout}"') == original, f"{original!r} → {out.stdout!r}"
+        back = subprocess.run(  # noqa: S603 — bash + tham số cố định của test
+            ["bash", "-c", f'source "{lib.as_posix()}"; json_unescape "$ESCAPED"'],  # noqa: S607 — bash
+            env={**os.environ, "ESCAPED": out.stdout},
+            capture_output=True, text=True, check=True, encoding="utf-8",
+        )  # fmt: skip
+        assert back.stdout == original, f"{out.stdout!r} → {back.stdout!r}, muốn {original!r}"

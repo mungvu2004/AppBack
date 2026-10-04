@@ -191,6 +191,7 @@ def _run_send(tmp_path: Path, *, webhook_url: str) -> Any:
     script.write_text("set -euo pipefail\n" + _send_script(), encoding="utf-8")
     return run_script(
         script,
+        broken_python3=False,  # bước của workflow GitHub: runner có python3 thật
         env={
             "WORKFLOW_NAME": "Deploy",
             "CONCLUSION": "failure",
