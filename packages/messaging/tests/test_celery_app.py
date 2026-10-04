@@ -34,7 +34,7 @@ from packages.messaging.settings import MessagingSettings, get_messaging_setting
 from packages.messaging.tasks import TaskPayload
 from packages.observability import exporter as exporter_module
 from packages.observability.settings import reset_observability_settings_cache
-from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
+from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads, queued_tasks
 from packages.testing.fixtures.services import refused_url
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -168,6 +168,20 @@ def test_producer_app_does_not_set_the_inline_flag(messaging_env: None) -> None:
     producer_app()
 
     assert AFTER_COMMIT_INLINE_ENV not in os.environ
+
+
+def test_queued_tasks__names_every_message_on_a_shared_queue_newest_first(messaging_env: None) -> None:
+    """Hai task khác nhau trên cùng hàng: `queued_tasks` trả tên cả hai (`LPUSH` → mới nhất trước)."""
+    client = broker_redis_sync(get_messaging_settings())
+    try:
+        client.delete(*QUEUES)
+        send_task("pipeline.drawings.render", Ping(run_id="run_1"))
+        send_task("pipeline.build.run", Ping(run_id="run_2"))
+
+        assert queued_tasks(client, "pipeline.cpu") == ["pipeline.build.run", "pipeline.drawings.render"]
+    finally:
+        client.delete(*QUEUES)
+        client.close()
 
 
 def test_send_task_puts_one_message_on_the_queue_named_by_the_prefix(messaging_env: None) -> None:
