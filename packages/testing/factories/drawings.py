@@ -17,14 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.drawings import new_page_key
 from apps.api.drawings.settings import get_drawings_settings
-from apps.api.drawings.uploads import chunk_key as chunk_key
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.text import nfc
 from packages.db.models.drawings import DrawingRow, UploadChunkRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
-from packages.storage.keys import upload_original
+from packages.storage.keys import upload_chunk, upload_original
 from packages.storage.port import ObjectStorage
 
 DEFAULT_FILE_NAME: Final = "ban-ve.png"
@@ -34,8 +33,6 @@ _EXT_TYPE: Final = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg
 _EXT_KIND: Final = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf"}
 
 PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
-
-"""`chunk_key` xuất lại từ `apps.api.drawings.uploads`: một luật khoá khúc, một chủ (đính chính §15)."""
 
 
 def _extension(file_name: str) -> str:
@@ -104,7 +101,7 @@ async def make_complete_upload(
     for index in range(upload.chunk_count):
         piece = data[index * chunk_bytes : (index + 1) * chunk_bytes]
         digest = hashlib.sha256(piece).hexdigest()
-        key = chunk_key(project.id, floor.level_id, upload.id, index, digest)
+        key = upload_chunk(project.id, floor.level_id, upload.id, index, digest)
         await storage.put(key, piece, content_type="application/octet-stream", max_bytes=chunk_bytes)
         db.add(
             UploadChunkRow(upload_id=upload.id, chunk_index=index, size_bytes=len(piece), sha256=digest, object_key=key)

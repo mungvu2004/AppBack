@@ -37,6 +37,7 @@ from packages.db.hooks import after_commit_idle, on_after_commit
 from packages.db.models.admin_ml_datasets import DatasetVersionRow
 from packages.messaging import periodic, send_task
 from packages.messaging.payloads.datasets import BUILD_VERSION_TASK, BuildDatasetVersionPayload
+from packages.storage.keys import DATASETS_PREFIX
 from packages.storage.port import ObjectStorage
 
 _log: Final = logging.getLogger(__name__)
@@ -54,7 +55,6 @@ MAX_REQUEUES: Final = 3
 PURGE_MIN_AGE: Final = timedelta(hours=24)
 """Object trẻ hơn mức này có thể thuộc một lượt dựng đang chạy — không đụng (khuôn B6-01)."""
 
-DATASETS_PREFIX: Final = "ml/datasets/"
 _VERSION_DEPTH: Final = 3
 """`ml/datasets/{dsv}/…` — khoá ít đoạn hơn không thuộc một phiên bản nào."""
 
