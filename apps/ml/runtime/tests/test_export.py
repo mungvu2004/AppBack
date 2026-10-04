@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import tomllib
 import types
 from pathlib import Path
 from typing import Any, ClassVar
@@ -16,7 +17,7 @@ from onnx import helper
 from apps.ml.runtime import export_pinned
 from apps.ml.runtime.errors import MODEL_CHECKSUM_MISMATCH
 from apps.ml.runtime.export import export_onnx, normalize_onnx, write_atomic
-from apps.ml.runtime.export_pinned import export_all, wheel_file
+from apps.ml.runtime.export_pinned import YOLO_EXPORT_TOOLCHAIN, export_all, wheel_file
 from apps.ml.runtime.export_yolo import export_yolo
 from apps.ml.runtime.tests.helpers import add_model, external_tensor, model, sha
 from packages.messaging.tasks import PermanentError
@@ -178,6 +179,16 @@ def test_export_yolo_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert "YOLO_CONFIG_DIR" not in os.environ
     with pytest.raises(PermanentError):
         export_yolo(pt, tmp_path / "x.onnx", source_sha256="1" * 64)
+
+
+def test_export_all__yolo_toolchain_matches_lock() -> None:
+    """NO-061: torch/ultralytics trong `uv.lock` đúng bộ đã đo `onnx_sha256` YOLO; lock đổi thì đỏ ở cổng."""
+    lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
+    locked = {pkg["name"]: pkg["version"] for pkg in lock["package"] if pkg["name"] in YOLO_EXPORT_TOOLCHAIN}
+    assert locked == YOLO_EXPORT_TOOLCHAIN, (
+        "uv.lock đổi bản torch/ultralytics: xuất lại ONNX yolov8n/yolov8s trên `.pt` ghim, SHA đổi thì sửa PINNED "
+        "kèm revision B6-01 mới, rồi sửa YOLO_EXPORT_TOOLCHAIN"
+    )
 
 
 def test_pinned_rapidocr_matches_wheel() -> None:
