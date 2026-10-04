@@ -118,6 +118,7 @@ async def test_put_on_stopped_minio_returns_503(fake_clock: FakeClock) -> None:
 
 
 async def test_refused_endpoint_returns_503(fake_clock: FakeClock) -> None:
+    """Endpoint từ chối kết nối → 503 `DEPENDENCY_UNAVAILABLE` (C13)."""
     storage = storage_on(client_for(urlsplit(refused_url("http")).netloc), "bucket-nao-do", fake_clock)
 
     with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE"):
@@ -229,15 +230,18 @@ class _FullDiskSpool:
         """Nhận mọi tham số của `SpooledTemporaryFile` và bỏ qua."""
 
     def __enter__(self) -> "_FullDiskSpool":
+        """Vào ngữ cảnh `with`: trả chính bộ đệm giả."""
         return self
 
     def __exit__(self, *args: object) -> None:
         """Không giữ tài nguyên nào."""
 
     def write(self, data: bytes) -> int:
+        """Luôn báo đĩa đầy."""
         raise OSError(errno.ENOSPC, "tiêm lỗi đĩa đầy")
 
     def seek(self, offset: int) -> int:
+        """Trả nguyên `offset` (bộ đệm giả không có dữ liệu)."""
         return offset
 
 
@@ -260,3 +264,37 @@ async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storag
 
     with pytest.raises(S3Error, match="AccessDenied"):
         await storage.ensure_bucket("https://appback.test")
+
+
+async def test_delete__missing_bucket_is_an_app_error(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError`, không lọt `S3Error` thô."""
+    endpoint, access_key, secret_key = minio_endpoint
+    storage = storage_on(client_for(endpoint, access_key, secret_key), "bucket-chua-tao-bao-gio", fake_clock)
+
+    with pytest.raises(AppError):
+        await storage.delete(KEY)
+
+
+async def test_delete__denied_request_is_an_app_error(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """NO-230: `AccessDenied` (thiếu quyền `DeleteObject`) của `delete` thành `AppError`."""
+    endpoint, access_key, _ = minio_endpoint
+    storage = storage_on(client_for(endpoint, access_key, "sai-khoa-bi-mat"), "bucket-nao-do", fake_clock)
+
+    with pytest.raises(AppError):
+        await storage.delete(KEY)
+
+
+async def test_signed_url__without_a_public_client_is_refused(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """Tiến trình không có `PUBLIC_BASE_URL` (ml): kho S3 dựng với `public_client=None` từ chối ký (NO-203)."""
+    endpoint, access_key, secret_key = minio_endpoint
+    client = client_for(endpoint, access_key, secret_key)
+    storage = S3Storage(client=client, public_client=None, bucket="b", clock=fake_clock)
+
+    with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL"):
+        await storage.signed_url(KEY, disposition="attachment")

@@ -1,6 +1,7 @@
 """Test `load_plan`, `download`, `check_disk` trên kho đĩa thật (`local_storage`, B6-03b [3])."""
 
 from collections import namedtuple
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -22,11 +23,14 @@ from apps.ml.training_runner.tests.support import (
     train_payload,
 )
 from packages.core.clock import SystemClock
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
+from packages.core.errors import AppError
 from packages.core.ids import new_id
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.datasets import ManifestEntry
 from packages.storage.keys import dataset_object
 from packages.storage.local import LocalDiskStorage
+from packages.storage.port import CHUNK_SIZE
 
 _FakeUsage = namedtuple("_FakeUsage", ["free"])
 
@@ -158,3 +162,36 @@ def test_check_disk_boundary_fails() -> None:
     with pytest.raises(PermanentError) as excinfo:
         check_disk(Path("."), 1000, disk_usage=lambda _directory: _FakeUsage(free=1199))
     assert excinfo.value.code == TRAINING_DISK_FULL
+
+
+class _BusyStorage(LocalDiskStorage):
+    """Kho đĩa thật nhưng `open_read` báo kho bận (503) — sự cố tạm của phụ thuộc, không phải dữ liệu hỏng."""
+
+    def open_read(self, key: str, *, chunk_size: int = CHUNK_SIZE) -> AsyncIterator[bytes]:
+        """Luôn ném `DEPENDENCY_UNAVAILABLE` ở lượt đọc đầu tiên."""
+        return _busy()
+
+
+async def _busy() -> AsyncIterator[bytes]:
+    """Generator rỗng ném 503 khi được duyệt (đủ để là async generator)."""
+    raise AppError(DEPENDENCY_UNAVAILABLE, retry_after=1)
+    yield b""
+
+
+async def test_load_plan__storage_unavailable_stays_retryable(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """R-16: kho 503 khi đọc manifest lan nguyên `AppError` (thử lại được), không thành lỗi vĩnh viễn."""
+    dataset = await put_dataset(local_storage, train=1, validation=1)
+    busy = _BusyStorage(tmp_path / "objects", SystemClock(), None)
+    with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE"):
+        await load_plan(busy, train_payload(dataset))
+
+
+async def test_download__storage_unavailable_stays_retryable(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """R-16: kho 503 khi tải mẫu lan nguyên `AppError`, và tệp dở vẫn bị xoá."""
+    dataset = await put_dataset(local_storage, train=1, validation=1)
+    payload = train_payload(dataset)
+    plan = await load_plan(local_storage, payload)
+    busy = _BusyStorage(tmp_path / "objects", SystemClock(), None)
+    with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE"):
+        await download(busy, payload, plan, tmp_path / "data")
+    assert not (tmp_path / "data" / plan.entries[0].path).exists()

@@ -337,3 +337,32 @@ async def _rows_for(db: AsyncSession, project_id: str, entity_id: str) -> int:
         .where(FloorEntityIdRow.project_id == project_id, FloorEntityIdRow.entity_id == entity_id)
     )
     return (await db.execute(stmt)).scalar_one()
+
+
+async def test_soft_deleted_owner_exactly_at_window_is_reclaimed(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Biên: chủ xoá mềm đúng `FLOOR_RESTORE_WINDOW_S` giây trước đã hết cửa sổ → nhận lại được."""
+    scene = await make_scene(db_session, floors=2)
+    mine, other = scene.floors
+    await claim_entity_ids(
+        db_session,
+        project_id=scene.project.id,
+        floor_pk=other.pk,
+        removed=(),
+        added=("W-WALL000001",),
+        clock=fake_clock,
+    )
+    window = get_floors_settings().floor_restore_window_s
+    await _soft_delete(db_session, other.pk, at=fake_clock.now() - timedelta(seconds=window))
+
+    conflicts = await claim_entity_ids(
+        db_session,
+        project_id=scene.project.id,
+        floor_pk=mine.pk,
+        removed=(),
+        added=("W-WALL000001",),
+        clock=fake_clock,
+    )
+
+    assert conflicts == ()

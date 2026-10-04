@@ -11,13 +11,13 @@ song song xin khoá theo cùng một thứ tự và không thể chờ vòng (`4
 """
 
 from collections.abc import Collection
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import ARRAY, Text, delete, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.floors.settings import get_floors_settings
+from apps.api.drawings.runs import restore_window_elapsed
 from packages.core.clock import Clock
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorEntityIdRow
@@ -89,7 +89,6 @@ async def claim_entity_ids(
         return ()
     await _insert_new(db, project_id=project_id, floor_pk=floor_pk, added=wanted, now=now)
 
-    cutoff = now - timedelta(seconds=get_floors_settings().floor_restore_window_s)
     others = (
         await db.execute(
             select(FloorEntityIdRow.entity_id, FloorEntityIdRow.floor_pk, FloorRow.deleted_at)
@@ -103,7 +102,9 @@ async def claim_entity_ids(
         )
     ).all()
 
-    live = {row.entity_id for row in others if row.deleted_at is None or row.deleted_at >= cutoff}
+    live = {
+        row.entity_id for row in others if row.deleted_at is None or not restore_window_elapsed(row.deleted_at, clock)
+    }
     expired = [row for row in others if row.entity_id not in live]
     # Nhận lại phải là `UPDATE` **từng id** vì mỗi câu cần điều kiện `floor_pk = :chủ_cũ` riêng
     # của id đó. Đường này hiếm (chủ cũ đã xoá mềm quá cửa sổ) và `others` đã sắp theo

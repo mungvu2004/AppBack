@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.errors import FLOOR_DELETED
-from apps.api.drawings.runs import fail_run, lock_run, record_step, start_run
+from apps.api.drawings.runs import fail_run, lock_run, record_step, restore_window_elapsed, start_run
 from apps.api.drawings.tests._helpers import Scene, make_scene, read_run, sync_bus_reset
 from apps.api.floors.settings import get_floors_settings
 from apps.api.projects.summaries import unregister_floor
@@ -431,3 +431,25 @@ async def test_fail_run_rejects_a_non_upper_snake_code(db_session: AsyncSession,
     _, run = await _started_run(db_session, fake_clock)
     with pytest.raises(ValueError, match="UPPER_SNAKE"):
         await fail_run(db_session, run_id=run.id, error_code="stalled", clock=fake_clock)
+
+
+def test_restore_window_elapsed__boundary(fake_clock: FakeClock) -> None:
+    """NO-297: luật cửa sổ khôi phục công khai — chưa xoá = chưa hết; đúng `window` giây = đã hết."""
+    window = get_floors_settings().floor_restore_window_s
+    assert restore_window_elapsed(None, fake_clock) is False
+    assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window - 1), fake_clock) is False
+    assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window), fake_clock) is True
+
+
+async def test_record_step_fails_the_run_exactly_at_the_window_edge(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Biên cửa sổ: đúng `FLOOR_RESTORE_WINDOW_S` giây sau khi xoá là đã hết (nửa mở [0, window))."""
+    scene, run = await _started_run(db_session, fake_clock)
+    scene.floor.deleted_at = fake_clock.now()
+    await unregister_floor(db_session, project_id=scene.project.id, floor_level_id=scene.floor.level_id)
+    await db_session.flush()
+    fake_clock.advance(timedelta(seconds=get_floors_settings().floor_restore_window_s))
+
+    assert await record_step(db_session, run_id=run.id, step="preprocess", status="running", clock=fake_clock) is None
+    assert (await read_run(db_session, run.id)).error_code == FLOOR_DELETED

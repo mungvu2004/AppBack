@@ -7,7 +7,7 @@ dựng khoá hay ký URL.
 import asyncio
 import errno
 import unicodedata
-from collections.abc import AsyncIterable, AsyncIterator, Iterator
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -17,6 +17,7 @@ from urllib.parse import quote
 
 from packages.core.clock import Clock
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND
+from packages.core.errors import AppError
 from packages.core.instants import floor_to_hour
 from packages.storage.keys import server_chosen_kind
 from packages.storage.sniff import IMAGE_KINDS, ImageKind, Kind
@@ -43,6 +44,8 @@ Disposition = Literal["attachment", "inline"]
 
 @dataclass(frozen=True, slots=True)
 class ObjectInfo:
+    """Metadata của một object trong kho."""
+
     key: str
     size: int
     sha256: str
@@ -55,6 +58,8 @@ class ObjectInfo:
 
 @dataclass(frozen=True, slots=True)
 class SignedUrl:
+    """URL ký sẵn và hạn của nó."""
+
     url: str
     expires_at: datetime
 
@@ -134,6 +139,33 @@ async def iter_chunks(data: bytes | AsyncIterable[bytes]) -> AsyncIterator[bytes
     else:
         async for chunk in data:
             yield chunk
+
+
+async def read_all_capped(
+    storage: ObjectStorage,
+    key: str,
+    *,
+    max_bytes: int,
+    too_large: Callable[[], Exception],
+    on_missing: Callable[[], Exception] | None = None,
+) -> bytes:
+    """Gom `open_read` thành `bytes`, dừng ngay khi **vượt** `max_bytes` (K13; đúng trần vẫn qua).
+
+    `too_large()` dựng ngoại lệ riêng của người gọi (API: `AppError` 422; worker/ml: `PermanentError`).
+    `on_missing()` chỉ thay `NOT_FOUND`; mọi `AppError` khác — nhất là `DEPENDENCY_UNAVAILABLE` — lan
+    nguyên để hàng đợi thử lại. Không khai `on_missing` thì 404 của kho lan ra như cũ.
+    """
+    data = bytearray()
+    try:
+        async for chunk in storage.open_read(key):
+            data += chunk
+            if len(data) > max_bytes:
+                raise too_large()
+    except AppError as exc:
+        if on_missing is None or exc.code is not NOT_FOUND:
+            raise
+        raise on_missing() from exc
+    return bytes(data)
 
 
 @contextmanager

@@ -21,15 +21,13 @@ from apps.ml.runtime.errors import FILE_CORRUPT, IMAGE_TOO_LARGE, PIPELINE_ARTIF
 from apps.ml.runtime.loader import clear_session_cache
 from apps.ml.runtime.settings import MlSettings, get_ml_settings, reset_ml_settings_cache
 from packages.core.clock import SystemClock
-from packages.core.error_codes import NOT_FOUND
-from packages.core.errors import AppError
 from packages.messaging.celery_app import send_task
 from packages.messaging.redis import ProcessLocal
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, STEP_ARTIFACTS, read_png_header
 from packages.ml_contracts.payloads import InferStepPayload, StepResultPayload
 from packages.storage.factory import create_storage
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 from packages.storage.settings import get_storage_settings
 
 __all__ = [
@@ -107,17 +105,13 @@ def step_failed(payload: InferStepPayload, code: str, *, send: Send = send_task,
 
 async def _read_page(storage: ObjectStorage, key: str) -> bytes:
     """Trang PNG ≤ `PAGE_MAX_BYTES`; không còn trong kho → `PIPELINE_ARTIFACT_MISSING`."""
-    data = bytearray()
-    try:
-        async for chunk in storage.open_read(key):
-            data += chunk
-            if len(data) > PAGE_MAX_BYTES:
-                raise PermanentError(IMAGE_TOO_LARGE)
-    except AppError as exc:
-        if exc.code is not NOT_FOUND:
-            raise
-        raise PermanentError(PIPELINE_ARTIFACT_MISSING) from exc
-    return bytes(data)
+    return await read_all_capped(
+        storage,
+        key,
+        max_bytes=PAGE_MAX_BYTES,
+        too_large=lambda: PermanentError(IMAGE_TOO_LARGE),
+        on_missing=lambda: PermanentError(PIPELINE_ARTIFACT_MISSING),
+    )
 
 
 def _decode_page(data: bytes, payload: InferStepPayload) -> NDArray[np.uint8]:
