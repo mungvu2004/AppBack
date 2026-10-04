@@ -7,8 +7,9 @@ Dữ liệu gốc do migration nạp phải sống qua lượt dọn, **và** b�
 import asyncio
 from dataclasses import replace
 
-from sqlalchemy import event, text
-from sqlalchemy.ext.asyncio import create_async_engine
+import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S
 from packages.testing.fixtures import db as db_fixtures
@@ -64,18 +65,26 @@ def test_reset_plan__identity_counter_follows_reloaded_seed(db_url: str, shared_
         )
 
 
-def test_shared_db_reset__reuses_one_connection(shared_db: db_fixtures.SharedDb) -> None:
-    """NO-267: các lượt dọn liền nhau đi trên **một** kết nối Postgres, không mở kết nối mới mỗi test."""
-    connects: list[object] = []
+def test_shared_db_reset__reuses_one_connection(
+    shared_db: db_fixtures.SharedDb, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-267: các lượt dọn liền nhau đi trên **một** kết nối Postgres, không mở kết nối mới mỗi test.
 
-    def count(*_args: object) -> None:
-        """Đếm mỗi kết nối DBAPI mới mà pool của lượt dọn mở."""
-        connects.append(_args)
+    Đọc `pg_backend_pid()` qua chính engine mà `SharedDb.reset` đưa cho `_reset`, ngay sau mỗi lượt:
+    lượt dọn nào dựng engine (hay kết nối) mới thì pid đổi. Nghe sự kiện `connect` trên
+    `shared_db.engine` thì không bắt được hồi quy đó — engine mới không phải engine đang nghe.
+    """
+    pids: list[int] = []
+    real_reset = db_fixtures._reset
 
-    event.listen(shared_db.engine.sync_engine.pool, "connect", count)
-    try:
-        for _ in range(3):
-            shared_db.reset()
-    finally:
-        event.remove(shared_db.engine.sync_engine.pool, "connect", count)
-    assert len(connects) <= 1
+    async def reset_then_read_pid(engine: AsyncEngine, url: str, statements: list[str]) -> None:
+        """Chạy lượt dọn thật rồi ghi pid của kết nối mà pool của lượt dọn trả lại."""
+        await real_reset(engine, url, statements)
+        async with engine.connect() as connection:
+            pids.append((await connection.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+
+    monkeypatch.setattr(db_fixtures, "_reset", reset_then_read_pid)
+    for _ in range(3):
+        shared_db.reset()
+    assert len(pids) == 3
+    assert len(set(pids)) == 1

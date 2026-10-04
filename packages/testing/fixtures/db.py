@@ -33,7 +33,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_sessionmaker
 from packages.db.hooks import DROP_ENV
@@ -86,8 +86,9 @@ def _with_database(url: str, name: str) -> str:
 
 async def _admin(url: str, statements: list[str]) -> None:
     """Chạy các câu quản trị (AUTOCOMMIT) trên database `postgres` của máy chủ."""
-    # Đường connect nhiều nhất của cả bộ test (mỗi test một `CREATE`/`DROP DATABASE`), nên
-    # cũng chịu trần cổng thay vì 60 s mặc định của asyncpg (NO-002).
+    # Sau FIX-149 chỉ `blank_db_url` còn `CREATE`/`DROP DATABASE` mỗi test; template và database dùng
+    # chung thì mỗi tiến trình một lần. Vẫn là đường bắt tay của cổng nên chịu trần cổng thay vì 60 s
+    # mặc định của asyncpg (NO-002).
     engine = create_async_engine(
         _with_database(url, "postgres"),
         isolation_level="AUTOCOMMIT",
@@ -176,7 +177,8 @@ class SharedDb:
 # bảng sau khi phiên đã bắt đầu (bảng `sample_*` của `apps/api/core`, bảng dựng tay của
 # `packages/db/tests/test_engine.py`) — danh sách chụp lúc đầu phiên không có chúng, và dữ liệu của
 # chúng rò sang test sau. `set_config(…, true)` = `SET LOCAL`: tắt trigger khoá ngoài trong **giao
-# dịch này**, nên xoá (và nạp lại sau đó, cùng giao dịch) theo thứ tự bảng nào cũng được.
+# dịch này**, nên xoá rồi nạp lại dữ liệu gốc (vòng thứ hai: mỗi bản chụp trong `RESET_SCHEMA` mà
+# `_SNAPSHOT_SQL` dựng) theo thứ tự bảng nào cũng được. Tên bảng chỉ vào SQL qua `format('%I')`.
 _RESET_SQL = f"""
 DO $$
 DECLARE name text;
@@ -187,8 +189,30 @@ BEGIN
   LOOP
     EXECUTE format('DELETE FROM public.%I', name);
   END LOOP;
+  FOR name IN SELECT tablename FROM pg_tables WHERE schemaname = '{RESET_SCHEMA}' LOOP
+    EXECUTE format('INSERT INTO public.%I SELECT * FROM %I.%I', name, '{RESET_SCHEMA}', name);
+  END LOOP;
 END $$;
-"""  # noqa: S608 — `ALEMBIC_TABLE` là hằng của module này, không phải dữ liệu ngoài
+"""  # noqa: S608 — chỉ chèn hằng của module (`ALEMBIC_TABLE`, `RESET_SCHEMA`), không phải dữ liệu ngoài
+
+# Chụp dữ liệu gốc của migration, chạy **một** lần mỗi phiên: bảng nào có dòng ngay sau `upgrade head`
+# được sao sang `RESET_SCHEMA` (cùng tên) để `_RESET_SQL` nạp lại. Một khối thay N lượt hỏi-có-dòng
+# từ Python; tên bảng chỉ vào SQL qua `format('%I')` nên tên chứa `"` cũng không thoát được.
+_SNAPSHOT_SQL = f"""
+DO $$
+DECLARE name text; seeded boolean;
+BEGIN
+  FOR name IN
+    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '{ALEMBIC_TABLE}'
+  LOOP
+    EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', name) INTO seeded;
+    IF seeded THEN
+      EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', '{RESET_SCHEMA}');
+      EXECUTE format('CREATE TABLE IF NOT EXISTS %I.%I AS TABLE public.%I', '{RESET_SCHEMA}', name, name);
+    END IF;
+  END LOOP;
+END $$;
+"""  # noqa: S608 — như `_RESET_SQL`: chỉ chèn hằng của module
 
 # Chạy **sau** lượt nạp lại dữ liệu gốc (NO-277): `DELETE` không lùi bộ đếm `Identity()`, mà bản cũ
 # (database mới mỗi test) cho bộ đếm chạy lại từ đầu — thiếu bước này thì test khẳng định id tự tăng đỏ
@@ -217,53 +241,19 @@ async def _build_reset_plan(url: str) -> list[str]:
     (khoá ACCESS EXCLUSIVE + chạm file từng bảng và từng index) còn cả loạt DELETE trong một giao
     dịch tốn 17,2 ms — bảng của test rỗng hoặc vài dòng, nên DELETE gần như không có việc gì làm.
 
-    Phần **duy nhất** chụp một lần là dữ liệu gốc của migration (`op.bulk_insert`): bảng nào có dòng
-    ngay sau `upgrade head` được chụp sang schema `RESET_SCHEMA` bằng `CREATE TABLE … AS TABLE`, rồi
-    nạp lại bằng `INSERT … SELECT *` sau mỗi lượt xoá. Thuần SQL: không phản chiếu kiểu cột, không
-    giữ dòng nào trong Python. Chụp một lần là đúng ở đây vì migration không đổi giữa phiên, còn
-    danh sách **bảng** thì đổi được nên để `_RESET_SQL` tự liệt kê lúc chạy.
+    Phần **duy nhất** chụp một lần là dữ liệu gốc của migration (`op.bulk_insert`): `_SNAPSHOT_SQL`
+    sao bảng có dòng sang `RESET_SCHEMA` bằng `CREATE TABLE … AS TABLE`, rồi `_RESET_SQL` nạp lại
+    bằng `INSERT … SELECT *` sau mỗi lượt xoá. Thuần SQL: không phản chiếu kiểu cột, không giữ dòng
+    nào trong Python. Chụp một lần là đúng vì migration không đổi giữa phiên, còn danh sách **bảng**
+    thì đổi được nên `_RESET_SQL` tự liệt kê lúc chạy.
     """
-    seeded: list[str] = []
     engine = create_async_engine(url, isolation_level="AUTOCOMMIT", connect_args={"timeout": GATE_CONNECT_TIMEOUT_S})
     try:
         async with engine.connect() as connection:
-            rows = await connection.execute(
-                text(
-                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
-                    "AND tablename <> :alembic ORDER BY tablename"
-                ),
-                {"alembic": ALEMBIC_TABLE},
-            )
-            for table in [row[0] for row in rows]:
-                if await _has_rows(connection, table):
-                    seeded.append(table)
-            if seeded:
-                await connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{RESET_SCHEMA}"'))
-                for table in seeded:
-                    await connection.execute(
-                        text(f'CREATE TABLE IF NOT EXISTS "{RESET_SCHEMA}"."{table}" AS TABLE public."{table}"')
-                    )
+            await connection.execute(text(_SNAPSHOT_SQL))
     finally:
         await engine.dispose()
-
-    return [
-        _RESET_SQL,
-        # S608: tên bảng không truyền được làm tham số buộc trong SQL, mà `t` đến từ `pg_tables` của
-        # chính database này — không phải dữ liệu ngoài; đã bọc `"…"` nên tên lạ cũng chỉ là tên.
-        *(
-            f'INSERT INTO public."{t}" SELECT * FROM "{RESET_SCHEMA}"."{t}"'  # noqa: S608 — tên từ pg_tables
-            for t in seeded
-        ),
-        _RESEQUENCE_SQL,
-    ]
-
-
-async def _has_rows(connection: AsyncConnection, table: str) -> bool:
-    """Bảng có dòng nào ngay sau `upgrade head` → là dữ liệu gốc của migration, phải nạp lại."""
-    # S608: cùng lý do như lượt nạp lại — `table` là tên lấy từ `pg_tables`, không phải input
-    query = f'SELECT EXISTS (SELECT 1 FROM public."{table}")'  # noqa: S608 — tên từ pg_tables
-    result = await connection.execute(text(query))
-    return bool(result.scalar())
+    return [_RESET_SQL, _RESEQUENCE_SQL]
 
 
 def _alembic_upgrade(url: str) -> None:
@@ -302,20 +292,23 @@ def shared_db(postgres_url: str, db_template: str) -> Iterator[SharedDb]:
     url = _with_database(postgres_url, name)
     plan = asyncio.run(_build_reset_plan(url))
     loop = asyncio.new_event_loop()
-    engine = create_async_engine(
-        url,
-        pool_size=1,
-        max_overflow=0,
-        pool_pre_ping=True,
-        connect_args={
-            "timeout": GATE_CONNECT_TIMEOUT_S,
-            "server_settings": {"lock_timeout": str(RESET_LOCK_TIMEOUT_MS)},
-        },
-    )
+    # Dựng engine **trong** `try`: dựng hỏng thì vòng sự kiện vẫn được đóng và database vẫn bị xoá.
     try:
-        yield SharedDb(url=url, plan=plan, loop=loop, engine=engine)
+        engine = create_async_engine(
+            url,
+            pool_size=1,
+            max_overflow=0,
+            pool_pre_ping=True,
+            connect_args={
+                "timeout": GATE_CONNECT_TIMEOUT_S,
+                "server_settings": {"lock_timeout": str(RESET_LOCK_TIMEOUT_MS)},
+            },
+        )
+        try:
+            yield SharedDb(url=url, plan=plan, loop=loop, engine=engine)
+        finally:
+            loop.run_until_complete(engine.dispose())
     finally:
-        loop.run_until_complete(engine.dispose())
         loop.close()
         _drop_database(postgres_url, name)
 
