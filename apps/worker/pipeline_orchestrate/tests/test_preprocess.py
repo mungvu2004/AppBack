@@ -21,6 +21,7 @@ from apps.worker.pipeline_orchestrate.preprocess import (
     prepare_page,
 )
 from apps.worker.pipeline_orchestrate.settings import OrchestrateSettings
+from apps.worker.pipeline_orchestrate.tests._helpers import LEVEL_ID
 from packages.core.clock import Clock, SystemClock
 from packages.core.ids import new_id
 from packages.db.models.drawings import DrawingRow
@@ -32,7 +33,6 @@ from packages.vision.preprocess import DEFAULT_DPI, effective_dpi
 from packages.vision.preprocess.tests.synthetic import encode, jpeg_with_orientation, make_pdf
 from packages.vision.quality.assess import QualityReport
 
-LEVEL_ID = "L-ABCDEFGHIJ"
 MM_PER_INCH = 25.4
 A4_PT = (595.0, 842.0)
 INSET_CORNERS: Corners = ((0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9))
@@ -165,7 +165,7 @@ async def test_prepare_page__px_per_paper_mm_of_pdf_without_frame(
     prepared = await _prepare(local_storage, fake_clock, PagePlan(source=source, kind="auto"))
     page_key = keys.upload_page(source.project_id, source.level_id, source.upload_id, source.page_index)
     assert (prepared.page_key, prepared.created_key, prepared.corners) == (page_key, None, None)
-    expected = effective_dpi(*A4_PT, DEFAULT_DPI, _settings().PIPELINE_MAX_PIXELS) / MM_PER_INCH
+    expected = effective_dpi(*A4_PT, DEFAULT_DPI, _settings().pipeline_max_pixels) / MM_PER_INCH
     assert prepared.px_per_paper_mm is not None
     assert math.isclose(prepared.px_per_paper_mm, expected, rel_tol=0.0, abs_tol=1e-9)
     assert prepared.homography is not None
@@ -184,7 +184,7 @@ async def test_prepare_page__px_per_paper_mm_scales_by_quad_edge(
     assert prepared.homography is not None
     quad_edge = 0.8 * float(prepared.homography["sourceWidthPx"])
     scale = float(prepared.homography["widthPx"]) / quad_edge
-    expected = effective_dpi(*A4_PT, DEFAULT_DPI, _settings().PIPELINE_MAX_PIXELS) / MM_PER_INCH * scale
+    expected = effective_dpi(*A4_PT, DEFAULT_DPI, _settings().pipeline_max_pixels) / MM_PER_INCH * scale
     assert prepared.px_per_paper_mm is not None
     assert math.isclose(prepared.px_per_paper_mm, expected, rel_tol=0.0, abs_tol=1e-9)
     assert prepared.corners == INSET_CORNERS
@@ -265,7 +265,7 @@ async def test_prepare_page__huge_pdf_page_fits_max_pixels(local_storage: Object
     await _put(local_storage, source.original_key, make_pdf(1, size=(5000.0, 5000.0)))
     limit = 4_000_000
     prepared = await _prepare(
-        local_storage, fake_clock, PagePlan(source=source, kind="auto"), _settings(PIPELINE_MAX_PIXELS=limit)
+        local_storage, fake_clock, PagePlan(source=source, kind="auto"), _settings(pipeline_max_pixels=limit)
     )
     assert prepared.width_px * prepared.height_px <= limit
 
@@ -277,7 +277,7 @@ async def test_prepare_page__raster_over_max_pixels_raises(local_storage: Object
     await _put(local_storage, source.original_key, render_plan(5, width_px=1600, height_px=1200).image_png)
     with pytest.raises(PermanentError) as caught:
         await _prepare(
-            local_storage, fake_clock, PagePlan(source=source, kind="auto"), _settings(PIPELINE_MAX_PIXELS=1_000_000)
+            local_storage, fake_clock, PagePlan(source=source, kind="auto"), _settings(pipeline_max_pixels=1_000_000)
         )
     assert caught.value.code == "IMAGE_TOO_LARGE"
 
@@ -292,7 +292,7 @@ async def test_prepare_page__original_over_byte_cap_raises(local_storage: Object
             local_storage,
             fake_clock,
             PagePlan(source=source, kind="auto"),
-            _settings(PIPELINE_ORIGINAL_MAX_BYTES=16),
+            _settings(pipeline_original_max_bytes=16),
         )
     assert caught.value.code == "IMAGE_TOO_LARGE"
 

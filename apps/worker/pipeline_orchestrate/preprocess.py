@@ -163,10 +163,10 @@ def _render_base(data: bytes, kind: str, page_index: int, settings: OrchestrateS
     Khổ trang PDF đọc **trước** khi dựng (`pdf_page_size_pt` không dựng ảnh) để `px_per_paper_mm`
     không phải giữ `data` sống qua các pha sau. Chạy trong `asyncio.to_thread`.
     """
-    limit = settings.PIPELINE_MAX_PIXELS
+    limit = settings.pipeline_max_pixels
     if kind == "pdf":
         size_pt = pdf_page_size_pt(data, page_index)
-        page = render_pdf_page(data, page_index, dpi=settings.PIPELINE_PDF_DPI, max_pixels=limit)
+        page = render_pdf_page(data, page_index, dpi=settings.pipeline_pdf_dpi, max_pixels=limit)
     else:
         size_pt = None
         page = load_raster(data, max_pixels=limit)
@@ -191,7 +191,7 @@ def _finish(page: RgbImage, quad: Quad | None, settings: OrchestrateSettings) ->
     """
     if quad is None:
         return _Finished(Homography.identity(page.width_px, page.height_px), assess(page), None, 1.0)
-    result = rectify(page, quad, max_pixels=settings.PIPELINE_MAX_PIXELS)
+    result = rectify(page, quad, max_pixels=settings.pipeline_max_pixels)
     del page
     final = result.image
     return _Finished(result.homography, assess(final), encode_png(final), _quad_scale(result.homography, quad))
@@ -207,16 +207,16 @@ async def _load_base(plan: PagePlan, *, storage: ObjectStorage, settings: Orches
     source = plan.source
     page_key = keys.upload_page(source.project_id, source.level_id, source.upload_id, source.page_index)
     if await storage.stat(page_key) is not None:
-        stored = await _read_capped(storage, page_key, max_bytes=settings.PIPELINE_PAGE_MAX_BYTES)
-        page = await _offload(partial(load_raster, stored, max_pixels=settings.PIPELINE_MAX_PIXELS))
+        stored = await _read_capped(storage, page_key, max_bytes=settings.pipeline_page_max_bytes)
+        page = await _offload(partial(load_raster, stored, max_pixels=settings.pipeline_max_pixels))
         return _Base(page=page, size_pt=None), page_key
     kind = source.kind
     if source.original_key is None or kind is None or (kind != "pdf" and kind not in _RASTER_KINDS):
         raise PermanentError(FILE_TYPE_MISMATCH.code)
-    data = await _read_capped(storage, source.original_key, max_bytes=settings.PIPELINE_ORIGINAL_MAX_BYTES)
+    data = await _read_capped(storage, source.original_key, max_bytes=settings.pipeline_original_max_bytes)
     base, png = await _offload(partial(_render_base, data, kind, source.page_index, settings))
     del data
-    await storage.put(page_key, png, content_type=PNG_CONTENT_TYPE, max_bytes=settings.PIPELINE_PAGE_MAX_BYTES)
+    await storage.put(page_key, png, content_type=PNG_CONTENT_TYPE, max_bytes=settings.pipeline_page_max_bytes)
     return base, page_key
 
 
@@ -237,7 +237,7 @@ def _corners_of(plan: PagePlan, quad: Quad | None, page: RgbImage) -> Corners | 
     return None if quad is None else quad_to_ratios(quad, page.width_px, page.height_px)
 
 
-async def _write_page(
+async def _put_rectified_page(
     plan: PagePlan, png: bytes, *, storage: ObjectStorage, settings: OrchestrateSettings, clock: Clock
 ) -> str:
     """Ghi trang đã nắn vào một khoá **mới** (`new_page_key`) và trả khoá đó.
@@ -253,7 +253,7 @@ async def _write_page(
         page_index=source.page_index,
         clock=clock,
     )
-    await storage.put(key, png, content_type=PNG_CONTENT_TYPE, max_bytes=settings.PIPELINE_PAGE_MAX_BYTES)
+    await storage.put(key, png, content_type=PNG_CONTENT_TYPE, max_bytes=settings.pipeline_page_max_bytes)
     return key
 
 
@@ -267,7 +267,16 @@ async def prepare_page(
     """
     if plan.reuse_page is not None:  # chỉ đường (i) mang `reuse_page`
         key, width_px, height_px = plan.reuse_page
-        return PreparedPage(key, width_px, height_px, None, None, None, None, None)
+        return PreparedPage(
+            page_key=key,
+            width_px=width_px,
+            height_px=height_px,
+            px_per_paper_mm=None,
+            homography=None,
+            report=None,
+            corners=None,
+            created_key=None,
+        )
     base, page_key = await _load_base(plan, storage=storage, settings=settings)
     page, size_pt = base.page, base.size_pt
     del base  # bỏ tham chiếu cuối tới PNG trang chưa nắn trước khi cấp phát trang nắn
@@ -277,10 +286,10 @@ async def prepare_page(
     del page
     created_key = None
     if done.png is not None:
-        created_key = await _write_page(plan, done.png, storage=storage, settings=settings, clock=clock)
+        created_key = await _put_rectified_page(plan, done.png, storage=storage, settings=settings, clock=clock)
     px_per_paper_mm = None
     if size_pt is not None:
-        dpi = effective_dpi(*size_pt, settings.PIPELINE_PDF_DPI, settings.PIPELINE_MAX_PIXELS)
+        dpi = effective_dpi(*size_pt, settings.pipeline_pdf_dpi, settings.pipeline_max_pixels)
         px_per_paper_mm = dpi / MM_PER_INCH * done.quad_scale
     return PreparedPage(
         page_key=created_key or page_key,

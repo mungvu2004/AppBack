@@ -21,6 +21,9 @@ from apps.worker.pipeline_orchestrate.pins import (
     record_used,
     set_step_requeue,
 )
+from packages.core.clock import SystemClock
+from packages.core.ids import new_id
+from packages.core.object_keys import model_prefix
 from packages.ml_contracts.families import MODEL_FAMILIES, ModelFamily
 from packages.ml_contracts.payloads import ModelRef
 from packages.storage.local import LocalDiskStorage
@@ -47,13 +50,28 @@ async def _run_id(db: AsyncSession, storage: LocalDiskStorage, clock: FakeClock)
 async def test_pin_models_second_call_returns_false(
     db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
-    """Giao lặp J06: dòng đã có giữ bản đầu, `pin_models` lần hai trả `False`."""
+    """Giao lặp J06: dòng đã có giữ bản đầu, `pin_models` lần hai (bộ **khác**) trả `False`.
+
+    Lần hai ghim bản storage cho cả ba họ — nếu `pin_models` ghi đè, `pinned` đọc lại sẽ lệch
+    bộ cổ điển của lần đầu (NO-295 P2-01).
+    """
     run_id = await _run_id(db_session, local_storage, fake_clock)
+    version_id = new_id("mdl", SystemClock())
+    stored = {
+        family: ModelRef(
+            version_id=version_id,
+            family=family,
+            weights_key=f"{model_prefix(version_id)}model.onnx",
+            pinned_name=None,
+            checksum_sha256="a" * 64,
+        )
+        for family in MODEL_FAMILIES
+    }
     assert await pin_models(db_session, run_id=run_id, models=_CLASSIC_MODELS) is True
-    assert await pin_models(db_session, run_id=run_id, models=_CLASSIC_MODELS) is False
+    assert await pin_models(db_session, run_id=run_id, models=stored) is False
     loaded = await load_pins(db_session, run_id)
     assert loaded is not None
-    assert set(loaded.pinned) == set(MODEL_FAMILIES)
+    assert loaded.pinned == _CLASSIC_MODELS
 
 
 async def test_pin_models_missing_family_raises(

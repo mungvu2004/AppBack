@@ -13,18 +13,18 @@ from pathlib import Path
 from typing import Final, cast
 
 import pytest
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.admin_ml_registry.registry import active_versions
-from apps.api.drawings.runs import RunRow, reset_sync_bus_cache, start_run
+from apps.api.drawings.runs import RunRow, reset_sync_bus_cache
 from apps.api.quality.assessments import load_assessment
 from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_orchestrate.settings import OrchestrateSettings
 from apps.worker.pipeline_orchestrate.start import fail_pipeline_start_core, run_pipeline_start
-from packages.db.hooks import after_commit_idle
+from apps.worker.pipeline_orchestrate.tests._helpers import ML_QUEUE, floor_drawings, open_run, run_row
 from packages.db.models.admin_ml_registry import ModelFamilyRow
-from packages.db.models.drawings import DrawingRow, PipelineRunRow, UploadRow
+from packages.db.models.drawings import PipelineRunRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.pipeline_orchestrate import PipelineRunModelsRow
 from packages.db.models.projects import Project
@@ -46,7 +46,6 @@ from packages.vision.preprocess.tests.synthetic import make_pdf
 
 _log: Final = logging.getLogger(__name__)
 
-ML_QUEUE: Final = "ml.infer"
 _A4_RECT: Final = ((60.0, 60.0, 475.0, 722.0, (0.1, 0.1, 0.1)),)
 """Một khung chữ nhật đậm trên khổ A4 để `find_frame` có cái mà bắt (đường (iii))."""
 
@@ -143,15 +142,6 @@ async def _activate(db: AsyncSession, family: str, version_id: str) -> None:
     await db.execute(update(ModelFamilyRow).where(ModelFamilyRow.family == family).values(active_version_id=version_id))
 
 
-async def _open_run(maker: async_sessionmaker[AsyncSession], upload_id: str, clock: FakeClock) -> RunRow:
-    """Mở một lượt chạy và commit (task `start` chỉ chạy sau khi B2-04 đã ghi dòng lượt)."""
-    async with maker() as db:
-        run = await start_run(db, upload_id=upload_id, clock=clock)
-        await db.commit()
-    await after_commit_idle(db)
-    return run
-
-
 async def _start(
     maker: async_sessionmaker[AsyncSession],
     storage: LocalDiskStorage,
@@ -163,18 +153,6 @@ async def _start(
     """Một lượt giao `pipeline.orchestrate.start` cho `run`, gọi thẳng lõi."""
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
     await run_pipeline_start(payload, sessionmaker=maker, storage=storage, clock=clock, settings=settings)
-
-
-async def _drawings(db: AsyncSession, floor_pk: int) -> list[DrawingRow]:
-    """Mọi dòng `drawings` của tầng (một tầng nhiều nhất một dòng — test khẳng định điều đó)."""
-    return list((await db.execute(select(DrawingRow).where(DrawingRow.floor_pk == floor_pk))).scalars())
-
-
-async def _run_row(db: AsyncSession, run_id: str) -> PipelineRunRow:
-    """Dòng lượt chạy đọc lại từ DB (không qua ảnh chụp `RunRow`)."""
-    row = (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == run_id))).scalar_one()
-    await db.refresh(row)
-    return row
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -195,7 +173,7 @@ async def test_orchestrate_pipeline_start__J01(
         upload = await _pdf_upload(db, local_storage, project, floor)
         pinned = await active_versions(db)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     ml_queue.delete(ML_QUEUE)
 
     await _start(db_sessionmaker, local_storage, run, fake_clock)
@@ -207,9 +185,9 @@ async def test_orchestrate_pipeline_start__J01(
         family = cast("ModelFamily", message["step"])
         assert message["model"] == pinned[family].model_dump(mode="json")
     async with db_sessionmaker() as db:
-        drawings = await _drawings(db, floor.pk)
+        drawings = await floor_drawings(db, floor.pk)
         assessment = await load_assessment(db, floor.pk)
-        row = await _run_row(db, run.id)
+        row = await run_row(db, run.id)
     assert len(drawings) == 1
     assert assessment is not None
     assert row.current_step == "wallSegmentation"
@@ -231,13 +209,15 @@ async def test_orchestrate_pipeline_start__J06(
     """Giao lại cùng lượt: vẫn một dòng `drawings`, lần hai không gửi `ml.infer.*`.
 
     Lần hai lượt đã ở `wallSegmentation` nên GD1 dừng ngay ([6] bước 1); đổi bản kích hoạt
-    giữa hai lần cũng không đổi `pinned` vì `pin_models` chỉ ghi lần đầu.
+    giữa hai lần cũng không đổi `pinned` vì `pin_models` chỉ ghi lần đầu — so cả bảng `pinned`
+    với `active_versions` lúc giao lần một (NO-295 P2-01: khẳng định cũ so `dict` với `str`).
     """
     async with db_sessionmaker() as db:
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
+        pinned_before = await active_versions(db)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     ml_queue.delete(ML_QUEUE)
     await _start(db_sessionmaker, local_storage, run, fake_clock)
     first = queued_payloads(ml_queue, ML_QUEUE)
@@ -251,9 +231,13 @@ async def test_orchestrate_pipeline_start__J06(
 
     assert queued_payloads(ml_queue, ML_QUEUE) == []
     async with db_sessionmaker() as db:
-        assert len(await _drawings(db, floor.pk)) == 1
+        assert len(await floor_drawings(db, floor.pk)) == 1
+        pins = await load_pins(db, run.id)
+    assert pins is not None
+    assert pins.pinned == pinned_before
+    assert pins.pinned["wallSegmentation"].version_id != version.id
     walls = next(m for m in first if m["step"] == "wallSegmentation")
-    assert walls["model"] != version.id
+    assert walls["model"] == pins.pinned["wallSegmentation"].model_dump(mode="json")
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -269,11 +253,11 @@ async def test_orchestrate_pipeline_start__J09(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
 
     async def supersede() -> None:
         """Mở lượt mới cho cùng lượt tải → lượt cũ thành `superseded`, GD2 phải từ chối."""
-        await _open_run(db_sessionmaker, upload.id, fake_clock)
+        await open_run(db_sessionmaker, upload.id, fake_clock)
 
     storage = HookedStorage(local_storage, supersede)
     ml_queue.delete(ML_QUEUE)
@@ -281,7 +265,7 @@ async def test_orchestrate_pipeline_start__J09(
 
     assert queued_payloads(ml_queue, ML_QUEUE) == []
     async with db_sessionmaker() as db:
-        assert await _drawings(db, floor.pk) == []
+        assert await floor_drawings(db, floor.pk) == []
     pages = _new_pages(tmp_path)
     assert pages == [], pages
 
@@ -303,7 +287,7 @@ async def test_orchestrate_pipeline_start__J10(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     ml_queue.delete(ML_QUEUE)
 
     with drop_after_commit():
@@ -312,7 +296,7 @@ async def test_orchestrate_pipeline_start__J10(
 
     assert queued_payloads(ml_queue, ML_QUEUE) == []
     async with db_sessionmaker() as db:
-        row = await _run_row(db, run.id)
+        row = await run_row(db, run.id)
         pins = await load_pins(db, run.id)
     assert row.current_step == "wallSegmentation"
     assert pins is not None
@@ -332,15 +316,15 @@ async def test_orchestrate_pipeline_start__rerun_keeps_page_31(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    first = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    first = await open_run(db_sessionmaker, upload.id, fake_clock)
     await _start(db_sessionmaker, local_storage, first, fake_clock)
     async with db_sessionmaker() as db:
-        page_key = (await _drawings(db, floor.pk))[0].page_key
+        page_key = (await floor_drawings(db, floor.pk))[0].page_key
         first_assessment = await load_assessment(db, floor.pk)
         assert first_assessment is not None
         report = first_assessment.report
 
-    second = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    second = await open_run(db_sessionmaker, upload.id, fake_clock)
     ml_queue.delete(ML_QUEUE)
     await _start(db_sessionmaker, local_storage, second, fake_clock)
 
@@ -365,7 +349,7 @@ async def test_orchestrate_pipeline_start__ignores_unknown_run(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     ml_queue.delete(ML_QUEUE)
 
     missing = PipelineStartPayload(run_id="run_00000000000000000000000000", upload_id=upload.id)
@@ -375,7 +359,7 @@ async def test_orchestrate_pipeline_start__ignores_unknown_run(
 
     assert queued_payloads(ml_queue, ML_QUEUE) == []
     async with db_sessionmaker() as db:
-        assert await _drawings(db, floor.pk) == []
+        assert await floor_drawings(db, floor.pk) == []
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -390,13 +374,13 @@ async def test_orchestrate_pipeline_start__fail_marks_preprocess_failed(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
 
     await fail_pipeline_start_core(payload, "TASK_TIMEOUT", sessionmaker=db_sessionmaker, clock=fake_clock)
 
     async with db_sessionmaker() as db:
-        row = await _run_row(db, run.id)
+        row = await run_row(db, run.id)
     assert row.status == "failed"
     assert row.error_code == "TASK_TIMEOUT"
 
@@ -413,14 +397,14 @@ async def test_orchestrate_pipeline_start__fail_skips_run_past_preprocess(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     await _start(db_sessionmaker, local_storage, run, fake_clock)
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
 
     await fail_pipeline_start_core(payload, "TASK_TIMEOUT", sessionmaker=db_sessionmaker, clock=fake_clock)
 
     async with db_sessionmaker() as db:
-        row = await _run_row(db, run.id)
+        row = await run_row(db, run.id)
     assert row.current_step == "wallSegmentation"
     assert row.status != "failed"
 
@@ -437,7 +421,7 @@ async def test_orchestrate_pipeline_start__resumes_run_already_running(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     async with db_sessionmaker() as db:
         await db.execute(update(PipelineRunRow).where(PipelineRunRow.id == run.id).values(status="running"))
         await db.commit()
@@ -447,7 +431,7 @@ async def test_orchestrate_pipeline_start__resumes_run_already_running(
 
     assert len(queued_payloads(ml_queue, ML_QUEUE)) == 3
     async with db_sessionmaker() as db:
-        assert len(await _drawings(db, floor.pk)) == 1
+        assert len(await floor_drawings(db, floor.pk)) == 1
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -463,7 +447,7 @@ async def test_orchestrate_pipeline_start__drops_page_when_pins_vanish(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
 
     async def drop_pins() -> None:
         """Xoá dòng `pipeline_run_models` của lượt trong một giao dịch khác."""
@@ -495,7 +479,7 @@ async def test_start_concurrent_delivery_deletes_loser_page(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     ml_queue.delete(ML_QUEUE)
 
     reached, release = asyncio.Event(), asyncio.Event()
@@ -509,7 +493,7 @@ async def test_start_concurrent_delivery_deletes_loser_page(
     assert len(queued_payloads(ml_queue, ML_QUEUE)) == 3
     assert len(_new_pages(tmp_path)) == 1
     async with db_sessionmaker() as db:
-        assert len(await _drawings(db, floor.pk)) == 1
+        assert len(await floor_drawings(db, floor.pk)) == 1
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -527,7 +511,7 @@ async def test_orchestrate_pipeline_start__abandons_run_on_deleted_project(
         project, floor = await _scene(db)
         upload = await _pdf_upload(db, local_storage, project, floor)
         await db.commit()
-    run = await _open_run(db_sessionmaker, upload.id, fake_clock)
+    run = await open_run(db_sessionmaker, upload.id, fake_clock)
     async with db_sessionmaker() as db:
         await db.execute(update(Project).where(Project.id == project.id).values(deleted_at=fake_clock.now()))
         await db.commit()
@@ -537,5 +521,5 @@ async def test_orchestrate_pipeline_start__abandons_run_on_deleted_project(
 
     assert queued_payloads(ml_queue, ML_QUEUE) == []
     async with db_sessionmaker() as db:
-        assert await _drawings(db, floor.pk) == []
-        assert (await _run_row(db, run.id)).status == "failed"
+        assert await floor_drawings(db, floor.pk) == []
+        assert (await run_row(db, run.id)).status == "failed"
