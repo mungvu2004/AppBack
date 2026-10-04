@@ -101,7 +101,7 @@ Chú thích:
 
 **Case thêm cố định** (không áp cả loại):
 - C14 ở #10 (`FLOOR_ID_TAKEN`), #17 (`MEASUREMENT_ID_TAKEN`), #41 (admin cuối), N3 (thêm cùng email song song → cả hai 2xx, đúng một bản ghi), N4 (gỡ song song hai người sửa cuối → đúng một thành công, bên kia `MEMBER_LAST_EDITOR`).
-- C11 ở N3, N13, #44, #37 (rate limit của BE-00 §11 mà loại không đòi).
+- C11 ở N3, N13, N14, #44, #37 (rate limit của BE-00 §11 mà loại không đòi). Test hạn mức luôn đặt tên `test_<operationId>__C11` (vd `test_me_replace_avatar__C11`), không tên theo việc như `…_rate_limited`: `case_gate` chỉ đếm theo hậu tố.
 - C28 ở N8 (cửa sổ chờ của yêu cầu đặt lại mật khẩu).
 
 U01, U02, U04, U06 nằm trong task tiền xử lý: `test_<task>__U01`.
