@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from apps.api.notifications.settings import NotificationsSettings, get_notifications_settings
 from apps.api.notifications.tests.support import settings_env
+from packages.testing.boundary import WORKER_BLOCKED
 
 PACKAGE_DIR: Final = Path(__file__).resolve().parent.parent
 REPO_ROOT: Final = PACKAGE_DIR.parent.parent.parent
@@ -22,7 +23,7 @@ def test_boundary__worker_modules_import_without_web_libraries(module: str) -> N
     """Nhập được khi 5 gói web/mật mã (ranh giới `.importlinter`) bị chặn trong `sys.modules` (BE-00 §7)."""
     code = (
         "import sys\n"
-        "for name in ('fastapi', 'starlette', 'uvicorn', 'jwt', 'argon2'):\n"
+        f"for name in {WORKER_BLOCKED!r}:\n"
         "    sys.modules[name] = None\n"
         f"import apps.api.notifications.{module}\n"
     )
