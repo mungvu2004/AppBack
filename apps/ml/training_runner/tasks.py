@@ -6,12 +6,12 @@ thật chạy ở tiến trình con `apps.ml.training_runner.__main__`, không t
 
 import json
 import logging
-import os
 import subprocess
 import sys
 import threading
 from typing import IO, Final, cast
 
+from apps.ml.runtime.child_env import allowlisted_env
 from apps.ml.training_runner.errors import TRAINING_LAUNCH_FAILED
 from apps.ml.training_runner.keys import FINISHED_TASK, START_TASK, cancel_key, claim_key, new_token
 from apps.ml.training_runner.redis_sync import delete_if_owner, training_redis
@@ -73,9 +73,7 @@ def start_training_runner(payload: TrainJobPayload) -> None:
 
 def _child_env() -> dict[str, str]:
     """Môi trường tối thiểu của con huấn luyện: danh sách cho phép, không thừa hưởng bí mật khác của `ml` (SEC-020)."""
-    env = {name: value for name, value in os.environ.items() if name in _ENV_KEEP or name.startswith(_ENV_PREFIX)}
-    env.setdefault("PYTHONPATH", os.getcwd())
-    return env
+    return allowlisted_env(_ENV_KEEP, _ENV_PREFIX)
 
 
 def _launch(payload: TrainJobPayload, token: str, claim: str, client: SyncRedis) -> None:
