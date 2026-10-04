@@ -9,9 +9,10 @@ from minio import Minio
 from packages.core.clock import Clock
 from packages.core.settings import CoreSettings
 from packages.storage.local import LocalDiskStorage
-from packages.storage.port import ObjectStorage
+from packages.storage.port import Disposition, ObjectStorage, SignedUrl
 from packages.storage.s3 import S3Storage, http_client
 from packages.storage.settings import StorageSettings
+from packages.storage.sniff import ImageKind
 
 
 def minio_client(settings: StorageSettings, endpoint: str, pool: urllib3.PoolManager) -> Minio:
@@ -47,12 +48,28 @@ def _check_public_origin(settings: StorageSettings, core_settings: CoreSettings)
         raise ValueError("S3_PUBLIC_ENDPOINT phải khác origin với PUBLIC_BASE_URL ở staging/production")
 
 
+class _UnsignedS3Storage(S3Storage):
+    """Kho S3 của tiến trình không có `CoreSettings`: chưa qua luật khác origin nên không ký URL."""
+
+    async def signed_url(
+        self,
+        key: str,
+        *,
+        disposition: Disposition,
+        filename: str | None = None,
+        kind: ImageKind | None = None,
+    ) -> SignedUrl:
+        """Từ chối như kho local không `public_base_url` (NO-203, BE-00 §8, K15)."""
+        raise RuntimeError("kho này không ký URL: tiến trình không có PUBLIC_BASE_URL")
+
+
 def create_storage(settings: StorageSettings, core_settings: CoreSettings | None, clock: Clock) -> ObjectStorage:
     """Bộ điều hợp theo `STORAGE_BACKEND`; hai client S3 dùng chung một pool HTTP.
 
     `core_settings` là của app phát URL cho trình duyệt (API, việc nền của nó): có nó thì
     kiểm luật khác origin trước khi dựng. `None` cho tiến trình không ký URL — `ml` không
-    cầm `SECRET_KEY`/`PUBLIC_BASE_URL` (NO-085); kho local khi đó từ chối `signed_url`.
+    cầm `SECRET_KEY`/`PUBLIC_BASE_URL` (NO-085); kho nào cũng từ chối `signed_url` khi đó, vì luật
+    khác origin chưa được kiểm (NO-203).
     """
     if core_settings is not None:
         _check_public_origin(settings, core_settings)
@@ -60,7 +77,7 @@ def create_storage(settings: StorageSettings, core_settings: CoreSettings | None
         base_url = None if core_settings is None else core_settings.public_base_url
         return LocalDiskStorage(Path(settings.storage_local_root), clock, base_url)
     pool = http_client()
-    return S3Storage(
+    return (S3Storage if core_settings is not None else _UnsignedS3Storage)(
         client=minio_client(settings, settings.s3_endpoint, pool),
         public_client=minio_client(settings, settings.s3_public_endpoint, pool),
         bucket=settings.s3_bucket,

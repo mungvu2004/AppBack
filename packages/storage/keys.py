@@ -24,6 +24,7 @@ from packages.storage.sniff import ImageKind
 MAX_ITEM_LEN: Final = 64
 
 _ITEM_RE: Final = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+_SHA256_RE: Final = re.compile(r"[0-9a-f]{64}")
 _EXT_RE: Final = re.compile(r"[a-z0-9]{1,8}")
 _EXT_KIND: Final[dict[str, ImageKind]] = {"png": "png", "jpg": "jpeg"}
 
@@ -32,6 +33,13 @@ def _name(value: str) -> str:
     """Tên object là **một** đoạn khoá — chặn tên lồng đường dẫn."""
     if not is_segment(value):
         raise ValueError(f"tên object phải là một đoạn [A-Za-z0-9._-]: {value!r}")
+    return value
+
+
+def _path(value: str) -> str:
+    """Tên object nhiều đoạn (đường mẫu `{split}/{sample_id}/{filename}`): **từng** đoạn qua `is_segment`."""
+    if not all(is_segment(part) for part in value.split("/")):
+        raise ValueError(f"tên object phải là các đoạn [A-Za-z0-9._-] nối bằng '/': {value!r}")
     return value
 
 
@@ -54,6 +62,33 @@ def upload_page(project: str, floor: str, upload: str, index: int) -> str:
     return check_key(f"{upload_prefix(project, floor, upload)}pages/{index}.png")
 
 
+def upload_chunk(project: str, floor: str, upload: str, index: int, sha256: str) -> str:
+    """Khoá một khúc của lượt tải: `<upload_prefix>chunks/{i}/{sha256}` (B2-04 [5]).
+
+    Băm nằm **trong** khoá nên gửi lại đúng khúc ấy là ghi đè chính nó, còn gửi lại một nội dung
+    khác là một object mới: `#7` so danh sách khoá trước và sau khi nối tệp để bắt đúng trường
+    hợp thứ hai (409 `UPLOAD_CHUNKS_CHANGED`).
+    """
+    if index < 0:
+        raise ValueError(f"số khúc không âm: {index}")
+    if not _SHA256_RE.fullmatch(sha256):
+        raise ValueError(f"băm khúc phải là 64 ký tự hex thường: {sha256!r}")
+    return check_key(f"{upload_prefix(project, floor, upload)}chunks/{index}/{sha256}")
+
+
+def upload_page_revision(project: str, floor: str, upload: str, index: int, ulid: str) -> str:
+    """Khoá một bản trang đã nắn: `…/pages/{i}-{ULID}.png`, mỗi lượt một ULID mới (W23).
+
+    URL ký đứng yên một giờ nên ghi đè cùng khoá sẽ để FE dùng ảnh cũ; ULID mới làm URL cũ chết
+    cùng object cũ. Đuôi `.png` do server đặt sau khi đã kiểm magic bytes (`server_chosen_kind`).
+    """
+    if index < 0:
+        raise ValueError(f"số trang không âm: {index}")
+    if not is_ulid(ulid):
+        raise ValueError(f"bản trang phải mang ULID: {ulid!r}")
+    return check_key(f"{upload_prefix(project, floor, upload)}pages/{index}-{ulid}.png")
+
+
 def run_artifact(project: str, floor: str, upload: str, run: str, step: str, name: str) -> str:
     """Khoá artifact của một bước pipeline trong một lượt chạy (bố cục và luật bước ở lõi, NO-081)."""
     return check_key(f"{run_prefix(upload_prefix(project, floor, upload), run, step)}{_name(name)}")
@@ -72,8 +107,8 @@ def model_artifact(model: str, name: str) -> str:
 
 
 def dataset_object(dataset_version: str, name: str) -> str:
-    """Khoá object của một phiên bản tập dữ liệu ML."""
-    return check_key(f"ml/datasets/{check_id('dsv', dataset_version)}/{_name(name)}")
+    """Khoá object của một phiên bản tập dữ liệu ML; `name` một hay nhiều đoạn (`train/s1/image.png`)."""
+    return check_key(f"ml/datasets/{check_id('dsv', dataset_version)}/{_path(name)}")
 
 
 def avatar(user: str, ulid: str, ext: str) -> str:
@@ -86,11 +121,11 @@ def avatar(user: str, ulid: str, ext: str) -> str:
 
 
 def server_chosen_kind(key: str) -> ImageKind | None:
-    """Loại ảnh suy từ đuôi khoá do server đặt tên (ảnh đại diện, `…/pages/{i}.png`); khoá khác → `None`.
+    """Loại ảnh suy từ đuôi khoá do server đặt tên (ảnh đại diện, trang `{i}.png`/`{i}-{ULID}.png`); khoá khác → `None`.
 
     Chỉ khoá mà server chọn đuôi sau khi đã kiểm magic bytes mới được ký URL với `kind` truyền
     sẵn (W23, K15); `original.<đuôi>` mang đuôi người dùng khai nên không bao giờ khớp (NO-011).
-    "Do server đặt" ⇔ chính `avatar`/`upload_page` dựng lại được đúng khoá đó, nên luật id
+    "Do server đặt" ⇔ chính `avatar`/`upload_page`/`upload_page_revision` dựng lại được đúng khoá đó, nên luật id
     (`packages.core.ids`) và bố cục chỉ có một nguồn với hàm dựng (NO-073). Hàm dựng ném
     `ValueError` nghĩa là khoá không do server đặt — kết quả `None`, không phải lỗi.
     """
@@ -101,10 +136,16 @@ def server_chosen_kind(key: str) -> ImageKind | None:
                 avatar(user, ulid, ext)  # dựng được thì khoá dựng lại trùng từng byte với `key`
                 return _EXT_KIND[ext]
             case ["projects", project, "floors", floor, "uploads", upload, "pages", name]:
-                index = name.removesuffix(".png")
+                index, dash, ulid = name.removesuffix(".png").partition("-")
                 # `int` chuẩn hoá `007`, chữ số Unicode: khoá đó server không bao giờ sinh ra.
-                if index.isdecimal() and upload_page(project, floor, upload, int(index)) == key:
-                    return "png"
+                if index.isdecimal():
+                    built = (
+                        upload_page_revision(project, floor, upload, int(index), ulid)
+                        if dash
+                        else upload_page(project, floor, upload, int(index))
+                    )
+                    if built == key:
+                        return "png"
     except ValueError:
         return None
     return None

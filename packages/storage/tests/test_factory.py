@@ -101,3 +101,10 @@ async def test_create_storage_without_core_settings_refuses_to_sign_locally(
     assert await storage.stat(KEY) is not None
     with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL"):
         await storage.signed_url(KEY, disposition="attachment")
+
+
+async def test_create_storage__s3_without_core_settings_refuses_to_sign(fake_clock: FakeClock) -> None:
+    """NO-203: kho S3 dựng không `CoreSettings` không qua luật khác origin nên không được ký URL (như kho local)."""
+    storage = create_storage(s3_settings(APP_URL), None, fake_clock)
+    with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL"):
+        await storage.signed_url(KEY, disposition="attachment")
