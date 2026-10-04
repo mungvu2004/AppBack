@@ -36,6 +36,7 @@ def stream(fake_clock: FakeClock) -> str:
 
 
 def test_user_stream_and_upload_stream_use_the_charter_names(fake_clock: FakeClock) -> None:
+    """Tên stream theo người dùng và theo upload đúng mẫu hiến chương."""
     user_id = new_id("usr", fake_clock)
     upload_id = new_id("upl", fake_clock)
 
@@ -45,11 +46,13 @@ def test_user_stream_and_upload_stream_use_the_charter_names(fake_clock: FakeClo
 
 @pytest.mark.parametrize("value", ["", "usr_", "upl_01ARZ3NDEKTSV4RRFFQ69G5FAV", "usr_khong-phai-ulid"])
 def test_user_stream_rejects_ids_outside_the_pattern(value: str) -> None:
+    """Id không mang tiền tố `usr_` hợp lệ thì không dựng được stream người dùng."""
     with pytest.raises(ValueError, match="usr_"):
         user_stream(value)
 
 
 def test_upload_stream_rejects_a_user_id(fake_clock: FakeClock) -> None:
+    """Stream upload chỉ nhận id `upl_`, id người dùng bị từ chối."""
     with pytest.raises(ValueError, match="upl_"):
         upload_stream(new_id("usr", fake_clock))
 
@@ -66,6 +69,7 @@ def test_upload_stream_rejects_a_user_id(fake_clock: FakeClock) -> None:
     ],
 )
 def test_is_event_id(value: str, expected: bool) -> None:
+    """`is_event_id` nhận đúng dạng `<ms>-<seq>` của Redis Streams."""
     assert is_event_id(value) is expected
 
 
@@ -82,6 +86,7 @@ def test_stream_entries_rejects_the_resp3_dict_form() -> None:
 
 
 def test_stream_entries_rejects_entries_that_are_not_a_list() -> None:
+    """Entries không phải list (dạng RESP lạ) thì nổ `TypeError` rõ ràng."""
     with pytest.raises(TypeError, match="XREAD kỳ vọng entries"):
         _stream_entries([("events:x", {"1-0": {"d": "{}"}})])
 
@@ -119,6 +124,7 @@ async def test_read_after_returns_new_events_in_order_without_repeats(event_bus:
 
 
 async def test_read_after_honours_count(event_bus: EventBus, stream: str) -> None:
+    """`read_after` trả không quá `count` sự kiện."""
     for n in range(5):
         await event_bus.publish(stream, {"n": n})
 
@@ -126,6 +132,7 @@ async def test_read_after_honours_count(event_bus: EventBus, stream: str) -> Non
 
 
 async def test_read_after_can_block_until_an_event_arrives(event_bus: EventBus, stream: str) -> None:
+    """Đọc có chặn thì nhận được sự kiện công bố sau lúc bắt đầu chờ."""
     reader = asyncio.create_task(event_bus.read_after(stream, FIRST_ID, block_ms=MAX_BLOCK_MS))
     await asyncio.sleep(0.05)
     await event_bus.publish(stream, {"n": 1})
@@ -134,11 +141,13 @@ async def test_read_after_can_block_until_an_event_arrives(event_bus: EventBus, 
 
 
 async def test_read_after_blocking_gives_up_and_returns_nothing(event_bus: EventBus, stream: str) -> None:
+    """Hết thời gian chặn mà không có sự kiện thì trả danh sách rỗng."""
     assert await event_bus.read_after(stream, FIRST_ID, block_ms=50) == []
 
 
 @pytest.mark.parametrize("last_id", ["", "khong-phai-id", "12"])
 async def test_read_after_rejects_a_malformed_last_id(event_bus: EventBus, stream: str, last_id: str) -> None:
+    """Id mốc sai dạng bị từ chối trước khi gọi Redis."""
     with pytest.raises(ValueError, match="id sự kiện"):
         await event_bus.read_after(stream, last_id)
 
@@ -147,11 +156,13 @@ async def test_read_after_rejects_a_malformed_last_id(event_bus: EventBus, strea
 async def test_read_after_rejects_a_block_longer_than_the_socket_budget(
     event_bus: EventBus, stream: str, block_ms: int
 ) -> None:
+    """Thời gian chặn âm hay vượt `MAX_BLOCK_MS` (trần đọc socket) bị từ chối."""
     with pytest.raises(ValueError, match="block_ms"):
         await event_bus.read_after(stream, FIRST_ID, block_ms=block_ms)
 
 
-@pytest.mark.parametrize("data", [{"at": datetime.now(UTC)}, {"blob": b"x"}])
+# Hằng, không `datetime.now`: tham số phải giống nhau giữa mọi lần thu thập của xdist (NO-266)
+@pytest.mark.parametrize("data", [{"at": datetime(2026, 1, 1, tzinfo=UTC)}, {"blob": b"x"}])
 async def test_publish_rejects_raw_types_the_wire_has_no_form_for(
     event_bus: EventBus, stream: str, data: dict[str, object]
 ) -> None:
@@ -176,6 +187,7 @@ async def test_publish_once_adds_the_event_exactly_once(event_bus: EventBus, str
 
 
 async def test_publish_once_publishes_again_after_the_key_expires(event_bus: EventBus, stream: str) -> None:
+    """Khoá chống lặp hết hạn thì cùng khoá được công bố lại."""
     await event_bus.publish_once(stream, "ntf-ttl", {"n": 1}, 1)
     await asyncio.sleep(1.1)
     second = await event_bus.publish_once(stream, "ntf-ttl", {"n": 2}, DEDUPE_TTL_S)
@@ -186,6 +198,7 @@ async def test_publish_once_publishes_again_after_the_key_expires(event_bus: Eve
 
 
 async def test_publish_once_separates_different_keys(event_bus: EventBus, stream: str) -> None:
+    """Hai khoá chống lặp khác nhau là hai sự kiện riêng."""
     await event_bus.publish_once(stream, "a", {"n": 1}, DEDUPE_TTL_S)
     await event_bus.publish_once(stream, "b", {"n": 2}, DEDUPE_TTL_S)
 
@@ -196,11 +209,13 @@ async def test_publish_once_separates_different_keys(event_bus: EventBus, stream
 async def test_publish_once_rejects_an_empty_key_or_a_dead_ttl(
     event_bus: EventBus, stream: str, dedupe_key: str, ttl_s: int
 ) -> None:
+    """Khoá rỗng hay TTL không dương bị từ chối."""
     with pytest.raises(ValueError, match=r"dedupe_key|ttl_s"):
         await event_bus.publish_once(stream, dedupe_key, {"n": 1}, ttl_s)
 
 
 async def test_tail_id_is_none_for_an_empty_stream(event_bus: EventBus, stream: str) -> None:
+    """`tail_id` là `None` khi stream rỗng, là id cuối khi đã có sự kiện."""
     assert await event_bus.tail_id(stream) is None
 
     last = await event_bus.publish(stream, {"n": 1})
@@ -210,6 +225,7 @@ async def test_tail_id_is_none_for_an_empty_stream(event_bus: EventBus, stream: 
 async def test_is_trimmed_tells_a_lost_position_from_a_live_one(
     event_bus: EventBus, streams_client: AsyncRedis, stream: str
 ) -> None:
+    """Vị trí đã bị cắt khỏi stream khác với vị trí còn đọc tiếp được."""
     first = await event_bus.publish(stream, {"n": 1})
     await event_bus.publish(stream, {"n": 2})
     last = await event_bus.publish(stream, {"n": 3})
@@ -222,10 +238,12 @@ async def test_is_trimmed_tells_a_lost_position_from_a_live_one(
 
 
 async def test_is_trimmed_is_true_for_an_empty_stream(event_bus: EventBus, stream: str) -> None:
+    """Stream rỗng thì mọi vị trí cũ đều coi như đã bị cắt."""
     assert await event_bus.is_trimmed(stream, "1-0") is True
 
 
 async def test_is_trimmed_rejects_a_malformed_id(event_bus: EventBus, stream: str) -> None:
+    """Id sai dạng bị từ chối."""
     with pytest.raises(ValueError, match="id sự kiện"):
         await event_bus.is_trimmed(stream, "moi-mo")
 
@@ -240,6 +258,7 @@ async def test_publish_caps_the_stream_at_maxlen(streams_client: AsyncRedis, str
 
 
 async def test_maxlen_defaults_to_the_configured_value(streams_client: AsyncRedis, stream: str) -> None:
+    """Không truyền `maxlen` thì stream bị cắt theo giá trị cấu hình."""
     bus = EventBus(streams_client)
     await bus.publish(stream, {"n": 1})
 
@@ -250,6 +269,7 @@ async def test_maxlen_defaults_to_the_configured_value(streams_client: AsyncRedi
 async def test_expire_sets_a_deadline_on_the_whole_stream(
     event_bus: EventBus, streams_client: AsyncRedis, stream: str
 ) -> None:
+    """`expire` đặt hạn cho cả khoá stream."""
     await event_bus.publish(stream, {"n": 1})
     await event_bus.expire(stream, 3600)
 
@@ -322,6 +342,7 @@ async def test_publish_reports_a_stopped_redis_as_dependency_unavailable(
 
 
 async def test_publish_to_a_closed_port_is_dependency_unavailable(monkeypatch: pytest.MonkeyPatch, stream: str) -> None:
+    """Redis không lắng nghe (cổng đóng) → lỗi `DEPENDENCY_UNAVAILABLE`, không phải lỗi nội bộ."""
     monkeypatch.setenv("REDIS_BROKER_URL", refused_url("redis"))
     monkeypatch.setenv("REDIS_CACHE_URL", refused_url("redis"))
     reset_messaging_settings_cache()

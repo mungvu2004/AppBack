@@ -34,9 +34,26 @@ def test_db_fixture_timings(postgres_url: str) -> None:
         db_fixtures._drop_database(postgres_url, template)
 
     log.info(
-        "db_template: %.2f s · db_url trung bình: %.3f s (%d lượt, nhanh nhất %.3f s)",
+        "db_template: %.2f s · CREATE … TEMPLATE (đường cũ của db_url, để so): %.3f s (%d lượt, nhanh nhất %.3f s)",
         template_s,
         sum(durations) / len(durations),
+        ROUNDS,
+        min(durations),
+    )
+    assert len(durations) == ROUNDS
+
+
+def test_db_url_reset_timing(shared_db: db_fixtures.SharedDb) -> None:
+    """Đo đường thật của `db_url` (NO-267): lượt dọn trên kết nối giữ cả phiên, sau lượt đầu đã nối."""
+    shared_db.reset()
+    durations: list[float] = []
+    for _ in range(ROUNDS):
+        start = time.perf_counter()
+        shared_db.reset()
+        durations.append(time.perf_counter() - start)
+    log.info(
+        "db_url (lượt dọn): trung bình %.4f s (%d lượt, nhanh nhất %.4f s)",
+        sum(durations) / ROUNDS,
         ROUNDS,
         min(durations),
     )

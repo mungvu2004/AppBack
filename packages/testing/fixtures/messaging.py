@@ -116,24 +116,28 @@ async def _flushed(client: AsyncRedis) -> AsyncIterator[AsyncRedis]:
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def streams_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
+    """Client async của DB Streams (`STREAM_DB`), `FLUSHDB` sau test."""
     async with _flushed(streams_redis()) as client:
         yield client
 
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def safe_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
+    """Client async của DB an toàn (`SAFE_DB`: khoá đăng nhập, hạn mức), `FLUSHDB` sau test."""
     async with _flushed(safe_redis()) as client:
         yield client
 
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def cache_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
+    """Client async của `redis-cache` (cache, rate limit), `FLUSHDB` sau test."""
     async with _flushed(cache_redis()) as client:
         yield client
 
 
 @pytest.fixture
 def event_bus(streams_client: AsyncRedis) -> EventBus:
+    """`EventBus` thật trên client Streams của test."""
     return EventBus(streams_client)
 
 
@@ -174,7 +178,7 @@ def celery_worker_factory(celery_test_app: Celery) -> WorkerFactory:
 
     @contextmanager
     def factory(queues: Sequence[str]) -> Iterator[None]:
-        """Worker thật nghe `queues` trong khối `with`; hàng lạ → `ValueError`."""
+        """Worker thật nghe đúng `queues`; hàng lạ → `ValueError` trước khi dựng."""
         unknown = set(queues) - set(QUEUES)
         if unknown:
             raise ValueError(f"hàng lạ: {sorted(unknown)}")

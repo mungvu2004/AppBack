@@ -4,9 +4,12 @@
   tiến trình xdist (`template_db_name()`) nên `pytest -n` không giẫm lên nhau.
 - `db_url` (mỗi test): **một** database dùng chung cho cả tiến trình, nhân bản từ bản trên một
   lần mỗi phiên; sau mỗi test đưa về trạng thái ngay-sau-`upgrade head` bằng **một giao dịch**
-  `DELETE FROM` mọi bảng app + `setval` mọi chuỗi + nạp lại dữ liệu gốc (FIX-112). Chữ ký không
-  đổi: test vẫn chỉ thấy một URL và một database sạch như trước, kể cả bộ đếm `Identity()` lại
-  từ 1. Đo trên 26 bảng, n=50: `CREATE DATABASE … TEMPLATE` + `DROP` 162,0 ms/test,
+  `DELETE FROM` mọi bảng app + nạp lại dữ liệu gốc + `setval` mọi chuỗi về sau dòng lớn nhất (FIX-112,
+  NO-277). Chữ ký không đổi: test vẫn chỉ thấy một URL và **dữ liệu** sạch như trước, kể cả bộ đếm
+  `Identity()` lại từ 1 (từ sau dòng gốc với bảng có dữ liệu gốc). Phạm vi dọn chỉ là **dòng**: bảng,
+  kiểu, chuỗi mà test tự tạo sống tới hết phiên của tiến trình (lượt dọn sau vẫn xoá dòng của chúng).
+  Lượt dọn đi trên **một** kết nối giữ cả phiên, trên vòng sự kiện riêng của `SharedDb` (NO-267).
+  Đo trên 26 bảng, n=50: `CREATE DATABASE … TEMPLATE` + `DROP` 162,0 ms/test,
   `TRUNCATE … RESTART IDENTITY CASCADE` 335-391 ms/test (chậm hơn: khoá ACCESS EXCLUSIVE + chạm
   file từng bảng/index), `DELETE` trong một giao dịch **17,2 ms** — nên chọn `DELETE`. Danh sách bảng
   do chính Postgres liệt kê lúc chạy (`_RESET_SQL`), không chụp sẵn: fixture của test có thể tạo thêm
@@ -24,12 +27,13 @@ import secrets
 import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from packages.db.engine import GATE_CONNECT_TIMEOUT_S, create_engine, create_sessionmaker
 from packages.db.hooks import DROP_ENV
@@ -75,11 +79,13 @@ def _per_worker(base: str) -> str:
 
 
 def _with_database(url: str, name: str) -> str:
+    """Cùng URL nhưng trỏ sang database `name` (bỏ query/fragment)."""
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, f"/{name}", "", ""))
 
 
 async def _admin(url: str, statements: list[str]) -> None:
+    """Chạy các câu quản trị (AUTOCOMMIT) trên database `postgres` của máy chủ."""
     # Đường connect nhiều nhất của cả bộ test (mỗi test một `CREATE`/`DROP DATABASE`), nên
     # cũng chịu trần cổng thay vì 60 s mặc định của asyncpg (NO-002).
     engine = create_async_engine(
@@ -96,11 +102,13 @@ async def _admin(url: str, statements: list[str]) -> None:
 
 
 def _create_database(url: str, name: str, template: str | None = None) -> None:
+    """Tạo lại database `name` (xoá bản cũ nếu có), tuỳ chọn nhân bản từ `template`."""
     suffix = f' TEMPLATE "{template}"' if template else ""
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)', f'CREATE DATABASE "{name}"{suffix}']))
 
 
 def _drop_database(url: str, name: str) -> None:
+    """Xoá database `name` nếu có, cắt mọi kết nối đang mở."""
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)']))
 
 
@@ -122,45 +130,53 @@ def assert_reset_target(url: str) -> None:
         raise RuntimeError("lượt dọn test chỉ chạy dưới pytest: không thấy dấu vết phiên pytest (FIX-114)")
 
 
-async def _on_reset_connection(url: str, statements: list[str]) -> None:
+async def _reset(engine: AsyncEngine, url: str, statements: list[str]) -> None:
     """Chạy `statements` trên database của test trong **một** giao dịch, có trần chờ khoá.
 
     Một giao dịch chứ không AUTOCOMMIT vì hai lẽ: `SET LOCAL session_replication_role` chỉ có
     hiệu lực trong giao dịch, và lượt dọn phải là tất-cả-hoặc-không (nửa vời để lại database lẫn
     dữ liệu của test trước cho test sau).
 
-    `lock_timeout` là lưới an toàn: một kết nối của test còn treo giữa giao dịch giữ khoá dòng sẽ
-    chặn `DELETE`. Có trần thì lượt dọn hỏng ngay với `LockNotAvailable` nêu đúng bảng, thay vì cả
-    bước 5 đứng im.
+    `lock_timeout` (đặt trên kết nối của `engine`, `shared_db`) là lưới an toàn: một kết nối của
+    test còn treo giữa giao dịch giữ khoá dòng sẽ chặn `DELETE`. Có trần thì lượt dọn hỏng ngay với
+    `LockNotAvailable` nêu đúng bảng, thay vì cả bước 5 đứng im.
 
-    `assert_reset_target` chạy **trước** khi mở kết nối: đây là đường duy nhất chạy `DELETE`, nên
+    `assert_reset_target` chạy **trước** khi lấy kết nối: đây là đường duy nhất chạy `DELETE`, nên
     chặn ở đây là chặn cho mọi người gọi (R-19).
     """
     assert_reset_target(url)
-    engine = create_async_engine(
-        url,
-        connect_args={
-            "timeout": GATE_CONNECT_TIMEOUT_S,
-            "server_settings": {"lock_timeout": str(RESET_LOCK_TIMEOUT_MS)},
-        },
-    )
-    try:
-        async with engine.connect() as connection:
-            for statement in statements:
-                await connection.execute(text(statement))
-            await connection.commit()
-    finally:
-        await engine.dispose()
+    async with engine.connect() as connection:
+        for statement in statements:
+            await connection.execute(text(statement))
+        await connection.commit()
 
 
-# Một lượt dọn = **một** câu: khối PL/pgSQL tự liệt kê bảng và chuỗi lúc **chạy**, nên không bao giờ
+@dataclass(frozen=True, slots=True)
+class SharedDb:
+    """Database dùng chung của một tiến trình cùng kết nối dọn giữ cả phiên (NO-267).
+
+    Kết nối asyncpg gắn với vòng sự kiện đã mở nó, mà mỗi test chạy trên vòng riêng; nên lượt dọn có
+    vòng sự kiện **của nó** (`loop`, không đặt làm vòng hiện hành của luồng) và một engine một kết nối
+    dùng lại qua mọi test — bỏ lượt bắt tay mỗi test. `pool_pre_ping`: test cắt kết nối của database
+    (`pg_terminate_backend`) thì lượt dọn kế tự nối lại thay vì hỏng.
+    """
+
+    url: str
+    plan: list[str]
+    loop: asyncio.AbstractEventLoop
+    engine: AsyncEngine
+
+    def reset(self) -> None:
+        """Đưa database về trạng thái ngay sau `upgrade head` — `db_url` gọi sau mỗi test."""
+        self.loop.run_until_complete(_reset(self.engine, self.url, self.plan))
+
+
+# Lượt xoá = **một** câu: khối PL/pgSQL tự liệt kê bảng lúc **chạy**, nên không bao giờ
 # lệch. Liệt kê sẵn một lần rồi dùng lại là sai: fixture của test có thể `metadata.create_all` thêm
 # bảng sau khi phiên đã bắt đầu (bảng `sample_*` của `apps/api/core`, bảng dựng tay của
 # `packages/db/tests/test_engine.py`) — danh sách chụp lúc đầu phiên không có chúng, và dữ liệu của
 # chúng rò sang test sau. `set_config(…, true)` = `SET LOCAL`: tắt trigger khoá ngoài trong **giao
 # dịch này**, nên xoá (và nạp lại sau đó, cùng giao dịch) theo thứ tự bảng nào cũng được.
-# `setval(…, 1, false)`: `DELETE` không lùi bộ đếm `Identity()`, mà bản cũ (database mới mỗi test)
-# luôn cho bộ đếm chạy lại từ 1 — thiếu bước này thì test khẳng định id tự tăng sẽ đỏ theo thứ tự chạy.
 _RESET_SQL = f"""
 DO $$
 DECLARE name text;
@@ -171,16 +187,27 @@ BEGIN
   LOOP
     EXECUTE format('DELETE FROM public.%I', name);
   END LOOP;
-  FOR name IN
-    SELECT pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name)
+END $$;
+"""  # noqa: S608 — `ALEMBIC_TABLE` là hằng của module này, không phải dữ liệu ngoài
+
+# Chạy **sau** lượt nạp lại dữ liệu gốc (NO-277): `DELETE` không lùi bộ đếm `Identity()`, mà bản cũ
+# (database mới mỗi test) cho bộ đếm chạy lại từ đầu — thiếu bước này thì test khẳng định id tự tăng đỏ
+# theo thứ tự chạy. Đặt về `max(cột) + 1` chứ không về 1: dòng gốc nạp lại mang sẵn id, bộ đếm về 1 là
+# dòng thêm đầu tiên của test sau đụng khoá chính. Bảng rỗng → `max` là NULL → lại từ 1 như cũ.
+_RESEQUENCE_SQL = """
+DO $$
+DECLARE tbl text; col text; seq text;
+BEGIN
+  FOR tbl, col, seq IN
+    SELECT table_name, column_name, pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name)
     FROM information_schema.columns WHERE table_schema = 'public'
   LOOP
-    IF name IS NOT NULL THEN
-      EXECUTE format('SELECT setval(%L, 1, false)', name);
+    IF seq IS NOT NULL THEN
+      EXECUTE format('SELECT setval(%L, COALESCE((SELECT max(%I) FROM public.%I), 0) + 1, false)', seq, col, tbl);
     END IF;
   END LOOP;
 END $$;
-"""  # noqa: S608 — `ALEMBIC_TABLE` là hằng của module này, không phải dữ liệu ngoài
+"""
 
 
 async def _build_reset_plan(url: str) -> list[str]:
@@ -223,18 +250,24 @@ async def _build_reset_plan(url: str) -> list[str]:
         _RESET_SQL,
         # S608: tên bảng không truyền được làm tham số buộc trong SQL, mà `t` đến từ `pg_tables` của
         # chính database này — không phải dữ liệu ngoài; đã bọc `"…"` nên tên lạ cũng chỉ là tên.
-        *(f'INSERT INTO public."{t}" SELECT * FROM "{RESET_SCHEMA}"."{t}"' for t in seeded),  # noqa: S608
+        *(
+            f'INSERT INTO public."{t}" SELECT * FROM "{RESET_SCHEMA}"."{t}"'  # noqa: S608 — tên từ pg_tables
+            for t in seeded
+        ),
+        _RESEQUENCE_SQL,
     ]
 
 
 async def _has_rows(connection: AsyncConnection, table: str) -> bool:
     """Bảng có dòng nào ngay sau `upgrade head` → là dữ liệu gốc của migration, phải nạp lại."""
     # S608: cùng lý do như lượt nạp lại — `table` là tên lấy từ `pg_tables`, không phải input
-    result = await connection.execute(text(f'SELECT EXISTS (SELECT 1 FROM public."{table}")'))  # noqa: S608
+    query = f'SELECT EXISTS (SELECT 1 FROM public."{table}")'  # noqa: S608 — tên từ pg_tables
+    result = await connection.execute(text(query))
     return bool(result.scalar())
 
 
 def _alembic_upgrade(url: str) -> None:
+    """`alembic upgrade head` trên `url`; trả lại `DATABASE_URL` cũ và cache cấu hình sau đó."""
     from alembic import command  # nhập tại chỗ: giữ thời gian thu thập test thấp
 
     previous = os.environ.get("DATABASE_URL")
@@ -262,35 +295,48 @@ def db_template(postgres_url: str) -> Iterator[str]:
 
 
 @pytest.fixture(scope="session")
-def shared_db(postgres_url: str, db_template: str) -> Iterator[tuple[str, list[str]]]:
-    """(URL, kế hoạch dọn) của database dùng chung một tiến trình — nhân bản template một lần."""
+def shared_db(postgres_url: str, db_template: str) -> Iterator[SharedDb]:
+    """Database dùng chung một tiến trình — nhân bản template một lần — cùng kết nối dọn của nó."""
     name = shared_db_name()
     _create_database(postgres_url, name, template=template_db_name())
     url = _with_database(postgres_url, name)
     plan = asyncio.run(_build_reset_plan(url))
+    loop = asyncio.new_event_loop()
+    engine = create_async_engine(
+        url,
+        pool_size=1,
+        max_overflow=0,
+        pool_pre_ping=True,
+        connect_args={
+            "timeout": GATE_CONNECT_TIMEOUT_S,
+            "server_settings": {"lock_timeout": str(RESET_LOCK_TIMEOUT_MS)},
+        },
+    )
     try:
-        yield url, plan
+        yield SharedDb(url=url, plan=plan, loop=loop, engine=engine)
     finally:
+        loop.run_until_complete(engine.dispose())
+        loop.close()
         _drop_database(postgres_url, name)
 
 
 @pytest.fixture
-def db_url(shared_db: tuple[str, list[str]]) -> Iterator[str]:
-    """Database sạch cho một test (FIX-112: dọn bằng `DELETE`, không nhân bản database mỗi test).
+def db_url(shared_db: SharedDb) -> Iterator[str]:
+    """Dữ liệu sạch cho một test (FIX-112: dọn bằng `DELETE`, không nhân bản database mỗi test).
 
-    Chữ ký cũ: test nhận đúng một URL và thấy database rỗng như trước, bộ đếm `Identity()` cũng
-    lại từ 1. Khác là bản thân database dùng chung cả tiến trình, và lượt dọn chạy **sau** test —
+    Chữ ký cũ: test nhận đúng một URL và thấy các bảng rỗng (trừ dữ liệu gốc của migration) như
+    trước, bộ đếm `Identity()` cũng lại từ đầu. Khác là bản thân database dùng chung cả tiến trình —
+    bảng/kiểu do test tạo sống tới hết phiên (NO-277) — và lượt dọn chạy **sau** test —
     test đầu tiên của tiến trình thấy bản vừa nhân bản từ template, test sau thấy bản vừa dọn.
     `finally` nên test hỏng giữa đường vẫn dọn.
 
     Dọn chạy ở finalizer của `db_url`, mà `db_sessionmaker` phụ thuộc `db_url`: pytest gỡ fixture
     theo thứ tự ngược, nên engine của test đã `dispose` xong trước khi lượt dọn xin khoá.
     """
-    url, plan = shared_db
     try:
-        yield url
+        yield shared_db.url
     finally:
-        asyncio.run(_on_reset_connection(url, plan))
+        shared_db.reset()
 
 
 @pytest.fixture
@@ -304,7 +350,8 @@ def blank_db_url(postgres_url: str) -> Iterator[str]:
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    # Pool nhỏ: mỗi test một database, Postgres dùng chung không phải giữ hàng trăm kết nối.
+    """Sessionmaker trên engine riêng của test, nối vào database của `db_url`."""
+    # Pool nhỏ: mỗi tiến trình một database dùng chung, Postgres không phải giữ hàng trăm kết nối.
     # Trần bắt tay của đường cổng, không phải 10 s của đường request (NO-036, cùng lý do `_admin`).
     settings = DatabaseSettings(
         database_url=db_url, db_pool_size=5, db_max_overflow=0, db_connect_timeout_s=int(GATE_CONNECT_TIMEOUT_S)
@@ -318,6 +365,7 @@ async def db_sessionmaker(db_url: str) -> AsyncIterator[async_sessionmaker[Async
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def db_session(db_sessionmaker: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
+    """Một `AsyncSession` của test, đóng sau test."""
     async with db_sessionmaker() as session:
         yield session
 
