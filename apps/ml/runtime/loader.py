@@ -190,8 +190,9 @@ def _read_file(path: Path) -> bytes:
     return data
 
 
-async def _read_object(storage: ObjectStorage, key: str) -> bytes:
-    """Object trọng số: `stat` trước, đọc theo khúc và dừng ngay khi vượt trần (kho có thể khai sai cỡ)."""
+async def read_model_object(storage: ObjectStorage, key: str) -> bytes:
+    """Object trọng số (công khai cho hộp cát đánh giá): `stat` trước,
+    đọc theo khúc và dừng ngay khi vượt trần (kho có thể khai sai cỡ)."""
     info = await storage.stat(key)
     if info is None:
         raise PermanentError(MODEL_NOT_FOUND)
@@ -246,7 +247,7 @@ async def load_onnx(
             raise PermanentError(MODEL_NOT_FOUND)
         data = await asyncio.to_thread(_read_file, models_dir / f"{ref.pinned_name}.onnx")
     else:
-        data = await _read_object(storage, str(ref.weights_key))
+        data = await read_model_object(storage, str(ref.weights_key))
     await asyncio.to_thread(_verify, data, ref, pinned)
     session = await asyncio.to_thread(_session, data, get_ml_settings().ml_ort_threads)
     _SESSIONS.put(ref.checksum_sha256, session)

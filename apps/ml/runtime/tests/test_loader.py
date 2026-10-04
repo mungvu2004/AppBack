@@ -131,6 +131,19 @@ async def test_load_onnx_m02_missing(local_storage: LocalDiskStorage, tmp_path: 
     await expect(MODEL_NOT_FOUND, local_storage, pinned_ref(data), tmp_path, pinned={})
 
 
+async def test_read_model_object__returns_bytes_and_maps_missing_to_model_not_found(
+    local_storage: LocalDiskStorage, tmp_path: Path
+) -> None:
+    """Hàm công khai cho hộp cát đánh giá (NO-319): đọc đủ byte object; thiếu → `MODEL_NOT_FOUND`."""
+    data = add_model().SerializeToString()
+    ref = storage_ref(data)
+    with pytest.raises(PermanentError) as caught:
+        await loader.read_model_object(local_storage, str(ref.weights_key))
+    assert caught.value.code == MODEL_NOT_FOUND
+    await put(local_storage, ref, data)
+    assert await loader.read_model_object(local_storage, str(ref.weights_key)) == data
+
+
 async def test_load_onnx_object_vanishes_or_storage_fails(tmp_path: Path) -> None:
     data = add_model().SerializeToString()
     await expect(
