@@ -237,7 +237,7 @@ def test_on_after_commit__J09_inline_in_worker_runner(
 def test_on_after_commit__J09_inline_slow_callback_caps_at_timeout(
     db_url: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Chạy tại chỗ (worker): callback chậm bị cắt ở `CALLBACK_TIMEOUT_S`, log `after_commit_failed` kèm `TimeoutError`."""
+    """Chạy tại chỗ (worker): callback chậm bị cắt ở `CALLBACK_TIMEOUT_S`, log `after_commit_failed`."""
     monkeypatch.setenv(INLINE_ENV, "1")
 
     async def work(maker: async_sessionmaker[AsyncSession]) -> None:
