@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -295,11 +297,11 @@ def test_deploy_default_swap_settle_s_covers_nginx_resolver_ttl() -> None:
     toàn" (comment `lib.sh`) chưa có test nào chốt trước đây — B0-08 nâng `resolver …
     valid=…` mà không ai sửa mặc định ở đây thì cổng vẫn xanh, deploy lại 502 thật. Trích
     `valid=(\\d+)s` thẳng từ CẢ HAI template thật (chỉ đọc, không sửa — thuộc B0-08) và đối
-    chiếu với mặc định `${APPBACK_API_SWAP_SETTLE_S:-N}` trích thẳng từ `lib.sh`, không chép
-    tay hằng số nào ở hai phía."""
+    chiếu với mặc định `${APPBACK_API_SWAP_SETTLE_S:=N}` trích thẳng từ `lib.sh` (dạng
+    `:-N` bị cấm bên dưới), không chép tay hằng số nào ở hai phía."""
     lib_sh = (REPO_ROOT / "deploy" / "scripts" / "lib.sh").read_text(encoding="utf-8")
-    m = re.search(r'^: "\$\{APPBACK_API_SWAP_SETTLE_S=(\d+)\}"$', lib_sh, re.MULTILINE)
-    assert m, 'không tìm thấy dòng khai báo : "${APPBACK_API_SWAP_SETTLE_S=N}" trong lib.sh'
+    m = re.search(r'^: "\$\{APPBACK_API_SWAP_SETTLE_S:=(\d+)\}"$', lib_sh, re.MULTILINE)
+    assert m, 'không tìm thấy dòng khai báo : "${APPBACK_API_SWAP_SETTLE_S:=N}" trong lib.sh'
     default_settle_s = int(m.group(1))
     assert "APPBACK_API_SWAP_SETTLE_S:-" not in lib_sh, (
         "lib.sh: còn bản sao mặc định dạng ${APPBACK_API_SWAP_SETTLE_S:-N} — phải dùng biến trần (NO-120)"
@@ -344,3 +346,41 @@ def test_readme_ml_env_check__uses_allowlist() -> None:
     assert "grep -vE" in cmd, f"README: lệnh kiểm ml.env phải theo danh sách cho phép: {cmd}"
     for prefix in ("ML_", "METRICS_"):
         assert prefix in cmd, f"README: danh sách cho phép thiếu {prefix}: {cmd}"
+
+
+def test_lib_empty_swap_settle_s_falls_back_to_default__no200(tmp_path: Path) -> None:
+    """NO-200: `APPBACK_API_SWAP_SETTLE_S=` rỗng (appback.env) làm `sleep ""` hỏng giữa
+    `swap_api`; rỗng phải về mặc định, còn `0` vẫn giữ nguyên (tắt chờ)."""
+    lib = REPO_ROOT / "deploy" / "scripts" / "lib.sh"
+    for given, want in (("", "11"), ("0", "0"), ("3", "3")):
+        out = subprocess.run(  # noqa: S603 — bash + tham số cố định của test
+            ["bash", "-c", f'source "{lib.as_posix()}"; printf %s "$APPBACK_API_SWAP_SETTLE_S"'],  # noqa: S607
+            env={**os.environ, "APPBACK_API_SWAP_SETTLE_S": given},
+            capture_output=True, text=True, check=True,
+        )  # fmt: skip
+        assert out.stdout == want, f"đặt {given!r} → {out.stdout!r}, muốn {want!r}"
+
+
+def test_deploy_dry_run_publishes_library_after_migrate__no242(tmp_path: Path) -> None:
+    """NO-242: migrate + seed để thư viện `.glb` rỗng tới lượt lịch đầu; kế hoạch deploy phải
+    có `apps.api.library.cli publish` ngay sau migrate."""
+    appback_dir = tmp_path / "opt-appback"
+    appback_dir.mkdir()
+    result = run_script(SCRIPT, ["sha-abc123456789", "--dry-run"], env={"APPBACK_DIR": str(appback_dir)})
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "apps.api.library.cli publish" in out, out
+    assert out.find("migrate") < out.find("apps.api.library.cli publish") < out.find("scale api=2")
+
+
+def test_readme_lists_required_smtp_vars__no196() -> None:
+    """NO-196: mọi biến `${SMTP_*|MAIL_*:?…}` bắt buộc ở `base.yml` làm mọi lệnh compose trên
+    prod hỏng nếu `appback.env` thiếu — README phải có dòng bảng và mục §12 nhắc tới chúng."""
+    base = (REPO_ROOT / "deploy" / "compose" / "base.yml").read_text(encoding="utf-8")
+    required = sorted(set(re.findall(r"\$\{((?:SMTP|MAIL)_\w+):\?", base)))
+    assert {"SMTP_HOST", "MAIL_FROM"} <= set(required), required
+    readme = (REPO_ROOT / "deploy" / "scripts" / "README.md").read_text(encoding="utf-8")
+    section12 = readme.split("## 12.", 1)[1].split("\n## ", 1)[0]
+    for name in required:
+        assert re.search(rf"^\| `{name}` \|", readme, re.MULTILINE), f"README: thiếu dòng bảng {name}"
+        assert name in section12, f"README §12: không nhắc {name}"

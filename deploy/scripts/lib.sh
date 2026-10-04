@@ -19,10 +19,10 @@ set -euo pipefail
 # RÀNG BUỘC (R-05): 11 = TTL cache DNS của nginx (10s, `resolver 127.0.0.11
 # valid=10s` ở deploy/nginx/templates/{dev,prod}/app.conf.template) + 1s biên an
 # toàn; test_deploy_default_swap_settle_s_covers_nginx_resolver_ttl chốt quan hệ đó.
-# Dùng `=` chứ không `:=` (bài học NO-114): test và người vận hành đặt
-# APPBACK_API_SWAP_SETTLE_S=0 để tắt hẳn lúc kiểm, `:=` coi 0 là hợp lệ nhưng coi
-# chuỗi rỗng như chưa đặt và sẽ ghi đè lại.
-: "${APPBACK_API_SWAP_SETTLE_S=11}"
+# Dùng `:=`: "0" (tắt hẳn lúc kiểm, bài học NO-114) vẫn được giữ vì không rỗng, còn
+# `APPBACK_API_SWAP_SETTLE_S=` rỗng trong appback.env về mặc định thay vì làm
+# `sleep ""` hỏng giữa swap_api (NO-200).
+: "${APPBACK_API_SWAP_SETTLE_S:=11}"
 export APPBACK_DIR IMAGE_REGISTRY APPBACK_BASE_URL APPBACK_HEALTH_TIMEOUT_S APPBACK_API_SWAP_SETTLE_S
 export COMPOSE_FILE="${COMPOSE_FILE:-$APPBACK_DIR/prod.yml}"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-appback}"

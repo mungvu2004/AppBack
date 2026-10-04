@@ -7,6 +7,8 @@
 #
 # Biến môi trường:
 #   DRILL_COMPOSE_FILE   file compose dùng cho diễn tập (mặc định deploy/compose/ci.yml)
+#   DRILL_STORAGE        kho object: s3 (mặc định) hoặc local (volume local-storage; cần
+#                        DRILL_COMPOSE_FILE khác ci.yml — ci.yml ép STORAGE_BACKEND=s3)
 #   IMAGE_TAG             tag ảnh (mặc định ci)
 #   WEB_HTTP_PORT, POSTGRES_HOST_PORT  cổng host (hop-dong.md §6)
 #   BACKUP_AGE_RECIPIENT/BACKUP_AGE_IDENTITY  do script tự đặt nếu máy có age/age-keygen
@@ -30,7 +32,24 @@ export WEB_HTTP_PORT="${WEB_HTTP_PORT:-18080}"
 export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-15432}"
 export PUBLIC_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"
 export APPBACK_BASE_URL="http://127.0.0.1:${WEB_HTTP_PORT}"
-export APPBACK_STORAGE="s3"
+# Kho object diễn tập: hai kho đều phải được phủ (FIX-215 lọt hồi quy umask của kho đĩa vì
+# drill từng ép s3). Kiểm trước `trap cleanup` để thoát 2 không chạm docker.
+DRILL_STORAGE="${DRILL_STORAGE:-s3}"
+case "$DRILL_STORAGE" in
+  s3) ;;
+  local)
+    if [ "$COMPOSE_FILE" = "deploy/compose/ci.yml" ]; then
+      echo "DRILL_STORAGE=local cần DRILL_COMPOSE_FILE khác ci.yml (ci.yml ép STORAGE_BACKEND=s3, không có local-storage)" >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "DRILL_STORAGE phải là s3 hoặc local, đang là: $DRILL_STORAGE" >&2
+    exit 2
+    ;;
+esac
+export APPBACK_STORAGE="$DRILL_STORAGE"
+LOCAL_STORAGE_ROOT="/var/lib/appback/storage"
 
 DRILL_ID="drill$(date -u +%Y%m%d%H%M%S)"
 SCRATCH=""
@@ -77,18 +96,40 @@ _mc() {
     'mc alias set local "$S3_ENDPOINT" "$S3_ACCESS_KEY" "$S3_SECRET_KEY" >/dev/null && exec mc "$@"' sh "$@"
 }
 
+_local_api() {
+  # Chạy `sh -c "$1"` (tham số "$2" thành $1 của nó) trong container api đang sống — kho đĩa chỉ có ở đó.
+  local script="$1"
+  shift
+  docker compose exec -T api sh -c "$script" sh "$@"
+}
+
 mc_put() {
-  # Đẩy nội dung đọc từ stdin thành object tại khoá "$1" (dưới bucket của app).
+  # Đẩy nội dung đọc từ stdin thành object tại khoá "$1" (dưới bucket của app / thư mục kho đĩa).
+  if [ "$APPBACK_STORAGE" = "local" ]; then
+    # shellcheck disable=SC2016 # $1 giãn TRONG container api.
+    _local_api 'mkdir -p "$(dirname "$1")" && cat > "$1"' "$LOCAL_STORAGE_ROOT/$1"
+    return
+  fi
   _mc pipe "local/${S3_BUCKET_NAME}/$1"
 }
 
 mc_cat_sha256() {
   # SHA-256 nội dung object tại khoá "$1".
+  if [ "$APPBACK_STORAGE" = "local" ]; then
+    # shellcheck disable=SC2016 # $1 giãn TRONG container api.
+    _local_api 'sha256sum < "$1"' "$LOCAL_STORAGE_ROOT/$1" | cut -d' ' -f1
+    return
+  fi
   _mc cat "local/${S3_BUCKET_NAME}/$1" | sha256sum | cut -d' ' -f1
 }
 
 mc_find_objects() {
   # Liệt kê mọi object dưới tiền tố "$1" (đường đầy đủ có "local/<bucket>/…" mỗi dòng).
+  if [ "$APPBACK_STORAGE" = "local" ]; then
+    # shellcheck disable=SC2016 # $1/$2 giãn TRONG container api.
+    _local_api 'cd "$1" 2>/dev/null && find "$2" -type f 2>/dev/null | sed "s#^#local/${3}/#"'       "$LOCAL_STORAGE_ROOT" "$1" "$S3_BUCKET_NAME" || true
+    return
+  fi
   _mc find "local/${S3_BUCKET_NAME}/$1" --type f 2>/dev/null || true
 }
 
@@ -227,7 +268,11 @@ main() {
   docker compose run --rm migrate python -m packages.db.seeds
   PG_USER="$(docker compose exec -T postgres sh -c 'printf "%s" "$POSTGRES_USER"')"
   PG_DB="$(docker compose exec -T postgres sh -c 'printf "%s" "$POSTGRES_DB"')"
-  S3_BUCKET_NAME="$(docker compose run --rm --no-deps -T --entrypoint sh minio-init -c 'printf "%s" "$S3_BUCKET"')"
+  if [ "$APPBACK_STORAGE" = "local" ]; then
+    S3_BUCKET_NAME="local" # chỉ là tiền tố đường trong ảnh chụp; kho đĩa không có bucket
+  else
+    S3_BUCKET_NAME="$(docker compose run --rm --no-deps -T --entrypoint sh minio-init -c 'printf "%s" "$S3_BUCKET"')"
+  fi
   create_admin "drill-${DRILL_ID}@example.com"
   local i
   for i in 1 2 3; do

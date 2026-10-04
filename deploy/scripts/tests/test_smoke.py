@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, run_script
+from deploy.scripts.tests.support import REPO_ROOT, HttpStub, Reply, fake_bin, run_script
 
 SCRIPT = REPO_ROOT / "deploy" / "scripts" / "smoke.sh"
 
@@ -71,3 +71,13 @@ def test_smoke_missing_argument_exits_2(tmp_path: Path) -> None:
     """Không đối số → thoát 2, không gọi HTTP."""
     result = run_script(SCRIPT, [], env={"HOME": str(tmp_path)})
     assert result.returncode == 2
+
+
+def test_smoke_does_not_need_python3__no189(tmp_path: Path) -> None:
+    """NO-189: kiểm khoá "code" của /api/nope không được dựa vào `python3` — máy Windows có
+    shim rỗng của Microsoft Store (thoát 1). Shim giả đứng đầu PATH; smoke vẫn phải đạt."""
+    shim = fake_bin(tmp_path / "bin", {"python3": "exit 9\n"})
+    with HttpStub(FULL_ROUTES) as stub:
+        result = run_script(SCRIPT, [stub.url], bin_dir=shim, env={"FAKE_LOG": str(tmp_path / "log")})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.count("đạt") == 5

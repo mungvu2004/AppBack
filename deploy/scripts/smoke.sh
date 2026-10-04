@@ -78,7 +78,7 @@ check_status "/draco/draco_decoder.wasm" 200
 if within_deadline "/api/nope"; then
   code="$(curl -sS --max-time "$(_max_time)" -o "$tmp_dir/body" -w '%{http_code}' "$base_url/api/nope" || echo "000")"
   if [[ "$code" == "404" ]] \
-    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if "code" in d else 1)' "$tmp_dir/body" 2>/dev/null; then
+    && grep -Eq '"code"[[:space:]]*:' "$tmp_dir/body"; then
     echo "đạt /api/nope"
   else
     echo "hỏng /api/nope (mã $code hoặc thân thiếu code)"
