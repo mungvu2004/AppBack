@@ -15,7 +15,6 @@ from collections.abc import AsyncIterator
 from typing import Final, cast
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from apps.worker.pipeline_persist import service
@@ -25,8 +24,6 @@ from packages.db.settings import DatabaseSettings
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import CHUNK_SIZE
 from packages.testing.fixtures.clock import FakeClock
-
-type Maker = async_sessionmaker[AsyncSession]
 
 WAIT_S: Final = 30.0
 """Trần **chờ** chống treo cho cả hai chặng của test (mở kho, lõi trả) — không phải trần hiệu năng."""

@@ -6,11 +6,10 @@ lượt bị thay bằng `start_run` lần hai, tỉ lệ người bằng `make_
 khoá, không có đường dữ liệu nào dựng được) và một lớp kho con ném `DEPENDENCY_UNAVAILABLE`.
 """
 
-import dataclasses
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Final, Literal
+from typing import Final
 
 import pytest
 from sqlalchemy import delete, select, update
@@ -30,7 +29,10 @@ from apps.worker.pipeline_persist.service import run_persist
 from apps.worker.pipeline_persist.tests.helpers import (
     DONE_STEPS,
     Arranged,
+    arrange,
+    broken_layer,
     open_run_at_build,
+    persist_once,
     put_layer,
     sample_built,
 )
@@ -46,7 +48,7 @@ from packages.domain.scale.rescale import rescale_unreviewed
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.messaging.tasks import PermanentError
 from packages.storage.local import LocalDiskStorage
-from packages.storage.port import CHUNK_SIZE, ObjectStorage
+from packages.storage.port import CHUNK_SIZE
 from packages.testing.factories.drawings import make_drawing, png_bytes
 from packages.testing.factories.spatial import make_floor_document, sample_floor_layer
 from packages.testing.fixtures.clock import FakeClock
@@ -77,28 +79,6 @@ def _clean_bus(messaging_env: None) -> None:
     reset_sync_bus_cache()
 
 
-async def _arrange(
-    maker: async_sessionmaker[AsyncSession],
-    storage: LocalDiskStorage,
-    clock: FakeClock,
-    *,
-    scale: Decimal = Decimal("12"),
-    scale_source: Literal["pipeline", "project_default"] = "pipeline",
-) -> Arranged:
-    """Cảnh đầy đủ: lượt đứng ở `spatialDataBuild` và `layer.json` mẫu đã nằm trong kho."""
-    arranged = await open_run_at_build(maker, clock, storage=storage)
-    built = sample_built(arranged.level_id, scale=scale, scale_source=scale_source)
-    await put_layer(storage, arranged, built.to_json())
-    return arranged
-
-
-async def _persist(
-    maker: async_sessionmaker[AsyncSession], storage: ObjectStorage, arranged: Arranged, clock: FakeClock
-) -> str:
-    """Một lượt giao `pipeline.persist.run` cho cảnh đã dựng, gọi thẳng lõi."""
-    return await run_persist(arranged.payload, sessionmaker=maker, storage=storage, clock=clock)
-
-
 async def _drawing_page_key(
     maker: async_sessionmaker[AsyncSession], storage: LocalDiskStorage, arranged: Arranged
 ) -> str:
@@ -117,13 +97,13 @@ async def test_persist_keeps_reviewed_entities(
     fake_clock: FakeClock,
 ) -> None:
     """K21: tường đã duyệt giữ nguyên từng trường; tham chiếu của phần AI còn lại vẫn trỏ đúng."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     reviewed = sample_floor_layer(0, level_id=arranged.level_id, reviewed=True)
     async with db_sessionmaker() as db:
         await make_floor_document(db, floor_pk=arranged.floor_pk, layer=reviewed, clock=fake_clock)
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
 
     async with db_sessionmaker() as db:
         document = await load_document(db, arranged.floor_pk)
@@ -143,7 +123,7 @@ async def test_persist_keeps_human_scale_on_same_page(
     fake_clock: FakeClock,
 ) -> None:
     """Tỉ lệ người 10 trên **cùng** trang thắng: nguồn `human`, lớp AI bị đưa về 10 (K19)."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     page_key = await _drawing_page_key(db_sessionmaker, local_storage, arranged)
     async with db_sessionmaker() as db:
         await make_floor_document(
@@ -156,7 +136,7 @@ async def test_persist_keeps_human_scale_on_same_page(
         )
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
 
     async with db_sessionmaker() as db:
         document = await load_document(db, arranged.floor_pk)
@@ -175,7 +155,7 @@ async def test_persist_ai_scale_wins_on_another_page(
     fake_clock: FakeClock,
 ) -> None:
     """Tỉ lệ người 10 gắn trang **khác** → hạng cũ coi như `none`: tỉ lệ AI 12 thắng."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     await _drawing_page_key(db_sessionmaker, local_storage, arranged)
     async with db_sessionmaker() as db:
         await make_floor_document(
@@ -188,7 +168,7 @@ async def test_persist_ai_scale_wins_on_another_page(
         )
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
 
     async with db_sessionmaker() as db:
         document = await load_document(db, arranged.floor_pk)
@@ -203,14 +183,14 @@ async def test_persist_pipeline_scale_beats_project_default(
     fake_clock: FakeClock,
 ) -> None:
     """Tầng đang ở `project_default` 1 → tỉ lệ `pipeline` 12 của lượt dựng thắng."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     async with db_sessionmaker() as db:
         await make_floor_document(
             db, floor_pk=arranged.floor_pk, scale=Decimal("1"), scale_source="project_default", clock=fake_clock
         )
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
 
     async with db_sessionmaker() as db:
         document = await load_document(db, arranged.floor_pk)
@@ -225,13 +205,13 @@ async def test_persist_skips_superseded_run(
     fake_clock: FakeClock,
 ) -> None:
     """`start_run` lần hai thay lượt cũ → lõi bỏ qua, không phiên bản, không thông báo."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     async with db_sessionmaker() as db:
         await start_run(db, upload_id=arranged.upload_id, clock=fake_clock)
         await db.commit()
     await after_commit_idle(db)
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
 
     async with db_sessionmaker() as db:
         assert await load_document(db, arranged.floor_pk) is None
@@ -245,12 +225,12 @@ async def test_persist_skips_completed_run(
     fake_clock: FakeClock,
 ) -> None:
     """Lượt đã `completed` là lượt đã kết thúc: `lock_run` trả `None`, lõi bỏ qua."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     async with db_sessionmaker() as db:
         await db.execute(update(PipelineRunRow).where(PipelineRunRow.id == arranged.run_id).values(status="completed"))
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
 
     async with db_sessionmaker() as db:
         assert await load_document(db, arranged.floor_pk) is None
@@ -275,17 +255,17 @@ async def test_persist_defers_while_floor_is_restorable(
     fake_clock: FakeClock,
 ) -> None:
     """Tầng vừa gỡ, còn trong cửa sổ → hoãn: lượt giữ nguyên bước; khôi phục rồi giao lại → ghi."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     await _soft_delete_floor(db_sessionmaker, arranged, fake_clock.now())
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
 
     async with db_sessionmaker() as db:
         row = (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == arranged.run_id))).scalar_one()
         assert (row.current_step, row.error_code) == ("spatialDataBuild", None)
     await _soft_delete_floor(db_sessionmaker, arranged, None)
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -295,11 +275,11 @@ async def test_persist_fails_step_when_floor_is_past_window(
     fake_clock: FakeClock,
 ) -> None:
     """Tầng xoá quá cửa sổ khôi phục → bước `failed` `FLOOR_DELETED` ngay, không ghi lớp."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     window = get_floors_settings().floor_restore_window_s
     await _soft_delete_floor(db_sessionmaker, arranged, fake_clock.now() - timedelta(seconds=window + 1))
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
 
     async with db_sessionmaker() as db:
         row = (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == arranged.run_id))).scalar_one()
@@ -314,12 +294,12 @@ async def test_persist_fails_step_when_project_is_deleted(
     fake_clock: FakeClock,
 ) -> None:
     """Dự án xoá mềm không có cửa sổ: bước `failed` `FLOOR_DELETED` ngay."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     async with db_sessionmaker() as db:
         await db.execute(update(Project).where(Project.id == arranged.project_id).values(deleted_at=fake_clock.now()))
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
 
     async with db_sessionmaker() as db:
         row = (await db.execute(select(PipelineRunRow).where(PipelineRunRow.id == arranged.run_id))).scalar_one()
@@ -333,7 +313,7 @@ async def test_persist_skips_notification_for_removed_member(
     fake_clock: FakeClock,
 ) -> None:
     """Người tải đã bị gỡ khỏi dự án → không dòng `notifications`, bước vẫn `completed` ([7])."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     async with db_sessionmaker() as db:
         await db.execute(
             delete(ProjectMembership).where(
@@ -343,7 +323,7 @@ async def test_persist_skips_notification_for_removed_member(
         )
         await db.commit()
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
 
     async with db_sessionmaker() as db:
         assert await _notification_count(db, arranged.uploader_id) == 0
@@ -358,7 +338,7 @@ async def test_persist_second_run_marks_same_revision(
     fake_clock: FakeClock,
 ) -> None:
     """Lượt hai với cùng `layer.json`: `applied=False` nhưng `persisted_revision` vẫn là revision đó."""
-    first = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    first = await arrange(db_sessionmaker, local_storage, fake_clock)
     assert await _persist(db_sessionmaker, local_storage, first, fake_clock) == "persisted"
     second = await _restart(db_sessionmaker, local_storage, first, fake_clock)
 
@@ -408,11 +388,11 @@ async def test_persist_leaves_used_untouched(
     fake_clock: FakeClock,
 ) -> None:
     """`used` của `pipeline_run_models` là sổ của B5-06c; lõi này không bao giờ chạm vào."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     async with db_sessionmaker() as db:
         before = await load_pins(db, arranged.run_id)
 
-    await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+    await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     async with db_sessionmaker() as db:
         after = await load_pins(db, arranged.run_id)
@@ -428,7 +408,7 @@ async def test_persist_maps_rescale_failure_to_result_invalid(
     fake_clock: FakeClock,
 ) -> None:
     """Tỉ lệ đích quá nhỏ làm `rescale_unreviewed` hỏng thực thể → `PIPELINE_RESULT_INVALID`."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     page_key = await _drawing_page_key(db_sessionmaker, local_storage, arranged)
     async with db_sessionmaker() as db:
         await make_floor_document(
@@ -442,7 +422,7 @@ async def test_persist_maps_rescale_failure_to_result_invalid(
         await db.commit()
 
     with pytest.raises(PermanentError) as caught:
-        await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+        await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert caught.value.code == PIPELINE_RESULT_INVALID
     async with db_sessionmaker() as db:
@@ -459,7 +439,7 @@ async def test_persist_reports_missing_artifact(
     arranged = await open_run_at_build(db_sessionmaker, fake_clock, storage=local_storage)
 
     with pytest.raises(PermanentError) as caught:
-        await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+        await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert caught.value.code == PIPELINE_ARTIFACT_MISSING
 
@@ -475,7 +455,7 @@ async def test_persist_reports_broken_artifact(
     await put_layer(local_storage, arranged, b"{khong-phai-json")
 
     with pytest.raises(PermanentError) as caught:
-        await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+        await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert caught.value.code == PIPELINE_ARTIFACT_INVALID
 
@@ -487,7 +467,7 @@ async def test_persist_lets_dependency_failure_propagate(
     fake_clock: FakeClock,
 ) -> None:
     """Kho chết → `DEPENDENCY_UNAVAILABLE` lan nguyên để B0-05 thử lại, không thành lỗi vĩnh viễn."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
 
     with pytest.raises(AppError) as caught:
         await _persist(db_sessionmaker, BrokenStorage(local_storage), arranged, fake_clock)
@@ -503,7 +483,7 @@ async def test_persist_raises_when_mark_persisted_refuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`mark_persisted` trả `False` dưới khoá là bất khả; lõi phải nổ chứ không lặng lẽ đi tiếp."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
 
     async def refuse(db: AsyncSession, *, run_id: str, revision: int) -> bool:
         """Bản giả của `pins.mark_persisted` luôn từ chối (tình huống không dựng được bằng dữ liệu)."""
@@ -512,7 +492,7 @@ async def test_persist_raises_when_mark_persisted_refuses(
     monkeypatch.setattr(service, "mark_persisted", refuse)
 
     with pytest.raises(RuntimeError):
-        await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+        await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -548,11 +528,11 @@ async def test_persist_rejects_oversized_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`layer.json` vượt `PIPELINE_ARTIFACT_MAX_BYTES` → `PIPELINE_ARTIFACT_INVALID`, không đọc hết."""
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     monkeypatch.setattr(service, "get_pipeline_build_settings", _tiny_limit)
 
     with pytest.raises(PermanentError) as caught:
-        await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+        await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert caught.value.code == PIPELINE_ARTIFACT_INVALID
 
@@ -565,12 +545,10 @@ async def test_persist_propagates_layer_integrity_error(
 ) -> None:
     """Lớp AI có ô mở trỏ tường không có → mã của `write_layer` lan **nguyên** vào `Progress.error`."""
     arranged = await open_run_at_build(db_sessionmaker, fake_clock, storage=local_storage)
-    built = sample_built(arranged.level_id)
-    broken = dataclasses.replace(built, layer=built.layer.model_copy(update={"walls": ()}))
-    await put_layer(local_storage, arranged, broken.to_json())
+    await put_layer(local_storage, arranged, broken_layer(arranged.level_id))
 
     with pytest.raises(PermanentError) as caught:
-        await _persist(db_sessionmaker, local_storage, arranged, fake_clock)
+        await persist_once(db_sessionmaker, local_storage, arranged, fake_clock)
 
     assert caught.value.code == LAYER_INTEGRITY_BROKEN.code
     async with db_sessionmaker() as db:
@@ -590,7 +568,7 @@ async def test_persist_skips_when_context_vanishes_under_lock(
     tới giao dịch. Không dựng được bằng dữ liệu vì FK giữ `uploads`/`floors`/`projects` sống
     chừng nào còn dòng lượt, nên thay chính `load_context` của lõi.
     """
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     seen = 0
 
     async def once(db: AsyncSession, run_id: str) -> PersistContext | None:
@@ -601,7 +579,7 @@ async def test_persist_skips_when_context_vanishes_under_lock(
 
     monkeypatch.setattr(service, "load_context", once)
 
-    assert await _persist(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "skipped"
 
     async with db_sessionmaker() as db:
         assert await load_document(db, arranged.floor_pk) is None
