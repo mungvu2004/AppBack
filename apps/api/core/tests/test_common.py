@@ -99,7 +99,7 @@ def _url(operation: Operation) -> str:
 
 async def _send(client: httpx.AsyncClient, operation: Operation, **kwargs: object) -> httpx.Response:
     """Gửi đúng method của thao tác tới đường thật của nó."""
-    return await client.request(operation.method, _url(operation), **kwargs)  # type: ignore[arg-type]  # kwargs của httpx
+    return await client.request(operation.method, _url(operation), **kwargs)  # type: ignore[arg-type]  # kwargs httpx
 
 
 GRANTED_PROJECT_NAME: Final = "Dự án giả của case chung"
