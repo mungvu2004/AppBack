@@ -320,7 +320,9 @@ def test_with_db__two_processes_on_one_redis_keep_their_own_roles() -> None:
             mine.set("NO-270", "của tiến trình 0")
             other = "from packages.messaging.redis import streams_redis_sync; streams_redis_sync().flushdb()"
             env = os.environ | {"REDIS_BROKER_URL": f"{base}/{SAFE_DB + 1}"}
-            subprocess.run([sys.executable, "-c", other], env=env, check=True, timeout=60)
+            subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
+                [sys.executable, "-c", other], env=env, check=True, timeout=60
+            )
 
             assert mine.get("NO-270") == "của tiến trình 0"
         finally:
