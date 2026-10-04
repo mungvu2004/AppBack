@@ -89,7 +89,7 @@ Environment.
 | `PRODUCTION_SSH_KEY` | khoá riêng cho production (khuyến nghị khác staging) | job `production` |
 | `PRODUCTION_HOST` | host hoặc IP VPS production | " |
 | `PRODUCTION_KNOWN_HOSTS` | `known_hosts` của host production | " |
-| `ALERT_WEBHOOK_URL` | URL webhook cảnh báo — mục 4 | `notify.yml`, `healthcheck.sh` |
+| `ALERT_WEBHOOK_URL` | URL webhook cảnh báo — mục 4; đặt ở **Environment `alerts`** (không phải secret repo) | `notify.yml` (`environment: alerts`), `healthcheck.sh` |
 | `BACKUP_TARGET` | đường đích sao lưu (cục bộ hoặc điểm gắn đã đồng bộ ra xa) | `backup.sh` trên VPS |
 | `BACKUP_AGE_RECIPIENT` | khoá công khai `age` — mục 6 | `backup.sh` trên VPS |
 
@@ -210,6 +210,9 @@ sudo systemctl enable --now appback-backup.timer appback-health.timer
 - `appback-backup.timer`: chạy `backup.sh` 02:30 hằng ngày (giờ hệ thống VPS).
 - `appback-health.timer`: chạy `healthcheck.sh` mỗi 5 phút — `/api/ready`
   hỏng hai lần liên tiếp hoặc đĩa > 85% → POST `ALERT_WEBHOOK_URL`.
+- Bản sao lưu tạo trước khi `backup.sh` chạy bằng `deploy` (umask 077, `mc --user`) có thể còn
+  thư mục `objects/**` thuộc root, làm xoay vòng hỏng EPERM: một lần khi nâng cấp,
+  `sudo chown -R deploy: "$BACKUP_TARGET"`.
 
 **Kiểm:**
 ```bash
@@ -253,8 +256,8 @@ lưu/khôi phục vẫn đúng sau mỗi đợt đổi lớn.
 - [ ] VPS (§1): Docker, người dùng `deploy`, tường lửa 22/80/443, cấu trúc
       `/opt/appback/`, `appback.env` và `ml.env` quyền 600.
 - [ ] Khoá SSH riêng cho CI + `known_hosts` (§2).
-- [ ] Secret GitHub `STAGING_*`, `ALERT_WEBHOOK_URL`, `BACKUP_TARGET`,
-      `BACKUP_AGE_RECIPIENT` (§3, §4).
+- [ ] Secret GitHub `STAGING_*`, `BACKUP_TARGET`, `BACKUP_AGE_RECIPIENT` (§3);
+      `ALERT_WEBHOOK_URL` đặt ở Environment `alerts` (§4).
 - [ ] Environment `staging` tạo, gắn secret (§5).
 - [ ] Gói GHCR public hoặc PAT + `docker login` trên VPS (§6).
 - [ ] Tên miền + chứng chỉ TLS phủ cả vhost MinIO (§7).
@@ -278,7 +281,7 @@ hành cần đặt tay trong `appback.env` hoặc secret GitHub:
 | `IMAGE_REGISTRY` | `ghcr.io/mungvu2004` | `appback.env` (để trống nếu chạy ảnh cục bộ) |
 | `APPBACK_BASE_URL` | `http://127.0.0.1` | `appback.env` → domain thật sau khi có TLS (§7) |
 | `APPBACK_HEALTH_TIMEOUT_S` | `180` | `appback.env`, chỉnh nếu máy chậm khởi động |
-| `ALERT_WEBHOOK_URL` | rỗng | secret GitHub + `appback.env` (§3, §4) |
+| `ALERT_WEBHOOK_URL` | rỗng | Environment `alerts` của GitHub + `appback.env` (§4) |
 | `BACKUP_TARGET` | `/var/backups/appback` | secret GitHub + `appback.env` (§3) |
 | `BACKUP_AGE_RECIPIENT` | rỗng → không mã hoá | secret GitHub + `appback.env` (§8, **bắt buộc** trước khi bản sao lưu rời máy) |
 | `BACKUP_AGE_IDENTITY` | rỗng | chỉ đặt tạm lúc khôi phục thật (§8) |

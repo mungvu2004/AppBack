@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tarfile
 from datetime import UTC, datetime, timedelta
@@ -51,13 +52,11 @@ case "$args" in
     exit 0
     ;;
   *"entrypoint tar"*|*" tar "*)
-    if [ -n "$host_mount" ]; then
-      src="$(mktemp -d)"
-      printf 'vol-object-1' > "$src/x.bin"
-      printf 'vol-object-2' > "$src/y.bin"
-      tar -cf "$host_mount/objects.tar" -C "$src" .
-      rm -rf "$src"
-    fi
+    src="$(mktemp -d)"
+    printf 'vol-object-1' > "$src/x.bin"
+    printf 'vol-object-2' > "$src/y.bin"
+    tar -cf - -C "$src" .
+    rm -rf "$src"
     exit 0
     ;;
   *"DROP DATABASE"*|*"CREATE DATABASE"*|*pg_restore*)
@@ -256,3 +255,24 @@ def test_backup__stage_dir_and_dump_are_owner_only(tmp_path: Path) -> None:
     # không chứng minh gì về chúng) — chúng được bảo vệ bởi thư mục cha 0700.
     modes = {name: (stage / name).stat().st_mode & 0o777 for name in (".", "db.dump", "manifest.json", "objects")}
     assert modes == {".": 0o700, "db.dump": 0o600, "manifest.json": 0o600, "objects": 0o700}
+
+
+def test_backup__s3_mirror_runs_as_host_user(tmp_path: Path) -> None:
+    """NO-327: `mc mirror` chạy bằng uid:gid của người chạy script, không root — không thì `objects/**` thuộc root
+    và `rm -rf`/xoay vòng của `deploy` hỏng EPERM (đo bằng alpine: thư mục root-owned không xoá được)."""
+    code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3"})
+    assert code == 0, log
+    (mirror,) = [line for line in log.splitlines() if "mirror" in line]
+    assert f"--user {os.getuid()}:{os.getgid()}" in mirror, mirror
+
+
+def test_backup__local_tar_streams_to_a_host_owned_file(tmp_path: Path) -> None:
+    """NO-327: stage_dir là 0700 của `deploy` nên container `api` (uid 10001) không ghi vào đó được — tar đi qua
+    stdout (`-T`, không gắn volume đích) và host ghi `objects.tar` 0600."""
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "local"})
+    assert code == 0, log
+    (tar_line,) = [line for line in log.splitlines() if " tar " in f" {line} " and "docker" in line]
+    assert " -T " in tar_line, tar_line
+    assert "backup-dest" not in tar_line, tar_line
+    (stage,) = [p for p in target.iterdir() if p.is_dir()]
+    assert (stage / "objects.tar").stat().st_mode & 0o777 == 0o600

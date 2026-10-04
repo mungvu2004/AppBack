@@ -232,3 +232,12 @@ def test_notify_send_server_error_warns_but_exits_zero(tmp_path: Path) -> None:
         result = _run_send(tmp_path, webhook_url=stub.url)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "::warning::" in result.stdout
+
+
+def test_readme_names_the_alerts_environment_for_the_webhook_secret() -> None:
+    """NO-332: hướng dẫn vận hành xếp `ALERT_WEBHOOK_URL` vào Environment `alerts`, không phải secret cấp repository
+    (khớp `environment: alerts` của notify.yml)."""
+    readme = (REPO_ROOT / "deploy" / "scripts" / "README.md").read_text(encoding="utf-8")
+    secret_lines = [line for line in readme.splitlines() if "ALERT_WEBHOOK_URL" in line and "Secret GitHub" in line]
+    assert not secret_lines, secret_lines
+    assert "Environment `alerts`" in readme
