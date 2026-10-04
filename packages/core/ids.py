@@ -38,6 +38,7 @@ _MEASUREMENT_RE: Final = re.compile(r"MS-[0-9]{4,15}")
 
 
 def _check_prefix(prefix: str) -> None:
+    """Tiền tố ngoài `IdPrefix` → `ValueError` (lỗi của người gọi)."""
     if prefix not in _PREFIXES:
         raise ValueError(f"tiền tố id lạ: {prefix!r}")
 
@@ -89,8 +90,10 @@ def check_id(prefix: IdPrefix, value: str) -> str:
 
 
 def is_spatial_id(kind: SpatialKind, value: str) -> bool:
+    """`value` là id không gian của `kind`: `<chữ>-<base36 HOA 10-64>`."""
     return re.fullmatch(f"{SPATIAL_PREFIX[kind]}-[0-9A-Z]{{10,64}}", value) is not None
 
 
 def is_measurement_id(value: str) -> bool:
+    """`value` là id phép đo `MS-<4-15 chữ số>`."""
     return _MEASUREMENT_RE.fullmatch(value) is not None

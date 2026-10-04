@@ -1,3 +1,5 @@
+"""Test `packages.core.ids`: sinh và kiểm id có tiền tố, ULID trần, id không gian và phép đo."""
+
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -11,6 +13,7 @@ ULID_BODY = "01J" + "0" * 22 + "Z"
 
 
 def _ms_of(ulid_id: str) -> int:
+    """Mili giây 48 bit đọc lại từ thân ULID của một id."""
     body = ulid_id.split("_", 1)[1]
     value = 0
     for char in body[:10]:  # 10 ký tự đầu = 2 bit 0 + 48 bit mili giây
@@ -19,6 +22,7 @@ def _ms_of(ulid_id: str) -> int:
 
 
 def test_thousand_ids_unique_and_valid(fake_clock: FakeClock) -> None:
+    """Hành vi `thousand ids unique and valid` (W4, HOP-DONG-MOI §0.1)."""
     ids = [new_id("prj", fake_clock) for _ in range(1000)]
     assert len(set(ids)) == 1000
     assert all(is_id("prj", i) for i in ids)
@@ -26,6 +30,7 @@ def test_thousand_ids_unique_and_valid(fake_clock: FakeClock) -> None:
 
 
 def test_time_part_follows_clock(fake_clock: FakeClock) -> None:
+    """Hành vi `time part follows clock` (W4, HOP-DONG-MOI §0.1)."""
     first = new_id("usr", fake_clock)
     assert _ms_of(first) == int(datetime(2026, 1, 1, tzinfo=UTC).timestamp()) * 1000
     fake_clock.advance(timedelta(milliseconds=1))
@@ -35,16 +40,19 @@ def test_time_part_follows_clock(fake_clock: FakeClock) -> None:
 
 
 def test_new_id_rejects_time_before_epoch() -> None:
+    """Hành vi `new id rejects time before epoch` (W4, HOP-DONG-MOI §0.1)."""
     with pytest.raises(ValueError, match="1970"):
         new_id("job", FakeClock(datetime(1969, 12, 31, 23, 59, 59, tzinfo=UTC)))
 
 
 def test_new_id_rejects_unknown_prefix(fake_clock: FakeClock) -> None:
+    """Hành vi `new id rejects unknown prefix` (W4, HOP-DONG-MOI §0.1)."""
     with pytest.raises(ValueError, match="tiền tố"):
         new_id("abc", fake_clock)  # type: ignore[arg-type]  # kiểm lúc chạy
 
 
 def test_is_id_accepts_valid() -> None:
+    """Hành vi `is id accepts valid` (W4, HOP-DONG-MOI §0.1)."""
     assert is_id("tpl", f"tpl_{ULID_BODY}")
 
 
@@ -64,10 +72,12 @@ def test_is_id_accepts_valid() -> None:
     ],
 )
 def test_is_id_rejects(value: str) -> None:
+    """Hành vi `is id rejects` (W4, HOP-DONG-MOI §0.1)."""
     assert not is_id("usr", value)
 
 
 def test_is_id_rejects_unknown_prefix() -> None:
+    """Hành vi `is id rejects unknown prefix` (W4, HOP-DONG-MOI §0.1)."""
     with pytest.raises(ValueError, match="tiền tố"):
         is_id("abc", f"abc_{ULID_BODY}")  # type: ignore[arg-type]  # kiểm lúc chạy
 
@@ -103,6 +113,7 @@ def test_is_id_reads_ulid_rule_of_is_ulid(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_check_id_returns_valid_id() -> None:
+    """Hành vi `check id returns valid id` (W4, HOP-DONG-MOI §0.1)."""
     assert ids.check_id("upl", f"upl_{ULID_BODY}") == f"upl_{ULID_BODY}"
 
 
@@ -114,12 +125,14 @@ def test_check_id_rejects_naming_the_prefix(value: str) -> None:
 
 
 def test_check_id_rejects_unknown_prefix() -> None:
+    """Hành vi `check id rejects unknown prefix` (W4, HOP-DONG-MOI §0.1)."""
     with pytest.raises(ValueError, match="tiền tố"):
         ids.check_id("abc", f"abc_{ULID_BODY}")  # type: ignore[arg-type]  # kiểm lúc chạy
 
 
 @pytest.mark.parametrize(("kind", "letter"), SPATIAL_PREFIX.items())
 def test_is_spatial_id_each_kind(kind: SpatialKind, letter: str) -> None:
+    """Hành vi `is spatial id each kind` (W4, HOP-DONG-MOI §0.1)."""
     assert is_spatial_id(kind, f"{letter}-0000010ABC")
     other = "W" if letter != "W" else "L"
     assert not is_spatial_id(kind, f"{other}-0000010ABC")
@@ -139,10 +152,12 @@ def test_is_spatial_id_each_kind(kind: SpatialKind, letter: str) -> None:
     ],
 )
 def test_is_spatial_id_body(value: str, ok: bool) -> None:
+    """Hành vi `is spatial id body` (W4, HOP-DONG-MOI §0.1)."""
     assert is_spatial_id("wall", value) is ok
 
 
 def test_spatial_prefix_matches_fe() -> None:
+    """Hành vi `spatial prefix matches fe` (W4, HOP-DONG-MOI §0.1)."""
     assert SPATIAL_PREFIX == {
         "level": "L",
         "wall": "W",
@@ -168,6 +183,7 @@ def test_spatial_prefix_matches_fe() -> None:
     ],
 )
 def test_is_measurement_id(value: str, ok: bool) -> None:
+    """Hành vi `is measurement id` (W4, HOP-DONG-MOI §0.1)."""
     assert is_measurement_id(value) is ok
 
 
