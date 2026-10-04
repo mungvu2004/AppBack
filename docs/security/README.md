@@ -42,7 +42,7 @@ Nhóm theo 10 dòng "Phạm vi bắt buộc" của khối [6]; dòng V14 chia th
 | Lỗi, log (V7) | 11 | 3 | 27 % |
 | Dữ liệu, bí mật (V6, V8) | 12 | 3 | 25 % |
 | Giao tiếp, cấu hình (V9, V14) | 11 | 4 | 36 % |
-| Giới hạn, API (V11, V13) | 26 | 2 | 7 % |
+| Giới hạn, API (V11, V13) | 26 | 2 | 8 % |
 | Chuỗi cung ứng, triển khai (V10, V14) | 11 | 2 | 18 % |
 | ML, việc nền (V1) | 9 | 2 | 22 % |
 | Giấy phép (V14) | 2 | 2 | 100 % |
