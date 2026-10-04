@@ -61,6 +61,7 @@ class Job(TaskPayload):
 
 
 def record_failure(payload: Job, code: str) -> None:
+    """Hàm phụ: record failure."""
     FAILURES.append((payload.run_id, code))
 
 
@@ -76,6 +77,7 @@ def mark(run_id: str, step: str) -> int:
 
 
 def runs(run_id: str, step: str = "ok") -> int:
+    """Hàm phụ: runs."""
     client = safe_redis_sync()
     try:
         return sync_result(client.get(f"probe:{run_id}:{step}") or 0, int)
@@ -95,11 +97,13 @@ def wait_until(predicate: Callable[[], bool], what: str) -> None:
 
 @define_task(name="tests.tasks.ok", payload=Job, on_failed=record_failure)
 def run_ok(payload: Job) -> None:
+    """Hàm phụ: run ok."""
     mark(payload.run_id, "ok")
 
 
 @define_task(name="tests.tasks.transient", payload=Job, on_failed=record_failure)
 def run_transient(payload: Job) -> None:
+    """Hàm phụ: run transient."""
     if mark(payload.run_id, "ok") <= 2:
         raise TransientError("phụ thuộc bận")
 
@@ -112,43 +116,51 @@ def run_ladder(payload: Job) -> None:
 
 @define_task(name="tests.tasks.always_transient", payload=Job, on_failed=record_failure)
 def run_always_transient(payload: Job) -> None:
+    """Hàm phụ: run always transient."""
     mark(payload.run_id, "ok")
     raise TransientError("phụ thuộc bận mãi")
 
 
 @define_task(name="tests.tasks.dependency", payload=Job, on_failed=record_failure)
 def run_dependency(payload: Job) -> None:
+    """Hàm phụ: run dependency."""
     mark(payload.run_id, "ok")
     raise DEPENDENCY_UNAVAILABLE.error(retry_after=5)
 
 
 @define_task(name="tests.tasks.permanent", payload=Job, on_failed=record_failure)
 def run_permanent(payload: Job) -> None:
+    """Hàm phụ: run permanent."""
     mark(payload.run_id, "ok")
     raise PermanentError("BAD_INPUT")
 
 
 @define_task(name="tests.tasks.timeout", payload=Job, on_failed=record_failure)
 def run_timeout(payload: Job) -> None:
+    """Hàm phụ: run timeout."""
     raise SoftTimeLimitExceeded
 
 
 @define_task(name="tests.tasks.boom", payload=Job, on_failed=record_failure)
 def run_boom(payload: Job) -> None:
+    """Hàm phụ: run boom."""
     raise ZeroDivisionError("lỗi lạ")
 
 
 @define_task(name="tests.tasks.other_app_error", payload=Job, on_failed=record_failure)
 def run_other_app_error(payload: Job) -> None:
+    """Hàm phụ: run other app error."""
     raise VALIDATION.error(field="name")
 
 
 def explode(payload: Job, code: str) -> None:
+    """Hàm phụ: explode."""
     raise RuntimeError(f"on_failed hỏng với {code}")
 
 
 @define_task(name="tests.tasks.on_failed_explodes", payload=Job, on_failed=explode)
 def run_on_failed_explodes(payload: Job) -> None:
+    """Hàm phụ: run on failed explodes."""
     raise PermanentError("BAD_INPUT")
 
 
@@ -162,11 +174,13 @@ def explode_verbosely(payload: Job, code: str) -> None:
 
 @define_task(name="tests.tasks.on_failed_explodes_verbosely", payload=Job, on_failed=explode_verbosely)
 def run_on_failed_explodes_verbosely(payload: Job) -> None:
+    """Hàm phụ: run on failed explodes verbosely."""
     raise PermanentError("BAD_INPUT")
 
 
 @define_task(name="tests.tasks.sender", payload=Job, on_failed=record_failure)
 def run_sender(payload: Job) -> None:
+    """Hàm phụ: run sender."""
     send_task(SINK_TASK, payload)
 
 
@@ -189,7 +203,9 @@ def apply_task(task: Any, run_id: str, **options: Any) -> Any:
 
 
 def test_payload_without_a_schema_version_field_is_refused() -> None:
+    """Test: test payload without a schema version field is refused."""
     class NoVersion(BaseModel):
+        """Lớp: NoVersion."""
         pass
 
     with pytest.raises(TypeError, match="schema_version"):
@@ -203,6 +219,7 @@ def test_payload_whose_schema_version_has_no_default_is_refused() -> None:
 
 
 def test_declaring_two_tasks_with_the_same_name_is_refused() -> None:
+    """Test: test declaring two tasks with the same name is refused."""
     with pytest.raises(ValueError, match=re.escape("tests.tasks.ok")):
 
         @define_task(name="tests.tasks.ok", payload=Job, on_failed=record_failure)
@@ -212,6 +229,7 @@ def test_declaring_two_tasks_with_the_same_name_is_refused() -> None:
 
 @pytest.mark.parametrize("code", ["", "ab", "bad_input", "1BAD", "A" * 65])
 def test_permanent_error_codes_follow_the_registry_pattern(code: str) -> None:
+    """Test: test permanent error codes follow the registry pattern."""
     with pytest.raises(ValueError, match="mã lỗi sai mẫu"):
         PermanentError(code)
 
@@ -227,6 +245,7 @@ def test_registered_tasks_leaves_out_tasks_declared_in_tests() -> None:
 
 
 def test_the_ledger_records_the_declaring_module() -> None:
+    """Test: test the ledger records the declaring module."""
     entry = next(entry for entry in task_entries() if entry.name == "tests.tasks.ok")
 
     assert (entry.function, entry.module) == ("run_ok", __name__)
@@ -262,6 +281,7 @@ def test_soft_time_limit_becomes_a_timeout_failure(messaging_env: None) -> None:
 
 
 def test_an_unexpected_error_fails_as_internal(messaging_env: None, caplog: pytest.LogCaptureFixture) -> None:
+    """Test: test an unexpected error fails as internal."""
     FAILURES.clear()
     with caplog.at_level(logging.ERROR):
         apply_task(run_boom, "boom-1")
@@ -339,6 +359,7 @@ def test_a_poison_message_is_dropped_and_logged(
 
 
 def test_the_poison_log_never_prints_the_message_body(messaging_env: None, caplog: pytest.LogCaptureFixture) -> None:
+    """Test: test the poison log never prints the message body."""
     with caplog.at_level(logging.WARNING):
         run_ok.apply(args=[{"run_id": "bi-mat", "schema_version": 1, "token": "khong-duoc-in"}])
 
@@ -463,6 +484,7 @@ def test_a_transient_failure_is_retried_until_it_succeeds(
 def test_a_task_that_never_recovers_reports_retry_exhausted(
     messaging_env: None, celery_worker_factory: WorkerFactory
 ) -> None:
+    """Test: test a task that never recovers reports retry exhausted."""
     FAILURES.clear()
     backoff = get_messaging_settings().task_retry_backoff_s
     with celery_worker_factory(["default"]):
@@ -508,6 +530,7 @@ def test_a_task_can_queue_work_for_another_queue(messaging_env: None, celery_wor
 
 
 def test_the_worker_factory_refuses_an_unknown_queue(celery_worker_factory: WorkerFactory) -> None:
+    """Test: test the worker factory refuses an unknown queue."""
     with pytest.raises(ValueError, match="hàng lạ"), celery_worker_factory(["khong-co-hang-nay"]):
         pytest.fail("không được dựng worker cho hàng không khai")
 
@@ -690,6 +713,7 @@ def test_the_retry_countdown_walks_the_charter_ladder(messaging_env: None, retri
 
 
 def test_the_ladder_ends_in_retry_exhausted(messaging_env: None) -> None:
+    """Test: test the ladder ends in retry exhausted."""
     FAILURES.clear()
     apply_task(run_ladder, "ladder-2", retries=3, throw=True)
 
