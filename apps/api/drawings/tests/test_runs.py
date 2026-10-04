@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.errors import FLOOR_DELETED
-from apps.api.drawings.runs import fail_run, lock_run, record_step, start_run
+from apps.api.drawings.runs import fail_run, lock_run, record_step, restore_window_elapsed, start_run
 from apps.api.drawings.tests._helpers import Scene, make_scene, read_run, sync_bus_reset
 from apps.api.floors.settings import get_floors_settings
 from apps.api.projects.summaries import unregister_floor
@@ -431,3 +431,11 @@ async def test_fail_run_rejects_a_non_upper_snake_code(db_session: AsyncSession,
     _, run = await _started_run(db_session, fake_clock)
     with pytest.raises(ValueError, match="UPPER_SNAKE"):
         await fail_run(db_session, run_id=run.id, error_code="stalled", clock=fake_clock)
+
+
+def test_restore_window_elapsed__boundary(fake_clock: FakeClock) -> None:
+    """NO-297: luật cửa sổ khôi phục công khai — chưa xoá = chưa hết; đúng `window` giây = đã hết."""
+    window = get_floors_settings().floor_restore_window_s
+    assert restore_window_elapsed(None, fake_clock) is False
+    assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window - 1), fake_clock) is False
+    assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window), fake_clock) is True
