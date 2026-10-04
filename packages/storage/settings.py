@@ -33,6 +33,7 @@ def _check_endpoint(name: str, url: str) -> None:
 
 
 class StorageSettings(BaseSettings):
+    """Biến môi trường `STORAGE_*`/`S3_*` của kho; kiểm đủ trường cho backend đang chọn."""
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
     app_env: Literal["dev", "test", "ci", "staging", "production"] = "dev"

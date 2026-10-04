@@ -118,6 +118,7 @@ async def test_put_on_stopped_minio_returns_503(fake_clock: FakeClock) -> None:
 
 
 async def test_refused_endpoint_returns_503(fake_clock: FakeClock) -> None:
+    """Endpoint từ chối kết nối → 503 `DEPENDENCY_UNAVAILABLE` (C13)."""
     storage = storage_on(client_for(urlsplit(refused_url("http")).netloc), "bucket-nao-do", fake_clock)
 
     with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE"):
@@ -235,9 +236,11 @@ class _FullDiskSpool:
         """Không giữ tài nguyên nào."""
 
     def write(self, data: bytes) -> int:
+        """Luôn báo đĩa đầy."""
         raise OSError(errno.ENOSPC, "tiêm lỗi đĩa đầy")
 
     def seek(self, offset: int) -> int:
+        """Trả nguyên `offset` (bộ đệm giả không có dữ liệu)."""
         return offset
 
 

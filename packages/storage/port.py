@@ -44,6 +44,7 @@ Disposition = Literal["attachment", "inline"]
 
 @dataclass(frozen=True, slots=True)
 class ObjectInfo:
+    """Metadata của một object trong kho."""
     key: str
     size: int
     sha256: str
@@ -56,6 +57,7 @@ class ObjectInfo:
 
 @dataclass(frozen=True, slots=True)
 class SignedUrl:
+    """URL ký sẵn và hạn của nó."""
     url: str
     expires_at: datetime
 

@@ -44,11 +44,13 @@ def s3_settings(app_env: AppEnv = "dev", **overrides: str) -> StorageSettings:
 
 
 def test_local_backend_needs_a_root() -> None:
+    """Backend local thiếu `STORAGE_LOCAL_ROOT` → lỗi lúc nạp."""
     with pytest.raises(ValidationError, match="STORAGE_LOCAL_ROOT"):
         StorageSettings(storage_backend="local")
 
 
 def test_local_backend_is_enough_with_a_root() -> None:
+    """Backend local chỉ cần `STORAGE_LOCAL_ROOT`."""
     settings = StorageSettings(storage_backend="local", storage_local_root="/var/lib/appback")
 
     assert settings.storage_local_root == "/var/lib/appback"
@@ -56,17 +58,20 @@ def test_local_backend_is_enough_with_a_root() -> None:
 
 
 def test_s3_backend_lists_missing_fields() -> None:
+    """Backend S3 liệt kê mọi trường còn thiếu."""
     with pytest.raises(ValidationError, match="S3_ENDPOINT, S3_PUBLIC_ENDPOINT, S3_BUCKET"):
         StorageSettings(storage_backend="s3")
 
 
 def test_s3_backend_needs_a_secret_key() -> None:
+    """Backend S3 thiếu `S3_SECRET_KEY` → lỗi lúc nạp."""
     with pytest.raises(ValidationError, match="S3_SECRET_KEY"):
         s3_settings(s3_secret_key="")
 
 
 @pytest.mark.parametrize("endpoint", ["minio:9000", "http://minio:9000/bucket", "ftp://minio", "http://"])
 def test_s3_endpoints_must_be_absolute_urls(endpoint: str) -> None:
+    """Endpoint S3 phải là URL tuyệt đối http(s) không có đường dẫn."""
     with pytest.raises(ValidationError, match="S3_ENDPOINT"):
         s3_settings(s3_endpoint=endpoint)
 
@@ -81,6 +86,7 @@ def test_production_s3_loads_without_the_api_secrets(monkeypatch: pytest.MonkeyP
 
 
 def test_get_storage_settings_reads_env_and_caches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`get_storage_settings` đọc env một lần và nhớ kết quả."""
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", "/objects")
 
