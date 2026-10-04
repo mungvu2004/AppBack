@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterable, Callable, Coroutine
+from collections.abc import AsyncIterable, Callable, Coroutine, Iterator
 from typing import Final, NoReturn, cast
 
 import pytest
@@ -46,6 +46,13 @@ WAIT_S: Final = 30.0
 """Trần **chờ** chống treo cho các pha dùng `asyncio.Event` — không phải trần hiệu năng."""
 
 _log = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def storage_override(local_storage: LocalDiskStorage) -> Iterator[None]:
+    """Task chạy trên `local_storage` của test (đã mồi `layer.json`) thay vì kho dựng từ môi trường."""
+    with tasks._STORAGE.override(lambda: local_storage):
+        yield
 
 
 def on_own_loop[T](db_url: str, work: Callable[[Maker], Coroutine[object, object, T]]) -> T:
@@ -142,20 +149,18 @@ async def test_check_pipeline_quality__J01(
     assert json.loads(entries[0][1][FIELD])["status"] == "completed"
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_check_pipeline_quality__J01_smoke(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`send_task` tới worker thật nghe `pipeline.cpu`: ≤ 5 s có sự kiện `completed` trên stream.
 
     Không gọi `after_commit_idle`: dây task + callback sau commit tự lo, test chỉ quan sát từ
     ngoài qua Redis. Không mang marker `perf` (luật 14): 5 s là điều kiện chờ chống treo.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     arranged = on_own_loop(db_url, lambda maker: open_run_at_quality(maker, local_storage, fake_clock))
 
     start = time.monotonic()
@@ -203,20 +208,18 @@ async def test_check_pipeline_quality__J06(
     assert await _completed_count(streams_client, upload_stream(arranged.upload_id)) == 1
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_check_pipeline_quality__J03(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tài liệu ghi `schema_version=2` (hỏng) → `failed` `PIPELINE_RESULT_INVALID`, không `endedAt`.
 
     `load_document` kiểm cột `schema_version` trước khi gọi codec ([4] "ĐỌC FILE NÀO" → B3-02),
     nên lượt tải tay bằng SQL đủ để dựng tài liệu "hỏng" không cần một bộ giải mã lỗi riêng.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     arranged = on_own_loop(db_url, lambda maker: open_run_at_quality(maker, local_storage, fake_clock))
 
     async def _corrupt(maker: Maker) -> None:
