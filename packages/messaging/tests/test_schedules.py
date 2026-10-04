@@ -1,13 +1,13 @@
 """Sổ lịch nền: khai báo, chu kỳ tối thiểu, và cách dò module một cấp."""
 
 import re
+import subprocess
 import sys
 from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from celery import current_app
 
 from packages.messaging.schedules import (
     MIN_PERIOD_S,
@@ -20,6 +20,7 @@ from packages.messaging.schedules import (
 )
 
 PROBE = "probe_pkg"
+REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNS: list[str] = []
 
 
@@ -150,7 +151,21 @@ def test_discover_jobs_tolerates_apps_that_do_not_exist_yet() -> None:
 
 
 def test_discover_worker_tasks_registers_a_known_worker_task() -> None:
-    """Một lời gọi nạp task của `apps/worker` vào sổ Celery như worker thật."""
-    discover_worker_tasks()
+    """Tiến trình mới chưa nhập task nào của `apps/worker`: một lời gọi nạp chúng vào sổ Celery như worker thật.
 
-    assert "pipeline.orchestrate.start" in current_app.tasks
+    Chạy trong tiến trình con (khuôn `test_register_tasks__module_not_imported_before`): trong tiến trình
+    pytest, `pipeline.orchestrate.start` là `shared_task` đã vào sổ khi một test trước nhập
+    `apps.worker.pipeline_orchestrate.tasks`, nên khẳng định tại chỗ xanh kể cả khi hàm không làm gì (N2).
+    """
+    probe = (
+        "import sys\n"
+        "from celery import current_app\n"
+        "from packages.messaging.schedules import discover_worker_tasks\n"
+        "assert 'apps.worker.pipeline_orchestrate.tasks' not in sys.modules\n"
+        "discover_worker_tasks()\n"
+        "print('pipeline.orchestrate.start' in current_app.tasks)\n"
+    )
+    result = subprocess.run(  # noqa: S603 — lệnh cố định: python của môi trường + đoạn mã trong test
+        [sys.executable, "-c", probe], cwd=REPO_ROOT, capture_output=True, text=True, check=True, timeout=120
+    )
+    assert result.stdout.strip() == "True"
