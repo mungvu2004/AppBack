@@ -55,7 +55,7 @@ def src(tmp_path: Path) -> Path:
 async def test_import_prints_report_and_exits_zero(
     db_sessionmaker: Maker, src: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Lượt nhập thành công → thoát 0; stdout có id bản, split và phân bố `ink_ratio`."""
+    """Lượt nhập thành công → thoát 0; stdout có id bản, giấy phép CC BY-NC, split và phân bố `ink_ratio`."""
     dataset_id = await new_dataset(db_sessionmaker)
 
     code = await asyncio.to_thread(cli.main, ["import", "--src", str(src), "--dataset", dataset_id])
@@ -63,6 +63,7 @@ async def test_import_prints_report_and_exits_zero(
     captured = capsys.readouterr()
     assert (code, captured.err) == (0, "")
     assert "dsv_" in captured.out
+    assert "license: CC-BY-NC-4.0 " in captured.out
     assert "splits: " in captured.out
     assert "ink_ratio[high_quality]: n=" in captured.out
     assert "unknown_fixtures: BaseCabinet=3" in captured.out

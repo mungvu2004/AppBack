@@ -22,6 +22,7 @@ from apps.ml.training_runner.runner import Trainers, run_training_job
 from apps.ml.training_runner.settings import TrainingRunnerSettings
 from packages.core.clock import SystemClock
 from packages.core.errors import AppError
+from packages.core.logging import install_log_handler
 from packages.messaging.celery_app import send_task
 from packages.ml_contracts.payloads import TrainingFinishedPayload, TrainJobPayload
 from packages.storage.factory import create_storage
@@ -48,7 +49,12 @@ def _trainers(settings: TrainingRunnerSettings) -> Trainers:
 
 
 def main() -> None:
-    """Đọc stdin, dựng phụ thuộc thật, chạy lượt, thoát bằng mã của `run_training_job`."""
+    """Đọc stdin, dựng phụ thuộc thật, chạy lượt, thoát bằng mã của `run_training_job`.
+
+    Log của tiến trình đi qua handler đã che (`install_log_handler`): vết crash giữ loại ngoại lệ và mã
+    lỗi nhưng giá trị bí mật trong thông điệp ngoại lệ (`KEY=…`, mật khẩu URL) bị che (FIX-345).
+    """
+    install_log_handler()
     job_id = ""
     try:
         request = json.loads(sys.stdin.read())
@@ -67,7 +73,7 @@ def main() -> None:
             settings=settings,
         )
     except Exception:  # noqa: BLE001 — handler cuối của tiến trình: lỗi lạ vẫn phải báo job hỏng (B6-03b [6] bước 9)
-        _log.exception("training_runner_crashed", extra={"job_id": job_id})
+        _log.exception("training_runner_crashed", extra={"job_id": job_id, "code": INTERNAL})
         _report_internal(job_id)
         sys.exit(1)
     sys.exit(code)
@@ -80,7 +86,7 @@ def _report_internal(job_id: str) -> None:
     try:
         send_task(FINISHED_TASK, TrainingFinishedPayload(job_id=job_id, status="failed", error_code=INTERNAL))
     except AppError:
-        _log.exception("training_finished_unsent", extra={"job_id": job_id})
+        _log.exception("training_finished_unsent", extra={"job_id": job_id, "code": INTERNAL})
 
 
 if __name__ == "__main__":

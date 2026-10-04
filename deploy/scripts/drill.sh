@@ -216,19 +216,20 @@ snapshot() {
     "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name")"
   : > "$dir/tables.tsv"
   local t cnt
-  while IFS= read -r t; do
+  # fd 3: `docker compose exec -T` trong thân vòng đọc cạn stdin — đọc danh sách từ stdin thì chỉ còn dòng đầu (W10/C47).
+  while IFS= read -r t <&3; do
     [ -z "$t" ] && continue
     cnt="$(docker compose exec -T postgres psql -U "$PG_USER" -d "$PG_DB" -Atc "select count(*) from \"$t\"")"
     printf '%s\t%s\n' "$t" "$cnt" >> "$dir/tables.tsv"
-  done <<< "$tables"
+  done 3<<< "$tables"
   : > "$dir/objects.tsv"
   local full key hash
-  while IFS= read -r full; do
+  while IFS= read -r full <&3; do
     [ -z "$full" ] && continue
     key="${full#local/"${S3_BUCKET_NAME}"/}"
     hash="$(mc_cat_sha256 "$key")"
     printf '%s\t%s\n' "$key" "$hash" >> "$dir/objects.tsv"
-  done <<< "$(mc_find_objects projects)"
+  done 3<<< "$(mc_find_objects projects)"
 }
 
 do_restore() {
