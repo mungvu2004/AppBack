@@ -17,6 +17,7 @@ from numpy.typing import NDArray
 
 from apps.ml.objects.detector import YoloOnnxDetector
 from apps.ml.objects.labels import labels_for
+from apps.ml.runtime.errors import MODEL_VERSION_FAMILY_MISMATCH
 from apps.ml.runtime.loader import load_onnx
 from apps.ml.runtime.tasks_util import StepOutput, infer_context, run_step, step_failed
 from packages.messaging.tasks import PermanentError, define_task
@@ -30,11 +31,6 @@ __all__ = ["MODEL_VERSION_FAMILY_MISMATCH", "STEP", "objects_detect"]
 _log: Final = logging.getLogger(__name__)
 
 STEP: Final = "openingAndFurnitureDetection"
-MODEL_VERSION_FAMILY_MISMATCH: Final = "MODEL_VERSION_FAMILY_MISMATCH"
-"""Payload trỏ bước hay họ model khác — hằng chuỗi, không khai trong `ERRORS` ([2]).
-
-Nợ: nên về `apps/ml/runtime/errors.py` (chủ B5-01) khi B5-02/B5-03/B5-04 hết khai trùng.
-"""
 
 
 class _InactiveDetector:

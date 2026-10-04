@@ -12,10 +12,9 @@ import time
 from collections.abc import Callable
 from typing import Final
 
-_log: Final = logging.getLogger(__name__)
+from apps.ml.runtime.lease import JOIN_TIMEOUT_S
 
-JOIN_TIMEOUT_S: Final = 5.0
-"""Trần `join` của mọi luồng daemon trong module (`slot`, `reporter` nhập lại — một nguồn, R-07)."""
+_log: Final = logging.getLogger(__name__)
 
 
 class StopState:

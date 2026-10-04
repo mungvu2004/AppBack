@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from typing import Final
 
 import pytest
 import redis
@@ -40,6 +41,7 @@ from packages.messaging.redis import (
     safe_redis_sync,
     streams_redis,
     streams_redis_sync,
+    sync_result,
     translate_redis_error,
     with_db,
 )
@@ -329,3 +331,48 @@ def test_with_db__two_processes_on_one_redis_keep_their_own_roles() -> None:
             mine.close()
     finally:
         container.stop()
+
+
+PAUSE_MS: Final = 10_000
+"""Trần của `CLIENT PAUSE`: dài hơn mọi lượt thử lại, test tự `UNPAUSE` ở `finally` nên không phải chờ."""
+
+
+def _connections_received(admin: SyncRedis) -> int:
+    """Số kết nối máy chủ đã nhận — mỗi lượt thử lại của redis-py mở lại kết nối đúng một lần."""
+    return int(sync_result(admin.info("stats"), dict)["total_connections_received"])
+
+
+def test_streams_redis_sync__a_timed_out_write_is_not_sent_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-187: `XADD` hết giờ đọc có thể đã chạy ở máy chủ — thử lại là sự kiện trùng, nên không thử lại.
+
+    Redis **thật** bị `CLIENT PAUSE WRITE`: lệnh ghi treo ở máy chủ quá trần đọc 0,5 s, còn lệnh
+    bắt tay của kết nối mới vẫn chạy — đúng cảnh một lượt thử lại gửi được `XADD` lần hai.
+    """
+    with ephemeral_broker(monkeypatch) as admin:
+        client = streams_redis_sync()
+        try:
+            client.ping()
+            before = _connections_received(admin)
+            admin.client_pause(PAUSE_MS, all=False)
+            try:
+                with pytest.raises(RedisTimeoutError):
+                    client.xadd("s:no-187", {"k": "v"})
+                reconnects = _connections_received(admin) - before
+            finally:
+                admin.client_unpause()
+        finally:
+            client.close()
+
+    assert reconnects == 0
+
+
+@pytest.mark.parametrize("factory", [streams_redis, streams_redis_sync])
+def test_streams_clients__retry_only_connection_failures(
+    factory: Callable[[MessagingSettings], AsyncRedis | SyncRedis],
+) -> None:
+    """NO-187: vai Streams (đường `XADD`) chỉ thử lại lỗi kết nối, không thử lại hết giờ đọc."""
+    kwargs = factory(conf()).connection_pool.connection_kwargs
+
+    assert kwargs["retry_on_error"] == [RedisConnectionError, TimeoutError]
+    assert not issubclass(RedisTimeoutError, TimeoutError), "hết giờ đọc không được lọt vào danh sách thử lại"
+    assert kwargs["retry"].get_retries() == (STREAM_RETRIES if factory is streams_redis else SYNC_RETRIES)

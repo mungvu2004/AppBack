@@ -1,11 +1,13 @@
 """`Operation` và CLI xuất OpenAPI (CASE §2.3, BE-00 §12 bước 8)."""
 
 import json
+import re
 from pathlib import Path
-from typing import Final
+from typing import Annotated, Final
 
 import pytest
 from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
 from apps.api.core.auth import FakeTokenVerifier
 from apps.api.core.openapi import Operation, document, main, operation_rows, operations
@@ -16,6 +18,25 @@ from packages.testing.fixtures.clock import FakeClock
 __all__ = ["sample_app"]
 
 REAL_OPS: Final = ("files_read_object", "health_live", "health_ready")
+
+
+class _ShortSide:
+    """Nơi khai bí danh `Label` thứ nhất."""
+
+    type Label = Annotated[str, Field(max_length=4)]
+
+
+class _LongSide:
+    """Nơi khai bí danh `Label` thứ hai — cùng tên, khác ràng buộc."""
+
+    type Label = Annotated[str, Field(min_length=2)]
+
+
+class _Pair(BaseModel):
+    """Thân dùng cả hai bí danh cùng tên (NO-236)."""
+
+    short: _ShortSide.Label
+    long: _LongSide.Label
 
 
 def _by_op(app: FastAPI) -> dict[str, Operation]:
@@ -150,3 +171,33 @@ def test_cli_requires_out() -> None:
     """Thiếu `--out` là lỗi dùng CLI."""
     with pytest.raises(SystemExit):
         main([])
+
+
+def test_document__every_path_parameter_is_declared() -> None:
+    """NO-237: tham số đường chỉ được dependency đọc (`request.path_params`) vẫn có trong `parameters`."""
+    schema = json.loads(document())
+    missing = [
+        f"{method.upper()} {path}: {name}"
+        for path, item in schema["paths"].items()
+        for method, operation in item.items()
+        for name in re.findall(r"{(\w+)}", path)
+        if name not in {param["name"] for param in operation.get("parameters", []) if param["in"] == "path"}
+    ]
+    assert missing == []
+
+
+def test_document__refuses_two_aliases_with_one_name() -> None:
+    """NO-236: hai bí danh cùng tên làm Pydantic đổi **cả hai** component sang tên dài → bước 8 hỏng."""
+    app = FastAPI()
+
+    @app.post("/pair")
+    async def pair_write(body: _Pair) -> None:
+        """Route duy nhất dùng cả hai bí danh."""
+
+    with pytest.raises(ValueError, match="Label"):
+        document(app)
+
+
+def test_document__real_app_has_only_short_component_names() -> None:
+    """NO-236: app thật không có component nào mang tên đầy đủ theo module (`apps__…`, `packages__…`)."""
+    assert [name for name in json.loads(document())["components"]["schemas"] if re.match(r"[a-z]", name)] == []
