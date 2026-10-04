@@ -7,7 +7,6 @@ wheel đã khoá ở `uv.lock`, model rec đi qua `load_onnx` dạng ghim đúng
 """
 
 import logging
-import re
 import shutil
 import time
 from pathlib import Path
@@ -29,6 +28,7 @@ from apps.ml.text.reader import (
 from apps.ml.text.tests.helpers import wheel_rec_session
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 from packages.ml_contracts.synthetic import render_plan
+from packages.testing.ocr_metrics import dimension_hits
 
 _log = logging.getLogger(__name__)
 
@@ -40,8 +40,6 @@ DETECT_RECALL = 0.90
 PARITY_RATE = 0.95
 DETECT_BUDGET_S = 20.0
 DIMENSION_SEEDS = range(100, 110)
-DIMENSION_RE = re.compile(r"[0-9]{1,3}(\.[0-9]{3})*")
-DIMENSION_NEAR_PX = 25
 DIMENSION_READ_RATE = 0.90
 """Đo 114/122 = 0,934 trên `DIMENSION_SEEDS`, bằng `RapidOCR()` của wheel (NO-254); trước sàn
 `REC_MIN_WIDTH_PX` đo 105/122 = 0,861. 8 chữ hụt là bộ dò tách `2.` khỏi phần sau, không thuộc bộ đọc."""
@@ -131,8 +129,8 @@ def test_reader_agrees_with_the_wheel_engine(pinned_models_dir: Path) -> None:
 def test_reader_reads_dimension_texts(pinned_models_dir: Path) -> None:
     """≥ `DIMENSION_READ_RATE` chữ kích thước đáp án đọc ra đúng chuỗi, tâm hộp lệch < 25 px.
 
-    Ghim tỉ lệ đọc của chính `RapidOcrReader.read` (NO-254) bằng thước `test_ocr` của runtime
-    dùng cho `RapidOCR()`: chuỗi đáp án dạng `1.234`, mục đọc có tâm trong `DIMENSION_NEAR_PX`.
+    Ghim tỉ lệ đọc của chính `RapidOcrReader.read` (NO-254) bằng thước chung `dimension_hits`
+    (NO-349), cùng thước `test_ocr` của runtime dùng cho `RapidOCR()`.
     """
     reader = RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir))
     hits = total = 0
@@ -142,15 +140,9 @@ def test_reader_reads_dimension_texts(pinned_models_dir: Path) -> None:
             ((item.box.x_min + item.box.x_max) / 2, (item.box.y_min + item.box.y_max) / 2, item.text)
             for item in reader.read(plan.pixels)
         ]
-        for answer in plan.texts:
-            if not DIMENSION_RE.fullmatch(answer.text):
-                continue
-            total += 1
-            cx, cy = (answer.box.x_min + answer.box.x_max) / 2, (answer.box.y_min + answer.box.y_max) / 2
-            hits += any(
-                abs(x - cx) < DIMENSION_NEAR_PX and abs(y - cy) < DIMENSION_NEAR_PX and text == answer.text
-                for x, y, text in found
-            )
+        seed_hits, seed_total = dimension_hits(found, plan.texts)
+        hits += seed_hits
+        total += seed_total
     _log.info("ocr_dimension_read hits=%d total=%d rate=%.3f", hits, total, hits / total)
     assert total >= 10 * len(DIMENSION_SEEDS)
     assert hits >= DIMENSION_READ_RATE * total
