@@ -240,17 +240,19 @@ async def _s07_close_elapsed(
     _short_cache(monkeypatch)
     policy = FakePolicy()
     app = stream_app(providers=[notifications_provider(policy=policy)], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, PATH, cookies=owner.cookies) as stream:
-            if scenario == "revoke_sessions":
-                await publish_notification(event_bus, owner.user.id)
-                await stream.next_frames(1, WAIT_S)
-                await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
-                await db_session.commit()
-                await after_commit_idle(db_session)
-            else:
-                policy.allowed = False
-            return await stream.wait_closed(WAIT_S)
+    async with (
+        signed_stream_user(app, db_session) as owner,
+        sse_open(app, PATH, cookies=owner.cookies) as stream,
+    ):
+        if scenario == "revoke_sessions":
+            await publish_notification(event_bus, owner.user.id)
+            await stream.next_frames(1, WAIT_S)
+            await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
+            await db_session.commit()
+            await after_commit_idle(db_session)
+        else:
+            policy.allowed = False
+        return await stream.wait_closed(WAIT_S)
 
 
 async def test_streams_open_notifications__S07(

@@ -326,23 +326,25 @@ async def _s07_close_elapsed(
     _short_cache(monkeypatch)
     policy = FakePolicy()
     app = stream_app(providers=[progress_provider(policy=policy)], **FAST)
-    async with signed_stream_user(app, db_session) as owner:
-        async with sse_open(app, progress_path(), cookies=owner.cookies) as stream:
-            await stream.next_frames(1, WAIT_S)
-            if scenario == "revoke_sessions":
-                await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
-                await db_session.commit()
-                await after_commit_idle(db_session)
-            elif scenario == "bump_token_version":
-                await bump_token_version(db_session, owner.user.id)
-                await db_session.commit()
-                await after_commit_idle(db_session)
-            elif scenario == "disabled_user":
-                await db_session.execute(update(User).where(User.id == owner.user.id).values(status="disabled"))
-                await db_session.commit()
-            else:
-                policy.allowed = False
-            return await stream.wait_closed(WAIT_S), policy
+    async with (
+        signed_stream_user(app, db_session) as owner,
+        sse_open(app, progress_path(), cookies=owner.cookies) as stream,
+    ):
+        await stream.next_frames(1, WAIT_S)
+        if scenario == "revoke_sessions":
+            await revoke_sessions(db_session, user_id=owner.user.id, reason="logout", clock=fake_clock)
+            await db_session.commit()
+            await after_commit_idle(db_session)
+        elif scenario == "bump_token_version":
+            await bump_token_version(db_session, owner.user.id)
+            await db_session.commit()
+            await after_commit_idle(db_session)
+        elif scenario == "disabled_user":
+            await db_session.execute(update(User).where(User.id == owner.user.id).values(status="disabled"))
+            await db_session.commit()
+        else:
+            policy.allowed = False
+        return await stream.wait_closed(WAIT_S), policy
 
 
 async def test_streams_open_progress__S07(
