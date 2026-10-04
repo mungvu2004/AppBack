@@ -169,7 +169,7 @@ def test_container_bị_xoá_dù_thân_test_ném_lỗi(tmp_path: Path, monkeypat
 
 @pytest.mark.parametrize(("worker", "base"), [("", 0), ("gw0", 0), ("gw5", 5 * services.REDIS_ROLE_DBS)])
 def test_redis_db_base__each_worker_gets_its_own_block(monkeypatch: pytest.MonkeyPatch, worker: str, base: int) -> None:
-    """NO-270: khối DB của `gwN` bắt đầu ở N × số vai; ngoài xdist là DB 0 như production."""
+    """NO-270: khối DB của `gwN` bắt đầu ở N nhân số vai; ngoài xdist là DB 0 như production."""
     monkeypatch.setenv(XDIST_WORKER_ENV, worker)
     assert services.redis_db_base() == base
 

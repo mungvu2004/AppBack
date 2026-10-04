@@ -55,11 +55,11 @@ MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
 REDIS_ROLE_DBS = max(BROKER_DB, STREAM_DB, SAFE_DB, CACHE_DB) + 1
 """Số DB một tiến trình chiếm trên Redis dùng chung: đủ cho mọi vai của `packages/messaging/redis.py`."""
 REDIS_DEFAULT_DATABASES = 16
-"""`databases` mặc định của `redis-server`; Redis dùng chung nâng lên khối × số tiến trình khi cần."""
+"""`databases` mặc định của `redis-server`; Redis dùng chung nâng lên khối nhân số tiến trình khi cần."""
 XDIST_WORKER_COUNT_ENV = "PYTEST_XDIST_WORKER_COUNT"
 XDIST_IDS_PER_WORKER = 5
 """Số mã `gwN` một chỗ xdist có thể tiêu: bản đầu + 4 lượt thay tiến trình chết (`--max-worker-restart`
-mặc định = 4 × số tiến trình). execnet cấp mã tăng dần, không dùng lại, nên tiến trình thay thế mang
+mặc định = 4 lần số tiến trình). execnet cấp mã tăng dần, không dùng lại, nên tiến trình thay thế mang
 `gwN` với N ≥ số tiến trình — khối DB của nó vẫn phải có trên Redis dùng chung."""
 
 SHARED_STATE_PREFIX = "shared-service-"
