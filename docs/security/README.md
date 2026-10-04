@@ -54,6 +54,8 @@ Nhóm theo 10 dòng "Phạm vi bắt buộc" của khối [6]; dòng V14 chia th
 
 ## Tái lập thăm dò
 
+> Lệnh và đầu ra dưới đây là bản ghi ở `2a63cfc`: số dòng trong đầu ra giữ nguyên, không trỏ lại theo mã sau DEBT-02.
+
 Mỗi việc chạy script `dieu-phoi/chay/B7-02/<việc>/probe-<n>.sh` qua `export APPFRONT_REPO=F:/App/AppFront; bash tools/verify/run.sh shell < <script>`; script sinh test tạm ở `/tmp/w/b7_02_probe/` (bản chép trong container, không commit) và in dòng `PROBE`. Lệnh và đầu ra rút gọn (bí mật che `***`):
 
 ### Việc A
@@ -256,7 +258,7 @@ Không chạy được (thiếu ảnh/compose): nginx sống (C-08, C-39), `back
 
 ### Việc C
 
-1. **Sao lưu mã hoá không bắt buộc ở production.** `backup.sh:24` mặc định `BACKUP_AGE_RECIPIENT` rỗng và ghi bản rõ; "bắt buộc mã hoá" chỉ nằm trong runbook (`deploy/scripts/README.md:283`, B0-10 [6]); BE-00 không nhắc `age`. Đề xuất: BE-00 §13 thêm luật "ở `staging`/`production`, `backup.sh` thoát 2 khi thiếu `BACKUP_AGE_RECIPIENT` (trừ khi đặt cờ cho phép bản rõ tường minh)" và khai biến trong `env.example`. (C-18)
+1. **Sao lưu mã hoá không bắt buộc ở production.** `backup.sh:26` mặc định `BACKUP_AGE_RECIPIENT` rỗng và ghi bản rõ; "bắt buộc mã hoá" chỉ nằm trong runbook (`deploy/scripts/README.md:295`, B0-10 [6]); BE-00 không nhắc `age`. Đề xuất: BE-00 §13 thêm luật "ở `staging`/`production`, `backup.sh` thoát 2 khi thiếu `BACKUP_AGE_RECIPIENT` (trừ khi đặt cờ cho phép bản rõ tường minh)" và khai biến trong `env.example`. (C-18)
 2. **BE-00 §11 không ghi hạn mức cho N3, #5, #44, #45, #37, SSE, `health_ready`** (chỉ có số cho N8–N10, N13, N14, đăng nhập, refresh). Mã đang dùng 60/3600 s, 60/600 s, 30/3600 s, 120/60 s, 6 và 500 kết nối, 60/60 s. Đề xuất: thêm bảng số liệu vào §11. (C-30..C-37)
 3. **Không hạn mức tầng nginx.** Không có `limit_req`/`limit_conn` (C/L-03); chống lạm dụng chỉ ở app, `/api/files/{token}` và các GET công khai không có hạn mức. Đề xuất: hiến chương ghi rõ quyết định, hoặc thêm `limit_conn` cho `/api/streams/`.
 4. **Bộ che log chỉ phủ khoá dict + ba mẫu chuỗi.** BE-00 §11 không đòi che bí mật nhúng trong chuỗi tự do (URL kết nối, `password=…`); đề xuất mở rộng luật, `SEC-042` thực thi phần URL. (C-06)
