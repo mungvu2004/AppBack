@@ -333,3 +333,16 @@ def test_deploy_bad_tag_exits_2(tmp_path: Path) -> None:
     env = {"APPBACK_DIR": str(tmp_path)}
     result = run_script(SCRIPT, ["!!not-a-tag"], env=env)
     assert result.returncode == 2
+
+
+def test_readme_ml_env_check__uses_allowlist() -> None:
+    """Chặn tái phát NO-204: lệnh kiểm `ml.env` ở README in dòng **ngoài** danh sách cho phép.
+
+    Danh sách cho phép = tiền tố `ML_`/`METRICS_` (như `test_ml_env_example_holds_only_ml_knobs`),
+    không phải danh sách cấm hẹp — biến lạ nào lọt vào `ml.env` cũng bị bắt.
+    """
+    readme = (REPO_ROOT / "deploy" / "scripts" / "README.md").read_text(encoding="utf-8")
+    cmd = next(line for line in readme.splitlines() if "grep" in line and "/etc/appback/ml.env" in line)
+    assert "grep -vE" in cmd, f"README: lệnh kiểm ml.env phải theo danh sách cho phép: {cmd}"
+    for prefix in ("ML_", "METRICS_"):
+        assert prefix in cmd, f"README: danh sách cho phép thiếu {prefix}: {cmd}"

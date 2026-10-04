@@ -15,33 +15,48 @@ ULTRALYTICS_ALLOWED = (
     "apps/ml/training_yolo/",
 )
 BANNED_MODULES = ("pickle", "joblib", "dill", "cloudpickle")
+ULTRALYTICS_GATES = ("prepare_ultralytics", "import_ultralytics")
 
 
 def _findings(tree: ast.AST, rel: str) -> Iterator[str]:
-    """Vi phạm trong một module: `torch.load`, nhập pickle/joblib, `ultralytics` ngoài chỗ cho phép."""
+    """Vi phạm trong một module.
+
+    Mã sản phẩm: `torch.load`, nhập pickle/joblib, `ultralytics` ngoài chỗ cho phép. Tệp test chỉ chịu
+    luật `ultralytics` (test được nhập pickle), và được nhập nó khi tệp đó nhập một cổng
+    (`ULTRALYTICS_GATES`) — nhập trần vá `PIL.Image.open` toàn tiến trình (NO-322, NO-323).
+    """
+    in_tests = "/tests/" in rel
+    ultralytics_ok = rel.startswith(ULTRALYTICS_ALLOWED) or (
+        in_tests and any(isinstance(node, ast.alias) and node.name in ULTRALYTICS_GATES for node in ast.walk(tree))
+    )
     for node in ast.walk(tree):
         names: list[str] = []
         if isinstance(node, ast.Import):
             names = [alias.name for alias in node.names]
         elif isinstance(node, ast.ImportFrom) and node.module:
             names = [node.module, *(f"{node.module}.{alias.name}" for alias in node.names)]
-        elif isinstance(node, ast.Attribute) and node.attr == "load" and ast.unparse(node.value) == "torch":
+        elif (
+            not in_tests
+            and isinstance(node, ast.Attribute)
+            and node.attr == "load"
+            and ast.unparse(node.value) == "torch"
+        ):
             yield f"{rel}: torch.load"
         for name in names:
             top = name.split(".")[0]
-            if top in BANNED_MODULES or name == "torch.load":
+            if not in_tests and (top in BANNED_MODULES or name == "torch.load"):
                 yield f"{rel}: nhập {name}"
-            if top == "ultralytics" and not rel.startswith(ULTRALYTICS_ALLOWED):
+            if top == "ultralytics" and not ultralytics_ok:
                 yield f"{rel}: nhập ultralytics ngoài chỗ cho phép"
 
 
 def scan(root: Path) -> list[str]:
+    """Vi phạm luật nhập trong mọi `*.py` dưới `SCANNED` của `root` (kể cả tệp test), theo thứ tự đường dẫn."""
     found: list[str] = []
     for base in SCANNED:
         for path in sorted((root / base.relative_to(REPO_ROOT)).rglob("*.py")):
             rel = path.relative_to(root).as_posix()
-            if "/tests/" not in rel:
-                found.extend(_findings(ast.parse(path.read_text(encoding="utf-8")), rel))
+            found.extend(_findings(ast.parse(path.read_text(encoding="utf-8")), rel))
     return found
 
 
@@ -65,6 +80,19 @@ def test_ml_imports_m03_ast(tmp_path: Path) -> None:
     ]
 
 
+def test_scan__flags_bare_ultralytics_in_test_files(tmp_path: Path) -> None:
+    """Chặn tái phát NO-323: tệp test nhập `ultralytics` mà không qua cổng → bị bắt; qua cổng thì được."""
+    tests = tmp_path / "apps" / "ml" / "evil" / "tests"
+    tests.mkdir(parents=True)
+    (tmp_path / "packages" / "ml_contracts").mkdir(parents=True)
+    (tests / "test_bare.py").write_text("import ultralytics\nimport pickle\n", encoding="utf-8")
+    (tests / "test_gated.py").write_text(
+        "from apps.ml.runtime.ultralytics_import import import_ultralytics\nimport_ultralytics()\nimport ultralytics\n",
+        encoding="utf-8",
+    )
+    assert scan(tmp_path) == ["apps/ml/evil/tests/test_bare.py: nhập ultralytics ngoài chỗ cho phép"]
+
+
 def test_runtime_imports_without_torch_or_forbidden_packages() -> None:
     """Nhập runtime (trừ `export*.py`) không kéo `torch`/`transformers`/`ultralytics`; không nhập db, api, worker."""
     script = textwrap.dedent(
@@ -81,7 +109,10 @@ def test_runtime_imports_without_torch_or_forbidden_packages() -> None:
                 return None
 
         sys.meta_path.insert(0, Block())
-        for module in ("settings", "errors", "loader", "device", "gpu", "tasks_util", "trainers", "export_pinned"):
+        for module in (
+            "settings", "errors", "loader", "device", "gpu", "tasks_util", "trainers", "export_pinned",
+            "ultralytics_import",
+        ):
             importlib.import_module("apps.ml.runtime." + module)
         print("ok")
         """
