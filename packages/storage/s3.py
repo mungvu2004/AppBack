@@ -26,7 +26,7 @@ from minio.error import S3Error, ServerError
 from minio.helpers import md5sum_hash
 
 from packages.core.clock import Clock
-from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND, PAYLOAD_TOO_LARGE
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, INTERNAL, NOT_FOUND, PAYLOAD_TOO_LARGE
 from packages.storage.keys import check_key, check_prefix
 from packages.storage.port import (
     CHUNK_SIZE,
@@ -91,7 +91,8 @@ def _s3_errors() -> Iterator[None]:
 
 
 class S3Storage:
-    def __init__(self, client: Minio, public_client: Minio, bucket: str, clock: Clock) -> None:
+    def __init__(self, client: Minio, public_client: Minio | None, bucket: str, clock: Clock) -> None:
+        """`public_client=None`: tiến trình không có `PUBLIC_BASE_URL` (ml) nên `signed_url` bị từ chối (NO-203)."""
         self._client = client
         self._public_client = public_client
         self._bucket = bucket
@@ -193,10 +194,18 @@ class S3Storage:
             await asyncio.to_thread(_close, response)
 
     async def delete(self, key: str) -> None:
-        """Xoá object; S3 coi xoá khoá không có là thành công."""
+        """Xoá object; S3 coi xoá khoá không có là thành công.
+
+        Hợp đồng lỗi đóng (NO-230): 5xx hay mất kết nối → 503 (qua `_s3_errors`); `S3Error` 4xx còn lại
+        (`AccessDenied`, `NoSuchBucket`) là cấu hình sai → `INTERNAL` 500, không `Retry-After` vì
+        thử lại không chữa được. Người dọn rác trong `finally` chỉ cần bắt `AppError`.
+        """
         check_key(key)
-        with _s3_errors():
-            await asyncio.to_thread(self._client.remove_object, self._bucket, key)
+        try:
+            with _s3_errors():
+                await asyncio.to_thread(self._client.remove_object, self._bucket, key)
+        except S3Error as exc:
+            raise INTERNAL.error() from exc
 
     async def delete_prefix(self, prefix: str) -> None:
         """Xoá mọi object dưới tiền tố theo lô (chỉ lịch dọn rác gọi)."""
@@ -231,6 +240,8 @@ class S3Storage:
     ) -> SignedUrl:
         """URL ký sẵn trỏ `S3_PUBLIC_ENDPOINT`, cố định `disposition` và `content-type` lúc ký."""
         check_key(key)
+        if self._public_client is None:
+            raise RuntimeError("kho này không ký URL: tiến trình không có PUBLIC_BASE_URL")
         resolved = await resolve_kind(self, key, disposition, kind)
         signed_at, expires_at = expiry(self._clock)
         url = self._public_client.presigned_get_object(

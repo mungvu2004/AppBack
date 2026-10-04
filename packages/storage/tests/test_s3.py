@@ -260,3 +260,37 @@ async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storag
 
     with pytest.raises(S3Error, match="AccessDenied"):
         await storage.ensure_bucket("https://appback.test")
+
+
+async def test_delete__missing_bucket_is_an_app_error(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError`, không lọt `S3Error` thô."""
+    endpoint, access_key, secret_key = minio_endpoint
+    storage = storage_on(client_for(endpoint, access_key, secret_key), "bucket-chua-tao-bao-gio", fake_clock)
+
+    with pytest.raises(AppError):
+        await storage.delete(KEY)
+
+
+async def test_delete__denied_request_is_an_app_error(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """NO-230: `AccessDenied` (thiếu quyền `DeleteObject`) của `delete` thành `AppError`."""
+    endpoint, access_key, _ = minio_endpoint
+    storage = storage_on(client_for(endpoint, access_key, "sai-khoa-bi-mat"), "bucket-nao-do", fake_clock)
+
+    with pytest.raises(AppError):
+        await storage.delete(KEY)
+
+
+async def test_signed_url__without_a_public_client_is_refused(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """Tiến trình không có `PUBLIC_BASE_URL` (ml): kho S3 dựng với `public_client=None` từ chối ký (NO-203)."""
+    endpoint, access_key, secret_key = minio_endpoint
+    client = client_for(endpoint, access_key, secret_key)
+    storage = S3Storage(client=client, public_client=None, bucket="b", clock=fake_clock)
+
+    with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL"):
+        await storage.signed_url(KEY, disposition="attachment")

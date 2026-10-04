@@ -1,6 +1,7 @@
 """Cấu hình kho: thiếu trường thì hỏng **lúc nạp**, không phải lúc ghi object đầu tiên."""
 
 from collections.abc import Iterator
+from typing import Literal
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -14,7 +15,8 @@ S3_FIELDS = {
     "s3_access_key": "key",
     "s3_secret_key": "secret",
 }
-_ENV_NAMES = ("STORAGE_BACKEND", "STORAGE_LOCAL_ROOT", *(name.upper() for name in S3_FIELDS), "S3_REGION")
+AppEnv = Literal["dev", "test", "ci", "staging", "production"]
+_ENV_NAMES = ("STORAGE_BACKEND", "STORAGE_LOCAL_ROOT", *(name.upper() for name in S3_FIELDS), "S3_REGION", "APP_ENV")
 
 
 @pytest.fixture(autouse=True)
@@ -27,11 +29,12 @@ def storage_env_clean(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_storage_settings_cache()
 
 
-def s3_settings(**overrides: str) -> StorageSettings:
+def s3_settings(app_env: AppEnv = "dev", **overrides: str) -> StorageSettings:
     """`StorageSettings` S3 hợp lệ, cho phép ghi đè từng trường để kiểm một luật."""
     fields = {**S3_FIELDS, **overrides}
     return StorageSettings(
         storage_backend="s3",
+        app_env=app_env,
         s3_endpoint=fields["s3_endpoint"],
         s3_public_endpoint=fields["s3_public_endpoint"],
         s3_bucket=fields["s3_bucket"],
@@ -87,3 +90,30 @@ def test_get_storage_settings_reads_env_and_caches(monkeypatch: pytest.MonkeyPat
 
     reset_storage_settings_cache()
     assert get_storage_settings().storage_local_root == "/khac"
+
+
+@pytest.mark.parametrize("app_env", ["staging", "production"])
+@pytest.mark.parametrize("field", ["s3_access_key", "s3_secret_key"])
+def test_s3_placeholder_credentials__rejected_outside_dev(app_env: AppEnv, field: str) -> None:
+    """SEC-041: khoá mẫu `change-me-*` của `env.example` không được nhận ở staging/production."""
+    with pytest.raises(ValidationError, match="khoá mẫu"):
+        s3_settings(app_env, **{field: f"change-me-api-{field}"})
+
+
+def test_s3_placeholder_credentials__accepted_in_dev() -> None:
+    """Dev/test/ci giữ nguyên `env.example` để dựng nhanh."""
+    settings = s3_settings(
+        "dev",
+        s3_access_key="change-me-api-access",
+        s3_secret_key="change-me-api-secret",  # noqa: S106 — khoá mẫu công khai của env.example
+    )
+
+    assert settings.s3_access_key == "change-me-api-access"
+
+
+def test_invalid_endpoint__error_does_not_echo_credentials() -> None:
+    """Endpoint dán nhầm `user:mật-khẩu@host` không được lộ nguyên văn trong thông điệp lỗi."""
+    with pytest.raises(ValidationError) as raised:
+        s3_settings(s3_endpoint="http://admin:hunter2secret@minio:9000/path")
+
+    assert "hunter2secret" not in str(raised.value)
