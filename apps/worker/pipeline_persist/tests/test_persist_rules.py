@@ -339,10 +339,10 @@ async def test_persist_second_run_marks_same_revision(
 ) -> None:
     """Lượt hai với cùng `layer.json`: `applied=False` nhưng `persisted_revision` vẫn là revision đó."""
     first = await arrange(db_sessionmaker, local_storage, fake_clock)
-    assert await _persist(db_sessionmaker, local_storage, first, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, first, fake_clock) == "persisted"
     second = await _restart(db_sessionmaker, local_storage, first, fake_clock)
 
-    assert await _persist(db_sessionmaker, local_storage, second, fake_clock) == "persisted"
+    assert await persist_once(db_sessionmaker, local_storage, second, fake_clock) == "persisted"
 
     async with db_sessionmaker() as db:
         document = await load_document(db, first.floor_pk)
@@ -470,7 +470,7 @@ async def test_persist_lets_dependency_failure_propagate(
     arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
 
     with pytest.raises(AppError) as caught:
-        await _persist(db_sessionmaker, BrokenStorage(local_storage), arranged, fake_clock)
+        await persist_once(db_sessionmaker, BrokenStorage(local_storage), arranged, fake_clock)
 
     assert caught.value.code is DEPENDENCY_UNAVAILABLE
 
