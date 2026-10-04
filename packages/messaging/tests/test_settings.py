@@ -22,6 +22,7 @@ def settings(**overrides: Any) -> MessagingSettings:
 
 
 def test_defaults_match_the_charter() -> None:
+    """Kiểm test defaults match the charter."""
     conf = settings()
 
     assert conf.celery_visibility_timeout_s == 7200
@@ -36,11 +37,13 @@ def test_defaults_match_the_charter() -> None:
     ["", "http://broker:6379", "redis:///0", "amqp://broker:5672"],
 )
 def test_broker_url_must_be_redis(url: str) -> None:
+    """Kiểm test broker url must be redis."""
     with pytest.raises(ValidationError, match="REDIS_BROKER_URL"):
         MessagingSettings(redis_broker_url=url, redis_cache_url=CACHE)
 
 
 def test_cache_url_is_checked_too() -> None:
+    """Kiểm test cache url is checked too."""
     with pytest.raises(ValidationError, match="REDIS_CACHE_URL"):
         MessagingSettings(redis_broker_url=BROKER, redis_cache_url="postgres://x")
 
@@ -58,15 +61,18 @@ def test_a_process_without_the_cache_instance_loads_without_the_variable(monkeyp
 
 
 def test_rediss_scheme_is_accepted() -> None:
+    """Kiểm test rediss scheme is accepted."""
     assert settings().redis_broker_url == BROKER
     assert MessagingSettings(redis_broker_url="rediss://b:6379/0", redis_cache_url=CACHE).redis_broker_url
 
 
 def test_backoff_is_parsed_from_a_comma_list() -> None:
+    """Kiểm test backoff is parsed from a comma list."""
     assert settings(task_retry_backoff_s="1, 2,3").task_retry_backoff_s == (1, 2, 3)
 
 
 def test_backoff_accepts_a_tuple_unchanged() -> None:
+    """Kiểm test backoff accepts a tuple unchanged."""
     assert settings(task_retry_backoff_s=(5,)).task_retry_backoff_s == (5,)
 
 
@@ -75,20 +81,24 @@ def test_backoff_accepts_a_tuple_unchanged() -> None:
     ["", ",", "0," * (MAX_BACKOFF_STEPS + 1), "-1,2,3"],
 )
 def test_backoff_rejects_empty_too_long_and_negative(value: str) -> None:
+    """Kiểm test backoff rejects empty too long and negative."""
     with pytest.raises(ValidationError, match="TASK_RETRY_BACKOFF_S"):
         settings(task_retry_backoff_s=value)
 
 
 def test_zero_backoff_is_allowed_for_tests() -> None:
+    """Kiểm test zero backoff is allowed for tests."""
     assert settings(task_retry_backoff_s="0,0,0").task_retry_backoff_s == (0, 0, 0)
 
 
 def test_soft_limit_must_stay_below_the_hard_limit() -> None:
+    """Kiểm test soft limit must stay below the hard limit."""
     with pytest.raises(ValidationError, match="TASK_SOFT_TIME_LIMIT_S"):
         settings(task_time_limit_s=60, task_soft_time_limit_s=60)
 
 
 def test_settings_are_cached_until_reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kiểm test settings are cached until reset."""
     monkeypatch.setenv("REDIS_BROKER_URL", BROKER)
     monkeypatch.setenv("REDIS_CACHE_URL", CACHE)
     reset_messaging_settings_cache()
@@ -102,3 +112,13 @@ def test_settings_are_cached_until_reset(monkeypatch: pytest.MonkeyPatch) -> Non
     reset_messaging_settings_cache()
     assert get_messaging_settings().stream_maxlen == 7
     reset_messaging_settings_cache()
+
+
+@pytest.mark.parametrize("name", ["redis_broker_url", "redis_cache_url"])
+def test_invalid_url_error_does_not_echo_the_password(name: str) -> None:
+    """NO-329 mở rộng: thông điệp `ValidationError` của URL sai không in mật khẩu nhúng trong URL."""
+    values: dict[str, Any] = {"redis_broker_url": BROKER, "redis_cache_url": CACHE}
+    values[name] = "http://:s3cr3tpw@broker:6379/0"
+    with pytest.raises(ValidationError) as caught:
+        MessagingSettings(**values)
+    assert "s3cr3tpw" not in str(caught.value)

@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from packages.core.logging import mask
+
 _SCHEMES: Final = ("redis", "rediss")
 MAX_BACKOFF_STEPS: Final = 10
 
@@ -23,12 +25,14 @@ def _check_redis_url(name: str, value: str) -> str:
     """URL Redis tuyệt đối, có host; số hiệu DB do gói tự đặt nên đường dẫn bị bỏ qua."""
     parts = urlsplit(value)
     if parts.scheme not in _SCHEMES or not parts.hostname:
-        raise ValueError(f"{name} phải là URL redis(s):// có host: {value!r}")
+        raise ValueError(f"{name} phải là URL redis(s):// có host: {mask(value)!r}")
     return value
 
 
 class MessagingSettings(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore", env_file=None)
+    """Cấu hình đọc từ biến môi trường: MessagingSettings."""
+
+    model_config = SettingsConfigDict(extra="ignore", env_file=None, hide_input_in_errors=True)
 
     redis_broker_url: str
     redis_cache_url: str | None = None
@@ -47,6 +51,7 @@ class MessagingSettings(BaseSettings):
     @field_validator("redis_broker_url")
     @classmethod
     def _broker_url(cls, value: str) -> str:
+        """Hàm của cấu hình: broker url."""
         return _check_redis_url("REDIS_BROKER_URL", value)
 
     @field_validator("redis_cache_url")
@@ -58,6 +63,7 @@ class MessagingSettings(BaseSettings):
     @field_validator("task_retry_backoff_s", mode="before")
     @classmethod
     def _split_backoff(cls, value: object) -> object:
+        """Hàm của cấu hình: split backoff."""
         if isinstance(value, str):
             return tuple(int(item) for item in value.split(",") if item.strip())
         return value
@@ -84,6 +90,7 @@ class MessagingSettings(BaseSettings):
 
 @cache
 def get_messaging_settings() -> MessagingSettings:
+    """Hàm của cấu hình: get messaging settings."""
     return MessagingSettings()
 
 
