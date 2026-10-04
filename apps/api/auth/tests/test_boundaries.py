@@ -6,8 +6,9 @@ import sys
 from pathlib import Path
 from typing import Final
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 CONFIG_ENV: Final = ("APP_ENV", "PUBLIC_BASE_URL", "SECRET_KEY", "DATABASE_URL", "REDIS_BROKER_URL", "REDIS_CACHE_URL")
 
 
