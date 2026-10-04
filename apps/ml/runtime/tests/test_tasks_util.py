@@ -44,10 +44,12 @@ class Sent:
     """`send` ghi lại: thay broker trong test gọi trực tiếp."""
 
     def __init__(self, error: AppError | None = None) -> None:
+        """`error` khác `None` thì mọi lần gửi ném nó (broker hỏng)."""
         self.calls: list[tuple[str, StepResultPayload]] = []
         self.error = error
 
     def __call__(self, name: str, payload: BaseModel) -> None:
+        """Ghi `(tên task, payload)`, hay ném `error` đã cài."""
         if self.error is not None:
             raise self.error
         assert isinstance(payload, StepResultPayload)
@@ -61,10 +63,12 @@ def walls_step(image: NDArray[np.uint8], payload: InferStepPayload, prepared: ob
 
 
 async def put_page(storage: LocalDiskStorage, payload: InferStepPayload, data: bytes = PLAN.image_png) -> None:
+    """Đặt trang vào kho tại `payload.page_key` (mặc định PNG của bản vẽ tổng hợp)."""
     await storage.put(payload.page_key, data, content_type="image/png", max_bytes=len(data) + 1)
 
 
 async def test_run_step_writes_then_reports(local_storage: LocalDiskStorage) -> None:
+    """Bước đạt: ghi hai artifact đúng nội dung và kiểu rồi gửi đúng một `completed`."""
     payload = infer_payload()
     await put_page(local_storage, payload)
     sent = Sent()
@@ -87,6 +91,7 @@ async def test_run_step_writes_then_reports(local_storage: LocalDiskStorage) -> 
 
 
 async def test_run_step_reports_the_model_version_on_every_path(local_storage: LocalDiskStorage) -> None:
+    """`model_version_id` có mặt ở cả lượt đạt lẫn lượt `prepare` từ chối."""
     pin = PINNED["rapidocrRec"]
     ref = ModelRef(
         version_id=some_id("mdl"),
@@ -100,15 +105,18 @@ async def test_run_step_reports_the_model_version_on_every_path(local_storage: L
     sent = Sent()
 
     async def prepare(item: InferStepPayload) -> str:
+        """Chuẩn bị giả: trả tên model ghim."""
         return item.model.pinned_name or ""
 
     def text_step(image: NDArray[np.uint8], item: InferStepPayload, prepared: str | None) -> StepOutput:
+        """Bước chữ giả: nhận đúng kết quả `prepare`, trả `text.json` rỗng."""
         assert prepared == "rapidocrRec"
         return StepOutput({"text.json": b'{"schema_version":1,"items":[]}'})
 
     await run_step(payload, text_step, storage=local_storage, prepare=prepare, send=sent)
 
     async def refuse(item: InferStepPayload) -> str:
+        """Chuẩn bị từ chối: model không có."""
         raise PermanentError("MODEL_NOT_FOUND")
 
     await run_step(payload, text_step, storage=local_storage, prepare=refuse, send=sent)
@@ -119,6 +127,7 @@ async def test_run_step_reports_the_model_version_on_every_path(local_storage: L
 
 
 def _png_header_only(width: int, height: int) -> bytes:
+    """PNG chỉ có chữ ký + `IHDR` của khổ đã cho (không dữ liệu ảnh)."""
     return PNG_SIGNATURE + _chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
 
 
@@ -147,6 +156,7 @@ async def test_run_step_page_failures(local_storage: LocalDiskStorage, page: byt
 
 
 async def test_run_step_page_byte_cap(local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trang vượt `PAGE_MAX_BYTES` → `failed` `IMAGE_TOO_LARGE`."""
     payload = infer_payload()
     await put_page(local_storage, payload)
     monkeypatch.setattr(tasks_util, "PAGE_MAX_BYTES", 1000)
@@ -156,17 +166,20 @@ async def test_run_step_page_byte_cap(local_storage: LocalDiskStorage, monkeypat
 
 
 async def test_run_step_step_failure_and_contract_errors(local_storage: LocalDiskStorage) -> None:
+    """Bước ném `PermanentError` → `failed` có mã; bước trả artifact lạ → `ValueError`, không gửi thêm."""
     payload = infer_payload()
     await put_page(local_storage, payload)
     sent = Sent()
 
     def gpu_lost(image: NDArray[np.uint8], item: InferStepPayload, prepared: object) -> StepOutput:
+        """Bước giả mất khoá GPU giữa chừng."""
         raise PermanentError("GPU_LOCK_LOST")
 
     await run_step(payload, gpu_lost, storage=local_storage, send=sent)
     assert sent.calls[0][1].error_code == "GPU_LOCK_LOST"
 
     def stray(image: NDArray[np.uint8], item: InferStepPayload, prepared: object) -> StepOutput:
+        """Bước giả trả artifact không thuộc bước này."""
         return StepOutput({"objects.json": b"{}"})
 
     with pytest.raises(ValueError, match="artifact lạ"):
@@ -175,6 +188,7 @@ async def test_run_step_step_failure_and_contract_errors(local_storage: LocalDis
 
 
 async def test_run_step_transient_errors_propagate(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
+    """Lỗi tạm của kho hay broker nổi lên (task thử lại), không gửi `failed`; artifact đã ghi giữ nguyên."""
     payload = infer_payload()
     sent = Sent()
     broken = FailingReads(tmp_path / "broken", DEPENDENCY_UNAVAILABLE.error(retry_after=5))
@@ -190,6 +204,7 @@ async def test_run_step_transient_errors_propagate(local_storage: LocalDiskStora
 
 
 def test_step_failed_is_a_define_task_on_failed() -> None:
+    """`step_failed` gửi một `failed` mang mã, không artifact, thời lượng 0."""
     payload = infer_payload()
     sent = Sent()
     step_failed(payload, "RETRY_EXHAUSTED", send=sent)
@@ -204,6 +219,7 @@ def test_step_failed_is_a_define_task_on_failed() -> None:
 
 @pytest.fixture
 def ml_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, storage_env: None) -> Iterator[None]:
+    """Môi trường `ml` kho local + backend giả; dọn cache cấu hình và ngữ cảnh trước và sau."""
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "ml-objects"))
     monkeypatch.setenv("ML_BACKEND", "fake")
@@ -217,6 +233,7 @@ def ml_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, storage_env: None) -
 
 
 def test_infer_context_is_built_once_from_the_environment(ml_env: None) -> None:
+    """`infer_context()` dựng một lần từ môi trường rồi trả lại đúng đối tượng ấy."""
     context = infer_context()
     assert isinstance(context, InferContext)
     assert isinstance(context.storage, LocalDiskStorage)
