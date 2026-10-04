@@ -230,6 +230,7 @@ class _FullDiskSpool:
         """Nhận mọi tham số của `SpooledTemporaryFile` và bỏ qua."""
 
     def __enter__(self) -> "_FullDiskSpool":
+        """Vào ngữ cảnh `with`: trả chính bộ đệm giả."""
         return self
 
     def __exit__(self, *args: object) -> None:

@@ -92,6 +92,7 @@ def _s3_errors() -> Iterator[None]:
 
 class S3Storage:
     """Kho object trên MinIO/S3 (BE-00 §8)."""
+
     def __init__(self, client: Minio, public_client: Minio | None, bucket: str, clock: Clock) -> None:
         """`public_client=None`: tiến trình không có `PUBLIC_BASE_URL` (ml) nên `signed_url` bị từ chối (NO-203)."""
         self._client = client
