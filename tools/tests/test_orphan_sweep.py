@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import pytest
 from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
+from docker.models.containers import ContainerCollection  # type: ignore[import-untyped]  # không có stub
 from testcontainers.core.docker_client import DockerClient  # type: ignore[import-untyped]  # không có stub
 
 from packages.testing.fixtures import services
@@ -137,6 +138,31 @@ def test_remove_container__concurrent_removal_both_succeed() -> None:
             with suppress(NotFound):
                 client.containers.get(container_id).remove(force=True)
 
+
+
+def test_sweep_orphans__container_removed_while_listing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Container của phiên khác biến mất giữa lúc liệt kê và lúc đọc → quét không ném `NotFound` (NO-347).
+
+    Docker thật: một container mang nhãn chủ còn sống; lời `ContainerCollection.get` (bước thứ hai của
+    `containers.list()` trong SDK) bị vá để **xoá thật** container đó ngay trước khi đọc — đúng thứ tự
+    của cuộc đua giữa hai phiên. Bản quét chỉ dùng `client.api.containers` không đi qua `get()`.
+    """
+    client = DockerClient().client
+    created = client.containers.create(REDIS_IMAGE, labels={OWNER_LABEL: services.session_owner()})
+    original_get = ContainerCollection.get
+
+    def vanishing_get(self: ContainerCollection, container_id: str) -> object:
+        """Xoá container thật rồi mới đọc — như phiên khác dọn đúng lúc này."""
+        with suppress(NotFound):
+            client.api.remove_container(container_id, force=True)
+        return original_get(self, container_id)
+
+    monkeypatch.setattr(ContainerCollection, "get", vanishing_get)
+    try:
+        assert created.id not in sweep_orphans()
+    finally:
+        with suppress(NotFound):
+            client.api.remove_container(created.id, force=True)
 
 def test_owner_alive__overflowing_pid_label_is_kept() -> None:
     """Pid vượt `pid_t` trong nhãn hỏng → không biết chủ → giữ, không nổ `OverflowError` (review DEBT-02 #17)."""

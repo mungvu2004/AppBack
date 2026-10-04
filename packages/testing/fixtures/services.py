@@ -107,18 +107,23 @@ def _owner_alive(owner: str, client: Any) -> bool:
             return False
         return True
     if _CONTAINER_HOSTNAME.fullmatch(host):
-        return bool(client.containers.list(filters={"id": host}))
+        return bool(client.api.containers(filters={"id": host}))
     return True
 
 
 def sweep_orphans() -> list[str]:
-    """Xoá container dịch vụ mà phiên pytest chủ của nó đã chết; trả id đã xoá (NO-281)."""
+    """Xoá container dịch vụ mà phiên pytest chủ của nó đã chết; trả id đã xoá (NO-281).
+
+    Liệt kê bằng **một** lời gọi API cấp thấp (`client.api.containers`, trả id + nhãn). `containers.list()`
+    của SDK liệt kê rồi `get()` từng container: container của phiên khác bị xoá giữa hai bước làm `get()`
+    ném `NotFound` và hỏng `_start` của phiên này (NO-347).
+    """
     client = DockerClient().client
     removed: list[str] = []
-    for container in client.containers.list(all=True, filters={"label": OWNER_LABEL}):
-        if not _owner_alive(container.labels[OWNER_LABEL], client):
-            _remove_container(container.id)
-            removed.append(container.id)
+    for summary in client.api.containers(all=True, filters={"label": OWNER_LABEL}):
+        if not _owner_alive(summary["Labels"][OWNER_LABEL], client):
+            _remove_container(summary["Id"])
+            removed.append(summary["Id"])
     return removed
 
 
