@@ -2,10 +2,12 @@
 
 import json
 from datetime import UTC, datetime
-from typing import Final
+from typing import Annotated, Final, Literal
 
 import httpx
 import pytest
+from fastapi.exceptions import RequestValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from apps.api.core.auth import Principal
@@ -17,8 +19,10 @@ from apps.api.core.errors import (
     request_id,
     simple_error,
     translate_unknown,
+    validation_error,
 )
 from apps.api.core.tests.sample import sample_app, sample_client
+from apps.api.core.wire import WireModel
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND, PAYLOAD_TOO_LARGE
 from packages.core.errors import MISSING, AppError, RemoteFieldChange, VersionConflictError
 from packages.db.errors import translate_db_error
@@ -197,3 +201,93 @@ async def test_extra_key_is_422(sample_client: httpx.AsyncClient, fake_principal
 def test_app_error_response_status_matches_code() -> None:
     """Mọi `AppError` ra dây đúng status đã khai ở sổ mã (BE-00 §4)."""
     assert error_response(AppError(NOT_FOUND), RID).status_code == 404
+
+
+class _WallFields(WireModel):
+    """Trường của nhánh `wall`."""
+
+    height_mm: int
+
+
+class _Wall(WireModel):
+    """Nhánh `wall` của thân union."""
+
+    object_kind: Literal["wall"]
+    fields: _WallFields
+
+
+class _Door(WireModel):
+    """Nhánh `door` của thân union."""
+
+    object_kind: Literal["door"]
+    width_mm: int
+
+
+type _Draft = Annotated[_Wall | _Door, Field(discriminator="object_kind")]
+
+
+class _Batch(WireModel):
+    """Union lồng trong mảng."""
+
+    items: list[_Draft]
+
+
+def _field_of_body(adapter: TypeAdapter[object], payload: object) -> str | None:
+    """`field` của 422 mà `validation_error` trả cho `payload` — lỗi Pydantic thật, loc có gốc `body` như FastAPI."""
+    with pytest.raises(ValidationError) as caught:
+        adapter.validate_python(payload)
+    errors = [{**error, "loc": ("body", *error["loc"])} for error in caught.value.errors()]
+    body = json.loads(bytes(validation_error(RequestValidationError(errors, body=payload), RID).body))
+    assert body["code"] == "VALIDATION"
+    field = body.get("field")
+    return field if isinstance(field, str) else None
+
+
+DRAFT: Final = TypeAdapter[object](_Draft)
+BATCH: Final = TypeAdapter[object](_Batch)
+
+
+def test_field_of__union_branch_tag_is_not_a_field() -> None:
+    """NO-248: tag nhánh (`wall`) pydantic chèn vào loc không ra dây — `fields.heightMm`, đúng đường trong thân."""
+    payload = {"objectKind": "wall", "fields": {"heightMm": "cao"}}
+    assert _field_of_body(DRAFT, payload) == "fields.heightMm"
+
+
+def test_field_of__missing_key_inside_a_union_branch_keeps_its_name() -> None:
+    """NO-248: khoá **vắng** (không có trong thân) ở cuối loc vẫn là `field`."""
+    assert _field_of_body(DRAFT, {"objectKind": "wall", "fields": {}}) == "fields.heightMm"
+    assert _field_of_body(DRAFT, {"objectKind": "door"}) == "widthMm"
+
+
+def test_field_of__unknown_union_tag_names_the_discriminator() -> None:
+    """NO-248: `objectKind` lạ → `field` = tên khoá phân biệt, không bỏ trống."""
+    assert _field_of_body(DRAFT, {"objectKind": "cua-so"}) == "objectKind"
+    assert _field_of_body(DRAFT, {}) == "objectKind"
+
+
+def test_field_of__union_inside_a_list_keeps_the_index() -> None:
+    """NO-248: union lồng trong mảng — chỉ số giữ nguyên, chỉ tag bị bỏ."""
+    payload = {"items": [{"objectKind": "door", "widthMm": 1}, {"objectKind": "wall", "fields": {"heightMm": "x"}}]}
+    assert _field_of_body(BATCH, payload) == "items.1.fields.heightMm"
+    assert _field_of_body(BATCH, {"items": [{"objectKind": "cua-so"}]}) == "items.0.objectKind"
+
+
+class _Holder(WireModel):
+    """Union ở một khoá snake_case — thân được gửi tên trường thay alias (`populate_by_name`)."""
+
+    wall_draft: _Draft
+
+
+HOLDER: Final = TypeAdapter[object](_Holder)
+
+
+def test_field_of__body_sent_by_field_name_still_drops_only_the_tag() -> None:
+    """NO-248: khoá thân `wall_draft` (tên trường) khớp loc alias `wallDraft`; chỉ tag `wall` bị bỏ."""
+    payload = {"wall_draft": {"objectKind": "wall", "fields": {"heightMm": "x"}}}
+    assert _field_of_body(HOLDER, payload) == "wallDraft.fields.heightMm"
+
+
+def test_field_of__without_a_json_body_keeps_the_loc() -> None:
+    """Người gọi không có thân JSON (form multipart, `admin_ml_registry/upload.py`) — loc giữ nguyên trạng."""
+    assert field_of(("body", "wall", "fields", "height_mm")) == "wall.fields.heightMm"
+    assert field_of(("body", "wall", "fields"), body="khong-phai-object") == "wall.fields"

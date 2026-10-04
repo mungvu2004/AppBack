@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
 from typing import Final
+from uuid import uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,8 @@ STEP_STATUSES: Final = ("running", "completed", "failed")
 
 FINAL_RUN_STATUSES: Final = ("completed", "failed")
 LIVE_RUN_STATUSES: Final = ("pending", "running")
+PROGRESS_DEDUPE_TTL_S: Final = 300
+"""Khoá chống trùng của một khung `Progress` sống 5 phút: đủ cho lượt thử lại của redis-py (mili giây)."""
 
 _STEPS: Final = tuple(step for step, _ in PIPELINE_STEPS)
 _STEP_INDEX: Final = {step: index for index, step in enumerate(_STEPS)}
@@ -113,10 +116,15 @@ def reset_sync_bus_cache() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _publish(upload_id: str, data: dict[str, object]) -> None:
-    """XADD một khung `Progress`; trạng thái cuối thì hẹn giờ xoá stream (BE-00 §7)."""
+def _publish(upload_id: str, data: dict[str, object], dedupe_key: str) -> None:
+    """XADD một khung `Progress` **đúng một lần**; trạng thái cuối thì hẹn giờ xoá stream (BE-00 §7).
+
+    `publish_once` chứ không `publish`: lượt thử lại của redis-py sau `ConnectionError` ở pha đọc
+    phản hồi (lệnh đã chạy ở máy chủ) gửi lại cùng `dedupe_key`, script trả id cũ thay vì ghi
+    thêm một khung — FE không thấy sự kiện hai lần (NO-187).
+    """
     bus = _sync_bus()
-    bus.publish(upload_stream(upload_id), data)
+    bus.publish_once(upload_stream(upload_id), dedupe_key, data, ttl_s=PROGRESS_DEDUPE_TTL_S)
     if data.get("status") in FINAL_RUN_STATUSES:
         finalize_upload_stream_sync(bus, upload_id)
 
@@ -127,7 +135,9 @@ async def publish_progress_after_commit(db: AsyncSession, upload_id: str) -> Non
     Chụp sớm là cố ý: callback chạy ngoài vòng sự kiện, không còn session để đọc DB.
     """
     data = await progress_wire(db, upload_id)
-    on_after_commit(db, lambda: _publish(upload_id, data))
+    # Một khoá cho mỗi khung đã chụp: hai commit là hai khung, lượt thử lại của cùng khung trùng khoá.
+    dedupe_key = f"progress:{upload_id}:{uuid4().hex}"
+    on_after_commit(db, lambda: _publish(upload_id, data, dedupe_key))
 
 
 def send_start_after_commit(db: AsyncSession, *, run_id: str, upload_id: str) -> None:

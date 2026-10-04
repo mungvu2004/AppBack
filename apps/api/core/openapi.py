@@ -15,6 +15,7 @@ chỉ khác đúng chỗ hợp đồng khác.
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
@@ -32,6 +33,8 @@ from apps.api.core.permissions import ANY_ROLE, permission_key_of
 from apps.api.core.routing import AppRoute
 
 INDENT: Final = 2
+_MODULE_NAME: Final = re.compile(r"[a-z][a-z0-9_]*?__")
+"""Component Pydantic đặt tên đầy đủ theo module khi hai lớp/bí danh trùng tên (NO-236)."""
 _NONE_TYPE: Final = type(None)
 
 _cached_app: FastAPI | None = None
@@ -159,9 +162,22 @@ def operations(app: FastAPI | None = None) -> list[Operation]:
     return sorted((operation_of(route) for route in app_routes(app or real_app())), key=lambda item: item.op)
 
 
+def _check_component_names(schema: dict[str, Any]) -> None:
+    """Hai bí danh/model **cùng tên** ở hai module → Pydantic đổi CẢ HAI component sang tên dài
+    `apps__api__…` (đổi luôn schema của prompt khác); từ chối để bước 8 hỏng trên mọi nhánh (NO-236).
+
+    Tên dài luôn mở đầu bằng đường module chữ thường (`apps__…`); tên ngắn là CapWords, kể cả
+    generic lồng (`CursorPage_list_ItemOut__` không khớp).
+    """
+    clashes = sorted(name for name in schema.get("components", {}).get("schemas", {}) if _MODULE_NAME.match(name))
+    if clashes:
+        raise ValueError(f"component OpenAPI trùng tên giữa các module, đổi tên một bên: {', '.join(clashes)}")
+
+
 def document(app: FastAPI | None = None) -> str:
-    """OpenAPI đã chuẩn hoá: khoá sắp, thụt 2, có dòng trống cuối."""
+    """OpenAPI đã chuẩn hoá: khoá sắp, thụt 2, có dòng trống cuối; tên component trùng → `ValueError`."""
     schema = (app or real_app()).openapi()
+    _check_component_names(schema)
     return json.dumps(schema, indent=INDENT, sort_keys=True, ensure_ascii=False) + "\n"
 
 
