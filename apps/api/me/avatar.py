@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Final, Literal
 
-from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from packages.core.error_codes import (
     DEPENDENCY_UNAVAILABLE,
@@ -189,19 +189,22 @@ def _has_alpha(img: Image.Image) -> bool:
 
 def _decode_and_reencode(raw: bytes, kind: ImageKind) -> bytes:
     """Bước 4-5: giải mã dưới trần điểm ảnh đã kiểm, xoay theo EXIF, thu nhỏ, mã hoá lại không EXIF."""
-    ImageFile.LOAD_TRUNCATED_IMAGES = False
     try:
         with Image.open(io.BytesIO(raw), formats=[_KIND_FORMAT[kind]]) as opened:
             if kind == "jpeg":
                 opened.draft("RGB", THUMBNAIL_SIZE)
             opened.load()
-            transposed: Image.Image = ImageOps.exif_transpose(opened) or opened
+            # `in_place=True`: không chép nguyên cỡ ảnh chỉ để xoay (NO-171); `opened` còn mở trong `with`.
+            ImageOps.exif_transpose(opened, in_place=True)
+            transposed: Image.Image = opened
             # Chuyển 8-bit RGB/RGBA **trước** khi thu nhỏ: `Image.thumbnail` dùng đường "reduce"
             # nhanh khi tỉ lệ thu lớn (4096→512), đường đó không hỗ trợ mode thô như "I"/"I;16"
             # (ảnh xám 16-bit) và ném `ValueError` — thu nhỏ sau khi đã convert tránh hẳn lớp lỗi
             # này (U02, "PNG 4096x4096 16-bit"). JPEG không có kênh alpha, `_has_alpha` chỉ thật
             # cho PNG: nhánh JPEG luôn ra "RGB".
-            final = transposed.convert("RGBA") if _has_alpha(transposed) else transposed.convert("RGB")
+            # Ảnh đã đúng mode đích thì không chép lại nguyên cỡ (NO-171).
+            target = "RGBA" if _has_alpha(transposed) else "RGB"
+            final = transposed if transposed.mode == target else transposed.convert(target)
             final.thumbnail(THUMBNAIL_SIZE)
             # `convert`/`thumbnail` chép `self.info` (icc_profile, exif, …) từ ảnh gốc; bộ ghi
             # PNG/JPEG của Pillow rơi về `info` khi `save()` không được truyền gì — xoá hẳn
