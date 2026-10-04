@@ -67,6 +67,7 @@ def test_export_onnx_deterministic(tmp_path: Path) -> None:
 
 
 def test_export_onnx_refuses_models_over_two_gib(tmp_path: Path) -> None:
+    """Mô hình vượt 2 GiB bị từ chối bằng `ValueError` và không để lại tệp ONNX nào."""
     huge = torch.nn.Linear(32_768, 16_384, device="meta")
     with pytest.raises(ValueError, match="2 GiB"):
         export_onnx(huge, torch.zeros(1, 32_768), tmp_path / "huge.onnx")
@@ -74,6 +75,7 @@ def test_export_onnx_refuses_models_over_two_gib(tmp_path: Path) -> None:
 
 
 def test_normalize_onnx_strips_run_specific_fields() -> None:
+    """Chuẩn hoá xoá mọi trường riêng của lượt chạy (doc, metadata, phiên bản) và từ chối dữ liệu ngoài."""
     sample = add_model()
     sample.doc_string = "xuất lúc 10:00"
     sample.producer_version = "9.9"
@@ -96,6 +98,7 @@ def test_normalize_onnx_strips_run_specific_fields() -> None:
 
 
 def test_write_atomic(tmp_path: Path) -> None:
+    """Ghi nguyên tử tạo thư mục cha, ghi đè được, trả SHA và không để lại tệp tạm."""
     target = tmp_path / "deep" / "out.onnx"
     assert write_atomic(target, b"abc") == sha(b"abc")
     assert write_atomic(target, b"xyz") == sha(b"xyz")
@@ -133,9 +136,11 @@ class FakeYolo:
     env: ClassVar[dict[str, str | None]] = {}
 
     def __init__(self, path: str) -> None:
+        """Nhớ đường dẫn `.pt` được nạp để `export` ghi ONNX cạnh nó."""
         self.path = Path(path)
 
     def export(self, **kwargs: Any) -> str:
+        """Ghi lại tham số và biến môi trường lúc gọi, rồi ghi ONNX có metadata giờ xuất cạnh `.pt`."""
         FakeYolo.calls.append((self.path.name, kwargs))
         FakeYolo.env = {name: os.environ.get(name) for name in ("YOLO_OFFLINE", "YOLO_AUTOINSTALL", "YOLO_CONFIG_DIR")}
         exported = add_model()
@@ -180,6 +185,7 @@ def test_pinned_rapidocr_matches_wheel() -> None:
 
 
 def pin(name: str, *, source_url: str = "https://x.test/v1/w.pt", onnx_sha256: str | None = None) -> PinnedWeights:
+    """Dựng một bản trọng số ghim cho test, chỉ cho đổi URL nguồn và SHA ONNX."""
     fields: dict[str, Any] = {
         "name": name,
         "family": "openingAndFurnitureDetection",
@@ -197,6 +203,7 @@ def test_export_all_rules(tmp_path: Path) -> None:
     calls: list[Path] = []
 
     def exporter(source: Path, out: Path, *, source_sha256: str) -> str:
+        """Bộ xuất giả: ghi nhận tệp nguồn được gọi và ghi ONNX nhỏ có nội dung theo tên nguồn."""
         calls.append(source)
         return write_atomic(out, b"onnx-" + source.name.encode())
 
@@ -226,7 +233,10 @@ def test_export_all_rules(tmp_path: Path) -> None:
     ],
 )
 def test_export_all_failures(tmp_path: Path, table: dict[str, PinnedWeights], code: int) -> None:
+    """Bảng ghim hỏng hoặc bộ xuất báo lệch SHA đều làm `export_all` ném `FetchError` với mã thoát đúng."""
+
     def mismatch(source: Path, out: Path, *, source_sha256: str) -> str:
+        """Bộ xuất giả luôn báo `MODEL_CHECKSUM_MISMATCH`."""
         raise PermanentError(MODEL_CHECKSUM_MISMATCH)
 
     with pytest.raises(FetchError) as caught:
@@ -235,12 +245,14 @@ def test_export_all_failures(tmp_path: Path, table: dict[str, PinnedWeights], co
 
 
 def test_export_all_missing_source_exits_3(tmp_path: Path) -> None:
+    """Thiếu tệp `.pt` nguồn đã tải → `FetchError` với mã thoát 3."""
     with pytest.raises(FetchError, match="thiếu tệp") as caught:
         export_all(tmp_path, pinned={"yolov8n": PINNED["yolov8n"]})
     assert caught.value.exit_code == 3
 
 
 def test_wheel_file_requires_the_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gói wheel không cài thì `wheel_file` ném `FileNotFoundError` nêu tên gói."""
     monkeypatch.setitem(export_pinned.WHEEL_FILES, "ghost", ("khong_co_goi_nay", "x.onnx"))
     with pytest.raises(FileNotFoundError, match="khong_co_goi_nay"):
         wheel_file("ghost")
