@@ -17,11 +17,13 @@ Chỉ **ngoại lệ** mới rollback. Response 4xx mà handler *trả về* (kh
 một lượt chạy thành công: nó đã ghi gì thì giữ nguyên (BE-00 §7).
 """
 
+import inspect
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Final, Literal
 
 from fastapi import APIRouter, FastAPI
+from fastapi.dependencies.models import Dependant
 from fastapi.dependencies.utils import get_dependant
 from fastapi.routing import APIRoute, request_response
 from pydantic.alias_generators import to_camel
@@ -185,6 +187,30 @@ def _idempotency_guard(route: "AppRoute") -> Callable[[Request], Awaitable[None]
     return guard
 
 
+def _declared_path_params(dependant: Dependant) -> set[str]:
+    """Tên mọi tham số đường mà cả cây dependency (endpoint lẫn dependency lồng) đã khai."""
+    names = {param.name for param in dependant.path_params}
+    for sub in dependant.dependencies:
+        names |= _declared_path_params(sub)
+    return names
+
+
+def _path_declaration(names: Sequence[str]) -> Callable[..., None]:
+    """Dependency rỗng **khai** các tham số đường mà cả cây dependency không khai (NO-237).
+
+    Cổng quyền như `require_project` đọc thẳng `request.path_params`, nên OpenAPI (dựng từ cây
+    `dependant`) thiếu tham số đó. Khai ở đây chứ không đẩy vào `dependant.path_params` của endpoint:
+    FastAPI truyền mọi tham số cấp endpoint vào hàm endpoint, mà endpoint không nhận chúng.
+    """
+
+    def declare(**_: str) -> None:
+        """Không làm gì: Starlette đã tách tham số đường (luôn là `str`), hàm chỉ để OpenAPI liệt kê."""
+
+    parameters = [inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY, annotation=str) for name in names]
+    setattr(declare, "__signature__", inspect.Signature(parameters))  # noqa: B010 — gán thẳng thì mypy chặn
+    return declare
+
+
 class AppRoute(APIRoute):
     """Route **được bảo vệ**: đòi `Authorization: Bearer` trước khi đọc thân."""
 
@@ -208,6 +234,10 @@ class AppRoute(APIRoute):
         # guard của khung phải chạy cuối cùng, sau quyền và rate limit (BE-00 §7).
         for build in self._guard_builders():
             self.dependant.dependencies.append(get_dependant(path=self.path_format, call=build(self)))
+        declared = _declared_path_params(self.dependant)
+        undeclared = [name for name in self.param_convertors if name not in declared]
+        if undeclared:
+            self.dependant.dependencies.append(get_dependant(path=self.path_format, call=_path_declaration(undeclared)))
 
     def _guard_builders(self) -> list[Callable[["AppRoute"], Callable[[Request], Awaitable[None]]]]:
         """Guard nào áp cho route này — chỉ gắn cái thật sự cần, để route GET không đọc thân."""
