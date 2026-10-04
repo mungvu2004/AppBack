@@ -258,7 +258,7 @@ def parse_junit(*paths: Path) -> list[TestResult]:
             skipped = case.find("skipped")
             if skipped is not None:
                 skip_type = skipped.get("type", "")
-                if skip_type == "pytest.xfail":
+                if skip_type.endswith(".xfail"):
                     is_xfail = True
                     outcome = "passed"  # xfail được coi là "qua" bước chạy, nhưng vẫn bị case_gate cấm
                 else:

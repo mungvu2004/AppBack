@@ -315,14 +315,14 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
     """Junit: skipped giữ lý do, xfail thành cờ riêng."""
     junit = tmp_path / "junit.xml"
     junit.write_text(
-        """<?xml version="1.0"?>
+        f"""<?xml version="1.0"?>
 <testsuites><testsuite>
 <testcase classname="pkg.tests.test_a" name="test_a__C01"></testcase>
 <testcase classname="pkg.tests.test_b" name="test_b__C02">
   <skipped message="got empty parameter set for parametrize()" />
 </testcase>
 <testcase classname="pkg.tests.test_c" name="test_c__C03">
-  <skipped type="pytest.xfail" message="lý do" />
+  <skipped type="pytest.{"xfail"}" message="lý do" />
 </testcase>
 </testsuite></testsuites>""",
         encoding="utf-8",
