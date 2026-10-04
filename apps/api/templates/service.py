@@ -10,13 +10,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.auth import Principal
-from apps.api.measurements.locks import lock_project_scope
 from apps.api.projects.summaries import touch_project
 from apps.api.templates.errors import TEMPLATE_LIMIT_REACHED
 from apps.api.templates.schemas import TEMPLATE_ADAPTER, PropertyTemplate, PropertyTemplateDraft
 from apps.api.templates.settings import get_templates_settings
 from packages.core.clock import Clock
 from packages.core.ids import new_id
+from packages.db.locks import lock_project_scope
 from packages.db.models.templates import PropertyTemplateRow
 
 LOCK_SCOPE: Final = "templates"
