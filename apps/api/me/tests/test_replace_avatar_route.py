@@ -127,8 +127,8 @@ async def test_me_replace_avatar_gif_is_avatar_type_unsupported(
     assert response.json()["code"] == "AVATAR_TYPE_UNSUPPORTED"
 
 
-async def test_me_replace_avatar_rate_limited(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """11 lượt trong 15 phút → 429 (`AVATAR_RATE_LIMIT` = 10)."""
+async def test_me_replace_avatar__C11(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """C11: 11 lượt trong 15 phút → 429 `RATE_LIMITED` (`AVATAR_RATE_LIMIT` = 10; CASE §2.2 "Case thêm cố định")."""
     user = await make_user(db_session)
     body: dict[str, object] = {"mimeType": "image/png", "contentBase64": b64(png_bytes((8, 8)))}
     for _ in range(AVATAR_RATE_LIMIT):
