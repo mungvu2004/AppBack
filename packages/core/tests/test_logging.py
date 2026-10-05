@@ -157,6 +157,7 @@ def test_mask_token_query_param() -> None:
         ("postgresql+asyncpg://u:p@ss@h/db", f"postgresql+asyncpg://u:{MASK}@h/db"),
         ("https://host/path?a=b@c", "https://host/path?a=b@c"),
         ("http://user@host:80/", "http://user@host:80/"),
+        ("redis://:pw@host?x=a@b", f"redis://:{MASK}@host?x=a@b"),
     ],
 )
 def test_mask_url_userinfo_password(raw: str, masked: str) -> None:
