@@ -331,7 +331,7 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
     """Junit: skipped giữ lý do, xfail thành cờ riêng."""
     junit = tmp_path / "junit.xml"
     junit.write_text(
-        f"""<?xml version="1.0"?>
+        """<?xml version="1.0"?>
 <testsuites><testsuite>
 <testcase classname="pkg.tests.test_a" name="test_a__C01"></testcase>
 <testcase classname="pkg.tests.test_b" name="test_b__C02">
