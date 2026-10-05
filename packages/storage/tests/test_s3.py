@@ -273,7 +273,7 @@ async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storag
 async def test_delete__missing_bucket_is_an_app_error(
     minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
 ) -> None:
-    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError` `INTERNAL`, không `Retry-After`, không lộ `S3Error`."""
+    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError` `INTERNAL`, không `Retry-After`."""
     endpoint, access_key, secret_key = minio_endpoint
     storage = storage_on(client_for(endpoint, access_key, secret_key), "bucket-chua-tao-bao-gio", fake_clock)
 
