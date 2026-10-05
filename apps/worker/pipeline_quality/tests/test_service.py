@@ -313,13 +313,13 @@ async def test_fail_quality__records_failed_and_noops_when_run_gone(
 def test_tasks_storage__builds_local_backend_from_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, storage_env: None
 ) -> None:
-    """`tasks._storage()` dựng kho thật từ `STORAGE_BACKEND=local` (K22 nhập trễ)."""
+    """`tasks.open_storage()` dựng kho thật từ `STORAGE_BACKEND=local` (K22 nhập trễ)."""
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
     reset_storage_settings_cache()
     tasks.reset_quality_storage()
     try:
-        storage = tasks._storage()
+        storage = tasks.open_storage()
         assert storage is not None
     finally:
         tasks.reset_quality_storage()
