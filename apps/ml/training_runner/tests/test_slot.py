@@ -239,7 +239,7 @@ def test_training_slot__holds_through_shared_lease(monkeypatch: pytest.MonkeyPat
     assert names == [SLOT_KEY]
 
 
-def test_claim_lease_unexpected_error_marks_lost(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_claim_lease__unexpected_error_marks_lost(monkeypatch: pytest.MonkeyPatch) -> None:
     """Nhịp gia hạn claim ném lỗi lạ (không phải Redis) → luồng `RenewThread` chung bật `lost` (fail-closed)."""
     client = training_redis()
     job_id = "job_01J0000000000000000000000H"
