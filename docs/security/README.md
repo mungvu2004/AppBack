@@ -257,7 +257,7 @@ Thăm dò sống trên ảnh dựng thật từ cây `7ae1292` (+ vá W10), mộ
 - **W10/L-02** `bash probe2.sh` (`probe2-raw.log`) → D-08 (api `production` cùng origin → `ValueError`, thoát 3), D-13 (exporter chỉ nội bộ), C-39 (413 dưới 8 MiB là của app), B-25 (`mc` khoá `S3_ML_*`: 2 OK, 4 DENIED, rm/ls DENIED).
 - **W10/L-03** `bash probe3.sh` (`probe3-raw.log`) → C-45 (5 chuỗi, 4 route mẫu, method ∈ {`-`,`GET`,`POST`}).
 - **W10/L-04** `probe4-raw.log` → D-04 (`/api/ready` 503 khi Postgres dừng, đủ header B0-06).
-- **W10/L-05** `w10-ops:local` (alpine + docker CLI/compose + `age` 1.3.1) chạy `backup-in-ops.sh plain|age` → `backup-red.log` (cây `d4ec769`: production bản rõ, thoát 0), `backup-green.log` (sau FIX-339: thoát 1; có recipient: chỉ `.age`) → C-16, C-18.
+- **W10/L-05** `w10-ops:local` (alpine + docker CLI/compose + `age` 1.3.1) chạy `backup-in-ops.sh plain|age` → `backup-red.log` (cây `0ccfd9a`: production bản rõ, thoát 0), `backup-green.log` (sau FIX-339: thoát 1; có recipient: chỉ `.age`) → C-16, C-18.
 - **W10/L-06** `bash trivy.sh` (`trivy.log`) → D-17 (3 ảnh, 0 CRITICAL, thoát 0).
 - **W10/L-07** `b26-raw.log` → B-26 (`celery inspect` của `ml` thật).
 - **W10/L-08** `probe-code.log` (`probe-code-all.sh`, `probe-code-b22run.sh` qua `run.sh shell`) → B-22, C-22, D-24, D-25.
