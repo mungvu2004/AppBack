@@ -216,6 +216,15 @@ def test_backup__plaintext_opt_out_runs_without_recipient(tmp_path: Path) -> Non
     assert manifest["encrypted"] is False
 
 
+def test_backup__production_ignores_plaintext_opt_out(tmp_path: Path) -> None:
+    """Cờ `BACKUP_ALLOW_PLAINTEXT=1` chỉ cho dev/diễn tập: `APP_ENV=production` vẫn thoát 1, không pg_dump."""
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "production", "BACKUP_ALLOW_PLAINTEXT": "1"}
+    code, log, target = _run_backup(tmp_path, env)
+    assert code == 1, log
+    assert "pg_dump" not in log
+    assert not target.exists() or not any(target.iterdir())
+
+
 def test_backup__plaintext_opt_out_value_must_be_exactly_1(tmp_path: Path) -> None:
     """Giá trị khác `1` (vd `true`) không phải opt-out: vẫn thoát 1."""
     code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "true"})

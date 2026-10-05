@@ -86,8 +86,8 @@ if [[ "${1:-}" == "--rotate-only" ]]; then
 fi
 
 # Mã hoá age là mặc định bắt buộc ở MỌI môi trường (B0-10 [6], C-18, C1): thiếu recipient thì dừng trước pg_dump,
-# không ghi bản rõ — trừ khi đặt tường minh BACKUP_ALLOW_PLAINTEXT=1 (chỉ dev, diễn tập).
-if [[ -z "$BACKUP_AGE_RECIPIENT" && "${BACKUP_ALLOW_PLAINTEXT:-}" != "1" ]]; then
+# không ghi bản rõ — trừ khi đặt tường minh BACKUP_ALLOW_PLAINTEXT=1 (chỉ dev, diễn tập; production vẫn thoát 1).
+if [[ -z "$BACKUP_AGE_RECIPIENT" && ( "${BACKUP_ALLOW_PLAINTEXT:-}" != "1" || "${APP_ENV:-}" == "production" ) ]]; then
   echo "loi: thieu BACKUP_AGE_RECIPIENT (sao luu phai ma hoa age); chi dev/dien tap moi dat BACKUP_ALLOW_PLAINTEXT=1" >&2
   exit 1
 fi
