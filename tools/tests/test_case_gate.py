@@ -338,7 +338,10 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
   <skipped message="got empty parameter set for parametrize()" />
 </testcase>
 <testcase classname="pkg.tests.test_c" name="test_c__C03">
-  <skipped type="pytest.{"xfail"}" message="lý do" />
+  <skipped type="pytest.xfail" message="lý do" />
+</testcase>
+<testcase classname="pkg.tests.test_d" name="test_d__C04">
+  <skipped type="other.xfail" message="lý do" />
 </testcase>
 </testsuite></testsuites>""",
         encoding="utf-8",
@@ -348,6 +351,8 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
     assert by_name["test_a__C01"].outcome == "passed"
     assert by_name["test_b__C02"].outcome == "skipped"
     assert by_name["test_c__C03"].is_xfail is True
+    assert by_name["test_d__C04"].is_xfail is False
+    assert by_name["test_d__C04"].outcome == "skipped"
 
 
 def test_parse_case_trace_jsonl(tmp_path: Path) -> None:

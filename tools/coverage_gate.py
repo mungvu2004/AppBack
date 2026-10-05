@@ -289,6 +289,8 @@ def check_thresholds(coverage_data: dict[str, Any], branch: str, changed: list[s
 
     for u in sorted(touched_units):
         t = units.get(u, Totals())
+        if t.num_statements == 0:
+            continue  # không có câu lệnh nào: in "100%" là số giả
         report.numbers.append(f"{u}: dòng {t.line_pct:.2f}% · nhánh {t.branch_pct:.2f}%")
         if t.line_pct < THRESHOLD:
             report.add("độ phủ dòng đơn vị bị chạm < 90%", f"{u}: {t.line_pct:.2f}%")
