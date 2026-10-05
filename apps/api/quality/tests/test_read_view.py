@@ -1,5 +1,6 @@
 """`read_view` — dựng `ImageQualityAssessment` của #30 (B2-05b [2], [6], [8] "Đọc")."""
 
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -23,6 +24,7 @@ from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
 from packages.db.models.quality import QualityAssessmentRow
 from packages.storage.local import LocalDiskStorage
+from packages.storage.port import SignedUrl, SignRequest
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.drawings import make_complete_upload, make_drawing
 from packages.testing.factories.floors import make_floor
@@ -40,6 +42,32 @@ async def _wire(db: AsyncSession, storage: LocalDiskStorage, project: Project, l
     return (await read_view(db, storage, project_id=project.id, level_id=level_id)).model_dump(
         mode="json", by_alias=True
     )
+
+
+async def test_read_view__signs_every_floor_in_one_batch(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-207: ba tầng có bản vẽ → đúng một lượt `signed_urls` cỡ 3 cho `sourceImageUrl`, không ba lượt."""
+    project = await _project(db_session)
+    for order in range(3):
+        await make_drawn_floor(db_session, local_storage, project=project, order=order)
+    batches: list[int] = []
+    real = local_storage.signed_urls
+
+    async def counting(requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Ghi cỡ lô rồi ký bằng hàm thật."""
+        batches.append(len(requests))
+        return await real(requests)
+
+    monkeypatch.setattr(local_storage, "signed_urls", counting)
+    stmt = select(FloorRow.level_id).where(FloorRow.project_id == project.id)
+    level_id = (await db_session.execute(stmt)).scalars().first()
+    assert level_id is not None
+
+    view = await read_view(db_session, local_storage, project_id=project.id, level_id=level_id)
+
+    assert len(view.floors) == 3
+    assert batches == [3]
 
 
 async def test_read_view__two_drawn_floors_by_order_and_focus(

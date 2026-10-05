@@ -12,7 +12,7 @@ import asyncio
 import hashlib
 import logging
 import tempfile
-from collections.abc import AsyncIterable, AsyncIterator, Iterator
+from collections.abc import AsyncIterable, AsyncIterator, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from html import escape
@@ -35,6 +35,7 @@ from packages.storage.port import (
     Disposition,
     ObjectInfo,
     SignedUrl,
+    SignRequest,
     content_disposition,
     content_type_of,
     disk_errors,
@@ -43,7 +44,7 @@ from packages.storage.port import (
     next_batch,
     resolve_kind,
 )
-from packages.storage.sniff import SNIFF_BYTES, ImageKind, as_kind, sniff
+from packages.storage.sniff import SNIFF_BYTES, ImageKind, Kind, as_kind, sniff
 
 SHA256_META: Final = "x-amz-meta-sha256"
 KIND_META: Final = "x-amz-meta-kind"
@@ -241,22 +242,39 @@ class S3Storage:
         kind: ImageKind | None = None,
     ) -> SignedUrl:
         """URL ký sẵn trỏ `S3_PUBLIC_ENDPOINT`, cố định `disposition` và `content-type` lúc ký."""
-        check_key(key)
-        if self._public_client is None:
+        return (await self.signed_urls([SignRequest(key, disposition, filename=filename, kind=kind)]))[0]
+
+    async def signed_urls(self, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Ký cả lô trong **một** luồng: HMAC của `minio` rời vòng sự kiện, không tốn N lượt chuyển luồng (NO-207)."""
+        if not requests:
+            return []
+        for request in requests:
+            check_key(request.key)
+        client = self._public_client
+        if client is None:
             raise RuntimeError("kho này không ký URL: tiến trình không có PUBLIC_BASE_URL")
-        resolved = await resolve_kind(self, key, disposition, kind)
+        kinds = [await resolve_kind(self, r.key, r.disposition, r.kind) for r in requests]
         signed_at, expires_at = expiry(self._clock)
-        url = self._public_client.presigned_get_object(
-            self._bucket,
-            key,
-            expires=SIGNED_URL_TTL,
-            response_headers={
-                "response-content-disposition": content_disposition(disposition, filename),
-                "response-content-type": content_type_of(resolved),
-            },
-            request_date=signed_at,
-        )
-        return SignedUrl(url=url, expires_at=expires_at)
+        urls = await asyncio.to_thread(self._presign_all, client, requests, kinds, signed_at)
+        return [SignedUrl(url=url, expires_at=expires_at) for url in urls]
+
+    def _presign_all(
+        self, client: Minio, requests: Sequence[SignRequest], kinds: Sequence[Kind | None], signed_at: datetime
+    ) -> list[str]:
+        """Thân đồng bộ của `signed_urls`: ký từng khoá bằng `client` công khai, cố định mốc `signed_at`."""
+        return [
+            client.presigned_get_object(
+                self._bucket,
+                r.key,
+                expires=SIGNED_URL_TTL,
+                response_headers={
+                    "response-content-disposition": content_disposition(r.disposition, r.filename),
+                    "response-content-type": content_type_of(kind),
+                },
+                request_date=signed_at,
+            )
+            for r, kind in zip(requests, kinds, strict=True)
+        ]
 
     def _put_cors(self, cors_origin: str) -> None:
         """Gửi `PutBucketCors` chỉ cho `GET`/`HEAD` từ origin của app."""

@@ -12,6 +12,7 @@ quên:
 tính — và `service.py` — nơi dựng dây — cùng nhập một kiểu mà không tạo vòng nhập.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Literal, cast
@@ -19,7 +20,7 @@ from typing import Annotated, Literal, cast
 from pydantic import Field
 
 from apps.api.core.wire import WireDatetime, WireModel
-from apps.api.me.avatar import avatar_url as sign_avatar_url
+from apps.api.me.avatar import avatar_urls as sign_avatar_urls
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
 from packages.domain.permissions import Role
@@ -131,14 +132,23 @@ class ProjectRollup:
     default_floor_id: str | None
 
 
-async def user_out(row: User, storage: ObjectStorage | None) -> UserOut:
-    """Một dòng `users` → `UserSchema`; `avatarUrl` ký qua kho khi có (NO-135).
+async def user_outs(rows: Sequence[User], storage: ObjectStorage | None) -> list[UserOut]:
+    """Nhiều dòng `users` → `UserSchema`, `avatarUrl` ký cả lô một lần qua kho khi có (NO-135, NO-207).
 
     `storage=None` (test gọi thẳng service, không qua app) → `avatarUrl` vắng, không ném lỗi:
     chữ ký URL không phải luật nghiệp vụ, chỉ là trình bày.
     """
-    avatar = await sign_avatar_url(storage, row.avatar_key) if storage is not None else None
-    return UserOut(id=row.id, email=row.email, name=row.name, role=cast("Role", row.role), avatar_url=avatar)
+    keys = [row.avatar_key for row in rows]
+    avatars = await sign_avatar_urls(storage, keys) if storage is not None else [None] * len(rows)
+    return [
+        UserOut(id=row.id, email=row.email, name=row.name, role=cast("Role", row.role), avatar_url=avatar)
+        for row, avatar in zip(rows, avatars, strict=True)
+    ]
+
+
+async def user_out(row: User, storage: ObjectStorage | None) -> UserOut:
+    """Một dòng `users` → `UserSchema`; cùng đường ký với `user_outs`."""
+    return (await user_outs([row], storage))[0]
 
 
 def summary_member_out(row: User) -> SummaryMemberOut:

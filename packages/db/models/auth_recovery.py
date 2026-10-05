@@ -28,7 +28,10 @@ ACTIVE_UNIQUE: Final = f"uq_{TABLE}_user_id_purpose"
 
 
 class OneTimeToken(Base, TimestampMixin):
-    """Một token một lần; `used_at`/`superseded_at` rỗng và `expires_at > now` là còn hiệu lực."""
+    """Một token một lần; `used_at`/`superseded_at` rỗng và `expires_at > now` là còn hiệu lực.
+
+    `sent_at` chỉ là "đã gửi"; `failed_at`/`failure_code` là bị từ chối vĩnh viễn (NO-150).
+    """
 
     __tablename__ = TABLE
 
@@ -41,10 +44,13 @@ class OneTimeToken(Base, TimestampMixin):
     used_at: Mapped[datetime | None] = mapped_column(default=None)
     superseded_at: Mapped[datetime | None] = mapped_column(default=None)
     sent_at: Mapped[datetime | None] = mapped_column(default=None)
+    failed_at: Mapped[datetime | None] = mapped_column(default=None)
+    failure_code: Mapped[str | None] = mapped_column(Text, default=None)
 
     __table_args__ = (
         CheckConstraint(one_of("purpose", TOKEN_PURPOSES), name="purpose"),
         CheckConstraint(f"octet_length(nonce) = {NONCE_LEN}", name="nonce_length"),
+        CheckConstraint("(failed_at IS NULL) = (failure_code IS NULL)", name="failed_pair"),
         Index(
             ACTIVE_UNIQUE,
             "user_id",

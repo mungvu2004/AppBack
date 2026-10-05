@@ -7,7 +7,7 @@ dựng khoá hay ký URL.
 import asyncio
 import errno
 import unicodedata
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -62,6 +62,16 @@ class SignedUrl:
 
     url: str
     expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SignRequest:
+    """Một khoá cần ký trong lô `signed_urls`; ba trường sau mang đúng nghĩa của `signed_url`."""
+
+    key: str
+    disposition: Disposition
+    filename: str | None = None
+    kind: ImageKind | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +130,15 @@ class ObjectStorage(Protocol):
         kind: ImageKind | None = None,
     ) -> SignedUrl:
         """URL tuyệt đối, ổn định trong một giờ, sống 60-120 phút (W23)."""
+        ...
+
+    async def signed_urls(self, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Ký cả lô, kết quả cùng thứ tự `requests`; mỗi phần tử y hệt `signed_url` cùng đối số (NO-207).
+
+        Dùng khi một request ký nhiều URL (danh sách người dùng, thành viên, bản vẽ, thư viện): kho S3
+        ký cả lô trong **một** luồng thay vì chiếm vòng sự kiện, hay tốn một lượt chuyển luồng mỗi URL.
+        Khoá `inline` không kèm `kind` vẫn tốn một `stat` tuần tự mỗi khoá (K15) — người gọi nên truyền `kind`.
+        """
         ...
 
 

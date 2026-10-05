@@ -178,7 +178,20 @@ async def test_send_token_mail__J03(
     async with db_sessionmaker() as check:
         refreshed = await check.get(OneTimeToken, row.id)
     assert refreshed is not None
-    assert refreshed.sent_at is not None  # NO-143: cô lập khỏi resend_unsent dù chưa tới hộp thư
+    assert refreshed.sent_at is None  # NO-150: bị từ chối hẳn không phải "đã gửi"
+    assert refreshed.failed_at is not None  # NO-143: vẫn cô lập khỏi resend_unsent
+    assert refreshed.failure_code == MAIL_REJECTED
+
+    async with db_sessionmaker() as backdate:
+        # Đẩy `created_at` quá hạn quét bù để chắc chắn chỉ `failed_at` giữ token ngoài tập quét.
+        await backdate.execute(
+            update(OneTimeToken)
+            .where(OneTimeToken.id == row.id)
+            .values(created_at=fake_clock.now() - timedelta(seconds=get_recovery_settings().resend_unsent_after_s + 1))
+        )
+        await backdate.commit()
+    assert await run_resend_unsent(db_sessionmaker, fake_clock) == 0
+    assert await run_send_token_mail(db_sessionmaker, fake_clock, [row.id]) == 0  # lô cũng bỏ qua token đã failed
 
 
 async def test_send_token_mail__J01_isolates_bad_token_from_batch(

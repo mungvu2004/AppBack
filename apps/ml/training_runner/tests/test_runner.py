@@ -702,6 +702,27 @@ def test_main_ignores_override_outside_test_env(harness: Harness, tmp_path: Path
     assert _object_bytes(harness.storage, weights_key(harness.payload.job_id, harness.token)) is None
 
 
+def test_main_crash_log_masks_secret_values() -> None:
+    """Crash của `main()` đi qua logger đã che: loại ngoại lệ + mã lỗi còn, giá trị bí mật trong thông điệp
+    ngoại lệ (ở đây `ValidationError` lặp lại đầu vào) không lộ ra stderr (FIX-345)."""
+    request = {"claim_token": "t", "payload": {"job_id": "S3_SECRET_KEY=abcW10leak password=xyzW10leak"}}
+    completed = subprocess.run(
+        [sys.executable, "-m", "apps.ml.training_runner"],
+        input=json.dumps(request).encode(),
+        capture_output=True,
+        env=dict(os.environ) | {"APP_ENV": "test"},
+        check=False,
+        timeout=110,
+    )
+    stderr = completed.stderr.decode("utf-8", "replace")
+    assert completed.returncode == 1
+    assert "abcW10leak" not in stderr
+    assert "xyzW10leak" not in stderr
+    record = json.loads(next(line for line in stderr.splitlines() if "training_runner_crashed" in line))
+    assert record["excType"] == "ValidationError"
+    assert record["code"] == INTERNAL
+
+
 def test_report_internal_logs_when_broker_down(monkeypatch: pytest.MonkeyPatch) -> None:
     """`_report_internal`: job chưa biết id thì im; broker hỏng thì log chứ không ném."""
     from apps.ml.training_runner import __main__ as main_module

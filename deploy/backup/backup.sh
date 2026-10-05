@@ -10,7 +10,8 @@
 #   COMPOSE_PROJECT_NAME     appback
 #   BACKUP_TARGET            /var/backups/appback   — thư mục gốc chứa các bản sao lưu theo ngày giờ.
 #   APPBACK_STORAGE          s3                     — "s3" mirror bucket MinIO; "local" tar volume.
-#   BACKUP_AGE_RECIPIENT     (rỗng)                 — có thì mã hoá db.dump/objects.tar bằng age -r.
+#   BACKUP_AGE_RECIPIENT     (rỗng)                 — có thì mã hoá db.dump/objects.tar bằng age -r;
+#                                                   APP_ENV=production mà rỗng → thoát 1 (bắt buộc mã hoá).
 #
 # Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát).
 set -euo pipefail
@@ -81,6 +82,12 @@ rotate_backups() {
 if [[ "${1:-}" == "--rotate-only" ]]; then
   rotate_backups "$BACKUP_TARGET"
   exit 0
+fi
+
+# Production bắt buộc mã hoá (B0-10 [6], C-18): thiếu recipient thì dừng trước pg_dump, không ghi bản rõ.
+if [[ "${APP_ENV:-}" == "production" && -z "$BACKUP_AGE_RECIPIENT" ]]; then
+  echo "loi: APP_ENV=production bat buoc BACKUP_AGE_RECIPIENT (sao luu phai ma hoa age)" >&2
+  exit 1
 fi
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"

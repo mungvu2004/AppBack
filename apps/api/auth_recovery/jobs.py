@@ -5,7 +5,7 @@
 
 Payload chỉ mang `token_id` (K11): `send_token_mail` tự tra token trong DB rồi tính lại
 token bản rõ bằng khoá đang có hiệu lực (`verification_keys`), không bao giờ đưa token
-lên hàng đợi. Gửi ít nhất một lần: token đã có `sent_at` bị bỏ qua ngay ở câu truy vấn
+lên hàng đợi. Gửi ít nhất một lần: token đã có `sent_at` (hay `failed_at`) bị bỏ qua ngay ở câu truy vấn
 (J06), nên thử lại giữa chừng một lô không gửi trùng những token đã xong.
 """
 
@@ -88,16 +88,23 @@ async def _mark_permanent_failure(
     """Cô lập **riêng** token hỏng vĩnh viễn khỏi tập quét bù của `run_resend_unsent` (prompt [6]:
     lỗi vĩnh viễn là cho token đó, không phải cho cả lô — NO-143).
 
-    Không đổi schema: `TOKEN_KEY_ROTATED` (không khoá nào còn xác thực được) → `superseded_at`,
-    vì token này không bao giờ dựng lại được nữa, đúng nghĩa "đã bị thay". `MAIL_REJECTED` (SMTP
-    550 vĩnh viễn) → `sent_at`, vì đã thực sự thử giao và bị từ chối hẳn — `resend_unsent` chỉ
-    nhặt `sent_at IS NULL` nên token này rời tập quét bù mà không giả vờ đã gửi thành công theo
-    nghĩa mail thật sự tới (không có cột nào khác để phân biệt, và giá trị `sent_at` không bao giờ
-    được đọc lại để suy "đã gửi thành công", chỉ để lọc quét bù).
+    `TOKEN_KEY_ROTATED` (không khoá nào còn xác thực được) → `superseded_at`, vì token này không
+    bao giờ dựng lại được, đúng nghĩa "đã bị thay" (và phải rời `active_clause`). `MAIL_REJECTED`
+    (SMTP 550 vĩnh viễn) → `failed_at` + `failure_code` (NO-150), **không** `sent_at`: token vẫn
+    "còn hiệu lực" để `issue_token` supersede được, nhưng rời tập quét bù nhờ `failed_at IS NULL`.
+    Guard `sent_at/failed_at IS NULL` để một worker lệch pha không ghi đè kết quả của worker kia.
     """
+    values: dict[Any, Any] = (
+        {OneTimeToken.superseded_at: now}
+        if code == TOKEN_KEY_ROTATED
+        else {OneTimeToken.failed_at: now, OneTimeToken.failure_code: code}
+    )
     async with sessionmaker() as db:
-        column = OneTimeToken.superseded_at if code == TOKEN_KEY_ROTATED else OneTimeToken.sent_at
-        await db.execute(update(OneTimeToken).where(OneTimeToken.id == token_id).values({column: now}))
+        await db.execute(
+            update(OneTimeToken)
+            .where(OneTimeToken.id == token_id, OneTimeToken.sent_at.is_(None), OneTimeToken.failed_at.is_(None))
+            .values(values)
+        )
         await db.commit()
 
 
@@ -105,7 +112,9 @@ async def _mark_sent(sessionmaker: async_sessionmaker[AsyncSession], *, token_id
     """Đánh dấu một token đã gửi xong bằng một phiên riêng, ngắn (K36 phỏng theo)."""
     async with sessionmaker() as db:
         await db.execute(
-            update(OneTimeToken).where(OneTimeToken.id == token_id, OneTimeToken.sent_at.is_(None)).values(sent_at=now)
+            update(OneTimeToken)
+            .where(OneTimeToken.id == token_id, OneTimeToken.sent_at.is_(None), OneTimeToken.failed_at.is_(None))
+            .values(sent_at=now)
         )
         await db.commit()
 
@@ -165,7 +174,12 @@ async def run_send_token_mail(
                 User.name,
             )
             .join(User, User.id == OneTimeToken.user_id)
-            .where(OneTimeToken.id.in_(token_ids), OneTimeToken.sent_at.is_(None), active_clause(now))
+            .where(
+                OneTimeToken.id.in_(token_ids),
+                OneTimeToken.sent_at.is_(None),
+                OneTimeToken.failed_at.is_(None),
+                active_clause(now),
+            )
             .order_by(OneTimeToken.created_at)
         )
         rows = (await db.execute(stmt)).all()
@@ -195,7 +209,12 @@ async def run_resend_unsent(sessionmaker: async_sessionmaker[AsyncSession], cloc
     async with sessionmaker() as db:
         stmt = (
             select(OneTimeToken.id)
-            .where(OneTimeToken.sent_at.is_(None), OneTimeToken.created_at < cutoff, active_clause(clock.now()))
+            .where(
+                OneTimeToken.sent_at.is_(None),
+                OneTimeToken.failed_at.is_(None),
+                OneTimeToken.created_at < cutoff,
+                active_clause(clock.now()),
+            )
             .order_by(OneTimeToken.created_at)
             .limit(RESEND_SELECT_LIMIT)
         )

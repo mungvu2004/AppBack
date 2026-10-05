@@ -8,6 +8,7 @@ chưa hợp nhất vào nhánh này — mọi test ở đây `fail` với "thi�
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -348,3 +349,38 @@ def test_dockerignore_has_required_entries_and_narrow_testing_exception() -> Non
             assert line.endswith("pyproject.toml"), (
                 f".dockerignore: ngoại lệ {line!r} cho packages/testing vượt quá pyproject.toml"
             )
+
+
+_INTERNAL_IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+(packages|apps)\.(\w+)", re.MULTILINE)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _copied_code_dirs(instructions: list[DockerInstruction]) -> set[str]:
+    """Thư mục mã `packages/<gói>`/`apps/<app>` mà các lệnh `COPY` chép vào (theo đích)."""
+    dirs: set[str] = set()
+    for instr in instructions:
+        if instr.name != "COPY":
+            continue
+        parts = instr.args.split()[-1].strip("/").split("/")
+        if len(parts) == 2 and parts[0] in ("packages", "apps") and not parts[1].endswith((".py", ".toml")):
+            dirs.add("/".join(parts))
+    return dirs
+
+
+@pytest.mark.parametrize("image", ["api", "worker", "ml"])
+def test_dockerfile_copied_code_is_import_closed(image: str) -> None:
+    """Mỗi tầng chép mã: mọi `packages.*`/`apps.*` mà mã đã chép import (trừ `tests`, `.dockerignore`
+    loại) cũng phải được chép — `ml` từng thiếu `packages/observability` nên ảnh không dựng được
+    (`ModuleNotFoundError` ở bước `export_pinned`, DEBT-02 W10/C47, FIX-340)."""
+    stages, instructions = _load(image)
+    for stage in stages:
+        copied = _copied_code_dirs([i for i in instructions if i.stage == stage.index])
+        missing: set[str] = set()
+        for rel in copied:
+            for py in (_REPO_ROOT / rel).rglob("*.py"):
+                if "tests" in py.relative_to(_REPO_ROOT / rel).parts:
+                    continue
+                for top, name in _INTERNAL_IMPORT_RE.findall(py.read_text(encoding="utf-8")):
+                    if f"{top}/{name}" not in copied:
+                        missing.add(f"{top}/{name} (từ {py.relative_to(_REPO_ROOT).as_posix()})")
+        assert not missing, f"{image} tầng {stage.name or stage.index}: thiếu COPY {sorted(missing)}"

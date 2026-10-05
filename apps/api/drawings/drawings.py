@@ -11,6 +11,7 @@ một trạng thái đua bình thường như `None`.
 Module này là "hàm worker nhập" (BE-00 §7): không `fastapi`/`starlette`.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import select
@@ -23,7 +24,7 @@ from packages.core.object_keys import upload_prefix_of
 from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.storage.keys import server_chosen_kind, upload_page_revision, upload_prefix
-from packages.storage.port import Disposition, ObjectStorage
+from packages.storage.port import Disposition, ObjectStorage, SignRequest
 
 PAGES_SEGMENT = "pages/"
 """Thư mục con của trang **đã nắn** dưới `upload_prefix` ([5]); dùng cả lúc dựng và lúc kiểm."""
@@ -41,15 +42,24 @@ def new_page_key(*, project_id: str, level_id: str, upload_id: str, page_index: 
     return upload_page_revision(project_id, level_id, upload_id, page_index, new_ulid(clock))
 
 
-async def drawing_url(storage: ObjectStorage, page_key: str) -> str:
-    """URL ký của một trang đã nắn: `inline` + `kind` png khi khoá do server đặt (`keys.server_chosen_kind`).
+async def drawing_urls(storage: ObjectStorage, page_keys: Sequence[str]) -> list[str]:
+    """URL ký của cả lô trang đã nắn, cùng thứ tự, trong một lượt `signed_urls` (NO-207).
 
-    Khoá không do server đặt (`kind` là `None`) giữ `attachment`, không `kind`: `inline` sẽ buộc kho
+    Mỗi khoá theo luật của `drawing_url`: `inline` + `kind` png khi khoá do server đặt
+    (`keys.server_chosen_kind`); khoá khác giữ `attachment`, không `kind`, vì `inline` sẽ buộc kho
     `stat` object và ký loại tệp người dùng khai (K15).
     """
-    kind = server_chosen_kind(page_key)
-    disposition: Disposition = "attachment" if kind is None else "inline"
-    return (await storage.signed_url(page_key, disposition=disposition, kind=kind)).url
+    requests = []
+    for key in page_keys:
+        kind = server_chosen_kind(key)
+        disposition: Disposition = "attachment" if kind is None else "inline"
+        requests.append(SignRequest(key, disposition, kind=kind))
+    return [signed.url for signed in await storage.signed_urls(requests)]
+
+
+async def drawing_url(storage: ObjectStorage, page_key: str) -> str:
+    """URL ký của một trang đã nắn; cùng đường ký với `drawing_urls`."""
+    return (await drawing_urls(storage, [page_key]))[0]
 
 
 async def current_drawing(db: AsyncSession, floor_pk: int, *, for_update: bool = False) -> DrawingRow | None:

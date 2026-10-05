@@ -16,6 +16,7 @@ from apps.api.me.avatar import (
     MAX_DECODED_BYTES,
     ProcessedAvatar,
     avatar_url,
+    avatar_urls,
     process_avatar,
     reset_avatar_settings_cache,
 )
@@ -284,6 +285,39 @@ async def test_avatar_url_absolute_and_no_stat_call(
     assert url is not None
     assert url.startswith("https://appback.test/api/files/")
     assert calls == 0
+
+
+async def test_avatar_urls__keeps_order_and_none_slots(local_storage: LocalDiskStorage) -> None:
+    """NO-207: lô trộn khoá và `None` ra đúng thứ tự, khe `None` giữ nguyên, lô rỗng ra rỗng."""
+    key = "users/usr_00000000000000000000000000/avatar/00000000000000000000000000.png"
+    other = "users/usr_00000000000000000000000000/avatar/00000000000000000000000001.jpg"
+
+    urls = await avatar_urls(local_storage, [None, key, None, other])
+
+    assert [u is None for u in urls] == [True, False, True, False]
+    assert urls[1] == await avatar_url(local_storage, key)
+    assert urls[3] == await avatar_url(local_storage, other)
+    assert await avatar_urls(local_storage, []) == []
+
+
+async def test_avatar_urls__one_signed_urls_call_for_the_whole_batch(
+    local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-207: 50 khoá chỉ gọi `signed_urls` đúng một lần (kho S3 ký cả lô trong một luồng)."""
+    key = "users/usr_00000000000000000000000000/avatar/00000000000000000000000000.png"
+    calls: list[int] = []
+    original = local_storage.signed_urls
+
+    async def _counting(requests: Any) -> Any:
+        """Ghi cỡ lô mỗi lần gọi rồi chuyển cho bản thật."""
+        calls.append(len(requests))
+        return await original(requests)
+
+    monkeypatch.setattr(local_storage, "signed_urls", _counting)
+
+    await avatar_urls(local_storage, [key] * 50)
+
+    assert calls == [50]
 
 
 def test_decode_and_reencode__does_not_write_truncated_flag(monkeypatch: pytest.MonkeyPatch) -> None:
