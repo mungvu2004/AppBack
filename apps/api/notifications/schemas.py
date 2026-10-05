@@ -9,7 +9,7 @@ from typing import Annotated, Any, Final
 from pydantic import Field, StringConstraints, field_validator
 
 from apps.api.core.wire import WireDatetime, WireModel, WireRequest
-from apps.api.notifications.settings import get_notifications_settings
+from apps.api.notifications.settings import MARK_MAX_DEFAULT, get_notifications_settings
 from packages.db.models.notifications import NotificationKind, NotificationPlace
 
 ID_MAX_LEN: Final = 64
@@ -38,7 +38,7 @@ class NotificationMarkReadBody(WireRequest):
     # lỗi vẫn do validator `before` ném trước nên `field` luôn là `ids`.
     ids: Annotated[
         list[Annotated[str, StringConstraints(min_length=1, max_length=ID_MAX_LEN)]],
-        Field(min_length=1, max_length=200),
+        Field(min_length=1, max_length=MARK_MAX_DEFAULT),
     ]
 
     @field_validator("ids", mode="before")
