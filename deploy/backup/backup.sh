@@ -10,8 +10,9 @@
 #   COMPOSE_PROJECT_NAME     appback
 #   BACKUP_TARGET            /var/backups/appback   — thư mục gốc chứa các bản sao lưu theo ngày giờ.
 #   APPBACK_STORAGE          s3                     — "s3" mirror bucket MinIO; "local" tar volume.
-#   BACKUP_AGE_RECIPIENT     (rỗng)                 — có thì mã hoá db.dump/objects.tar bằng age -r;
-#                                                   APP_ENV=production mà rỗng → thoát 1 (bắt buộc mã hoá).
+#   BACKUP_AGE_RECIPIENT     (rỗng)                 — mã hoá db.dump/objects.tar bằng age -r; rỗng → thoát 1
+#                                                   (bắt buộc mã hoá ở mọi môi trường) trừ khi:
+#   BACKUP_ALLOW_PLAINTEXT   (rỗng)                 — đặt đúng "1" mới cho ghi bản rõ (chỉ dev, diễn tập).
 #
 # Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát).
 set -euo pipefail
@@ -84,9 +85,10 @@ if [[ "${1:-}" == "--rotate-only" ]]; then
   exit 0
 fi
 
-# Production bắt buộc mã hoá (B0-10 [6], C-18): thiếu recipient thì dừng trước pg_dump, không ghi bản rõ.
-if [[ "${APP_ENV:-}" == "production" && -z "$BACKUP_AGE_RECIPIENT" ]]; then
-  echo "loi: APP_ENV=production bat buoc BACKUP_AGE_RECIPIENT (sao luu phai ma hoa age)" >&2
+# Mã hoá age là mặc định bắt buộc ở MỌI môi trường (B0-10 [6], C-18, C1): thiếu recipient thì dừng trước pg_dump,
+# không ghi bản rõ — trừ khi đặt tường minh BACKUP_ALLOW_PLAINTEXT=1 (chỉ dev, diễn tập).
+if [[ -z "$BACKUP_AGE_RECIPIENT" && "${BACKUP_ALLOW_PLAINTEXT:-}" != "1" ]]; then
+  echo "loi: thieu BACKUP_AGE_RECIPIENT (sao luu phai ma hoa age); chi dev/dien tap moi dat BACKUP_ALLOW_PLAINTEXT=1" >&2
   exit 1
 fi
 

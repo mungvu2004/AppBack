@@ -76,7 +76,7 @@ def test_drill_compare_sai_so_doi_so_khong_xoa_backup_target_thua_ke(tmp_path: P
     _assert_cleanup_used_fake_docker(log)
 
 
-def test_drill_storage_is_parameter_not_hardcoded__no_c16b(tmp_path: Path) -> None:
+def test_drill_storage_is_parameter_not_hardcoded(tmp_path: Path) -> None:
     """Diễn tập phải chạy được cả kho `local` (FIX-215 lọt hồi quy umask vì drill ép `s3`):
     `DRILL_STORAGE` quyết định `APPBACK_STORAGE`, giá trị lạ → thoát 2 trước mọi lệnh docker."""
     text = SCRIPT.read_text(encoding="utf-8")
@@ -100,7 +100,7 @@ esac
 """
 
 
-def test_drill_snapshot_lists_every_table_and_object__w10(tmp_path: Path) -> None:
+def test_drill_snapshot_lists_every_table_and_object_when_docker_reads_stdin(tmp_path: Path) -> None:
     """`snapshot` chụp ĐỦ mọi bảng và object kể cả khi `docker` đọc stdin — không thì diễn tập
     so sánh một bảng một object rồi báo "khớp" giả (FIX-341)."""
     bin_dir = fake_bin(tmp_path / "bin", {"docker": _FAKE_DOCKER_SNAPSHOT})
