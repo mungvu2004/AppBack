@@ -391,7 +391,7 @@ class _EarlyExitApp(Starlette):
         await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/event-stream")]})
 
 
-async def test_next_frames_raises_when_the_app_exits_without_sending_a_body(sse_open: SseOpen) -> None:
+async def test_next_frames__raises_when_the_app_exits_without_sending_a_body(sse_open: SseOpen) -> None:
     """App thoát sau `http.response.start` mà không gửi thêm gì → `_pull` ném `RuntimeError` (NO-192)."""
     async with sse_open(_EarlyExitApp(), "/bat-ky") as stream:
         with pytest.raises(RuntimeError, match=re.escape("kết thúc mà không gửi thêm")):
