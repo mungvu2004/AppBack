@@ -28,7 +28,7 @@ _log: Final = logging.getLogger(__name__)
 
 _ENV_KEEP: Final = frozenset(
     {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "LD_LIBRARY_PATH", "APP_ENV", "REDIS_BROKER_URL", "STREAM_MAXLEN"}
-    | {"STORAGE_BACKEND", "STORAGE_LOCAL_ROOT"}
+    | {"STORAGE_BACKEND", "STORAGE_LOCAL_ROOT", "LOG_LEVEL", "LOG_JSON"}
 )
 _ENV_PREFIX: Final = ("PYTHON", "ML_", "TRAINING_", "S3_", "CELERY_", "TASK_", "COVERAGE_", "NVIDIA_", "CUDA_")
 """Biến con huấn luyện thật sự đọc (`MlEnvSettings`, `MlSettings`, `TrainingRunnerSettings`, `StorageSettings`,

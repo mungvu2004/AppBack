@@ -103,8 +103,8 @@ async def _download_one(storage: ObjectStorage, dataset_version_id: str, entry: 
     """Tải một mục manifest về `dest`, băm + đếm byte khi ghi; lệch hay vắng → xoá tệp dở, mã object lệch;
     kho 503 cũng xoá tệp dở nhưng lan nguyên để thử lại (R-16).
 
-    `Path.open`/`write`/`unlink` là lệnh chặn (ASYNC240): chạy qua `asyncio.to_thread`. Dùng
-    `sample_key` (không `dataset_object`, chỉ nhận tên một đoạn — NO-263): `entry.path` ba đoạn.
+    `Path.open`/`write`/`unlink` là lệnh chặn (ASYNC240): chạy qua `asyncio.to_thread`. Khoá dựng
+    bằng `sample_key`, đi qua `dataset_object` (nhận đường nhiều đoạn — NO-263): `entry.path` ba đoạn.
     """
     key = sample_key(dataset_version_id, entry.path)
     hasher = hashlib.sha256()

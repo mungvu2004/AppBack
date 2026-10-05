@@ -254,6 +254,8 @@ def test_start_training_runner_child_env_is_allowlisted(safe: SyncRedis, monkeyp
     ml_s3_value = "ml-s3-value"
     monkeypatch.setenv("S3_SECRET_KEY", ml_s3_value)
     monkeypatch.setenv("TRAINING_MAX_WALL_S", "60")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("LOG_JSON", "false")
     monkeypatch.setattr(tasks.subprocess, "Popen", _EnvPopen)
     payload = train_payload(_empty_dataset())
     tasks._launch(payload, "t" * 32, "claim", safe)
@@ -266,3 +268,4 @@ def test_start_training_runner_child_env_is_allowlisted(safe: SyncRedis, monkeyp
     assert env["REDIS_BROKER_URL"] == "redis://redis-broker:6379/0"
     assert env["S3_SECRET_KEY"] == ml_s3_value
     assert env["TRAINING_MAX_WALL_S"] == "60"
+    assert (env["LOG_LEVEL"], env["LOG_JSON"]) == ("DEBUG", "false"), "con mất cấu hình log của cha (F17)"

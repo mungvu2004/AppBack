@@ -77,14 +77,16 @@ def _reply(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def main(stdin: IO[str], stdout: IO[str]) -> None:
-    """Đọc yêu cầu, đặt trần bộ nhớ, ghi đúng một dòng `RESULT_PREFIX` + JSON ra `stdout`.
+    """Đọc yêu cầu, đặt trần bộ nhớ, ghi đúng một dòng `RESULT_PREFIX` + JSON ra `stdout`
+    (mở bằng xuống dòng để dòng lạ chưa kết thúc không dính vào tiền tố).
 
     Nhận luồng làm tham số để test gọi thẳng được (không cần dựng tiến trình).
     """
     request = json.load(stdin)
     max_bytes = int(request["max_bytes"])
     resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
-    stdout.write(RESULT_PREFIX + json.dumps(_reply(request)) + "\n")
+    # xuống dòng đầu: dòng lạ chưa kết thúc không nuốt tiền tố
+    stdout.write("\n" + RESULT_PREFIX + json.dumps(_reply(request)) + "\n")
     stdout.flush()
 
 

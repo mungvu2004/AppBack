@@ -49,7 +49,8 @@ BIG_HOLD_CEILING_S: Final = 30.0
 """Trần chống thoái lui trên lớp 20.000 tường: 3x số đo 8,46-9,54 s sau NO-296 (nhật ký chèn theo khúc `unnest`).
 
 Chưa phải mục tiêu 5 s của B5-06b [8]: riêng 140.000 dòng nhật ký theo trường đã ~5,5 s phía Postgres,
-xuống nữa phải đổi hợp đồng nhật ký (nợ ghi riêng). Trước sửa đo 15,8-21 s.
+xuống nữa phải đổi hợp đồng nhật ký — NO-296 (đã duyệt, giữ hợp đồng đó) nên mục tiêu 5 s không đạt.
+Trước sửa đo 15,8-21 s.
 """
 
 _log = logging.getLogger(__name__)
