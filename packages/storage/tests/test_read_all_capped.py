@@ -31,7 +31,7 @@ async def test_read_all_capped__under_and_at_the_cap_return_the_bytes(local_stor
 
 
 async def test_read_all_capped__over_the_cap_raises_the_callers_error(local_storage: LocalDiskStorage) -> None:
-    """Vượt trần → đúng ngoại lệ người gọi đưa, kèm không đọc tiếp."""
+    """Vượt trần một byte → đúng ngoại lệ người gọi đưa, không trả bản cắt cụt."""
     await _put(local_storage, b"x" * (CAP + 1))
 
     with pytest.raises(_TooBigError):

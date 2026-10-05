@@ -18,6 +18,7 @@ import pytest
 from minio import Minio
 from minio.error import S3Error
 
+from packages.core.error_codes import INTERNAL
 from packages.core.errors import AppError
 from packages.storage import keys
 from packages.storage.port import SignRequest
@@ -272,23 +273,27 @@ async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storag
 async def test_delete__missing_bucket_is_an_app_error(
     minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
 ) -> None:
-    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError`, không lọt `S3Error` thô."""
+    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError` `INTERNAL`, không `Retry-After`, không lọt `S3Error`."""
     endpoint, access_key, secret_key = minio_endpoint
     storage = storage_on(client_for(endpoint, access_key, secret_key), "bucket-chua-tao-bao-gio", fake_clock)
 
-    with pytest.raises(AppError):
+    with pytest.raises(AppError) as exc:
         await storage.delete(KEY)
+    assert exc.value.code is INTERNAL
+    assert exc.value.retry_after is None
 
 
 async def test_delete__denied_request_is_an_app_error(
     minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
 ) -> None:
-    """NO-230: `AccessDenied` (thiếu quyền `DeleteObject`) của `delete` thành `AppError`."""
+    """NO-230: khoá bí mật sai (MinIO trả `SignatureDoesNotMatch`) thành `AppError` `INTERNAL`, không `Retry-After`."""
     endpoint, access_key, _ = minio_endpoint
     storage = storage_on(client_for(endpoint, access_key, "sai-khoa-bi-mat"), "bucket-nao-do", fake_clock)
 
-    with pytest.raises(AppError):
+    with pytest.raises(AppError) as exc:
         await storage.delete(KEY)
+    assert exc.value.code is INTERNAL
+    assert exc.value.retry_after is None
 
 
 async def test_signed_url__without_a_public_client_is_refused(
