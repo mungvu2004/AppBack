@@ -1183,7 +1183,7 @@
             "$ref": "#/components/schemas/FloorIdField"
           },
           "name": {
-            "$ref": "#/components/schemas/apps__api__floors__schemas__FloorName"
+            "$ref": "#/components/schemas/FloorName"
           },
           "order": {
             "$ref": "#/components/schemas/OrderField"
@@ -1221,7 +1221,7 @@
             "$ref": "#/components/schemas/JsonValue"
           },
           "name": {
-            "$ref": "#/components/schemas/apps__api__projects__schemas__FloorName"
+            "$ref": "#/components/schemas/FloorDraftName"
           },
           "order": {
             "title": "Order",
@@ -1236,6 +1236,10 @@
         ],
         "title": "FloorDraftIn",
         "type": "object"
+      },
+      "FloorDraftName": {
+        "$ref": "#/components/schemas/CleanStr",
+        "minLength": 1
       },
       "FloorIdField": {
         "type": "string"
@@ -1360,6 +1364,9 @@
         "title": "FloorLayerWriteSchema",
         "type": "object"
       },
+      "FloorName": {
+        "type": "string"
+      },
       "FloorOut": {
         "additionalProperties": false,
         "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).",
@@ -1457,7 +1464,7 @@
           "name": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/apps__api__floors__schemas__FloorName"
+                "$ref": "#/components/schemas/FloorName"
               },
               {
                 "type": "null"
@@ -1541,7 +1548,7 @@
       },
       "FloorReorderIn": {
         "additionalProperties": false,
-        "description": "Thân #13 (`{floorIds}`) — khai để `openapi.json` có `requestBody` (API-04, R-11).\n\nLuật thật (1-`FLOORS_MAX` phần tử, không trùng, khoá lạ → 422 `field:\"floorIds\"`) chỉ sống\nở `resolvers._parsed_floor_ids` (một nguồn, R-07): resolver đọc thân thô **trước** khi\nFastAPI ràng buộc `body` này, nên lỗi resolver luôn thắng và `floor_ids` ở đây luôn đã\nhợp lệ khi tới tay handler — lớp này chỉ còn nhiệm vụ tài liệu hoá hợp đồng, không kiểm gì\nthêm ngoài kiểu (`list[str]`, `extra=\"forbid\"` của `WireRequest`).",
+        "description": "Thân #13 (`{floorIds}`) — khai để `openapi.json` có `requestBody` (API-04, R-11).\n\nLuật thật (1-`FLOORS_MAX` phần tử, không trùng, khoá lạ → 422 `field:\"floorIds\"`) chỉ sống\nở `resolvers._parsed_floor_ids` (một nguồn, R-07): resolver đọc thân thô **trước** khi\nFastAPI ràng buộc `body` này, nên lỗi resolver thắng mọi lỗi **sau** bước giải JSON (thân\nJSON hỏng thì FastAPI giải trước mọi dependency → 400 `MALFORMED_JSON`, `core/routing.py`),\nvà `floor_ids` ở đây luôn đã hợp lệ khi tới tay handler — lớp này chỉ còn nhiệm vụ tài liệu hoá\nhợp đồng, không kiểm gì thêm\nngoài kiểu (`list[str]`, `extra=\"forbid\"` của `WireRequest`).",
         "properties": {
           "floorIds": {
             "items": {
@@ -2772,8 +2779,12 @@
         "properties": {
           "ids": {
             "items": {
+              "maxLength": 64,
+              "minLength": 1,
               "type": "string"
             },
+            "maxItems": 200,
+            "minItems": 1,
             "title": "Ids",
             "type": "array"
           }
@@ -5576,13 +5587,6 @@
         ],
         "title": "WallTemplate",
         "type": "object"
-      },
-      "apps__api__floors__schemas__FloorName": {
-        "type": "string"
-      },
-      "apps__api__projects__schemas__FloorName": {
-        "$ref": "#/components/schemas/CleanStr",
-        "minLength": 1
       }
     }
   },
@@ -8134,6 +8138,15 @@
               "title": "Floor Id",
               "type": "string"
             }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -8223,6 +8236,17 @@
       "post": {
         "description": "#17: 201 khi tạo mới, 200 khi gửi lại đúng bản đã lưu (hoàn tác xoá gửi lại nguyên bản ghi).",
         "operationId": "measurements_create_record_api_projects__project_id__measurements_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8274,6 +8298,15 @@
               "title": "Measurement Id",
               "type": "string"
             }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8301,6 +8334,17 @@
       "post": {
         "description": "N3 — thêm thành viên theo email: 201 khi mới, 200 khi đã là thành viên.",
         "operationId": "members_add_member_api_projects__project_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8350,6 +8394,15 @@
             "required": true,
             "schema": {
               "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
               "type": "string"
             }
           }
@@ -8453,6 +8506,17 @@
       "post": {
         "description": "#29: 201; hai lượt bấm là hai khuôn.",
         "operationId": "templates_create_template_api_projects__project_id__property_templates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8541,6 +8605,17 @@
       "get": {
         "description": "N21 — cấu hình luật của dự án; chưa lưu thì `{revision: 0, overrides: {}}`.",
         "operationId": "rules_read_config_api_projects__project_id__rule_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8551,6 +8626,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Rules Read Config",
@@ -8561,6 +8646,17 @@
       "put": {
         "description": "N22 — thay cấu hình luật có version; base cũ → 409 `remoteChanges: []`, lượt lặp của chính mình → 200.",
         "operationId": "rules_replace_config_api_projects__project_id__rule_config_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8603,6 +8699,17 @@
       "get": {
         "description": "N5 — cài đặt dự án; chưa ghi lần nào thì trả mặc định `revision 0`.",
         "operationId": "settings_read_settings_api_projects__project_id__settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8613,6 +8720,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Settings Read Settings",
@@ -8623,6 +8740,17 @@
       "put": {
         "description": "N6 — thay cài đặt có version; base cũ → 409 `remoteChanges: []`, lượt lặp của chính mình → 200.",
         "operationId": "settings_replace_settings_api_projects__project_id__settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8710,6 +8838,15 @@
         "operationId": "versions_list_versions_api_projects__project_id__versions_get",
         "parameters": [
           {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "floorId",
             "required": true,
@@ -8789,6 +8926,15 @@
               "title": "Version Id",
               "type": "string"
             }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8830,6 +8976,15 @@
             "required": true,
             "schema": {
               "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
               "type": "string"
             }
           }
@@ -8883,6 +9038,15 @@
             "required": true,
             "schema": {
               "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
               "type": "string"
             }
           }
@@ -8946,6 +9110,15 @@
             "required": true,
             "schema": {
               "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
               "type": "string"
             }
           },
