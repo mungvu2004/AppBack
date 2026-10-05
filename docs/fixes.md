@@ -274,7 +274,7 @@
 | FIX-307 | 2026-10-04 | B2-04 | NO-187 | DEBT-02 W5/C20: khung `Progress` phát bằng `publish_once`, mất phản hồi không ghi khung thứ hai | `901a4d1` (nhánh `fix/debt-02-w5-api-core`) |
 | FIX-308 | 2026-10-04 | B5-01 | NO-061 | DEBT-02 W8/C29: ghim bộ công cụ xuất YOLO (`YOLO_EXPORT_TOOLCHAIN`) và test khớp `uv.lock` | `0401f11` (nhánh `fix/debt-02-w8-ml-pins`) |
 | FIX-310 | 2026-10-04 | người điều phối | NO-176 | DEBT-02 W8/C32: dựng lại mục lục và khối FIX-071…081 của sổ FIX | `c6d25b1` (nhánh `fix/debt-02-w8-charter-docs`) |
-| FIX-311 | 2026-10-04 | B7-02 | NO-336 | DEBT-02 W8/C32: năm Nit review kiểm toán bảo mật; trỏ lại dẫn chiếu `file:dòng` sau DEBT-02 | `44435a9` (nhánh `fix/debt-02-w8-charter-docs`), `55ec55b` (nhánh `fix/debt-02-w8-charter-docs`), `c6ec3af` (nhánh `fix/debt-02-w8-charter-docs`), `99646c4` (nhánh `fix/debt-02-tich-hop`) |
+| FIX-311 | 2026-10-04 | B7-02 | NO-336 | DEBT-02 W8/C32: năm Nit review kiểm toán bảo mật; trỏ lại dẫn chiếu `file:dòng` sau DEBT-02 | `44435a9` (nhánh `fix/debt-02-w8-charter-docs`), `55ec55b` (nhánh `fix/debt-02-w8-charter-docs`), `c6ec3af` (nhánh `fix/debt-02-w8-charter-docs`), `3919a49` (nhánh `fix/debt-02-tich-hop`) |
 | FIX-312 | 2026-10-04 | dieu-phoi | NO-232, NO-233 | DEBT-02 W8/C32: R-33b theo sở hữu, đóng bốn chỗ hở R-33b/merge-review (bản nháp chờ duyệt) | `70eaccf` (nhánh `fix/debt-02-w8-charter-docs`) |
 | FIX-313 | 2026-10-04 | người điều phối | NO-335, NO-345 | DEBT-02 W8/C32: nợ hiến chương của B7-02, tách cận trên `perf` khỏi hạn chờ rộng (bản nháp chờ duyệt) | `10364ed` (nhánh `fix/debt-02-w8-charter-docs`) |
 | FIX-314 | 2026-10-05 | B0-08 | NO-335 | DEBT-02 W8/C32c: nginx `limit_conn` 30 luồng SSE mỗi IP ở `/api/streams/`, quá → 429 `RATE_LIMITED` | `f5eb942` (nhánh `fix/debt-02-w8-charter-docs`) |
@@ -301,17 +301,17 @@
 | FIX-335 | 2026-10-04 | B0-09 | NO-107 | DEBT-02 W9/C43: H2 dùng id admin seed thay vì dựng admin ngẫu nhiên | `1400c01` (nhánh `fix/debt-02-w9-db-seed`), `d7958c5` (nhánh `fix/debt-02-w9-db-seed`) |
 | FIX-336 | 2026-10-04 | B2-07 | NO-248 | DEBT-02 W9/C46: C02[unknown-kind] mong `field = "objectKind"` theo hành vi mới của `field_of` | `60ef453` (nhánh `fix/debt-02-w9-integ-fix`) |
 | FIX-337 | 2026-10-04 | B2-05b | NO-207 | DEBT-02 W9/C42: `read_view` ký URL mọi tầng theo một lô | `4614a52` (nhánh `fix/debt-02-w9-sign-batch`) |
-| FIX-338 | 2026-10-05 | B7-02 | NO-334 | DEBT-02 W10/C47: `docs/security` ghi thăm dò sống 18 mục (16 đạt, SEC-044/063), bỏ dòng "kiểm toán chưa đủ", đóng tồn dư B-22 | `5bb71c8`, `e2a9bb9` (nhánh `fix/debt-02-w10-security-probe`) |
-| FIX-339 | 2026-10-04 | B0-10 | NO-334 | DEBT-02 W10/C47: `backup.sh` production thiếu `BACKUP_AGE_RECIPIENT` thoát 1 trước `pg_dump` (C-18, SEC-044) | `8aaf38f` (nhánh `fix/debt-02-w10-security-probe`) |
-| FIX-340 | 2026-10-05 | B0-08 | NO-334 | DEBT-02 W10/C47: `ml.Dockerfile` chép thêm `packages/observability`, test COPY khép kín theo import | `486cd80` (nhánh `fix/debt-02-w10-security-probe`) |
-| FIX-341 | 2026-10-05 | B0-10 | NO-334 | DEBT-02 W10/C47: `drill.sh` `snapshot()` đọc danh sách từ fd 3, hết so thiếu bảng/đối tượng | `554bbca` (nhánh `fix/debt-02-w10-security-probe`) |
-| FIX-343 | 2026-10-04 | B6-02b | NO-334 | DEBT-02 W10/C47: hằng `SOURCE_LICENSE` CC BY-NC 4.0, in ở mọi báo cáo nhập CubiCasa5K (D-25, SEC-063) | `d4ec769` (nhánh `fix/debt-02-w10-security-probe`) |
-| FIX-344 | 2026-10-05 | B0-02 | NO-334 | DEBT-02 W10/C47b: bộ che log chung che `KEY=value`/`KEY: value` và khoá hậu tố bí mật | `bdff809` (nhánh `fix/debt-02-w10-security-probe`) |
-| FIX-345 | 2026-10-05 | B6-03b | NO-334 | DEBT-02 W10/C47b: crash `training_runner` đi qua bộ xử lý JSON đã che, giữ `excType` + `INTERNAL` | `5f7624d` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-338 | 2026-10-05 | B7-02 | NO-334 | DEBT-02 W10/C47: `docs/security` ghi thăm dò sống 18 mục (16 đạt, SEC-044/063), bỏ dòng "kiểm toán chưa đủ", đóng tồn dư B-22 | `f71d3bf`, `da0aff8` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-339 | 2026-10-04 | B0-10 | NO-334 | DEBT-02 W10/C47: `backup.sh` production thiếu `BACKUP_AGE_RECIPIENT` thoát 1 trước `pg_dump` (C-18, SEC-044) | `da9f561` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-340 | 2026-10-05 | B0-08 | NO-334 | DEBT-02 W10/C47: `ml.Dockerfile` chép thêm `packages/observability`, test COPY khép kín theo import | `96537af` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-341 | 2026-10-05 | B0-10 | NO-334 | DEBT-02 W10/C47: `drill.sh` `snapshot()` đọc danh sách từ fd 3, hết so thiếu bảng/đối tượng | `d8b2902` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-343 | 2026-10-04 | B6-02b | NO-334 | DEBT-02 W10/C47: hằng `SOURCE_LICENSE` CC BY-NC 4.0, in ở mọi báo cáo nhập CubiCasa5K (D-25, SEC-063) | `0ccfd9a` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-344 | 2026-10-05 | B0-02 | NO-334 | DEBT-02 W10/C47b: bộ che log chung che `KEY=value`/`KEY: value` và khoá hậu tố bí mật | `2fe09f7` (nhánh `fix/debt-02-w10-security-probe`) |
+| FIX-345 | 2026-10-05 | B6-03b | NO-334 | DEBT-02 W10/C47b: crash `training_runner` đi qua bộ xử lý JSON đã che, giữ `excType` + `INTERNAL` | `b78d9d1` (nhánh `fix/debt-02-w10-security-probe`) |
 | FIX-346 | 2026-10-05 | F-01b | NO-208 | DEBT-02 W10/C45b: `run-playwright.mjs` làm ấm đồ thị module Vite trước bài đầu, lượt e2e lạnh hết đỏ | `f5332dc7` (AppFront, nhánh `fix/debt-02-w10-fe`) |
 | FIX-348 | 2026-10-04 | F-01b | NO-154 | DEBT-02 W10/C45: luồng tiến độ xin refresh một lần mỗi chuỗi SSE chết | `9ce307a6` (AppFront, nhánh `fix/debt-02-w10-fe`) |
 | FIX-349 | 2026-10-04 | F-01b | NO-209 | DEBT-02 W10/C45: `expiresIn` đọc theo giờ máy chủ như lịch hẹn | `09bffa11` (AppFront, nhánh `fix/debt-02-w10-fe`) |
-| FIX-350 | 2026-10-05 | B0-01 | NO-271, NO-280 | DEBT-02 W10/C48: đo lại `-n` 4/6/8, giữ mặc định 6, docstring `pytest_workers()` theo số đo mới | `cf542eb`, `a681354`, `4870259` (nhánh `fix/debt-02-w10-gate-measure`) |
+| FIX-350 | 2026-10-05 | B0-01 | NO-271, NO-280 | DEBT-02 W10/C48: đo lại `-n` 4/6/8, giữ mặc định 6, docstring `pytest_workers()` theo số đo mới | `815f45a`, `3a99137`, `da8a2c5` (nhánh `fix/debt-02-w10-gate-measure`) |
 | FIX-351 | 2026-10-05 | B0-10 | — | DEBT-02 R1/RA: backup.sh ghi bản rõ ở staging/APP_ENV rỗng (review R1 F4, F21) | `19e6dd5`, `2d1184d`, `21a1a1d` (nhánh `fix/debt-02-r1-deploy-tools`) |
 | FIX-352 | 2026-10-05 | B0-08 | NO-197 | DEBT-02 R1/RA: env.example thiếu hai biến sao lưu; test map nginx lỏng (review R1 F4, F12) | `6aecb51`, `a51986a`, `9960254` (nhánh `fix/debt-02-r1-deploy-tools`) |
 | FIX-353 | 2026-10-05 | B0-01 | — | DEBT-02 R1/RA: case_gate nới xfail; coverage_gate in 100% giả (review R1 F7, F24) | `debb053`, `39cec55` (nhánh `fix/debt-02-r1-deploy-tools`) |
@@ -2980,7 +2980,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[4 KHOANH VÙNG]** Sửa: `docs/security/**` (B7-02). Cấm: mọi tệp khác.
 - **[5 SỬA NHỎ NHẤT]** Thêm `Lý do mức:`; [4] SEC-060 thêm `deploy/tests/test_nginx.py`; B-22 `7.1.1, 7.1.2` (7.1.2 = dữ liệu nhạy cảm khác); B-08 `…unsafe_names[../evil]` + 6 id (`a\b`, `a\x01b` đúng cách pytest thoát); `8 %` (làm tròn như các dòng khác). C32b: threat-model A-23/D trỏ `WriteScope.forbid_self` `users/service.py:148-157` (FIX-323); 61 dẫn chiếu trỏ lại tự động, 7 sửa tay, 57 giữ số dòng lịch sử ở `2a63cfc` (dòng `lỗ`/SEC, bản ghi thăm dò). Sau gộp tích hợp: áp lại B-22 ASVS 7.1.2 bị mất khi lấy phía tích hợp của các dòng thăm dò W10.
 - **[6 TEST CHẶN TÁI PHÁT]** `scan.sh` NO-336a…e đỏ → xanh; `ref_drift.py` đỏ 125 → `ref_check.py` xanh 0.
-- **[7 NGHIỆM THU]** Commit `44435a9` `docs(security): fix the five b7-02 review nits`, `55ec55b` `docs(security): repoint file:line evidence after debt-02 changes` (C32b), `c6ec3af` `docs(security): restore B-22 ASVS 7.1.2 lost in the merge` (2026-10-05); `Prompt: B7-02`, `Fix: FIX-311`; nhánh `fix/debt-02-w8-charter-docs`. Sau gộp ở việc gộp `DEBT-02/MF`: `99646c4` `docs(security): mark C-29 and charter debts 3 and 8 fixed` (C-29, "Nợ hiến chương" mục 3/8 → đã sửa FIX-314, FIX-316; nhánh `fix/debt-02-tich-hop`).
+- **[7 NGHIỆM THU]** Commit `44435a9` `docs(security): fix the five b7-02 review nits`, `55ec55b` `docs(security): repoint file:line evidence after debt-02 changes` (C32b), `c6ec3af` `docs(security): restore B-22 ASVS 7.1.2 lost in the merge` (2026-10-05); `Prompt: B7-02`, `Fix: FIX-311`; nhánh `fix/debt-02-w8-charter-docs`. Sau gộp ở việc gộp `DEBT-02/MF`: `3919a49` `docs(security): mark C-29 and charter debts 3 and 8 fixed` (C-29, "Nợ hiến chương" mục 3/8 → đã sửa FIX-314, FIX-316; nhánh `fix/debt-02-tich-hop`).
 
 ## FIX-312 cho dieu-phoi — R-33b theo sở hữu, bốn chỗ hở R-33b/merge-review (NO-232, NO-233) — BẢN NHÁP chờ người dùng duyệt
 
@@ -3248,39 +3248,39 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[2 TÁI HIỆN]** Dựng ảnh `appback-{api,worker,web,ml}:w10` (`W10/C47/build.log`), chạy stack `prod.yml` cục bộ (`APP_ENV=production`, cert tự ký), thăm dò từng mục (`W10/C47/probe.log`, log thô L-01…L-09).
 - **[3 BẰNG CHỨNG]** `probe.log`: 16 mục đạt, C-18 và D-25 là lỗ (SEC-044, SEC-063) vá cùng lượt bằng FIX-339, FIX-343; B-22 đạt kèm tồn dư `__main__:70` → FIX-344/345 (C47b).
 - **[4 KHOANH VÙNG]** `docs/security/{README.md,asvs-checklist.md,threat-model.md,fixes/SEC-044.md,fixes/SEC-063.md}` (B7-02), chỉ tài liệu.
-- **[5 SỬA NHỎ NHẤT]** Đổi trạng thái 18 mục theo bằng chứng, thêm SEC-044/SEC-063, bỏ dòng "kiểm toán chưa đủ" (`5bb71c8`); đóng tồn dư B-22 bằng FIX-344/345 (`e2a9bb9`).
+- **[5 SỬA NHỎ NHẤT]** Đổi trạng thái 18 mục theo bằng chứng, thêm SEC-044/SEC-063, bỏ dòng "kiểm toán chưa đủ" (`f71d3bf`); đóng tồn dư B-22 bằng FIX-344/345 (`da0aff8`).
 - **[6 TEST CHẶN TÁI PHÁT]** Không có (tài liệu); mỗi mục trỏ lệnh thăm dò trong `probe.log`.
-- **[7 NGHIỆM THU]** Commit `5bb71c8`, `e2a9bb9` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `5bb71c8` (`verify-1234.log`) và `e2a9bb9` (`c47b-verify-1234.log`), mã thoát 0.
+- **[7 NGHIỆM THU]** Commit `f71d3bf`, `da0aff8` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `f71d3bf` (`verify-1234.log`) và `da0aff8` (`c47b-verify-1234.log`), mã thoát 0.
 
 ## FIX-339 cho B0-10 — `backup.sh` ghi bản sao lưu rõ khi production thiếu `BACKUP_AGE_RECIPIENT` (NO-334)
 
 - **[1 TRIỆU CHỨNG]** Mục C-18: `APP_ENV=production BACKUP_AGE_RECIPIENT='' backup.sh` thoát 0, ghi `db.dump` rõ (đầu tệp `PGDMP`), manifest `"encrypted": false` (SEC-044).
-- **[2 TÁI HIỆN]** Thăm dò thật trên cây `d4ec769` (`W10/C47/backup-red.log`, rc=0); test `deploy/backup/tests/test_backup.py::test_backup__production_without_age_recipient_exits_1_before_dump` đỏ: 1 failed, 10 passed (`c18-red.log`).
+- **[2 TÁI HIỆN]** Thăm dò thật trên cây `0ccfd9a` (`W10/C47/backup-red.log`, rc=0); test `deploy/backup/tests/test_backup.py::test_backup__production_without_age_recipient_exits_1_before_dump` đỏ: 1 failed, 10 passed (`c18-red.log`).
 - **[3 BẰNG CHỨNG]** `probe.log` mục C-18 [L-05]; nhánh có `age` thật mã hoá đúng, khoá sai thoát 1, `restore.sh` thiếu identity thoát 2 (`backup-red.log`).
 - **[4 KHOANH VÙNG]** `deploy/backup/backup.sh`, `deploy/backup/tests/test_backup.py`, `deploy/scripts/README.md` (B0-10).
 - **[5 SỬA NHỎ NHẤT]** `APP_ENV=production` mà `BACKUP_AGE_RECIPIENT` rỗng → thoát 1 trước `pg_dump`; README cập nhật.
 - **[6 TEST CHẶN TÁI PHÁT]** `test_backup__production_without_age_recipient_exits_1_before_dump` đỏ → xanh (`pytest deploy` 283 passed, `c18-green.log`).
-- **[7 NGHIỆM THU]** Commit `8aaf38f` (nhánh `fix/debt-02-w10-security-probe`); thăm dò lại rc=1, không tạo thư mục sao lưu (`probe.log` C-18); `pytest deploy` cuối 466 passed, mã thoát 0 (`pytest-deploy-final.log`). Mã thoát của `c18-red.log`/`c18-green.log` không ghi trong báo cáo cụm.
+- **[7 NGHIỆM THU]** Commit `da9f561` (nhánh `fix/debt-02-w10-security-probe`); thăm dò lại rc=1, không tạo thư mục sao lưu (`probe.log` C-18); `pytest deploy` cuối 466 passed, mã thoát 0 (`pytest-deploy-final.log`). Mã thoát của `c18-red.log`/`c18-green.log` không ghi trong báo cáo cụm.
 
 ## FIX-340 cho B0-08 — `ml.Dockerfile` thiếu `COPY packages/observability`, ảnh ml không dựng được (NO-334)
 
 - **[1 TRIỆU CHỨNG]** Lượt dựng ảnh của thăm dò NO-334: `docker build -f deploy/docker/ml.Dockerfile` rc=1 (cả `--network none` lẫn có mạng), `ModuleNotFoundError` `packages.observability` ở `export_pinned` tầng deps (`W10/C47/build.log`).
 - **[2 TÁI HIỆN]** `build.log` hai lượt rc=1 trên cây `7ae1292`; test mới `deploy/tests/test_dockerfiles.py::test_dockerfile_copied_code_is_import_closed[ml]` đỏ: "thiếu COPY packages/observability (từ packages/messaging/celery_app.py)", 1 failed / 39 passed (`ml-red.log`).
-- **[3 BẰNG CHỨNG]** `packages.messaging` nhập `packages.observability.exporter` mà `ml.Dockerfile` chỉ chép `messaging` (thân commit `486cd80`); `probe.log` mục "Ngoài 18 mục".
+- **[3 BẰNG CHỨNG]** `packages.messaging` nhập `packages.observability.exporter` mà `ml.Dockerfile` chỉ chép `messaging` (thân commit `96537af`); `probe.log` mục "Ngoài 18 mục".
 - **[4 KHOANH VÙNG]** `deploy/docker/ml.Dockerfile`, `deploy/tests/test_dockerfiles.py` (B0-08). Không có dòng nợ riêng — lỗi lộ ra khi chạy thật lượt NO-334.
 - **[5 SỬA NHỎ NHẤT]** Thêm `COPY packages/observability` vào tầng cần; test tĩnh kiểm mọi tầng ảnh python chép một tập `packages/apps` khép kín theo import.
 - **[6 TEST CHẶN TÁI PHÁT]** `test_dockerfile_copied_code_is_import_closed[*]` đỏ → xanh (40 passed, `ml-green.log`).
-- **[7 NGHIỆM THU]** Commit `486cd80` (nhánh `fix/debt-02-w10-security-probe`); build ml lại rc=0, 162 s (`build.log`); `pytest deploy` 466 passed, mã thoát 0 (`pytest-deploy-final.log`).
+- **[7 NGHIỆM THU]** Commit `96537af` (nhánh `fix/debt-02-w10-security-probe`); build ml lại rc=0, 162 s (`build.log`); `pytest deploy` 466 passed, mã thoát 0 (`pytest-deploy-final.log`).
 
 ## FIX-341 cho B0-10 — `drill.sh` `snapshot()` mất stdin vào `docker compose exec -T`, diễn tập chỉ so một bảng/một đối tượng (NO-334)
 
-- **[1 TRIỆU CHỨNG]** Diễn tập kho `local` (việc chờ của W5/C17) chạy thật trong lượt NO-334 báo "diễn tập khớp cả hai pha", mã thoát 0, nhưng bảng so chỉ có 1 bảng + 1 đối tượng — xanh giả (`W10/C47/drill-local-truoc-FIX341.log`, cây `486cd80`).
+- **[1 TRIỆU CHỨNG]** Diễn tập kho `local` (việc chờ của W5/C17) chạy thật trong lượt NO-334 báo "diễn tập khớp cả hai pha", mã thoát 0, nhưng bảng so chỉ có 1 bảng + 1 đối tượng — xanh giả (`W10/C47/drill-local-truoc-FIX341.log`, cây `96537af`).
 - **[2 TÁI HIỆN]** Test mới `deploy/scripts/tests/test_drill.py::test_drill_snapshot_lists_every_table_and_object__w10` đỏ: `['alpha\t7'] == ['alpha\t7', 'beta\t7', 'gamma\t7']`, 1 failed / 3 passed (`drill-red.log`).
-- **[3 BẰNG CHỨNG]** `docker compose exec -T` trong `while read … <<< "$list"` hút stdin của vòng lặp (thân commit `554bbca`); `probe.log` mục "Ngoài 18 mục".
+- **[3 BẰNG CHỨNG]** `docker compose exec -T` trong `while read … <<< "$list"` hút stdin của vòng lặp (thân commit `d8b2902`); `probe.log` mục "Ngoài 18 mục".
 - **[4 KHOANH VÙNG]** `deploy/scripts/drill.sh`, `deploy/scripts/tests/test_drill.py` (B0-10). Không có dòng nợ riêng.
 - **[5 SỬA NHỎ NHẤT]** Hai vòng `snapshot()` đọc danh sách từ fd 3 thay cho stdin.
 - **[6 TEST CHẶN TÁI PHÁT]** `test_drill_snapshot_lists_every_table_and_object__w10` đỏ → xanh (4 passed, `drill-green.log`).
-- **[7 NGHIỆM THU]** Commit `554bbca` (nhánh `fix/debt-02-w10-security-probe`); diễn tập local lại trên `554bbca`: đủ bảng/đối tượng đều "có", "mã thoát drill: 0" (`drill-local.log`); `pytest deploy` 466 passed, mã thoát 0 (`pytest-deploy-final.log`).
+- **[7 NGHIỆM THU]** Commit `d8b2902` (nhánh `fix/debt-02-w10-security-probe`); diễn tập local lại trên `d8b2902`: đủ bảng/đối tượng đều "có", "mã thoát drill: 0" (`drill-local.log`); `pytest deploy` 466 passed, mã thoát 0 (`pytest-deploy-final.log`).
 
 ## FIX-343 cho B6-02b — giấy phép CC BY-NC 4.0 của CubiCasa5K không được ghi ở đâu trong mã (NO-334)
 
@@ -3290,7 +3290,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[4 KHOANH VÙNG]** `apps/worker/datasets_cubicasa/{importer.py,cli.py,tests/test_cli.py}` (B6-02b); không đổi schema, không migration.
 - **[5 SỬA NHỎ NHẤT]** Hằng `SOURCE_LICENSE` cạnh `SOURCE` trong importer; `cli.py` in dòng `license: …` ở mọi báo cáo nhập.
 - **[6 TEST CHẶN TÁI PHÁT]** `apps/worker/datasets_cubicasa/tests/test_cli.py::test_import_prints_report_and_exits_zero` khẳng định `license: CC-BY-NC-4.0 `.
-- **[7 NGHIỆM THU]** Commit `d4ec769` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `d4ec769`, mã thoát 0 (`verify-code-1234.log`).
+- **[7 NGHIỆM THU]** Commit `0ccfd9a` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `0ccfd9a`, mã thoát 0 (`verify-code-1234.log`).
 
 ## FIX-344 cho B0-02 — bộ che log chung không che dạng `KEY=value` / `KEY: value` trong chuỗi tự do (NO-334)
 
@@ -3300,7 +3300,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[4 KHOANH VÙNG]** `packages/core/logging.py`, `packages/core/tests/test_logging.py` (B0-02) — hàm che chung mọi đường log đi qua (R-19).
 - **[5 SỬA NHỎ NHẤT]** Một vị từ `_is_masked_key` phục vụ cả khoá dict lẫn cặp `KEY=`/`KEY:` trong chuỗi, nhận hậu tố bí mật (`…_SECRET_KEY`, `…_PASSWORD`, `…_token`); thêm `install_log_handler` cho tiến trình không có `CoreSettings`.
 - **[6 TEST CHẶN TÁI PHÁT]** `test_mask_key_value_in_free_text[*]`, `test_mask_masks_secret_suffix_keys[*]` đỏ → xanh (`pytest packages/core apps/ml/training_runner` 471 passed, `c47b-green.log`).
-- **[7 NGHIỆM THU]** Commit `bdff809` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `e2a9bb9`, mã thoát 0 (`c47b-verify-1234.log`).
+- **[7 NGHIỆM THU]** Commit `2fe09f7` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `da0aff8`, mã thoát 0 (`c47b-verify-1234.log`).
 
 ## FIX-345 cho B6-03b — crash của `training_runner` in traceback thô qua `logging.lastResort`, lộ bí mật trong thông điệp ngoại lệ (NO-334)
 
@@ -3310,7 +3310,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[4 KHOANH VÙNG]** `apps/ml/training_runner/__main__.py`, `apps/ml/training_runner/tests/test_runner.py` (B6-03b).
 - **[5 SỬA NHỎ NHẤT]** `main()` cài bộ xử lý JSON đã che (`install_log_handler` của FIX-344); bản ghi crash giữ `excType` và mã `INTERNAL`.
 - **[6 TEST CHẶN TÁI PHÁT]** `test_main_crash_log_masks_secret_values` đỏ → xanh (`c47b-green.log`, 471 passed).
-- **[7 NGHIỆM THU]** Commit `5f7624d` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `e2a9bb9`, mã thoát 0 (`c47b-verify-1234.log`).
+- **[7 NGHIỆM THU]** Commit `b78d9d1` (nhánh `fix/debt-02-w10-security-probe`); bước 1–4 đạt trên `da0aff8`, mã thoát 0 (`c47b-verify-1234.log`).
 
 ## FIX-346 cho F-01b — lượt e2e lạnh đầu tiên đỏ `page.goto` hết 30 s vì máy chủ dev Vite chưa biên dịch xong (NO-208)
 
@@ -3348,9 +3348,9 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[2 TÁI HIỆN]** Đo bước 5 một mình, `VERIFY_PYTEST_WORKERS=4/6/8`, 8383 test, lấy mẫu `docker stats` + PSS mỗi ~15 s (`W10/C48/sample.sh`, `run-n.sh`, `n{4,6,8}.log`, `sample-n{4,6,8}.csv`); cả ba lượt mã thoát 0.
 - **[3 BẰNG CHỨNG]** `W10/C48/ram.md`: `-n 4` 571,0 s (đỉnh VM 8,67 GiB) · `-n 6` 504,5 s (8,47 GiB) · `-n 8` 513,4 s (10,14 GiB), không đỏ/chập chờn; ~10 container dịch vụ chỉ ~0,5 GiB, RAM tăng theo N là tiến trình pytest nạp `torch` (~2 GiB PSS đỉnh mỗi tiến trình).
 - **[4 KHOANH VÙNG]** `tools/verify/steps.py`, `tools/tests/test_steps_commands.py` (B0-01). ENV.md §4 chỉ soạn nháp (`W10/C48/ban-nhap-env.md`).
-- **[5 SỬA NHỎ NHẤT]** Giữ mặc định 6 (nhanh nhất, `-n 8` không nhanh hơn mà chỉ chừa ~1,4 GiB VM); docstring nêu số đo mới thay lý do cũ; test mặc định khẳng định `"6"`. `a681354`, `4870259` sửa dòng docstring cho ruff. Trailer commit ghi `Prompt: DEBT-02-W10-C48` thay vì chủ B0-01; `DEBT.md`, `changes/FIX-350.md` worker tự sửa bị bỏ khi gộp (`timeline.md` 18:30Z).
+- **[5 SỬA NHỎ NHẤT]** Giữ mặc định 6 (nhanh nhất, `-n 8` không nhanh hơn mà chỉ chừa ~1,4 GiB VM); docstring nêu số đo mới thay lý do cũ; test mặc định khẳng định `"6"`. `3a99137`, `da8a2c5` sửa dòng docstring cho ruff. Trailer commit ghi `Prompt: DEBT-02-W10-C48` thay vì chủ B0-01; `DEBT.md`, `changes/FIX-350.md` worker tự sửa bị bỏ khi gộp (`timeline.md` 18:30Z).
 - **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_steps_commands.py::test_số_tiến_trình_bước_5_mặc_định`.
-- **[7 NGHIỆM THU]** Commit `cf542eb`, `a681354`, `4870259` (nhánh `fix/debt-02-w10-gate-measure`); bước 1–4 đạt trên `4870259`, mã thoát 0 (`W10/C48/steps1234.log`); pytest `tools/tests/test_steps*.py` 94 passed, exit 0 (`pytest-steps.log`).
+- **[7 NGHIỆM THU]** Commit `815f45a`, `3a99137`, `da8a2c5` (nhánh `fix/debt-02-w10-gate-measure`); bước 1–4 đạt trên `da8a2c5`, mã thoát 0 (`W10/C48/steps1234.log`); pytest `tools/tests/test_steps*.py` 94 passed, exit 0 (`pytest-steps.log`).
 
 ## FIX-351 cho B0-10 — backup.sh ghi bản rõ ở staging/APP_ENV rỗng (review R1 F4, F21)
 
