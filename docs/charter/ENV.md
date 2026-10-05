@@ -66,7 +66,7 @@
 
 | Loại lượt | Tối đa cùng lúc |
 |---|---|
-| `just verify` AppBack — cổng đầy đủ bước 5 chạy `pytest-xdist` (FIX-112) | **1** (đo 2026-09-29: một cổng `-n 6` = 32 container / 5.211 MiB; hai cổng cùng lúc làm sập Docker Desktop, VM 12,39 GB). Cần chạy cạnh lượt khác thì đặt `VERIFY_PYTEST_WORKERS=3` (mặc định 6) |
+| `just verify` AppBack — cổng đầy đủ bước 5 chạy `pytest-xdist` (FIX-112) | **1** (đo lại 2026-10-05 sau FIX-114, một cổng chạy một mình, 8383 test: `-n 4` 571 s / đỉnh VM 8,7 GiB; `-n 6` **505 s** / 8,5 GiB; `-n 8` 513 s / 10,1 GiB, VM 11,54 GiB, cả ba xanh. ~10 container dịch vụ chỉ ~0,5 GiB; RAM nằm ở các tiến trình pytest nạp `torch`, ~2 GiB mỗi tiến trình). Mặc định `-n 6`, không nâng (`-n 8` không nhanh hơn, chỉ còn ~1,4 GiB trống). Hai cổng cùng lúc (~17 GiB) vẫn vượt VM → giữ 1; cần chạy cạnh lượt khác thì đặt `VERIFY_PYTEST_WORKERS=3`. Chưa đo: hai cổng `-n 3` cùng lúc (ước ~2 × 5 GiB) — không nới giới hạn "1" cho tới khi đo |
 | `just verify --steps 1,2,3,4` hay `run.sh shell` pytest đích (không xdist) | **2**, tính cả cổng đầy đủ đang chạy |
 | `pnpm verify` AppFront (~300 s một lượt, dùng hết CPU) | **2** |
 | Tổng cả hai loại | **4** |
