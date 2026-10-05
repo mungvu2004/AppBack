@@ -34,6 +34,7 @@ def png_16bit_4096_b64() -> str:
 
 
 async def _put(client: httpx.AsyncClient, user: User, body: dict[str, object]) -> httpx.Response:
+    """Gửi N14 `PUT /api/me/avatar` với thân `body`, xác thực bằng phiên của `user`."""
     return await client.put(PATH, json=body, headers=headers_of(principal_of(user)))
 
 
