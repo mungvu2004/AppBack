@@ -583,6 +583,7 @@ def test_nginx_app_server_has_conditional_access_log_backstop__no197() -> None:
         logs = [c for c in server.children if c.directive == "access_log"]
         assert any(a.startswith("if=$") for c in logs for a in c.args), f"{path}: server app thiếu access_log if="
 
+
 def test_nginx_access_log_map_logs_by_default_and_drops_files_uris() -> None:
     """NO-197: `map $request_uri $appback_access_log` ghi log mặc định (`default 1`) và chỉ bỏ URI có `files/` (→ `0`);
     xoá `default 1` thì mọi truy cập mất log, và `access_log … if=` ở server phải đọc đúng biến của map."""
