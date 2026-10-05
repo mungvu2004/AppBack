@@ -44,8 +44,8 @@ Commit đã soát `2a63cfc5420f`. Dẫn chiếu `tệp:dòng` trỏ lại theo m
 | ranh giới | chữ | mối đe doạ | biện pháp (dẫn #) | rủi ro tồn dư · chủ |
 |---|---|---|---|---|
 | quản trị viên → `admin/*` | S | Chiếm phiên admin (cookie bị đánh cắp) để dùng `admin/ml`, `users` | A-08, A-09, A-10, A-16 | Không có xác thực bước hai (MFA) cho admin — ASVS cấp 2 khuyến nghị; ngoài phạm vi v1 · B1-01 (Nợ hiến chương N-A1) |
-| quản trị viên → `admin/*` | T | Admin sửa vai/trạng thái người khác sai đích (đường ≠ thân); tự hạ vai admin cuối cùng | A-23; `apps/api/users/service.py:148-157` (`WriteScope.forbid_self`: tự sửa mình → `USER_SELF_MODIFICATION`, admin `active` duy nhất → `USER_LAST_ADMIN`; gọi ở `:290,303,451`) | — |
-| quản trị viên → `admin/*` | R | Admin chối đã đổi vai/vô hiệu | `apps/api/users/service.py:294` (`_log_activity` `USER_ROLE_CHANGE`) | Nhật ký hoạt động nằm cùng DB admin ghi được; không chống sửa · B1-05 |
+| quản trị viên → `admin/*` | T | Admin sửa vai/trạng thái người khác sai đích (đường ≠ thân); tự hạ vai admin cuối cùng | A-23; `apps/api/users/service.py:148-157` (`WriteScope.forbid_self`: tự sửa mình → `USER_SELF_MODIFICATION`, admin `active` duy nhất → `USER_LAST_ADMIN`; gọi ở `:289,302,450`) | — |
+| quản trị viên → `admin/*` | R | Admin chối đã đổi vai/vô hiệu | `apps/api/users/service.py:293` (`_log_activity` `USER_ROLE_CHANGE`) | Nhật ký hoạt động nằm cùng DB admin ghi được; không chống sửa · B1-05 |
 | quản trị viên → `admin/*` | I | Engineer/viewer đọc danh mục mô hình, dataset, job qua `admin/ml` | A-22 | Lỗ có chủ ý v1: admin dựng dataset từ tầng của mọi dự án, xuyên ranh giới thành viên · B6-02 |
 | quản trị viên → `admin/*` | D | Admin bị vô hiệu/hạ vai nhầm làm hệ thống mất admin | `apps/api/users/service.py:148-157` (`forbid_self` → `USER_LAST_ADMIN`; `lock_admin_set` `:162` đòi người thực hiện là admin `active`, nên admin cuối chỉ có thể là chính họ); CLI `python -m apps.api.auth.cli create-admin` khôi phục | — |
 | quản trị viên → `admin/*` | E | Người bị hạ vai/vô hiệu vẫn dùng token cũ gọi `admin/*` | A-14, A-15, A-22 | xem dòng E ở trên · B1-01 |
@@ -144,7 +144,7 @@ Commit đã soát `2a63cfc5420f`. Dẫn chiếu `tệp:dòng` trỏ lại theo m
 |---|---|---|---|---|
 | api ↔ MinIO | S | Giả MinIO | mạng nội bộ, khoá riêng `ml` theo tiền tố (`deploy/minio/ml-policy.json`; thuộc việc D) | — |
 | api ↔ MinIO | T | Ghi đè object bằng khoá `..` | `check_key` chặn `..`/ký tự điều khiển (C-21) | — |
-| api ↔ MinIO | R | Chối tải lên | metadata SHA-256 ở `ObjectInfo` (`packages/storage/local.py:105-112`) | — |
+| api ↔ MinIO | R | Chối tải lên | metadata SHA-256 ở `ObjectInfo` (`packages/storage/local.py:108-115`) | — |
 | api ↔ MinIO | I | Lộ object cho người ngoài | URL ký ≥ 60 phút, token tệp có MAC (C-19, C-20); S3 khác origin + `nosniff` → việc D | S3 khác origin + vhost `nosniff`/`CSP sandbox` đo sống đạt (D-08, W10/L-01, L-02) · B0-08 |
 | api ↔ MinIO | D | MinIO chết/đĩa đầy | 503 `DEPENDENCY_UNAVAILABLE` (C-03); trần thân (C-38) | — |
 | api ↔ MinIO | E | `ml` ghi ngoài tiền tố | chính sách MinIO theo tiền tố — thuộc việc D (V1) | — |
@@ -179,7 +179,7 @@ Commit đã soát `2a63cfc5420f`. Dẫn chiếu `tệp:dòng` trỏ lại theo m
 | sao lưu và khôi phục | T | Sửa bản sao lưu | manifest SHA-256; `age` xác thực tính toàn vẹn khi giải (C-16) | — |
 | sao lưu và khôi phục | R | Không áp dụng — không có hành vi người dùng; nhật ký chạy ở systemd/journald | — | — |
 | sao lưu và khôi phục | I | Lộ bản sao lưu (hash mật khẩu, dữ liệu dự án) | `age` khi có recipient (C-16); quyền tệp (C-17) | quyền 0644 mặc định → SEC-040; production không mã hoá (C-18) → SEC-044, đã vá FIX-339 (staging: Nợ hiến chương) · B0-10 |
-| sao lưu và khôi phục | D | Bản sao lưu dở làm đầy đĩa | xoá thư mục dở khi lỗi, xoay vòng 7 bản + tuần (`backup.sh:37-77,99`, B0-10) | — |
+| sao lưu và khôi phục | D | Bản sao lưu dở làm đầy đĩa | xoá thư mục dở khi lỗi, xoay vòng 7 bản + tuần (`backup.sh:46-80,111`, B0-10) | — |
 | sao lưu và khôi phục | E | Khôi phục chạy bởi người không có quyền | chạy dưới `User=deploy` (`appback-backup.service`); khoá `age` cất ngoài máy (B0-10 [6]) | — |
 
 ### trình duyệt ↔ nginx
