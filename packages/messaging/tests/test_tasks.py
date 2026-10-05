@@ -61,6 +61,7 @@ class Job(TaskPayload):
 
 
 def record_failure(payload: Job, code: str) -> None:
+    """`on_failed` chung của các task thử: ghi `(run_id, mã lỗi)` vào `FAILURES` để test đọc lại."""
     FAILURES.append((payload.run_id, code))
 
 
@@ -76,6 +77,7 @@ def mark(run_id: str, step: str) -> int:
 
 
 def runs(run_id: str, step: str = "ok") -> int:
+    """Số lần task đã chạy `step` cho `run_id`, đọc từ bộ đếm Redis do `mark` tăng."""
     client = safe_redis_sync()
     try:
         return sync_result(client.get(f"probe:{run_id}:{step}") or 0, int)
@@ -95,11 +97,13 @@ def wait_until(predicate: Callable[[], bool], what: str) -> None:
 
 @define_task(name="tests.tasks.ok", payload=Job, on_failed=record_failure)
 def run_ok(payload: Job) -> None:
+    """Task thành công: chỉ đếm một lượt chạy, làm mốc cho các ca không retry."""
     mark(payload.run_id, "ok")
 
 
 @define_task(name="tests.tasks.transient", payload=Job, on_failed=record_failure)
 def run_transient(payload: Job) -> None:
+    """Lỗi tạm hai lượt đầu rồi thành công: kiểm thang retry hồi phục được."""
     if mark(payload.run_id, "ok") <= 2:
         raise TransientError("phụ thuộc bận")
 
@@ -112,43 +116,51 @@ def run_ladder(payload: Job) -> None:
 
 @define_task(name="tests.tasks.always_transient", payload=Job, on_failed=record_failure)
 def run_always_transient(payload: Job) -> None:
+    """Luôn lỗi tạm: đẩy task qua hết thang retry tới `RETRY_EXHAUSTED`."""
     mark(payload.run_id, "ok")
     raise TransientError("phụ thuộc bận mãi")
 
 
 @define_task(name="tests.tasks.dependency", payload=Job, on_failed=record_failure)
 def run_dependency(payload: Job) -> None:
+    """`DEPENDENCY_UNAVAILABLE` kèm `retry_after=5`: retry phải tôn trọng thời gian chờ do lỗi chỉ định."""
     mark(payload.run_id, "ok")
     raise DEPENDENCY_UNAVAILABLE.error(retry_after=5)
 
 
 @define_task(name="tests.tasks.permanent", payload=Job, on_failed=record_failure)
 def run_permanent(payload: Job) -> None:
+    """Lỗi vĩnh viễn: không retry, `on_failed` nhận đúng mã."""
     mark(payload.run_id, "ok")
     raise PermanentError("BAD_INPUT")
 
 
 @define_task(name="tests.tasks.timeout", payload=Job, on_failed=record_failure)
 def run_timeout(payload: Job) -> None:
+    """Quá hạn mềm: phải thành `TASK_TIMEOUT` chứ không rơi vào nhánh lỗi lạ."""
     raise SoftTimeLimitExceeded
 
 
 @define_task(name="tests.tasks.boom", payload=Job, on_failed=record_failure)
 def run_boom(payload: Job) -> None:
+    """Ngoại lệ ngoài hệ lỗi của dự án: phải thành `INTERNAL` và log, không lọt ra ngoài."""
     raise ZeroDivisionError("lỗi lạ")
 
 
 @define_task(name="tests.tasks.other_app_error", payload=Job, on_failed=record_failure)
 def run_other_app_error(payload: Job) -> None:
+    """`AppError` của lớp API không thuộc hệ lỗi hàng đợi: task phải thành `INTERNAL` và vẫn được ack."""
     raise VALIDATION.error(field="name")
 
 
 def explode(payload: Job, code: str) -> None:
+    """`on_failed` luôn ném: kiểm lỗi trong `on_failed` không làm hỏng việc xác nhận task."""
     raise RuntimeError(f"on_failed hỏng với {code}")
 
 
 @define_task(name="tests.tasks.on_failed_explodes", payload=Job, on_failed=explode)
 def run_on_failed_explodes(payload: Job) -> None:
+    """Task lỗi vĩnh viễn mà `on_failed` ném: chỉ gửi đúng một kết quả hỏng."""
     raise PermanentError("BAD_INPUT")
 
 
@@ -162,11 +174,13 @@ def explode_verbosely(payload: Job, code: str) -> None:
 
 @define_task(name="tests.tasks.on_failed_explodes_verbosely", payload=Job, on_failed=explode_verbosely)
 def run_on_failed_explodes_verbosely(payload: Job) -> None:
+    """Như trên nhưng thông điệp lỗi chứa dữ liệu người dùng: log không được in phần đó."""
     raise PermanentError("BAD_INPUT")
 
 
 @define_task(name="tests.tasks.sender", payload=Job, on_failed=record_failure)
 def run_sender(payload: Job) -> None:
+    """Task gửi `SINK_TASK` qua `send_task`, để test đếm thông điệp thật xuất hiện trên hàng."""
     send_task(SINK_TASK, payload)
 
 
@@ -189,8 +203,10 @@ def apply_task(task: Any, run_id: str, **options: Any) -> Any:
 
 
 def test_payload_without_a_schema_version_field_is_refused() -> None:
+    """Payload không có trường `schema_version` bị từ chối khi khai task."""
+
     class NoVersion(BaseModel):
-        pass
+        """Payload thiếu `schema_version`."""
 
     with pytest.raises(TypeError, match="schema_version"):
         define_task(name="tests.tasks.never", payload=NoVersion, on_failed=record_failure)
@@ -203,6 +219,7 @@ def test_payload_whose_schema_version_has_no_default_is_refused() -> None:
 
 
 def test_declaring_two_tasks_with_the_same_name_is_refused() -> None:
+    """Khai hai task trùng tên bị từ chối ngay, để không có task nào âm thầm thay task kia."""
     with pytest.raises(ValueError, match=re.escape("tests.tasks.ok")):
 
         @define_task(name="tests.tasks.ok", payload=Job, on_failed=record_failure)
@@ -212,6 +229,7 @@ def test_declaring_two_tasks_with_the_same_name_is_refused() -> None:
 
 @pytest.mark.parametrize("code", ["", "ab", "bad_input", "1BAD", "A" * 65])
 def test_permanent_error_codes_follow_the_registry_pattern(code: str) -> None:
+    """Mã `PermanentError` sai mẫu sổ mã lỗi (rỗng, quá ngắn, chữ thường, quá dài) bị từ chối khi tạo."""
     with pytest.raises(ValueError, match="mã lỗi sai mẫu"):
         PermanentError(code)
 
@@ -227,6 +245,7 @@ def test_registered_tasks_leaves_out_tasks_declared_in_tests() -> None:
 
 
 def test_the_ledger_records_the_declaring_module() -> None:
+    """Sổ task ghi đúng hàm và module khai, để tra ngược task tới mã nguồn của nó."""
     entry = next(entry for entry in task_entries() if entry.name == "tests.tasks.ok")
 
     assert (entry.function, entry.module) == ("run_ok", __name__)
@@ -262,6 +281,7 @@ def test_soft_time_limit_becomes_a_timeout_failure(messaging_env: None) -> None:
 
 
 def test_an_unexpected_error_fails_as_internal(messaging_env: None, caplog: pytest.LogCaptureFixture) -> None:
+    """Ngoại lệ lạ thành `INTERNAL` và được log, không làm worker chết."""
     FAILURES.clear()
     with caplog.at_level(logging.ERROR):
         apply_task(run_boom, "boom-1")
@@ -339,6 +359,7 @@ def test_a_poison_message_is_dropped_and_logged(
 
 
 def test_the_poison_log_never_prints_the_message_body(messaging_env: None, caplog: pytest.LogCaptureFixture) -> None:
+    """Thông điệp hỏng schema chỉ log mô tả lỗi, không in thân (có thể chứa dữ liệu người dùng)."""
     with caplog.at_level(logging.WARNING):
         run_ok.apply(args=[{"run_id": "bi-mat", "schema_version": 1, "token": "khong-duoc-in"}])
 
@@ -463,6 +484,7 @@ def test_a_transient_failure_is_retried_until_it_succeeds(
 def test_a_task_that_never_recovers_reports_retry_exhausted(
     messaging_env: None, celery_worker_factory: WorkerFactory
 ) -> None:
+    """Task lỗi tạm mãi qua worker thật: sau hết thang retry báo `RETRY_EXHAUSTED` một lần."""
     FAILURES.clear()
     backoff = get_messaging_settings().task_retry_backoff_s
     with celery_worker_factory(["default"]):
@@ -508,6 +530,7 @@ def test_a_task_can_queue_work_for_another_queue(messaging_env: None, celery_wor
 
 
 def test_the_worker_factory_refuses_an_unknown_queue(celery_worker_factory: WorkerFactory) -> None:
+    """Fixture dựng worker từ chối tên hàng không khai, thay vì dựng worker không nghe gì."""
     with pytest.raises(ValueError, match="hàng lạ"), celery_worker_factory(["khong-co-hang-nay"]):
         pytest.fail("không được dựng worker cho hàng không khai")
 
@@ -645,12 +668,26 @@ def test_registered_tasks_finds_tasks_under_the_ml_app(ml_probe_package: None) -
     assert "probe_infer" in registered_tasks()
 
 
-def test_drop_new_ml_modules_keeps_modules_loaded_before_the_snapshot() -> None:
+@pytest.fixture
+def restored_task_ledger() -> Iterator[None]:
+    """Trả sổ task toàn tiến trình về nguyên trạng khi test xong.
+
+    Nhập một module `apps.ml.*` lần đầu chạy `define_task` và thêm dòng vào sổ; không trả lại thì
+    test sau thấy task lạ.
+    """
+    import packages.messaging.tasks as tasks_module
+
+    saved = dict(tasks_module._TASKS)
+    yield
+    tasks_module._TASKS.clear()
+    tasks_module._TASKS.update(saved)
+
+
+def test_drop_new_ml_modules_keeps_modules_loaded_before_the_snapshot(restored_task_ledger: None) -> None:
     """FIX-115: module `apps.ml.*` nạp trước `before` phải sống sót; module nạp sau bị xoá."""
     import apps.ml.objects.tasks as preloaded_module
 
     before = set(sys.modules)
-    importlib.import_module("apps.ml.objects.tasks")
     assert "apps.ml.objects.tasks" in before
 
     fake_name = "apps.ml.__fix_115_probe__"
@@ -676,6 +713,7 @@ def test_the_retry_countdown_walks_the_charter_ladder(messaging_env: None, retri
 
 
 def test_the_ladder_ends_in_retry_exhausted(messaging_env: None) -> None:
+    """Ở lượt retry cuối thang, task báo `RETRY_EXHAUSTED` chứ không retry tiếp."""
     FAILURES.clear()
     apply_task(run_ladder, "ladder-2", retries=3, throw=True)
 

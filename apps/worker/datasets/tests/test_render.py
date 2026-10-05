@@ -19,6 +19,7 @@ def _wall(
     kind: Literal["loadBearing", "partition", "envelope"] = "loadBearing",
     opening_ids: tuple[str, ...] = (),
 ) -> Wall:
+    """Tường mẫu: mặc định ngang dài 1.000mm, dày 200mm; tham số đổi từng thuộc tính."""
     return Wall(
         id=wall_id,
         level_id="L-0000000001",
@@ -42,6 +43,7 @@ def _opening(
     width: int = 900,
     swing: Literal["left", "right", "double", "sliding", "fixed"] = "left",
 ) -> Opening:
+    """Cửa/cửa sổ mẫu trên tường `W-0000000001`; tham số đổi loại, vị trí và bề rộng."""
     return Opening(
         id=opening_id,
         wall_id=wall_id,
@@ -63,6 +65,7 @@ def _furniture(
     kind: str = "table",
     box: tuple[int, int, int, int] = (0, 0, 800, 600),
 ) -> Furniture:
+    """Đồ đạc mẫu cùng tầng `L-0000000001`; `box` là (x0, y0, x1, y1) tính bằng mm."""
     x0, y0, x1, y1 = box
     return Furniture(
         id=furniture_id,
@@ -78,6 +81,7 @@ def _furniture(
 
 
 def test_wall_mask__horizontal_wall_region() -> None:
+    """Tường ngang cho đúng một vùng chữ nhật 120x20 px, đặt gọn từ x=0."""
     # Tường dài 1.000mm (từ 100 đến 1.100), dày 200mm, mỗi đầu kéo dài nửa bề dày (100mm)
     # → vùng tô từ mm 0 đến 1.200, tỉ lệ 10 → 120x20 px, đặt gọn từ x=0 để không bị cắt.
     wall = _wall(start=(100, 500), end=(1100, 500), thickness=200)
@@ -89,6 +93,7 @@ def test_wall_mask__horizontal_wall_region() -> None:
 
 
 def test_wall_mask__door_gap_is_false() -> None:
+    """Khoảng cửa đi bị khoét khỏi mặt nạ, hai đầu tường vẫn đặc."""
     wall = _wall(start=(100, 500), end=(1100, 500), thickness=200, opening_ids=("D-0000000001",))
     door = _opening(offset=50, width=900, kind="door")
     mask = wall_mask([wall], width_px=200, height_px=100, mm_per_px=MM_PER_PX, openings=[door])
@@ -98,6 +103,7 @@ def test_wall_mask__door_gap_is_false() -> None:
 
 
 def test_wall_mask__window_keeps_mask_solid() -> None:
+    """Cửa sổ không khoét mặt nạ tường."""
     wall = _wall(start=(100, 500), end=(1100, 500), thickness=200)
     window = _opening(kind="window", offset=50, width=900)
     mask = wall_mask([wall], width_px=200, height_px=100, mm_per_px=MM_PER_PX, openings=[window])
@@ -105,6 +111,7 @@ def test_wall_mask__window_keeps_mask_solid() -> None:
 
 
 def test_wall_mask__diagonal_wall() -> None:
+    """Tường chéo tô qua tâm đường chéo và không tô góc đối diện."""
     wall = _wall(start=(0, 0), end=(1000, 1000), thickness=100)
     mask = wall_mask([wall], width_px=150, height_px=150, mm_per_px=MM_PER_PX)
     assert mask[50, 50]
@@ -112,6 +119,7 @@ def test_wall_mask__diagonal_wall() -> None:
 
 
 def test_object_boxes__door_and_double_door_labels() -> None:
+    """Cửa đơn gán nhãn `door`, cửa đôi (`swing=double`) gán `double_door`."""
     wall = _wall(opening_ids=("D-0000000001", "D-0000000002"))
     single = _opening("D-0000000001", offset=50, width=900, swing="left")
     double = _opening("D-0000000002", offset=50, width=1800, swing="double")
@@ -122,6 +130,7 @@ def test_object_boxes__door_and_double_door_labels() -> None:
 
 
 def test_object_boxes__window_label() -> None:
+    """Cửa sổ gán nhãn `window`."""
     wall = _wall(opening_ids=("D-0000000001",))
     window = _opening(kind="window", offset=50, width=900)
     layer = SpatialLayer(walls=(wall,), openings=(window,), rooms=(), furniture=())
@@ -130,6 +139,7 @@ def test_object_boxes__window_label() -> None:
 
 
 def test_object_boxes__box_clipped_to_frame() -> None:
+    """Hộp tràn khung được cắt về mép khung (không âm)."""
     furniture = _furniture(box=(-500, -500, 500, 500))
     layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=(furniture,))
     detections = object_boxes(layer, width_px=30, height_px=30, mm_per_px=MM_PER_PX)
@@ -142,6 +152,7 @@ def test_object_boxes__box_clipped_to_frame() -> None:
 
 
 def test_object_boxes__box_entirely_outside_frame_dropped() -> None:
+    """Đồ đạc nằm hoàn toàn ngoài khung bị bỏ."""
     furniture = _furniture(box=(10_000, 10_000, 11_000, 11_000))
     layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=(furniture,))
     detections = object_boxes(layer, width_px=30, height_px=30, mm_per_px=MM_PER_PX)
@@ -149,6 +160,7 @@ def test_object_boxes__box_entirely_outside_frame_dropped() -> None:
 
 
 def test_object_boxes__opening_box_entirely_outside_frame_dropped() -> None:
+    """Cửa trên tường nằm ngoài khung bị bỏ."""
     wall = _wall(start=(10_000, 10_000), end=(11_000, 10_000), opening_ids=("D-0000000001",))
     door = _opening(offset=50, width=900)
     layer = SpatialLayer(walls=(wall,), openings=(door,), rooms=(), furniture=())
@@ -157,6 +169,7 @@ def test_object_boxes__opening_box_entirely_outside_frame_dropped() -> None:
 
 
 def test_object_boxes__other_furniture_dropped() -> None:
+    """Đồ đạc loại `other` không sinh hộp."""
     furniture = _furniture(kind="other")
     layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=(furniture,))
     detections = object_boxes(layer, width_px=200, height_px=100, mm_per_px=MM_PER_PX)
@@ -164,6 +177,7 @@ def test_object_boxes__other_furniture_dropped() -> None:
 
 
 def test_object_boxes__furniture_labels_mapped() -> None:
+    """Tủ bếp và thiết bị vệ sinh ánh xạ sang nhãn `kitchen_cabinet`, `sanitary_fixture`."""
     kitchen = _furniture("F-0000000002", kind="kitchenCabinet", box=(0, 0, 400, 400))
     sanitary = _furniture("F-0000000003", kind="sanitaryFixture", box=(0, 0, 400, 400))
     layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=(kitchen, sanitary))
@@ -173,6 +187,7 @@ def test_object_boxes__furniture_labels_mapped() -> None:
 
 
 def test_wall_mask__empty_walls_returns_false_canvas() -> None:
+    """Không có tường thì ra khung `False` đúng kích thước."""
     mask = wall_mask([], width_px=50, height_px=40, mm_per_px=MM_PER_PX)
     assert mask.shape == (40, 50)
     assert mask.dtype == np.bool_

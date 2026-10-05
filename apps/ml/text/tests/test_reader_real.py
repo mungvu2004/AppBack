@@ -1,7 +1,7 @@
 """Đo bộ đọc trên model **thật**: bộ dò của wheel và model nhận dạng ghim của wheel.
 
 Hai câu hỏi test này trả lời: bộ dò có thấy hết chữ của bản vẽ tổng hợp không, và
-đường đi riêng của `RapidOcrReader` (lát, Otsu, đệm bội 80, tự xoay 180°) có đọc ra
+đường đi riêng của `RapidOcrReader` (lát, Otsu, đệm bội 80 sàn 320, tự xoay 180°) có đọc ra
 cùng chữ như `RapidOCR()` của wheel không. Không tải mạng: cả hai model nằm sẵn trong
 wheel đã khoá ở `uv.lock`, model rec đi qua `load_onnx` dạng ghim đúng như lúc chạy thật.
 """
@@ -16,6 +16,7 @@ import pytest
 from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]  # wheel không có py.typed
 
 from apps.ml.text.reader import (
+    REC_MIN_WIDTH_PX,
     RapidOcrReader,
     _crop,
     _detect,
@@ -27,6 +28,7 @@ from apps.ml.text.reader import (
 from apps.ml.text.tests.helpers import wheel_rec_session
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 from packages.ml_contracts.synthetic import render_plan
+from packages.testing.ocr_metrics import dimension_hits
 
 _log = logging.getLogger(__name__)
 
@@ -37,8 +39,15 @@ PARITY_IOU = 0.5
 DETECT_RECALL = 0.90
 PARITY_RATE = 0.95
 DETECT_BUDGET_S = 20.0
+DIMENSION_SEEDS = range(100, 110)
+DIMENSION_READ_RATE = 0.90
+"""Đo 114/122 = 0,934 trên `DIMENSION_SEEDS`, bằng `RapidOCR()` của wheel (NO-254); trước sàn
+`REC_MIN_WIDTH_PX` đo 105/122 = 0,861. 8 chữ hụt là bộ dò tách `2.` khỏi phần sau, không thuộc bộ đọc."""
+WIDTH_SEEDS = tuple(range(100, 106))
+WIDTH_MIN_CHECKED_PER_SEED = 2
+"""Số vùng **thật** (rộng đã co > `REC_MIN_WIDTH_PX`) tối thiểu mỗi seed; đo 9 vùng / 3 seed ở seed 100-102 (F11)."""
 WIDTH_ROUNDING_RATE = 0.90
-"""Ngưỡng tự chỉnh từ số đo 15/16 (BE-00 §12); xem docstring của test dùng nó."""
+"""Phần vùng tối thiểu **giữ nguyên** chuỗi khi đệm `W`; tự chỉnh từ số đo 15/16 (BE-00 §12)."""
 
 
 def _iou(one: BoxPx, two: BoxPx) -> float:
@@ -61,20 +70,33 @@ def _quad_box(quad: np.ndarray) -> BoxPx:
 
 
 def test_real_detector_finds_the_answer_boxes() -> None:
-    """≥ 90 % hộp chữ đáp án có một hộp dò trùng ≥ 0,3 IoU, mỗi trang dưới trần thời gian."""
+    """≥ 90 % hộp chữ đáp án có một hộp dò trùng ≥ 0,3 IoU; trần thời gian ở test `perf` riêng."""
     hits = total = 0
     for seed in DETECT_SEEDS:
         plan = render_plan(seed)
-        started = time.monotonic()
         boxes = [_quad_box(quad) for quad in _detect(_detector(), plan.pixels)]
-        elapsed = time.monotonic() - started
-        _log.info("ocr_detect_seed=%d elapsed_s=%.2f boxes=%d", seed, elapsed, len(boxes))
-        assert elapsed < DETECT_BUDGET_S
         total += len(plan.texts)
         hits += sum(any(_iou(answer.box, box) >= DETECT_IOU for box in boxes) for answer in plan.texts)
     _log.info("ocr_detect_recall hits=%d total=%d", hits, total)
     assert total >= 3 * len(render_plan(DETECT_SEEDS[0]).texts) - 1
     assert hits >= DETECT_RECALL * total
+
+
+@pytest.mark.perf
+def test_real_detector_page_time() -> None:
+    """Bộ dò thật chạy một trang `render_plan` 1.600x1.200 dưới `DETECT_BUDGET_S` ([8]).
+
+    Trần đồng hồ tường nên gắn `perf` (BE-00 §12, NO-343); đo 0,90 / 0,56 / 0,45 s cho seed
+    100/101/102 (B5-04), trần 20 s gấp > 20 lần. Độ phủ của `_detect` do test recall gánh.
+    """
+    detector = _detector()
+    for seed in DETECT_SEEDS:
+        pixels = render_plan(seed).pixels
+        started = time.monotonic()
+        _detect(detector, pixels)
+        elapsed = time.monotonic() - started
+        _log.info("ocr_detect_seed=%d elapsed_s=%.2f", seed, elapsed)
+        assert elapsed < DETECT_BUDGET_S
 
 
 def _wheel_items(engine: RapidOCR, pixels: np.ndarray) -> list[TextPx]:
@@ -106,31 +128,60 @@ def test_reader_agrees_with_the_wheel_engine(pinned_models_dir: Path) -> None:
     assert rate >= PARITY_RATE
 
 
-def test_width_rounding_does_not_change_any_string(pinned_models_dir: Path) -> None:
-    """Đệm `W` lên bội 80 đổi chuỗi của ≤ `WIDTH_ROUNDING_RATE` phần vùng **chữ thật**.
+def test_reader_reads_dimension_texts(pinned_models_dir: Path) -> None:
+    """≥ `DIMENSION_READ_RATE` chữ kích thước đáp án đọc ra đúng chuỗi, tâm hộp lệch < 25 px.
 
+    Ghim tỉ lệ đọc của chính `RapidOcrReader.read` (NO-254) bằng thước chung `dimension_hits`
+    (NO-349), cùng thước `test_ocr` của runtime dùng cho `RapidOCR()`.
+    """
+    reader = RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir))
+    hits = total = 0
+    for seed in DIMENSION_SEEDS:
+        plan = render_plan(seed)
+        found = [
+            ((item.box.x_min + item.box.x_max) / 2, (item.box.y_min + item.box.y_max) / 2, item.text)
+            for item in reader.read(plan.pixels)
+        ]
+        seed_hits, seed_total = dimension_hits(found, plan.texts)
+        hits += seed_hits
+        total += seed_total
+    _log.info("ocr_dimension_read hits=%d total=%d rate=%.3f", hits, total, hits / total)
+    assert total >= 10 * len(DIMENSION_SEEDS)
+    assert hits >= DIMENSION_READ_RATE * total
+
+
+def test_width_rounding_keeps_most_strings(pinned_models_dir: Path) -> None:
+    """Làm tròn `W` lên bội 80 giữ nguyên chuỗi của ≥ `WIDTH_ROUNDING_RATE` phần vùng **chữ thật**.
+
+    So tensor thật với chính nó cắt còn rộng đã co: chỉ phần làm tròn bội 80 khác nhau. Vùng có rộng
+    đã co ≤ `REC_MIN_WIDTH_PX` bị bỏ: sàn 320 (NO-254) đệm cả hai về cùng một tensor nên so chúng vô nghĩa (F11).
     Lệch khỏi prompt: [8] đòi "không đổi chuỗi nào", đo được 15/16 vùng trên seed 100.
     Đầu ra PP-OCR dài `T` bước **phụ thuộc `W`**, nên bất biến tuyệt đối theo bề rộng là
     điều model không hứa; chính `RapidOCR()` của wheel cũng đệm bằng một `W` khác hẳn mà
     hai bên vẫn khớp ≥ 95 % ở `test_reader_agrees_with_the_wheel_engine`. Chỉ so trên
     vùng trùng hộp chữ đáp án: vùng nhiễu bộ dò bắt nhầm đọc ra rác ở cả hai bề rộng.
+    Đo trên đủ `WIDTH_SEEDS` (NO-255) để một seed may mắn không gánh được ngưỡng.
     """
     reader = RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir))
-    plan = render_plan(PARITY_SEEDS[0])
     same = checked = 0
-    for quad in _detect(_detector(), plan.pixels):
-        box = _quad_box(quad)
-        if not any(_iou(box, answer.box) >= PARITY_IOU for answer in plan.texts):
-            continue
-        crop = _crop(plan.pixels, quad)
-        if crop.size == 0:
-            continue
-        resized, _padded = _rec_widths(crop.shape[1], crop.shape[0])
-        padded_input = _rec_input(crop)
-        same += _decode(reader, padded_input)[0] == _decode(reader, padded_input[:, :, :, :resized])[0]
-        checked += 1
+    for seed in WIDTH_SEEDS:
+        plan = render_plan(seed)
+        for quad in _detect(_detector(), plan.pixels):
+            box = _quad_box(quad)
+            if not any(_iou(box, answer.box) >= PARITY_IOU for answer in plan.texts):
+                continue
+            crop = _crop(plan.pixels, quad)
+            if crop.size == 0:
+                continue
+            resized, _padded = _rec_widths(crop.shape[1], crop.shape[0])
+            if resized <= REC_MIN_WIDTH_PX:
+                continue  # sàn 320 che hết làm tròn: hai tensor trùng nhau, so chúng chẳng chứng minh gì
+            padded_input = _rec_input(crop)
+            unrounded = padded_input[:, :, :, :resized]
+            same += _decode(reader, padded_input)[0] == _decode(reader, unrounded)[0]
+            checked += 1
     _log.info("ocr_width_rounding same=%d checked=%d rate=%.3f", same, checked, same / checked)
-    assert checked >= 5
+    assert checked >= WIDTH_MIN_CHECKED_PER_SEED * len(WIDTH_SEEDS)
     assert same >= WIDTH_ROUNDING_RATE * checked
 
 

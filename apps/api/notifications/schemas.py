@@ -4,12 +4,12 @@
 `userId`, `dedupeKey`, `streamId` (K01). Cùng lớp này là `event_model` của luồng S2 nên sự kiện lệch mẫu bị bỏ.
 """
 
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
-from pydantic import field_validator
+from pydantic import Field, StringConstraints, field_validator
 
 from apps.api.core.wire import WireDatetime, WireModel, WireRequest
-from apps.api.notifications.settings import get_notifications_settings
+from apps.api.notifications.settings import MARK_MAX_DEFAULT, get_notifications_settings
 from packages.db.models.notifications import NotificationKind, NotificationPlace
 
 ID_MAX_LEN: Final = 64
@@ -34,7 +34,12 @@ class NotificationOut(WireModel):
 class NotificationMarkReadBody(WireRequest):
     """#20: `{ids}`, 1-`NOTIFICATIONS_MARK_MAX` id, mỗi id 1-64 ký tự; sai bất kỳ điểm nào → `field:"ids"`."""
 
-    ids: list[str]
+    # Ràng buộc chỉ để `openapi.json` phơi `minItems`/`maxItems`/`maxLength` (số theo mặc định của settings);
+    # lỗi vẫn do validator `before` ném trước nên `field` luôn là `ids`.
+    ids: Annotated[
+        list[Annotated[str, StringConstraints(min_length=1, max_length=ID_MAX_LEN)]],
+        Field(min_length=1, max_length=MARK_MAX_DEFAULT),
+    ]
 
     @field_validator("ids", mode="before")
     @classmethod

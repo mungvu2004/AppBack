@@ -8,16 +8,12 @@ của đường mã này do các test không-`perf` khác (`test_e2e_wire.py`, �
 import logging
 import math
 import time
-from datetime import UTC, datetime
-from decimal import Decimal
-from typing import Final
 from unittest.mock import patch
 
 import pytest
 
 import apps.worker.pipeline_build.build as build_module
-from apps.worker.pipeline_build.build import build_layer
-from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.tests.helpers import build_from_plan, build_wrapped
 from packages.domain.spatial.model import SpatialLayer
 from packages.ml_contracts.artifacts import (
     MAX_DETECTIONS,
@@ -25,19 +21,13 @@ from packages.ml_contracts.artifacts import (
     MAX_WALLS,
     BoxPx,
     DetectionPx,
-    ObjectsResult,
     TextPx,
-    TextResult,
     WallPx,
-    WallsResult,
 )
 from packages.ml_contracts.synthetic import render_plan
 from packages.testing.fixtures.clock import FakeClock
 
 logger = logging.getLogger(__name__)
-
-_LEVEL_ID: Final = new_spatial_id("level", FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)))
-_FALLBACK_MM_PER_PX = Decimal("10")
 
 
 def _shift_wall(wall: WallPx, dx: float, dy: float) -> WallPx:
@@ -97,16 +87,7 @@ def _oversized_inputs() -> tuple[tuple[WallPx, ...], tuple[DetectionPx, ...], tu
 def test_build_layer__perf_under_30_seconds(fake_clock: FakeClock) -> None:
     """20k tường/5k hộp/5k chữ (trần B5-01): `build_layer` < 30s sau một lượt khởi động seed 100."""
     warm_plan = render_plan(100)
-    build_layer(
-        level_id=_LEVEL_ID,
-        walls=WallsResult(walls=warm_plan.walls),
-        objects=ObjectsResult(detections=warm_plan.detections),
-        text=TextResult(items=warm_plan.texts),
-        width_px=warm_plan.pixels.shape[1],
-        height_px=warm_plan.pixels.shape[0],
-        fallback_mm_per_px=_FALLBACK_MM_PER_PX,
-        clock=fake_clock,
-    )
+    build_from_plan(warm_plan, fake_clock)
 
     walls, detections, texts, width_px, height_px = _oversized_inputs()
     assert len(walls) == MAX_WALLS
@@ -125,15 +106,8 @@ def test_build_layer__perf_under_30_seconds(fake_clock: FakeClock) -> None:
 
     with patch.object(build_module, "apply_post_rules", side_effect=_timed_apply_post_rules):
         start = time.perf_counter()
-        build_layer(
-            level_id=_LEVEL_ID,
-            walls=WallsResult(walls=tuple(walls)),
-            objects=ObjectsResult(detections=tuple(detections)),
-            text=TextResult(items=tuple(texts)),
-            width_px=width_px,
-            height_px=height_px,
-            fallback_mm_per_px=_FALLBACK_MM_PER_PX,
-            clock=fake_clock,
+        build_wrapped(
+            walls=walls, detections=detections, texts=texts, width_px=width_px, height_px=height_px, clock=fake_clock
         )
         elapsed = time.perf_counter() - start
 

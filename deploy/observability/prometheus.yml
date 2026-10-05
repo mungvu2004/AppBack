@@ -5,9 +5,10 @@
 # thập phải chạy trong cùng mạng và gọi thẳng tên dịch vụ. Test
 # `test_compose_metrics_port_is_never_published` chốt điều đó.
 #
-# Chưa khai job cho `worker` và `ml`: hai tiến trình Celery đó chưa có exporter
-# (NO-161, chủ B0-05/B5-01). Khi NO-161 xong thì thêm hai target vào đây, không
-# đổi gì khác.
+# Worker Celery prefork phơi `/metrics` ở dải cổng `METRICS_PORT … +N-1`
+# (`metrics_port_for_process`, N = `--concurrency`): job `appback-worker` liệt kê
+# đủ N = 2 (mặc định `WORKER_CONCURRENCY` ở base.yml); đặt biến đó khác thì thêm
+# target tương ứng. `ml` không khai: nó chỉ ở mạng `ml-internal`, bộ thu không tới được.
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
@@ -20,3 +21,11 @@ scrape_configs:
           - api:9464
         labels:
           app: api
+  - job_name: appback-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - worker:9464
+          - worker:9465
+        labels:
+          app: worker

@@ -6,23 +6,21 @@ nhập nội bộ của A. Không nhập `apps.ml.*`, không đọc DB.
 
 import logging
 import statistics
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
 
 import pytest
 
-from apps.worker.pipeline_build.build import BuiltLayer, build_layer
-from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.build import BuiltLayer
+from apps.worker.pipeline_build.tests.helpers import build_from_plan
 from packages.domain.scale.rescale import rescale_unreviewed
-from packages.ml_contracts.artifacts import BoxPx, DetectionPx, ObjectsResult, TextPx, TextResult, WallPx, WallsResult
+from packages.ml_contracts.artifacts import BoxPx, DetectionPx, TextPx, WallPx
 from packages.ml_contracts.synthetic import EVAL_SET_SEEDS, SyntheticPlan, render_plan
 from packages.testing.fixtures.clock import FakeClock
 
 logger = logging.getLogger(__name__)
 
 _FIRST_TEN_SEEDS: Final = tuple(range(100, 110))
-_LEVEL_ID: Final = new_spatial_id("level", FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)))
 _IMAGE_WIDTH_PX = 1600
 _IMAGE_HEIGHT_PX = 1200
 
@@ -56,15 +54,13 @@ def _build(
     clock: FakeClock,
 ) -> BuiltLayer:
     """Dựng `BuiltLayer` từ một `SyntheticPlan`, cho phép ghi đè tường/phát hiện/chữ."""
-    return build_layer(
-        level_id=_LEVEL_ID,
-        walls=WallsResult(walls=walls if walls is not None else plan.walls),
-        objects=ObjectsResult(detections=detections or plan.detections),
-        text=TextResult(items=texts),
-        width_px=plan.pixels.shape[1],
-        height_px=plan.pixels.shape[0],
+    return build_from_plan(
+        plan,
+        clock,
+        walls=walls,
+        detections=detections or plan.detections,
+        texts=texts,
         fallback_mm_per_px=fallback_mm_per_px,
-        clock=clock,
     )
 
 

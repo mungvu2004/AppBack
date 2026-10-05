@@ -27,6 +27,7 @@ async def seed_token(
     used_at: datetime | None = None,
     superseded_at: datetime | None = None,
     sent_at: datetime | None = None,
+    failed_at: datetime | None = None,
     created_at: datetime | None = None,
     commit: bool = True,
 ) -> tuple[OneTimeToken, str]:
@@ -50,6 +51,8 @@ async def seed_token(
         used_at=used_at,
         superseded_at=superseded_at,
         sent_at=sent_at,
+        failed_at=failed_at,
+        failure_code=None if failed_at is None else "MAIL_REJECTED",
         **({"created_at": created_at} if created_at is not None else {}),
     )
     db.add(row)

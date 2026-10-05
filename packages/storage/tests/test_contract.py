@@ -11,7 +11,7 @@ import pytest
 
 from packages.core.errors import AppError
 from packages.storage import keys
-from packages.storage.port import SIGNED_URL_TTL, ObjectInfo, ObjectStorage
+from packages.storage.port import SIGNED_URL_TTL, ObjectInfo, ObjectStorage, SignRequest
 from packages.storage.sniff import ImageKind
 from packages.testing.fixtures.clock import FakeClock
 
@@ -28,27 +28,33 @@ MAX_BYTES = 1024 * 1024
 
 
 def page_key(project: str = PROJECT, index: int = 0) -> str:
+    """Khoá trang đã nắn do server đặt tên, dùng chung cho mọi test hợp đồng."""
     return keys.upload_page(project, FLOOR, UPLOAD, index)
 
 
 def avatar_key(ext: str = "png") -> str:
+    """Khoá ảnh đại diện do server đặt tên, đuôi `ext`."""
     return keys.avatar(USER, ULID, ext)
 
 
 async def read_all(storage: ObjectStorage, key: str) -> bytes:
+    """Đọc trọn object qua `open_read` với khúc 8 byte để ép nhiều khúc."""
     return b"".join([chunk async for chunk in storage.open_read(key, chunk_size=8)])
 
 
 async def listed(storage: ObjectStorage, prefix: str, older_than: datetime | None = None) -> list[ObjectInfo]:
+    """Gom `list_prefix` thành danh sách để assert."""
     return [info async for info in storage.list_prefix(prefix, older_than=older_than)]
 
 
 async def chunks(*parts: bytes) -> AsyncIterator[bytes]:
+    """Phát các phần `bytes` như một luồng đầu vào không đồng bộ."""
     for part in parts:
         yield part
 
 
 async def test_put_stat_open_read_delete_roundtrip(object_storage: ObjectStorage) -> None:
+    """Ghi, `stat`, đọc rồi xoá một object: metadata và nội dung khớp, xoá xong thì `stat` ra `None`."""
     key = page_key()
     written = await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
 
@@ -69,6 +75,7 @@ async def test_put_stat_open_read_delete_roundtrip(object_storage: ObjectStorage
 
 
 async def test_put_overwrites_same_key(object_storage: ObjectStorage) -> None:
+    """Ghi đè cùng khoá thay hẳn nội dung, sha256 và loại tệp."""
     key = page_key()
     await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
     rewritten = await object_storage.put(key, PDF, content_type="application/pdf", max_bytes=MAX_BYTES)
@@ -81,6 +88,7 @@ async def test_put_overwrites_same_key(object_storage: ObjectStorage) -> None:
 
 
 async def test_put_reads_async_iterable_in_many_chunks(object_storage: ObjectStorage) -> None:
+    """Nguồn `AsyncIterable` nhiều khúc vẫn ghép đúng nguyên nội dung và loại tệp."""
     key = page_key()
     written = await object_storage.put(
         key, chunks(PNG[:4], PNG[4:10], PNG[10:]), content_type="image/png", max_bytes=MAX_BYTES
@@ -124,6 +132,7 @@ async def test_concurrent_writes_never_produce_a_torn_object(object_storage: Obj
 
 
 async def test_list_prefix_does_not_leak_sibling_prefix(object_storage: ObjectStorage) -> None:
+    """`list_prefix` chỉ trả khoá dưới đúng tiền tố dự án, không lộ dự án anh em."""
     await object_storage.put(page_key(), PNG, content_type="image/png", max_bytes=MAX_BYTES)
     await object_storage.put(page_key(index=1), PNG, content_type="image/png", max_bytes=MAX_BYTES)
     await object_storage.put(page_key(project=OTHER_PROJECT), PNG, content_type="image/png", max_bytes=MAX_BYTES)
@@ -146,6 +155,7 @@ async def test_list_prefix_older_than(object_storage: ObjectStorage) -> None:
 
 
 async def test_delete_prefix(object_storage: ObjectStorage) -> None:
+    """`delete_prefix` xoá mọi object dưới tiền tố và giữ nguyên object của dự án khác."""
     await object_storage.put(page_key(), PNG, content_type="image/png", max_bytes=MAX_BYTES)
     await object_storage.put(page_key(index=1), PNG, content_type="image/png", max_bytes=MAX_BYTES)
     kept = page_key(project=OTHER_PROJECT)
@@ -158,6 +168,7 @@ async def test_delete_prefix(object_storage: ObjectStorage) -> None:
 
 
 async def test_open_read_missing_key(object_storage: ObjectStorage) -> None:
+    """Đọc khoá không có → 404 `NOT_FOUND`."""
     with pytest.raises(AppError, match="NOT_FOUND") as raised:
         await read_all(object_storage, page_key())
 
@@ -185,6 +196,7 @@ async def test_signed_url_is_stable_within_the_hour(object_storage: ObjectStorag
 async def test_signed_url_lives_between_60_and_120_minutes(
     object_storage: ObjectStorage, fake_clock: FakeClock, minute: int
 ) -> None:
+    """URL ký sống 60-120 phút bất kể phút nào trong giờ (W23)."""
     key = page_key()
     await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
     now = datetime(2026, 1, 1, 9, minute, tzinfo=UTC)
@@ -196,6 +208,7 @@ async def test_signed_url_lives_between_60_and_120_minutes(
 
 
 async def test_signed_url_inline_rejects_non_image(object_storage: ObjectStorage) -> None:
+    """`inline` cho object không phải ảnh bị từ chối (K15)."""
     key = page_key()
     await object_storage.put(key, PDF, content_type="application/pdf", max_bytes=MAX_BYTES)
 
@@ -214,11 +227,13 @@ async def test_signed_url_inline_reads_the_kind_from_metadata(object_storage: Ob
 
 
 async def test_signed_url_inline_on_missing_object(object_storage: ObjectStorage) -> None:
+    """`inline` không kèm `kind` cho object không tồn tại → `NOT_FOUND`."""
     with pytest.raises(AppError, match="NOT_FOUND"):
         await object_storage.signed_url(page_key(), disposition="inline")
 
 
 def original_key() -> str:
+    """Khoá `original.*` của lượt tải lên — không do server chọn đuôi nên không được dùng `kind` truyền sẵn."""
     return keys.upload_original(PROJECT, FLOOR, UPLOAD, "png")
 
 
@@ -233,6 +248,7 @@ async def test_signed_url_with_kind_does_not_stat(
     original = object_storage.stat
 
     async def counting(key: str) -> ObjectInfo | None:
+        """Đếm lượt `stat` rồi chuyển cho bản thật."""
         nonlocal calls
         calls += 1
         return await original(key)
@@ -264,6 +280,7 @@ async def test_signed_url_rejects_kind_outside_server_named_keys(
 
 @pytest.mark.parametrize("bad", ["../etc/passwd", "a//b", "x.meta.json"])
 async def test_every_entry_point_checks_the_key(object_storage: ObjectStorage, bad: str) -> None:
+    """Mọi cửa vào của cổng (stat, put, delete, ký, đọc, xoá/duyệt tiền tố) từ chối khoá xấu bằng `ValueError`."""
     with pytest.raises(ValueError, match=r"khoá|đoạn"):
         await object_storage.stat(bad)
     with pytest.raises(ValueError, match=r"khoá|đoạn"):
@@ -288,3 +305,32 @@ async def test_list_prefix_orders_by_full_key(object_storage: ObjectStorage) -> 
         await object_storage.put(key, PNG, content_type="image/png", max_bytes=MAX_BYTES)
 
     assert [info.key for info in await listed(object_storage, f"{base}/")] == sorted(names)
+
+
+async def test_signed_urls_match_signed_url_one_by_one(object_storage: ObjectStorage, fake_clock: FakeClock) -> None:
+    """NO-207: ký lô ra đúng URL và hạn của từng `signed_url`, cùng thứ tự, lô rỗng ra rỗng."""
+    fake_clock.set(datetime(2026, 1, 1, 9, 5, tzinfo=UTC))
+    first, second = page_key(), page_key()
+    requests = [
+        SignRequest(first, "attachment", filename="a.png"),
+        SignRequest(second, "inline", kind="png"),
+        SignRequest(first, "attachment"),
+    ]
+
+    batch = await object_storage.signed_urls(requests)
+    single = [
+        await object_storage.signed_url(r.key, disposition=r.disposition, filename=r.filename, kind=r.kind)
+        for r in requests
+    ]
+
+    assert batch == single
+    assert await object_storage.signed_urls([]) == []
+
+
+async def test_signed_urls_reject_inline_non_image(object_storage: ObjectStorage) -> None:
+    """NO-207: một phần tử sai luật `inline` làm hỏng cả lô, như `signed_url` đơn."""
+    key = page_key()
+    await object_storage.put(key, PDF, content_type="application/pdf", max_bytes=MAX_BYTES)
+
+    with pytest.raises(ValueError, match="inline"):
+        await object_storage.signed_urls([SignRequest(key, "inline")])

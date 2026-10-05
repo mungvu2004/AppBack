@@ -1,7 +1,7 @@
 """Seed toà mẫu `packages/db/seeds/spatial.py` trên Postgres thật (B3-02 [5], [8]).
 
-Seed không nhập `apps.api` (`db-isolated`), nên các test "tương đương" ở đây là chỗ duy
-nhất kiểm nó không lệch khỏi `codec` và `counts`.
+Seed không nhập `apps.api` (`db-isolated`) mà gọi thẳng ba hàm thuần của `packages.domain.spatial`
+mà `codec`/`counts` chuyển tiếp; test ở đây kiểm dòng DB do seed ghi khớp các hàm đó.
 """
 
 import unicodedata
@@ -19,6 +19,7 @@ from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project, ProjectFloorSummary
 from packages.db.models.spatial import FloorDocumentRow, FloorEntityIdRow
 from packages.db.seeds import apply_seeds, load_seeds
+from packages.db.seeds import spatial as seed_module
 from packages.db.seeds.spatial import ENVS, ORDER, SEED_PROJECT_ID, build_sample_building, seed
 from packages.domain.spatial import check_integrity, has_critical, polygon_area_m2
 
@@ -77,8 +78,15 @@ async def test_seed_twice_keeps_row_counts(db_session: AsyncSession) -> None:
     )
 
 
+def test_seed_shares_the_domain_helpers_with_the_api() -> None:
+    """Seed và `codec`/`counts` gọi cùng một hàm (NO-220): không còn bản dựng lại hình dạng ở seed."""
+    assert vars(seed_module)["document_to_json"] is codec.document_to_json
+    assert vars(seed_module)["entity_ids"] is codec.entity_ids
+    assert vars(seed_module)["layer_counts"] is layer_counts
+
+
 async def test_seed_matches_codec_and_counts(db_session: AsyncSession) -> None:
-    """Tương đương: `document`, dòng đếm và id thực thể == kết quả của `codec`/`counts` trên cùng lớp."""
+    """Dòng DB do seed ghi: `document`, dòng đếm và id thực thể == kết quả của `codec`/`counts` trên cùng lớp."""
     await seed(db_session)
     project = (await db_session.execute(select(Project))).scalar_one()
     assert (project.id, project.created_by) == (SEED_PROJECT_ID, "system:seed")
@@ -117,8 +125,8 @@ async def test_seed_matches_codec_and_counts(db_session: AsyncSession) -> None:
 async def test_seed_layers_decode_as_wire_models(db_session: AsyncSession) -> None:
     """Mọi lớp seed giải được bằng `SpatialLayerOut` — cột `document` đúng hình dạng N16 gửi đi.
 
-    Kiểm ở đây chứ không ở `test_wire.py`: seed dựng jsonb bằng `model_dump` của miền, không
-    qua `codec`, nên đây là chỗ duy nhất bắt được lệch giữa hai đường ghi ấy trước khi FE thấy.
+    Kiểm ở đây chứ không ở `test_wire.py`: đi từ dòng `floor_documents` do seed ghi tới `SpatialLayerOut`,
+    nên bắt được lệch giữa dữ liệu seed và hình dạng N16 trước khi FE thấy.
     """
     await seed(db_session)
     rows = (await db_session.execute(select(FloorDocumentRow).order_by(FloorDocumentRow.floor_pk))).scalars().all()

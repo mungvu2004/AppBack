@@ -6,7 +6,6 @@ cần ghi `FOR UPDATE` theo `pk` → `summaries.*` → `touch_project` cuối c�
 """
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.access.activity import record_activity
 from apps.api.access.kinds import ActivityKind
 from apps.api.core.auth import Principal
+from apps.api.drawings.runs import restore_window_elapsed
 from apps.api.floors.errors import FLOOR_ID_TAKEN, FLOOR_LIMIT_REACHED, FLOOR_REORDER_MISMATCH
 from apps.api.floors.lookup import floor_outs, get_floor, lock_project_floors
 from apps.api.floors.schemas import FloorCreateIn, FloorPatchIn
@@ -50,11 +50,15 @@ async def _active_count(db: AsyncSession, project_id: str) -> int:
     return (await db.execute(stmt)).scalar_one()
 
 
-def _restorable(rows: Sequence[FloorRow], cutoff: datetime) -> FloorRow | None:
+def _restorable(rows: Sequence[FloorRow], clock: Clock) -> FloorRow | None:
     """Dòng xoá mềm **gần nhất** (`deleted_at` lớn nhất) còn trong cửa sổ khôi phục, nếu có (bước 4
     của #10, LOG-02) — `rows` tới từ `_locked_rows` khoá theo `pk`, không theo `deleted_at`, nên
     chọn ở đây thay vì tin thứ tự của `rows`."""
-    candidates = [(row.deleted_at, row) for row in rows if row.deleted_at is not None and row.deleted_at >= cutoff]
+    candidates = [
+        (row.deleted_at, row)
+        for row in rows
+        if row.deleted_at is not None and not restore_window_elapsed(row.deleted_at, clock)
+    ]
     if not candidates:
         return None
     return max(candidates, key=lambda item: item[0])[1]
@@ -115,12 +119,12 @@ async def _resolved_row(
     db: AsyncSession,
     project_id: str,
     rows: Sequence[FloorRow],
-    cutoff: datetime,
+    clock: Clock,
     body: FloorCreateIn,
     principal: Principal,
 ) -> tuple[FloorRow, bool]:
     """Dòng để dựng response của #10: khôi phục tại chỗ nếu có, không thì chèn mới; `(row, restored)`."""
-    restorable = _restorable(rows, cutoff)
+    restorable = _restorable(rows, clock)
     if restorable is not None:
         _apply_restore(restorable, body)
         return restorable, True
@@ -137,8 +141,7 @@ async def create_floor(
     _check_not_taken(rows)
     active_count = await _active_count(db, project_id)
     _check_not_over_limit(active_count, settings.floors_max)
-    cutoff = clock.now() - timedelta(seconds=settings.floor_restore_window_s)
-    row, restored = await _resolved_row(db, project_id, rows, cutoff, body, principal)
+    row, restored = await _resolved_row(db, project_id, rows, clock, body, principal)
     await register_floor(db, project_id=project_id, floor_level_id=body.id, floor_order=body.order, restored=restored)
     await touch_project(db, project_id=project_id, clock=clock)
     await record_activity(

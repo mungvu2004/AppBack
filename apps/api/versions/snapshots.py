@@ -183,20 +183,25 @@ def version_row(row: RowMapping) -> VersionRow:
     )
 
 
-async def lock_floor_document(db: AsyncSession, *, floor_pk: int, clock: Clock) -> FloorDocument:
-    """Khoá theo BE-00 §7: `floors` FOR SHARE (chưa xoá mềm) rồi dòng tài liệu FOR UPDATE.
+async def lock_floor_document(db: AsyncSession, *, floor_pk: int, clock: Clock) -> tuple[str, FloorDocument]:
+    """Khoá theo BE-00 §7: `floors` FOR SHARE (chưa xoá mềm) rồi dòng tài liệu FOR UPDATE; trả `(project_id, doc)`.
 
     Tầng không có / đã xoá mềm → `NOT_FOUND` `resource="floor"`. Tầng chưa có tài liệu thì
     `ensure_document` (an toàn khi đua) rồi khoá lại: hai giao dịch cùng tầng mới nối đuôi nhau.
     """
-    stmt = select(FloorRow.pk).where(FloorRow.pk == floor_pk, FloorRow.deleted_at.is_(None)).with_for_update(read=True)
-    if (await db.execute(stmt)).scalar_one_or_none() is None:
+    stmt = (
+        select(FloorRow.project_id)
+        .where(FloorRow.pk == floor_pk, FloorRow.deleted_at.is_(None))
+        .with_for_update(read=True)
+    )
+    project_id = (await db.execute(stmt)).scalar_one_or_none()
+    if project_id is None:
         raise NOT_FOUND.error(resource="floor")
     doc = await load_document(db, floor_pk, for_update=True)
     if doc is None:
         await ensure_document(db, floor_pk=floor_pk, clock=clock)
         doc = await load_document(db, floor_pk, for_update=True)
-    return cast("FloorDocument", doc)  # ensure_document vừa bảo đảm dòng tồn tại
+    return project_id, cast("FloorDocument", doc)  # ensure_document vừa bảo đảm dòng tồn tại
 
 
 def _check_actor(actor_id: str, actor_name: str, note: str | None) -> None:
@@ -233,7 +238,7 @@ async def record_version(
     chỉ đặt `snapshot = NULL`, không bao giờ xoá dòng.
     """
     _check_actor(actor_id, actor_name, note)
-    doc = await lock_floor_document(db, floor_pk=floor_pk, clock=clock)
+    project_id, doc = await lock_floor_document(db, floor_pk=floor_pk, clock=clock)
     latest = await _latest(db, floor_pk)
     if latest is not None and latest["floor_revision"] == doc.revision:
         return version_row(latest)
@@ -241,7 +246,7 @@ async def record_version(
     record = VersionRecord(
         id=new_id("ver", clock),
         floor_pk=floor_pk,
-        project_id=(await db.execute(select(FloorRow.project_id).where(FloorRow.pk == floor_pk))).scalar_one(),
+        project_id=project_id,
         sequence=1 if latest is None else latest["sequence"] + 1,
         floor_revision=doc.revision,
         creator_id=actor_id,

@@ -42,6 +42,10 @@ if ! run docker compose run --rm migrate; then
   exit 1
 fi
 
+# Thư viện .glb rỗng tới lượt lịch đầu nếu không publish ngay (NO-242). Không chí mạng:
+# beat chạy default.library.publish_library_assets bù lại.
+run docker compose run --rm --no-deps api python -m apps.api.library.cli publish   || echo "cảnh báo: publish thư viện hỏng — beat sẽ publish lại theo lịch" >&2
+
 if ! swap_api "$tag"; then
   echo "hỏng đổi api — container mới không healthy tới timeout" >&2
   if [[ -n "$previous_tag" ]]; then

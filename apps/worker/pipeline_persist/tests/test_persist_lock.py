@@ -7,7 +7,7 @@ Ba test, hai mục đích khác nhau:
   `DB_LOCK_TIMEOUT_MS`. Không có trần đồng hồ tường nào là điều kiện đúng/sai (số đo chỉ ghi log),
   nên test này **không** mang marker `perf`.
 - hai test `perf` còn lại chỉ **đo**: thời gian giữ khoá trên lớp toà mẫu (có trần 1 s của prompt) và
-  trên lớp 20.000 tường (chỉ in số). Cả hai mang marker `perf` theo BE-00 §12 và không mang mã case.
+  trên lớp 20.000 tường (trần chống thoái lui 3x số đo). Cả hai mang marker `perf` theo BE-00 §12 và không mang mã case.
 
 Bọc chứ không mock (K23): hai lớp bọc dưới đây gọi chính `service.create_version`/`service.lock_run`
 thật, chỉ chèn thêm một `asyncio.Event` và một mốc thời gian.
@@ -21,22 +21,19 @@ from decimal import Decimal
 from typing import Final
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import RunRow, lock_run
 from apps.api.versions.snapshots import VersionRow, create_version
 from apps.worker.pipeline_build.build import BuiltLayer
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_persist import service
-from apps.worker.pipeline_persist.tests.helpers import Arranged, open_run_at_build, put_layer, sample_built
+from apps.worker.pipeline_persist.tests.helpers import Arranged, Maker, arrange, sample_built
 from packages.core.ids import SPATIAL_PREFIX
 from packages.domain.spatial.model import Point, Segment, SpatialLayer, Wall
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.spatial import make_floor_document
 from packages.testing.fixtures.clock import FakeClock
-
-type Maker = async_sessionmaker[AsyncSession]
 
 WAIT_S: Final = 30.0
 """Trần **chờ** chống treo cho lõi và cho bên chờ khoá — không phải trần hiệu năng."""
@@ -48,8 +45,13 @@ SAMPLE_HOLD_CEILING_S: Final = 1.0
 """Trần của prompt cho thời gian giữ khoá `floors` trên lớp toà mẫu ([8] "Khoá")."""
 BIG_WALLS: Final = 20_000
 """Cỡ lớp của B5-05 ([8] "Khoá"): dựng lưới tường trực tiếp, không qua `build_layer` (quá chậm)."""
-BIG_HOLD_DEBT_S: Final = 5.0
-"""Vượt mức này trên lớp 20.000 tường thì ghi Nợ B3-06 — test chỉ in số, không khẳng định."""
+BIG_HOLD_CEILING_S: Final = 30.0
+"""Trần chống thoái lui trên lớp 20.000 tường: 3x số đo 8,46-9,54 s sau NO-296 (nhật ký chèn theo khúc `unnest`).
+
+Chưa phải mục tiêu 5 s của B5-06b [8]: riêng 140.000 dòng nhật ký theo trường đã ~5,5 s phía Postgres,
+xuống nữa phải đổi hợp đồng nhật ký — NO-296 (đã duyệt, giữ hợp đồng đó) nên mục tiêu 5 s không đạt.
+Trước sửa đo 15,8-21 s.
+"""
 
 _log = logging.getLogger(__name__)
 
@@ -106,13 +108,8 @@ async def _arrange(
     `FOR UPDATE` trên đó — chờ một dòng người khác vừa chèn chưa commit là ca khác (chờ khoá index),
     không phải ca [8] muốn kiểm.
     """
-    arranged = await open_run_at_build(maker, clock)
-    async with maker() as db:
-        await make_floor_document(db, floor_pk=arranged.floor_pk, clock=clock)
-        await db.commit()
     build = make_built if make_built is not None else (lambda level: _built(sample_built(level).layer))
-    await put_layer(storage, arranged, build(arranged.level_id).to_json())
-    return arranged
+    return await arrange(maker, storage, clock, build=build, with_document=True)
 
 
 async def _timed_hold(
@@ -229,15 +226,12 @@ async def test_persist_lock_hold_sample_building(
 async def test_persist_lock_hold_20k_walls(
     db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Lớp 20.000 tường: chỉ **in** thời gian giữ khoá, không khẳng định trần (báo cáo [11] mục 4).
-
-    Prompt không đặt trần cho cỡ này; vượt `BIG_HOLD_DEBT_S` là việc của B3-06 (`merge_pipeline_result`)
-    nên ghi Nợ thay vì làm test đỏ — test đỏ ở đây chỉ nói lên phần cứng của máy chạy cổng.
-    """
+    """Lớp 20.000 tường: giữ khoá dưới `BIG_HOLD_CEILING_S`; số đo in bằng `logging` (báo cáo [11] mục 4)."""
     arranged = await _arrange(
         db_sessionmaker, local_storage, fake_clock, lambda level: _built(_wall_grid(level, BIG_WALLS))
     )
 
     held_s = await _timed_hold(db_sessionmaker, local_storage, fake_clock, arranged.payload, monkeypatch)
 
-    _log.info("lock_hold_20k_walls_s=%.3f no_debt=%s", held_s, held_s <= BIG_HOLD_DEBT_S)
+    _log.info("lock_hold_20k_walls_s=%.3f", held_s)
+    assert held_s < BIG_HOLD_CEILING_S

@@ -10,7 +10,8 @@ bằng hệt bản quét hết (test đối chiếu với bản tham chiếu).
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from typing import Final
 
 from packages.domain.rules_ai.constants import (
     FIXTURE_SNAP_REACH_MM,
@@ -45,11 +46,38 @@ def _capped[T: (Wall, Opening, Furniture)](entity: T) -> T:
     return entity.model_copy(update={"confidence": LOW_CONFIDENCE_CAP})
 
 
+_SLACK_MM: Final = 1
+"""Nở thêm khi nội suy `y` trên đường tim: sai số số thực ở biên ô chỉ được làm **thừa** ô, không thiếu."""
+
+
+def _band_cells(start: Point, end: Point, reach: float) -> Iterator[CellKey]:
+    """Mọi ô lưới chứa điểm cách đoạn `start-end` ≤ `reach` (siêu tập), số ô tuyến tính theo chiều dài đoạn.
+
+    Duyệt từng cột ô: điểm `p` trong cột `[cx·C, (cx+1)·C)` cách đoạn ≤ `reach` thì có `q` trên đoạn
+    với `|p - q|∞ ≤ reach`, nên `q.x` nằm trong cột nở `reach` và `p.y` lệch ≤ `reach` khỏi khoảng `y`
+    của đường tim trên đó. Hộp bao nở (cách cũ) cho tường chéo dài L tới (L/C)² ô (NO-252).
+    """
+    (low_x, low_y), (high_x, high_y) = sorted(((start.x, start.y), (end.x, end.y)))
+    run_x = high_x - low_x
+    for cell_x in range(math.floor((low_x - reach) // GRID_CELL_MM), math.floor((high_x + reach) // GRID_CELL_MM) + 1):
+        if run_x == 0:
+            y_from, y_to = float(low_y), float(high_y)
+        else:
+            left = max(low_x, cell_x * GRID_CELL_MM - reach)
+            right = min(high_x, (cell_x + 1) * GRID_CELL_MM + reach)
+            y_from = low_y + (high_y - low_y) * (left - low_x) / run_x
+            y_to = low_y + (high_y - low_y) * (right - low_x) / run_x
+        bottom = min(y_from, y_to) - reach - _SLACK_MM
+        top = max(y_from, y_to) + reach + _SLACK_MM
+        for cell_y in range(math.floor(bottom // GRID_CELL_MM), math.floor(top // GRID_CELL_MM) + 1):
+            yield cell_x, cell_y
+
+
 class _WallIndex:
-    """Lưới ô các tường, mỗi tường vào mọi ô chạm hộp bao hai đầu mút nở `thicknessMm / 2 + FIXTURE_SNAP_REACH_MM`.
+    """Lưới ô các tường, mỗi tường vào các ô của dải quanh đường tim nở `thicknessMm / 2 + FIXTURE_SNAP_REACH_MM`.
 
     Tường ngoài các ô mà hộp đồ chạm có `gap > FIXTURE_SNAP_REACH_MM` (mọi điểm dò cách
-    hộp bao của tường quá tầm), nên bỏ chúng không đổi quyết định.
+    đường tim quá tầm), nên bỏ chúng không đổi quyết định.
     """
 
     def __init__(self, walls: Sequence[Wall]) -> None:
@@ -58,9 +86,7 @@ class _WallIndex:
         self._cells: dict[CellKey, list[int]] = {}
         for position, wall in enumerate(walls):
             line = wall.centreline
-            low_x, low_y, high_x, high_y = bounds_of((line.start, line.end))
-            reach = wall.thickness_mm / 2 + FIXTURE_SNAP_REACH_MM
-            for key in cell_keys((low_x - reach, low_y - reach, high_x + reach, high_y + reach), GRID_CELL_MM):
+            for key in _band_cells(line.start, line.end, wall.thickness_mm / 2 + FIXTURE_SNAP_REACH_MM):
                 self._cells.setdefault(key, []).append(position)
 
     def candidates(self, box: BoundingBox) -> list[int]:
@@ -181,7 +207,7 @@ def _fix_windows(layer: SpatialLayer) -> tuple[tuple[Wall, ...], tuple[Opening, 
             openings.append(opening)
         else:
             openings.append(opening if side == "unknown" else _capped(opening))
-    return tuple(_envelope(w) if w.id in promoted else w for w in layer.walls), tuple(openings)
+    return tuple(_envelope(w) if w.id in promoted and _editable(w) else w for w in layer.walls), tuple(openings)
 
 
 def apply_post_rules(layer: SpatialLayer) -> SpatialLayer:

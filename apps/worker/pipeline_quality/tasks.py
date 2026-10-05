@@ -5,6 +5,8 @@ trình (sessionmaker, kho, đồng hồ) rồi gọi lõi. Lỗi tạm, hết h�
 `define_task` lo; `on_failed` chạy `fail_quality` trên vòng sự kiện dùng chung của tiến trình.
 """
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Final
 
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
@@ -19,7 +21,7 @@ QUALITY_TASK: Final = "pipeline.quality.run"
 """Tên task; B5-06b gửi nó sau khi ghi lớp, B5-06c gửi lại khi quét bù (B5-07 [2])."""
 
 
-def _storage() -> ObjectStorage:
+def open_storage() -> ObjectStorage:
     """Kho thật dựng từ biến môi trường; `create_storage` nhập trễ (K22, như B5-06b)."""
     from packages.storage.factory import create_storage
     from packages.storage.settings import get_storage_settings
@@ -27,7 +29,14 @@ def _storage() -> ObjectStorage:
     return create_storage(get_storage_settings(), None, SystemClock())
 
 
-_STORAGE: Final = ProcessLocal[ObjectStorage](_storage)
+_STORAGE: Final = ProcessLocal[ObjectStorage](open_storage)
+
+
+@contextmanager
+def override_quality_storage(factory: Callable[[], ObjectStorage]) -> Iterator[None]:
+    """Chỉ cho test: task chạy trên kho do `factory` dựng trong khối `with`, trả kho thật khi thoát."""
+    with _STORAGE.override(factory):
+        yield
 
 
 def reset_quality_storage() -> None:

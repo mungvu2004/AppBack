@@ -159,7 +159,7 @@ async def test_templates_create_template__C01(
 @pytest.mark.parametrize(
     ("body", "field"),
     [
-        (template_body("door"), None),
+        (template_body("door"), "objectKind"),
         (template_body("furniture", fields={"rotationDeg": 360}), "fields.rotationDeg"),
         (template_body("furniture", fields={"rotationDeg": -0.5}), "fields.rotationDeg"),
         (template_body("opening", fields={"sillHeightMm": -1}), "fields.sillHeightMm"),
@@ -203,31 +203,43 @@ async def test_templates_create_template__C02(
     assert response.status_code == 422
     out = response.json()
     assert out["code"] == "VALIDATION"
-    # Union phân biệt: pydantic đặt tên nhánh (`wall.fields.heightMm`) trước đường trường; kind lạ không có `field`.
-    assert ("field" not in out) if field is None else out["field"].endswith(field)
+    # NO-248: `field_of` bỏ tag nhánh union → đường trường không tiền tố; kind lạ trỏ `objectKind`.
+    assert out["field"].endswith(field)
 
 
 @pytest.mark.parametrize(
     "body",
     [
         template_body() | {"id": "tpl_01J9ZZZZZZZZZZZZZZZZZZZZZZ"},
-        template_body() | {"projectId": "prj_x"},
         template_body() | {"createdAt": "2026-01-01T00:00:00.000Z"},
         template_body() | {"scope": "project"},
         template_body("room", fields={"thicknessMm": 200}),
         template_body("wall", fields={"heightMm": 2800, "extra": 1}),
     ],
-    ids=["id", "projectId", "createdAt", "scope", "room-foreign-key", "fields-extra"],
+    ids=["id", "createdAt", "scope", "room-foreign-key", "fields-extra"],
 )
 async def test_templates_create_template__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, body: dict[str, Any]
 ) -> None:
-    """Khoá lạ ở gốc (kể cả `id`/`projectId`/`createdAt`/`scope`) hay trong `fields` → 422 `VALIDATION`."""
+    """Khoá lạ ở gốc (kể cả `id`/`createdAt`/`scope`) hay trong `fields` → 422 `VALIDATION`."""
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     response = await api_client.post(templates_path(project.id), json=body, headers=headers_of(owner))
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION"
+
+
+async def test_templates_create_template_project_id_in_body(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """`projectId` trong thân: lệch đường → 422 `PATH_BODY_MISMATCH` (W21, NO-351); trùng → khoá lạ `VALIDATION`."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    path, headers = templates_path(project.id), headers_of(owner)
+    other = await api_client.post(path, json=template_body() | {"projectId": "prj_x"}, headers=headers)
+    assert (other.status_code, other.json()["code"], other.json()["field"]) == (422, "PATH_BODY_MISMATCH", "projectId")
+    same = await api_client.post(path, json=template_body() | {"projectId": project.id}, headers=headers)
+    assert (same.status_code, same.json()["code"]) == (422, "VALIDATION")
 
 
 async def test_templates_create_template__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

@@ -7,14 +7,16 @@ bản, không hai bản lệch nhau (R-02); `__all__` khai lại hai fixture đ�
 
 "Hàng treo" dùng một `redis.asyncio.Redis` **lớp con** có `llen` chờ `asyncio.Event` không bao giờ đặt: đó
 là cách duy nhất dựng cảnh broker treo mà không mock Redis (K23 — client vẫn thật, chỉ một lệnh bị
-chặn). Trần "≤ 2 s" là trần của prompt chứ không phải hợp đồng hiệu năng, nên không gắn marker
-`perf` (test ở đây không mang mã case, và `HANG_BUDGET_S` chỉ là `LLEN_TIMEOUT_S` + mép); số đo in
-bằng `logging`.
+chặn). Luật (số lệnh `LLEN`, pool rỗng, lượt giữ nguyên) ở `test_sweep_survives_unreadable_queue`
+chạy ở bước 5, **không** khẳng định thời gian; trần đồng hồ tường `HANG_BUDGET_S` (≥ 3x số đo
+1,04 s) chỉ ở `test_sweep_hang_returns_within_budget` gắn `perf` (BE-00 §12). Hai test dùng chung
+`_sweep_with_hanging_llen`; số đo in bằng `logging`.
 """
 
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Final, cast
 
 import pytest
@@ -35,7 +37,6 @@ from apps.worker.pipeline_steps.tests.helpers import (
     REQUEUE_AFTER_S,
     Maker,
     arrange_run,
-    queued_tasks,
     read_count,
     run_row,
     set_idle,
@@ -54,7 +55,7 @@ from packages.ml_contracts.families import MODEL_FAMILIES
 from packages.ml_contracts.payloads import InferStepPayload
 from packages.storage.local import LocalDiskStorage
 from packages.testing.fixtures.clock import FakeClock
-from packages.testing.fixtures.messaging import queued_payloads
+from packages.testing.fixtures.messaging import queued_payloads, queued_tasks
 
 clean_queues = helpers.clean_queues
 sweep_env = helpers.sweep_env
@@ -63,8 +64,10 @@ sweep_env = helpers.sweep_env
 
 _log = logging.getLogger(__name__)
 
-HANG_BUDGET_S: Final = 2.0
-"""Trần của prompt cho một lượt quét khi `LLEN` treo (`LLEN_TIMEOUT_S` của hai lệnh song song + mép)."""
+HANG_BUDGET_S: Final = 4.0
+"""Trần `perf` cho một lượt quét khi `LLEN` treo: số đo 1,04 s (`LLEN_TIMEOUT_S` = 1 s của hai lệnh song song) x ≥ 3."""
+ENTER_WAIT_S: Final = 30.0
+"""Hạn **chờ** chống treo cho `broker.entered` — điều kiện, không phải trần hiệu năng."""
 IDLE_S: Final = REQUEUE_AFTER_S + 60
 """Mốc im dùng cho mọi lượt ở file này: quá ngưỡng lần đầu (`step_requeue_count = 0`)."""
 
@@ -99,7 +102,7 @@ async def _checkedout_while_blocked(pool: QueuePool, broker: _HangingLlen) -> in
     Chờ bằng `broker.entered` chứ không vòng `asyncio.sleep` (ASYNC110): `asyncio.gather` đã xếp
     cả hai `LLEN` trước khi hàm này chạy, nên lúc event được đặt là lúc lõi đang treo ở Redis.
     """
-    await asyncio.wait_for(broker.entered.wait(), HANG_BUDGET_S)
+    await asyncio.wait_for(broker.entered.wait(), ENTER_WAIT_S)
     return pool.checkedout()
 
 
@@ -243,23 +246,24 @@ async def test_sweep_fails_run_without_matching_drawing(
     assert sweep_env.llen(ML_QUEUE) == 0
 
 
-@pytest.mark.parametrize("fail", [False, True], ids=["treo", "connection_error"])
-async def test_sweep_survives_unreadable_queue(
-    sweep_env: SyncRedis,
-    db_sessionmaker: Maker,
-    db_url: str,
-    local_storage: LocalDiskStorage,
-    fake_clock: FakeClock,
-    fail: bool,
-) -> None:
-    """`LLEN` treo hay ném → lõi trả trong `HANG_BUDGET_S`, pool rỗng, không lượt nào bị đụng.
+@dataclass(frozen=True, slots=True)
+class _HangRun:
+    """Kết quả một lượt quét với `LLEN` treo/ném: thời gian tường, số kết nối giữ lúc treo, số lệnh `LLEN`."""
 
-    Pool **một** kết nối là phần chứng minh: nếu `_queue_busy` chạy trong một session thì
-    `checkedout()` đo lúc hai `LLEN` còn treo là 1, và lượt `_candidates` sau đó cũng chết vì
-    `db_pool_timeout_s=1` (khuôn `test_persist_k36.py`, K36). Hai hàng "còn việc" → mọi lượt giữ.
+    run_id: str
+    elapsed: float
+    checked_out: int
+    calls: int
 
-    Số pool chỉ đo được ở biến thể "treo": khi `llen` ném ngay thì không có khoảnh khắc nào để
-    chụp, và `_candidates` sau đó giữ đúng một kết nối — biến thể đó chỉ kiểm lõi không chết.
+
+async def _sweep_with_hanging_llen(
+    db_sessionmaker: Maker, db_url: str, local_storage: LocalDiskStorage, fake_clock: FakeClock, *, fail: bool
+) -> _HangRun:
+    """Một lượt quét thật trên pool **một** kết nối với `LLEN` treo (hay ném): cảnh dùng chung của hai test.
+
+    Pool một kết nối là phần chứng minh: nếu `_queue_busy` chạy trong một session thì `checkedout()`
+    đo lúc hai `LLEN` còn treo là 1, và lượt `_candidates` sau đó cũng chết vì `db_pool_timeout_s=1`
+    (khuôn `test_persist_k36.py`, K36). Số đo in bằng `logging`; khẳng định thuộc về test gọi.
     """
     arranged = await arrange_run(db_sessionmaker, local_storage, fake_clock)
     await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
@@ -278,15 +282,43 @@ async def test_sweep_survives_unreadable_queue(
         await broker.aclose()
         await engine.dispose()
     elapsed = time.monotonic() - started
-
     _log.info("sweep_hang_elapsed_s=%.3f fail=%s calls=%d", elapsed, fail, broker.calls)
-    assert broker.calls == 2
-    assert elapsed < HANG_BUDGET_S
+    return _HangRun(arranged.run_id, elapsed, checked_out, broker.calls)
+
+
+@pytest.mark.parametrize("fail", [False, True], ids=["treo", "connection_error"])
+async def test_sweep_survives_unreadable_queue(
+    sweep_env: SyncRedis,
+    db_sessionmaker: Maker,
+    db_url: str,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    fail: bool,
+) -> None:
+    """`LLEN` treo hay ném → lõi trả về, pool rỗng, không lượt nào bị đụng (không khẳng định thời gian).
+
+    Hai hàng "còn việc" → mọi lượt giữ. Số pool chỉ đo được ở biến thể "treo": khi `llen` ném ngay
+    thì không có khoảnh khắc nào để chụp, và `_candidates` sau đó giữ đúng một kết nối — biến thể đó
+    chỉ kiểm lõi không chết.
+    """
+    run = await _sweep_with_hanging_llen(db_sessionmaker, db_url, local_storage, fake_clock, fail=fail)
+
+    assert run.calls == 2
     if not fail:
-        assert checked_out == 0, "LLEN treo mà pool còn kết nối: lõi đọc Redis trong session (K36)"
+        assert run.checked_out == 0, "LLEN treo mà pool còn kết nối: lõi đọc Redis trong session (K36)"
     assert sweep_env.llen(ML_QUEUE) == 0
-    assert await read_count(db_sessionmaker, arranged.run_id) == 0
-    assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
+    assert await read_count(db_sessionmaker, run.run_id) == 0
+    assert (await run_row(db_sessionmaker, run.run_id)).status == "running"
+
+
+@pytest.mark.perf
+async def test_sweep_hang_returns_within_budget(
+    sweep_env: SyncRedis, db_sessionmaker: Maker, db_url: str, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """`LLEN` treo → lõi trả trong `HANG_BUDGET_S` nhờ `LLEN_TIMEOUT_S` (cận trên đồng hồ tường, bước 5b)."""
+    run = await _sweep_with_hanging_llen(db_sessionmaker, db_url, local_storage, fake_clock, fail=False)
+
+    assert run.elapsed < HANG_BUDGET_S
 
 
 def test_queue_names_match_kombu_list_keys(sweep_env: SyncRedis) -> None:
@@ -302,7 +334,7 @@ def test_queue_names_match_kombu_list_keys(sweep_env: SyncRedis) -> None:
     assert (ML_QUEUE, CPU_QUEUE) == ("ml.infer", "pipeline.cpu")
 
 
-async def test_requeue_one_skips_run_that_changed_after_selection(
+async def test_requeue_one__skips_run_that_changed_after_selection(
     sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
     """Hai cửa bỏ của `_requeue_one`: lượt không khoá được, và lượt mất dòng ghim.
@@ -321,6 +353,28 @@ async def test_requeue_one_skips_run_that_changed_after_selection(
     await _requeue_one(db_sessionmaker, arranged.run_id, fake_clock, settings)
 
     assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
+    assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
+
+
+async def test_requeue_one__keeps_run_whose_family_finished_after_selection(
+    sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Kết quả họ ML tới giữa chọn lô và `lock_run` → mốc im đọc lại dưới khoá thấy `last_used_at` mới.
+
+    Gọi `_requeue_one` trực tiếp (lượt vừa được chọn khi còn im) vì `_CANDIDATES` đã loại lượt tươi
+    nên một lượt quét trọn vẹn không đi tới nhánh `sweep_run_fresh`. Bỏ `m.last_used_at` khỏi
+    `_IDLE_MARK` thì lượt bị coi là im, gửi lại bước và đốt một lượt `step_requeue_count`.
+    """
+    arranged = await arrange_run(db_sessionmaker, local_storage, fake_clock)
+    await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
+    async with db_sessionmaker() as db:
+        await record_used(db, run_id=arranged.run_id, family=MODEL_FAMILIES[0], used="classic")
+        await db.commit()
+
+    await _requeue_one(db_sessionmaker, arranged.run_id, fake_clock, get_steps_settings())
+
+    assert (sweep_env.llen(ML_QUEUE), sweep_env.llen(CPU_QUEUE)) == (0, 0)
+    assert await read_count(db_sessionmaker, arranged.run_id) == 0
     assert (await run_row(db_sessionmaker, arranged.run_id)).status == "running"
 
 

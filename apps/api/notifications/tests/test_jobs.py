@@ -1,10 +1,10 @@
 """Hai lịch nền `default.notifications.*` (B4-02 [6] "Lịch", [8]): J01, J06 của từng hàm lịch và test khói."""
 
 from datetime import timedelta
-from typing import Final
+from typing import Any, Final
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.notifications.jobs import (
@@ -288,3 +288,28 @@ def test_trim_notifications_smoke(db_url: str, monkeypatch: pytest.MonkeyPatch) 
         reset_database_settings_cache()
         reset_notifications_settings_cache()
     assert run(on_fresh_engine(db_url, lambda session: count(session, user_id))) == 2
+
+
+async def test_run_notification_trim__overflow_ranks_only_over_cap_users(
+    db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock
+) -> None:
+    """NO-253 (2): bước giữ `KEEP_MAX` chỉ xếp hạng người vượt trần (`HAVING count(*) > KEEP_MAX`), không cả bảng."""
+    user, project = await _pair(db_session)
+    await make_notification(db_session, user=user, project=project, created_at=fake_clock.now())
+    await db_session.commit()
+    seen: list[str] = []
+
+    def capture(_conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
+        """Ghi lại câu SQL có `row_number` (bước xếp hạng)."""
+        if "row_number" in statement:
+            seen.append(statement)
+
+    engine = db_sessionmaker.kw["bind"].sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        await run_notification_trim(db_sessionmaker, fake_clock, batch=BATCH)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    assert seen
+    assert all("HAVING" in statement for statement in seen)

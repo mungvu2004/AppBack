@@ -113,7 +113,13 @@ async def member_users(db: AsyncSession, project_ids: Sequence[str]) -> dict[str
 
 
 async def count_projects_of_users(db: AsyncSession, user_ids: Sequence[str]) -> dict[str, int]:
-    """Số dự án **chưa xoá mềm** của từng người, một truy vấn; id không có dòng nào → 0."""
+    """Số dự án **chưa xoá mềm** của từng người, một truy vấn; id không có dòng nào → 0.
+
+    Lô rỗng trả `{}` **không** chạy câu nào (như `member_users`): trang admin rỗng không đáng
+    một vòng DB cho `IN ()` (NO-193).
+    """
+    if not user_ids:
+        return {}
     stmt = (
         select(ProjectMembership.user_id, func.count())
         .join(Project, Project.id == ProjectMembership.project_id)

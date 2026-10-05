@@ -7,6 +7,10 @@
 # Mã thoát: 0 luôn, trừ khi đối số/môi trường hỏng.
 set -euo pipefail
 
+# json_escape (thân cảnh báo) dùng chung với backup.sh qua lib.sh — không còn python3 (NO-189).
+# shellcheck source=deploy/scripts/lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
 state_dir="${APPBACK_STATE_DIR:-/var/lib/appback}"
 mkdir -p "$state_dir"
 state_file="$state_dir/health-failures"
@@ -18,7 +22,7 @@ alert() {
   local msg="$1" payload
   echo "cảnh báo: $msg" >&2
   if [[ -n "${ALERT_WEBHOOK_URL:-}" ]]; then
-    payload="$(python3 -c 'import json,sys; m=sys.argv[1]; print(json.dumps({"text": m, "content": m}))' "$msg")"
+    payload="{\"text\": \"$(json_escape "$msg")\", \"content\": \"$(json_escape "$msg")\"}"
     curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' -d "$payload" "$ALERT_WEBHOOK_URL" >/dev/null \
       || echo "cảnh báo: gửi ALERT_WEBHOOK_URL hỏng" >&2
   fi

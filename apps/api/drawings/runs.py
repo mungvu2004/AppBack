@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
 from typing import Final
+from uuid import uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,8 @@ STEP_STATUSES: Final = ("running", "completed", "failed")
 
 FINAL_RUN_STATUSES: Final = ("completed", "failed")
 LIVE_RUN_STATUSES: Final = ("pending", "running")
+PROGRESS_DEDUPE_TTL_S: Final = 300
+"""Khoá chống trùng của một khung `Progress` sống 5 phút: đủ cho lượt thử lại của redis-py (mili giây)."""
 
 _STEPS: Final = tuple(step for step, _ in PIPELINE_STEPS)
 _STEP_INDEX: Final = {step: index for index, step in enumerate(_STEPS)}
@@ -81,6 +84,7 @@ class _FloorFacts:
 
 
 def _snapshot(row: PipelineRunRow) -> RunRow:
+    """Bản chép bất biến của dòng lượt chạy, an toàn để dùng sau khi session đóng."""
     return RunRow(
         id=row.id,
         upload_id=row.upload_id,
@@ -112,10 +116,15 @@ def reset_sync_bus_cache() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _publish(upload_id: str, data: dict[str, object]) -> None:
-    """XADD một khung `Progress`; trạng thái cuối thì hẹn giờ xoá stream (BE-00 §7)."""
+def _publish(upload_id: str, data: dict[str, object], dedupe_key: str) -> None:
+    """XADD một khung `Progress` **đúng một lần**; trạng thái cuối thì hẹn giờ xoá stream (BE-00 §7).
+
+    `publish_once` chứ không `publish`: lượt thử lại của redis-py sau `ConnectionError` ở pha đọc
+    phản hồi (lệnh đã chạy ở máy chủ) gửi lại cùng `dedupe_key`, script trả id cũ thay vì ghi
+    thêm một khung — FE không thấy sự kiện hai lần (NO-187).
+    """
     bus = _sync_bus()
-    bus.publish(upload_stream(upload_id), data)
+    bus.publish_once(upload_stream(upload_id), dedupe_key, data, ttl_s=PROGRESS_DEDUPE_TTL_S)
     if data.get("status") in FINAL_RUN_STATUSES:
         finalize_upload_stream_sync(bus, upload_id)
 
@@ -126,7 +135,9 @@ async def publish_progress_after_commit(db: AsyncSession, upload_id: str) -> Non
     Chụp sớm là cố ý: callback chạy ngoài vòng sự kiện, không còn session để đọc DB.
     """
     data = await progress_wire(db, upload_id)
-    on_after_commit(db, lambda: _publish(upload_id, data))
+    # Một khoá cho mỗi khung đã chụp: hai commit là hai khung, lượt thử lại của cùng khung trùng khoá.
+    dedupe_key = f"progress:{upload_id}:{uuid4().hex}"
+    on_after_commit(db, lambda: _publish(upload_id, data, dedupe_key))
 
 
 def send_start_after_commit(db: AsyncSession, *, run_id: str, upload_id: str) -> None:
@@ -316,18 +327,24 @@ def _apply(run: PipelineRunRow, *, step: str, status: str, error_code: str | Non
     return (run.status, run.current_step, run.progress_percent, run.error_code, run.started_at, run.ended_at) != before
 
 
+def restore_window_elapsed(deleted_at: datetime | None, clock: Clock) -> bool:
+    """Tầng xoá mềm đã qua `FLOOR_RESTORE_WINDOW_S` chưa (BE-00 §7, A8): chưa xoá → `False`, đúng mốc → `True`.
+
+    Luật duy nhất của cửa sổ khôi phục (nửa mở `[0, window)`: BE-00 §7 "còn trong" cửa sổ là còn, đúng
+    mốc là hết): `_out_of_window`, `pipeline_persist`, `floors.create_floor` và `claim_entity_ids` cùng gọi.
+    """
+    if deleted_at is None:
+        return False
+    return (clock.now() - deleted_at).total_seconds() >= get_floors_settings().floor_restore_window_s
+
+
 def _out_of_window(floor: _FloorFacts, clock: Clock) -> bool:
     """Tầng/dự án xoá mềm tới mức lượt chạy phải hỏng hẳn (BE-00 §7).
 
     Tầng vừa gỡ mà còn trong `FLOOR_RESTORE_WINDOW_S` được ghi **như tầng sống**: người dùng
     hoàn tác trong cửa sổ đó phải thấy đúng trạng thái pipeline lúc gỡ (A8).
     """
-    if floor.project_deleted_at is not None:
-        return True
-    if floor.deleted_at is None:
-        return False
-    window = get_floors_settings().floor_restore_window_s
-    return (clock.now() - floor.deleted_at).total_seconds() >= window
+    return floor.project_deleted_at is not None or restore_window_elapsed(floor.deleted_at, clock)
 
 
 async def _floor_was_recreated(db: AsyncSession, floor: _FloorFacts) -> bool:
@@ -434,6 +451,7 @@ __all__ = [
     "publish_progress_after_commit",
     "record_step",
     "reset_sync_bus_cache",
+    "restore_window_elapsed",
     "send_start_after_commit",
     "start_run",
 ]

@@ -19,6 +19,7 @@ import os
 import warnings
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, asynccontextmanager, contextmanager, suppress
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -47,6 +48,11 @@ from packages.testing.fixtures.services import ephemeral_redis
 WORKER_SHUTDOWN_TIMEOUT_S = 20.0
 
 
+def _envelopes(client: SyncRedis, queue: str) -> list[dict[str, Any]]:
+    """Phong bì kombu (JSON) của mọi thông điệp trên một hàng, mới nhất trước (kombu `LPUSH`, `LRANGE` đọc ngược)."""
+    return [json.loads(raw) for raw in sync_result(client.lrange(queue, 0, -1), list)]
+
+
 def queued_payloads(client: SyncRedis, queue: str) -> list[dict[str, object]]:
     """Thân task của mọi thông điệp đang nằm trên một hàng, đã bóc vỏ kombu.
 
@@ -54,11 +60,19 @@ def queued_payloads(client: SyncRedis, queue: str) -> list[dict[str, object]]:
     `LRANGE` là so nhầm; test đếm và soi payload qua hàm này.
     """
     payloads: list[dict[str, object]] = []
-    for raw in sync_result(client.lrange(queue, 0, -1), list):
-        envelope = json.loads(raw)
+    for envelope in _envelopes(client, queue):
         args, _kwargs, _embed = json.loads(base64.b64decode(envelope["body"]))
         payloads.append(args[0])
     return payloads
+
+
+def queued_tasks(client: SyncRedis, queue: str) -> list[str]:
+    """Tên task (`headers.task`) của mọi thông điệp đang nằm trên một hàng, mới nhất trước.
+
+    Dùng khi test phân biệt **task nào** đã gửi lên hàng chung: `queued_payloads` chỉ bóc `args[0]`
+    nên mất tên task, mà tên nằm ở phong bì kombu.
+    """
+    return [envelope["headers"]["task"] for envelope in _envelopes(client, queue)]
 
 
 @pytest.fixture(autouse=True)
@@ -133,6 +147,16 @@ async def cache_client(messaging_env: None) -> AsyncIterator[AsyncRedis]:
     """Client async của `redis-cache` (cache, rate limit), `FLUSHDB` sau test."""
     async with _flushed(cache_redis()) as client:
         yield client
+
+
+async def db_client_count(client: AsyncRedis) -> int:
+    """Số kết nối đang mở vào **DB của `client`** trên máy chủ Redis.
+
+    `CLIENT LIST` thô đếm cả máy chủ, mà Redis của test là một bản cho mọi tiến trình `pytest -n`
+    (mỗi tiến trình một khối DB, NO-270): kết nối của tiến trình khác sẽ lọt vào phép đếm.
+    """
+    db = int(client.connection_pool.connection_kwargs["db"])
+    return sum(1 for entry in await client.client_list() if int(entry["db"]) == db)
 
 
 @pytest.fixture

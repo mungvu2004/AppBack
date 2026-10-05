@@ -51,10 +51,11 @@ def _run(data: bytes) -> dict[str, float]:
 def _limits_memory(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ca trần bộ nhớ: model cấp phát vượt `ML_EVAL_MAX_BYTES` nhỏ → `MODEL_FORMAT_UNSUPPORTED`, cha còn sống."""
     monkeypatch.setenv("ML_EVAL_MAX_BYTES", str(64 * 1024 * 1024))
+    parent_limit = resource.getrlimit(resource.RLIMIT_AS)
     with pytest.raises(PermanentError) as caught:
         _run(_fat_yolo())
     assert caught.value.code == MODEL_FORMAT_UNSUPPORTED
-    assert os.getpid() > 0
+    assert resource.getrlimit(resource.RLIMIT_AS) == parent_limit  # trần chỉ đặt cho con, không cho cha
 
 
 def _limits_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,7 +193,7 @@ def test_ml_eval_sandbox_main_reports_code(tmp_path: Path) -> None:
         sandbox.main(io.StringIO(json.dumps(request)), out)
     finally:
         resource.setrlimit(resource.RLIMIT_AS, limit)  # `main` đặt trần cho chính tiến trình pytest
-    assert json.loads(out.getvalue()) == {"code": MODEL_FORMAT_UNSUPPORTED}
+    assert out.getvalue() == "\n" + sandbox.RESULT_PREFIX + json.dumps({"code": MODEL_FORMAT_UNSUPPORTED}) + "\n"
 
 
 def test_ml_eval_sandbox_kills_group_on_soft_time_limit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,13 +243,52 @@ def test_ml_eval_sandbox_reply_on_memory_error(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.parametrize(
     ("out", "returncode"),
-    [("", 1), ("không phải json", 0), ('{"metrics": null}', 0), ('{"metrics": {}}', 2)],
+    [
+        ("", 1),
+        ("không phải json", 0),
+        ("{PREFIX}không phải json", 0),
+        ('{PREFIX}{"metrics": null}', 0),
+        ("{PREFIX}null", 0),
+        ("{PREFIX}[]", 0),
+        ("{PREFIX}5", 0),
+        ('{PREFIX}{"metrics": {"map50": "x"}}', 0),
+        ('{PREFIX}{"metrics": {"map50": null}}', 0),
+        ('{PREFIX}{"metrics": {}}', 2),
+        ('{"metrics": {"map50": 0.5}}', 0),
+    ],
 )
 def test_ml_eval_sandbox_result_without_metrics(out: str, returncode: int) -> None:
-    """Stdout không mang số đo dùng được → `MODEL_FORMAT_UNSUPPORTED`, bất kể mã thoát."""
+    """Stdout không có dòng kết quả dùng được (kể cả JSON trần thiếu tiền tố) → `MODEL_FORMAT_UNSUPPORTED`."""
+    from apps.ml.ml_eval import sandbox
+
     with pytest.raises(PermanentError) as caught:
-        tasks._result(out, returncode)
+        tasks._result(out.replace("{PREFIX}", sandbox.RESULT_PREFIX), returncode)
     assert caught.value.code == MODEL_FORMAT_UNSUPPORTED
+
+
+def test_ml_eval_sandbox_main__result_survives_unterminated_previous_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dòng lạ trước đó không xuống dòng vẫn không nuốt dòng kết quả: `main` mở đầu bằng một ký tự xuống dòng (F9)."""
+    import io
+
+    from apps.ml.ml_eval import sandbox
+
+    monkeypatch.setattr(sandbox, "_reply", lambda request: {"metrics": {"map50": 0.5}})
+    limit = resource.getrlimit(resource.RLIMIT_AS)
+    out = io.StringIO("cảnh báo không xuống dòng")
+    out.seek(0, io.SEEK_END)
+    try:
+        sandbox.main(io.StringIO(f'{{"max_bytes": {limit[1]}}}'), out)
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, limit)  # `main` đặt trần cho chính tiến trình pytest
+    assert tasks._result(out.getvalue(), 0) == {"map50": 0.5}
+
+
+def test_ml_eval_sandbox_result_ignores_foreign_stdout_lines() -> None:
+    """Thư viện in thêm dòng lạ (trước hay sau) không phá lượt đạt: cha chỉ đọc dòng có tiền tố (NO-321)."""
+    from apps.ml.ml_eval import sandbox
+
+    out = "cảnh báo của thư viện\n" + sandbox.RESULT_PREFIX + '{"metrics": {"map50": 0.5}}\n{"metrics": 1}\nđuôi lạ\n'
+    assert tasks._result(out, 0) == {"map50": 0.5}
 
 
 def test_ml_eval_sandbox_kill_group_tolerates_dead_child() -> None:

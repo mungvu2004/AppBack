@@ -50,7 +50,9 @@ class _RecordedPopen:
 
     calls: ClassVar[list[dict[str, object]]] = []
 
-    def __init__(self, argv: list[str], *, stdin: object = None, start_new_session: bool = False) -> None:
+    def __init__(
+        self, argv: list[str], *, stdin: object = None, start_new_session: bool = False, env: object = None
+    ) -> None:
         """Nhớ `argv`/`start_new_session` của lệnh gọi; `self.stdin` trỏ về chính mình để nhận `write`."""
         self.argv = argv
         self.start_new_session = start_new_session
@@ -156,7 +158,9 @@ class _StdinWriteFailsPopen:
 
     killed: ClassVar[list[bool]] = []
 
-    def __init__(self, argv: list[str], *, stdin: object = None, start_new_session: bool = False) -> None:
+    def __init__(
+        self, argv: list[str], *, stdin: object = None, start_new_session: bool = False, env: object = None
+    ) -> None:
         """Giả `Popen` "chạy được": `self.stdin` trỏ về chính mình để `write` ném hỏng."""
         self.stdin = self
 
@@ -227,3 +231,41 @@ def test_start_training_runner_launches_process(
     token = sent["claim_token"]
     assert len(token) == 32
     assert safe.get(claim_key(payload.job_id)) == token
+
+
+def test_start_training_runner_child_env_is_allowlisted(safe: SyncRedis, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-020: con huấn luyện nhận `env=` lọc theo danh sách cho phép — không thừa hưởng khoá/mật khẩu của `ml`."""
+    seen: dict[str, object] = {}
+
+    class _EnvPopen(_RecordedPopen):
+        """`_RecordedPopen` nhớ thêm `env` của lệnh gọi."""
+
+        def __init__(self, argv: list[str], **kwargs: object) -> None:
+            """Ghi `kwargs` rồi chuyển phần còn lại cho bản gốc."""
+            seen.update(kwargs)
+            super().__init__(argv, stdin=kwargs.get("stdin"), start_new_session=bool(kwargs.get("start_new_session")))
+
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s3cret")
+    monkeypatch.setenv("SMTP_PASSWORD", "x")
+    monkeypatch.setenv("SECRET_KEY", "k" * 32)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h/db")
+    monkeypatch.setenv("PYTHONPATH", "/opt/appback")
+    monkeypatch.setenv("REDIS_BROKER_URL", "redis://redis-broker:6379/0")
+    ml_s3_value = "ml-s3-value"
+    monkeypatch.setenv("S3_SECRET_KEY", ml_s3_value)
+    monkeypatch.setenv("TRAINING_MAX_WALL_S", "60")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("LOG_JSON", "false")
+    monkeypatch.setattr(tasks.subprocess, "Popen", _EnvPopen)
+    payload = train_payload(_empty_dataset())
+    tasks._launch(payload, "t" * 32, "claim", safe)
+    assert "env" in seen, "Popen được gọi không có env= — con thừa hưởng toàn bộ môi trường"
+    env = seen["env"]
+    assert isinstance(env, dict)
+    for leaked in ("AWS_SECRET_ACCESS_KEY", "SMTP_PASSWORD", "SECRET_KEY", "DATABASE_URL"):
+        assert leaked not in env
+    assert env["PYTHONPATH"] == "/opt/appback"
+    assert env["REDIS_BROKER_URL"] == "redis://redis-broker:6379/0"
+    assert env["S3_SECRET_KEY"] == ml_s3_value
+    assert env["TRAINING_MAX_WALL_S"] == "60"
+    assert (env["LOG_LEVEL"], env["LOG_JSON"]) == ("DEBUG", "false"), "con mất cấu hình log của cha (F17)"

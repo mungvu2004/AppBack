@@ -98,6 +98,7 @@ def test_check_key_rejects_short_key() -> None:
         check_key("ngan")
     assert caught.value.code.code == "VALIDATION"
     assert caught.value.params["field"] == "idempotencyKey"
+    assert "count" not in caught.value.params  # không phải lỗi Pydantic nên không có số lỗi (R-19)
 
 
 def test_check_key_accepts_pattern() -> None:

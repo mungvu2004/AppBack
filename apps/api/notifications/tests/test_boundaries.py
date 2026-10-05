@@ -9,8 +9,10 @@ from typing import Final
 import pytest
 from pydantic import ValidationError
 
+from apps.api.notifications.schemas import NotificationMarkReadBody
 from apps.api.notifications.settings import NotificationsSettings, get_notifications_settings
 from apps.api.notifications.tests.support import settings_env
+from packages.testing.boundary import WORKER_BLOCKED
 
 PACKAGE_DIR: Final = Path(__file__).resolve().parent.parent
 REPO_ROOT: Final = PACKAGE_DIR.parent.parent.parent
@@ -19,10 +21,10 @@ WORKER_MODULES: Final = ("service", "payload", "messages", "kinds", "settings", 
 
 @pytest.mark.parametrize("module", WORKER_MODULES)
 def test_boundary__worker_modules_import_without_web_libraries(module: str) -> None:
-    """Nhập được khi `fastapi`, `jwt`, `argon2` bị chặn trong `sys.modules` (BE-00 §7 "Hàm worker nhập")."""
+    """Nhập được khi 5 gói web/mật mã (ranh giới `.importlinter`) bị chặn trong `sys.modules` (BE-00 §7)."""
     code = (
         "import sys\n"
-        "for name in ('fastapi', 'jwt', 'argon2'):\n"
+        f"for name in {WORKER_BLOCKED!r}:\n"
         "    sys.modules[name] = None\n"
         f"import apps.api.notifications.{module}\n"
     )
@@ -70,3 +72,9 @@ def test_settings__env_override_and_cache(monkeypatch: pytest.MonkeyPatch) -> No
         assert get_notifications_settings().notifications_list_max == 3
         assert get_notifications_settings() is get_notifications_settings()
     assert get_notifications_settings().notifications_list_max == 200
+
+
+def test_mark_body__schema_max_items_is_the_settings_default() -> None:
+    """`maxItems` của `openapi.json` cùng một nguồn với mặc định `notifications_mark_max`."""
+    schema = NotificationMarkReadBody.model_json_schema()
+    assert schema["properties"]["ids"]["maxItems"] == NotificationsSettings().notifications_mark_max

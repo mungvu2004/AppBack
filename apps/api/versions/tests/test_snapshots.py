@@ -6,6 +6,7 @@ bằng SQL trên `floor_documents`, để `revision` tăng đúng như đường
 
 import copy
 import logging
+import re
 from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
@@ -15,6 +16,7 @@ from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.projects.tests.sql_count import count_sql
 from apps.api.spatial_read.documents import FloorDocument, load_document
 from apps.api.spatial_read.tests._helpers import race
 from apps.api.versions.snapshots import (
@@ -182,6 +184,7 @@ async def test_create_version__parallel_on_floor_without_document(
         vs = await make_version_scene(setup, fake_clock, document=False)
 
     async def one() -> int:
+        """Một lượt chụp trong phiên riêng; trả `sequence`."""
         async with db_sessionmaker() as session:
             row = await snap(session, vs, fake_clock)
             await session.commit()
@@ -279,6 +282,7 @@ def _set(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
     """Đột biến: đặt `raw[key] = value`."""
 
     def apply(raw: dict[str, Any]) -> None:
+        """Gán `key = value` vào ảnh chụp thô."""
         raw[key] = value
 
     return apply
@@ -414,3 +418,13 @@ async def test_versions__boundary_row_and_duplicate_sequence(db_session: AsyncSe
     db_session.add(_record(vs, fake_clock))
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def test_create_version__reads_floors_once(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Một lượt chụp chỉ chạm `floors` một lần (câu khoá); `project_id` lấy từ câu đó (NO-245)."""
+    vs = await make_version_scene(db_session, fake_clock)
+    with count_sql() as counter:
+        created = await snap(db_session, vs, fake_clock)
+    assert created.project_id == vs.floor.project_id
+    floors_reads = [s for s in counter.statements if re.search(r"(?:FROM|JOIN)\s+floors\b", s)]
+    assert len(floors_reads) == 1

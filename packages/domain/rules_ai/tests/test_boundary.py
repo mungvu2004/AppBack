@@ -5,14 +5,17 @@ import sys
 from pathlib import Path
 from typing import Final
 
+from packages.testing.boundary import PURE_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
+_BLOCKED: Final = (*PURE_BLOCKED, "numpy", "shapely")
 
 # Tiến trình con chặn thư viện hạ tầng, nhập gói, chạy thử hai hàm công khai, rồi kiểm không kéo
 # theo gói nội bộ bị cấm; in "ok" nếu mọi thứ đạt.
 _BOUNDARY_CODE: Final = """
 import sys
 
-BLOCKED = {"sqlalchemy", "fastapi", "celery", "numpy", "torch", "shapely"}
+BLOCKED = __BLOCKED__
 
 
 class Blocker:
@@ -39,7 +42,7 @@ print("ok")
 def test_rules_ai_imports_without_infrastructure() -> None:
     """`packages.domain.rules_ai` nhập và chạy được khi `sqlalchemy`, `fastapi`, `celery`, `numpy` bị chặn."""
     result = subprocess.run(  # noqa: S603 — lệnh cố định, chạy chính Python của venv
-        [sys.executable, "-c", _BOUNDARY_CODE],
+        [sys.executable, "-c", _BOUNDARY_CODE.replace("__BLOCKED__", repr(set(_BLOCKED)))],
         cwd=REPO_ROOT,
         env={"PYTHONPATH": str(REPO_ROOT), "PATH": "/usr/bin:/bin"},
         capture_output=True,

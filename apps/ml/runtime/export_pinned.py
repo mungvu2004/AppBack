@@ -34,6 +34,15 @@ WHEEL_FILES: Final[Mapping[str, tuple[str, str]]] = {
 }
 """Bản ghim có nguồn nằm sẵn trong wheel đã khoá: (gói, đường trong gói)."""
 
+YOLO_EXPORT_TOOLCHAIN: Final[Mapping[str, str]] = {"torch": "2.14.0+cpu", "ultralytics": "8.4.155"}
+"""Bản trong `uv.lock` mà `onnx_sha256` của bản ghim YOLO được đo trên (NO-061).
+
+Đồ thị ONNX do torch và đầu Detect của ultralytics dựng, nên SHA chỉ đúng với bộ bản này;
+`onnx` không thuộc bộ vì `normalize_onnx` trung hoà nó (đo: 1.22.0 → 1.23.0 cùng SHA).
+Lock đổi một trong hai thì test đỏ: xuất lại ONNX trên `.pt` ghim; SHA đổi thì sửa `PINNED`
+kèm revision B6-01 mới cho `checksum_sha256` bản gốc; rồi sửa bộ này.
+"""
+
 type Exporter = Callable[..., str]
 
 

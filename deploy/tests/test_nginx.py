@@ -231,6 +231,35 @@ def test_nginx_streams_location_sse_tuning() -> None:
         assert ("proxy_read_timeout", ("1h",)) in pairs, f"{path}: streams thiếu proxy_read_timeout 1h"
 
 
+def test_nginx_streams_location_limits_conn_per_ip() -> None:
+    """BE-00 §11 (NO-335, phương án B): mỗi template app khai `limit_conn_zone` theo IP ở mức http,
+    `/api/streams/` giới hạn số luồng mở đồng thời mỗi IP, vượt → 429 JSON W7 `RATE_LIMITED` của nginx
+    (`internal`, `Retry-After`, `requestId`) chứ không phải trang HTML mặc định hay 503."""
+    for path, nodes in _entry_files_assembled().items():
+        if _is_minio_vhost(path):
+            continue
+        zones = [n.args for n in nodes if n.directive == "limit_conn_zone"]
+        assert zones == [["$binary_remote_addr", "zone=appback_streams_ip:1m"]], (
+            f"{path}: thiếu limit_conn_zone mức http"
+        )
+        streams = _locations_matching({path: nodes}, lambda loc: loc.args[-1:] == ["/api/streams/"])
+        assert streams, f"{path}: không tìm thấy location /api/streams/"
+        for _, loc in streams:
+            pairs = {(n.directive, tuple(n.args)) for n in loc.children}
+            assert ("limit_conn", ("appback_streams_ip", "30")) in pairs, f"{path}: streams thiếu limit_conn 30"
+            assert ("limit_conn_status", ("429",)) in pairs, f"{path}: streams phải trả 429 khi vượt"
+            assert ("error_page", ("429", "/__errors/429")) in pairs, f"{path}: 429 của streams phải thành JSON W7"
+        errors = _locations_matching({path: nodes}, lambda loc: loc.args[-1:] == ["/__errors/429"])
+        assert len(errors) == 1, f"{path}: cần đúng một location /__errors/429"
+        children = errors[0][1].children
+        body = " ".join(" ".join(n.args) for n in children)
+        assert "internal" in {n.directive for n in children}, f"{path}: /__errors/429 thiếu internal"
+        assert ["application/json"] in [n.args for n in children if n.directive == "default_type"]
+        assert '"code":"RATE_LIMITED"' in body, f"{path}: thân 429 thiếu mã RATE_LIMITED (W7)"
+        assert "$appback_request_id" in body, f"{path}: thân 429 thiếu requestId (W7)"
+        assert ["Retry-After", "10", "always"] in [n.args for n in children if n.directive == "add_header"]
+
+
 def test_nginx_files_location_disables_access_log() -> None:
     """`/api/files/`: `access_log off` NGAY TRONG location, và cả hai `error_page`
     của nó trỏ sang location lỗi riêng cũng `access_log off`.
@@ -241,23 +270,11 @@ def test_nginx_files_location_disables_access_log() -> None:
     map phải đoán mọi dạng méo bằng regex và vẫn bỏ lọt `/api/./files/…`,
     `/api/x/../files/…`, `/%61pi/files/…` (NO-095 — vá triệu chứng, R-19). Nay
     quyết định ở mức location, trên `$uri` đã chuẩn hoá, còn chuyển hướng nội bộ
-    được xử bằng đích riêng `/__errors/{413,503}-files`. Map phải biến mất hẳn —
-    còn nó là còn một nguồn quyết định thứ hai."""
+    được xử bằng đích riêng `/__errors/{413,503}-files`. Map `$request_uri` nay chỉ còn
+    làm lớp thứ hai ở mức server cho lỗi tiền-location (NO-197, test `…__no197`)."""
     files = _all_nginx_files()
     matches = _locations_matching(files, lambda loc: bool(loc.args) and loc.args[-1] == "/api/files/")
     assert matches, "không tìm thấy location /api/files/"
-
-    leftover_maps = [
-        m for nodes in files.values() for m in find_directive(nodes, "map") if m.args[:1] == ["$request_uri"]
-    ]
-    assert not leftover_maps, "vẫn còn map $request_uri (quyết định log phải nằm ở mức location)"
-    leftover_if = [
-        n
-        for nodes in files.values()
-        for n in find_directive(nodes, "access_log")
-        if any("$appback_access_log" in a for a in n.args)
-    ]
-    assert not leftover_if, "vẫn còn access_log … if=$appback_access_log"
 
     for path, loc in matches:
         assert any(n.directive == "access_log" and n.args == ["off"] for n in loc.children), (
@@ -442,7 +459,7 @@ def test_nginx_files_log_decision_is_location_scoped_not_request_uri() -> None:
     minh hành vi là probe thật 7 URI + `grep -c` token = 0, ghi trong báo cáo."""
     for path, nodes in _all_nginx_files().items():
         for node in walk(nodes):
-            if node.directive in {"access_log", "map"} and any("$request_uri" in a for a in node.args):
+            if node.directive == "access_log" and any("$request_uri" in a for a in node.args):
                 pytest.fail(f"{path}: {node.directive} {node.args} còn quyết định log theo $request_uri thô")
     assert len(set(_MALFORMED_FILES_URIS)) == 7, "probe phải có đúng 7 dạng URI méo khác nhau"
 
@@ -473,9 +490,8 @@ def test_nginx_proxy_common_survives_api_container_swap() -> None:
     timeout` + trần số lần/thời gian, và `proxy_connect_timeout` ngắn (≤ 2s) để một
     địa chỉ đã chết không giữ client chờ hết 5s rồi mới được thử lại.
 
-    Không có `upstream {}`: nginx mã nguồn mở giải tên trong khối đó đúng một lần
-    lúc nạp cấu hình và không giải lại (`resolve` chỉ có ở NGINX Plus), nên nó sẽ
-    khoá chết vào IP của container đã bị thay."""
+    `upstream {}` vẫn dùng được từ nginx OSS 1.27.3 (`zone` + `server … resolve`, xem
+    test `…__no198`); chọn biến + `resolver` vì đơn giản hơn và đã đo (NO-117)."""
     nodes = _require_snippet("snippets/proxy_common.conf")
     directives = {n.directive: n.args for n in nodes}
     assert directives.get("proxy_next_upstream") == ["error", "timeout"], (
@@ -488,10 +504,6 @@ def test_nginx_proxy_common_survives_api_container_swap() -> None:
     assert int(connect_timeout[0].removesuffix("s")) <= 2, (
         f"proxy_connect_timeout {connect_timeout[0]} quá dài cho một bridge Docker nội bộ"
     )
-    for path, nodes_of_file in _all_nginx_files().items():
-        assert not find_directive(nodes_of_file, "upstream"), (
-            f"{path}: cấm khối upstream {{}} — nginx OSS không giải lại tên trong đó"
-        )
 
 
 def test_nginx_no_autoindex_anywhere() -> None:
@@ -514,3 +526,90 @@ def test_nginx_no_cors_header_on_app_server() -> None:
             continue
         for node in find_directive(nodes, "add_header"):
             assert node.args[:1] != ["Access-Control-Allow-Origin"], f"{path}: cấm bật CORS cho /api (W19)"
+
+
+def test_nginx_error_bodies__carry_base_security_headers() -> None:
+    """SEC-060: thân 413/503 do chính nginx sinh mang đủ bộ header nền B0-06 (BE-00 §11), kèm `always`.
+
+    Location `/__errors/*` có `add_header` riêng nên không thừa kế header cấp server (nginx thay, không cộng) —
+    mỗi bản (thường và `-files`) phải tự khai đủ bốn header, nếu không 413/503 thiếu `nosniff` và 503 bị cache."""
+    required = {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "X-Frame-Options": "DENY",
+        "Cache-Control": "no-store",
+    }
+    files = _entry_files_assembled()
+    names = ("/__errors/413", "/__errors/503", "/__errors/413-files", "/__errors/503-files")
+    for name in names:
+        found = _locations_matching(files, lambda loc, n=name: loc.args[-1:] == [n])
+        assert found, f"thiếu location {name}"
+        for path, loc in found:
+            headers = {n.args[0]: n.args[1:] for n in loc.children if n.directive == "add_header" and n.args}
+            for header, value in required.items():
+                assert headers.get(header) == [value, "always"], (
+                    f"{path}: {name} thiếu add_header {header} {value} always"
+                )
+
+
+def test_nginx_error_bodies__carry_hsts_variable() -> None:
+    """NO-331: 413/503 ở prod cũng mang HSTS như trang SPA — qua `$hsts_header` (rỗng ở dev nên nginx không gửi),
+    biến phải được khai bằng `map` trong mọi template include snippet lỗi."""
+    files = _entry_files_assembled()
+    for name in ("/__errors/413", "/__errors/503", "/__errors/413-files", "/__errors/503-files"):
+        for path, loc in _locations_matching(files, lambda loc, n=name: loc.args[-1:] == [n]):
+            headers = {n.args[0]: n.args[1:] for n in loc.children if n.directive == "add_header" and n.args}
+            assert headers.get("Strict-Transport-Security") == ["$hsts_header", "always"], f"{path}: {name}"
+            maps = [n.args for n in files[path] if n.directive == "map" and n.args[-1:] == ["$hsts_header"]]
+            assert maps, f"{path}: thiếu map $hsts_header"
+
+
+def _app_servers() -> Iterator[tuple[Path, Node]]:
+    """Các `server` phục vụ app (include `app_locations.conf`) của dev và prod."""
+    for env in ("dev", "prod"):
+        path = NGINX_ROOT / "templates" / env / "app.conf.template"
+        for server in find_directive(parse_nginx(path.read_text(encoding="utf-8")), "server"):
+            if any(c.directive == "include" and c.args[0].endswith("app_locations.conf") for c in server.children):
+                yield path, server
+
+
+def test_nginx_app_server_has_conditional_access_log_backstop__no197() -> None:
+    """NO-197: lỗi xảy ra TRƯỚC khi chọn location (400/414) không đi qua `access_log off`
+    của `location /api/files/`. Mức server phải có `access_log … if=$biến` làm lớp thứ hai
+    (map trên `$request_uri` chỉ được dùng cho việc này, không thay quyết định ở location)."""
+    servers = list(_app_servers())
+    assert len(servers) == 2, "phải thấy server app của cả dev lẫn prod"
+    for path, server in servers:
+        logs = [c for c in server.children if c.directive == "access_log"]
+        assert any(a.startswith("if=$") for c in logs for a in c.args), f"{path}: server app thiếu access_log if="
+
+
+def test_nginx_access_log_map_logs_by_default_and_drops_files_uris() -> None:
+    """NO-197: `map $request_uri $appback_access_log` ghi log mặc định (`default 1`) và chỉ bỏ URI có `files/` (→ `0`);
+    xoá `default 1` thì mọi truy cập mất log, và `access_log … if=` ở server phải đọc đúng biến của map."""
+    path = require_path("deploy/nginx/snippets/access_log_files_map.conf")
+    (map_node,) = find_directive(parse_nginx(path.read_text(encoding="utf-8")), "map")
+    assert map_node.args == ["$request_uri", "$appback_access_log"]
+    rules = {c.directive: c.args for c in map_node.children}
+    assert rules == {"default": ["1"], "~*files/": ["0"]}
+    for server_path, server in _app_servers():
+        logs = [c for c in server.children if c.directive == "access_log"]
+        assert any("if=$appback_access_log" in c.args for c in logs), f"{server_path}: if= không đọc biến của map"
+
+
+def test_nginx_proxy_common_comment_has_no_false_resolve_claim__no198() -> None:
+    """NO-198: `resolve` trong `upstream{}` có ở OSS từ 1.27.3 (ảnh ghim 1.30.x); comment
+    của `proxy_common.conf` không được nói nó chỉ có ở NGINX Plus."""
+    text = require_path("deploy/nginx/snippets/proxy_common.conf").read_text(encoding="utf-8")
+    assert "chỉ có ở NGINX Plus" not in text, "proxy_common.conf: còn tiền đề sai về `resolve` chỉ có ở Plus"
+
+
+def test_nginx_upstream_block_if_any_is_resolvable__no198() -> None:
+    """NO-198: nếu có `upstream{}` thì phải có `zone` và `server … resolve` (điều kiện để
+    nginx giải lại tên); không cấm hẳn khối này."""
+    for path, nodes in _all_nginx_files().items():
+        for up in find_directive(nodes, "upstream"):
+            assert any(c.directive == "zone" for c in up.children), f"{path}: upstream thiếu zone"
+            servers = [c for c in up.children if c.directive == "server"]
+            assert servers
+            assert all("resolve" in c.args for c in servers), f"{path}: upstream server thiếu resolve"

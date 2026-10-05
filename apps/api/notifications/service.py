@@ -149,8 +149,12 @@ async def notify(
     if created is not None:
         _publish_after_commit(db, created)
         return created
-    existing = (await db.execute(select(NotificationRow).where(NotificationRow.dedupe_key == dedupe_key))).scalar_one()
-    if existing.stream_id is None:
+    # R-05: đọc lại chỉ thấy dòng xung đột nhờ READ COMMITTED mặc định (mỗi câu một snapshot mới); ở mức cô lập
+    # cao hơn Postgres đã ném lỗi tuần tự hoá ngay ở INSERT. Dòng bị xoá đồng thời (trim) → coi như đã trùng.
+    existing = (
+        await db.execute(select(NotificationRow).where(NotificationRow.dedupe_key == dedupe_key))
+    ).scalar_one_or_none()
+    if existing is not None and existing.stream_id is None:
         _publish_after_commit(db, existing)
     return None
 

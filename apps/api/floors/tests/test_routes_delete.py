@@ -1,6 +1,6 @@
 """Test hợp đồng của #11 `floors_delete_floor` (B2-03 [2], [6], [7], [8]).
 
-Route (`router.py`, `service.py`, `lookup.py`, `resolvers.py`) chưa hợp nhất trên nhánh này.
+Route (`router.py`, `service.py`, `lookup.py`, `resolvers.py`) đã hợp nhất.
 Ma trận case: G → C01 C06 C07 C08 C17 C18; `cases.toml` `waive = {C16 = "DELETE không có
 thân, không có chuỗi người nhập"}`.
 """

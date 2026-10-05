@@ -27,13 +27,13 @@ import io
 import os
 import struct
 import weakref
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import cache
 from typing import Final, Literal
 
-from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from packages.core.error_codes import (
     DEPENDENCY_UNAVAILABLE,
@@ -44,7 +44,7 @@ from packages.core.error_codes import (
 )
 from packages.core.errors import ERRORS
 from packages.storage.keys import server_chosen_kind
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, SignRequest
 from packages.storage.sniff import ImageKind, sniff
 
 AVATAR_TYPE_UNSUPPORTED = ERRORS.define("AVATAR_TYPE_UNSUPPORTED", 422)
@@ -189,19 +189,22 @@ def _has_alpha(img: Image.Image) -> bool:
 
 def _decode_and_reencode(raw: bytes, kind: ImageKind) -> bytes:
     """Bước 4-5: giải mã dưới trần điểm ảnh đã kiểm, xoay theo EXIF, thu nhỏ, mã hoá lại không EXIF."""
-    ImageFile.LOAD_TRUNCATED_IMAGES = False
     try:
         with Image.open(io.BytesIO(raw), formats=[_KIND_FORMAT[kind]]) as opened:
             if kind == "jpeg":
                 opened.draft("RGB", THUMBNAIL_SIZE)
             opened.load()
-            transposed: Image.Image = ImageOps.exif_transpose(opened) or opened
+            # `in_place=True`: không chép nguyên cỡ ảnh chỉ để xoay (NO-171); `opened` còn mở trong `with`.
+            ImageOps.exif_transpose(opened, in_place=True)
+            transposed: Image.Image = opened
             # Chuyển 8-bit RGB/RGBA **trước** khi thu nhỏ: `Image.thumbnail` dùng đường "reduce"
             # nhanh khi tỉ lệ thu lớn (4096→512), đường đó không hỗ trợ mode thô như "I"/"I;16"
             # (ảnh xám 16-bit) và ném `ValueError` — thu nhỏ sau khi đã convert tránh hẳn lớp lỗi
             # này (U02, "PNG 4096x4096 16-bit"). JPEG không có kênh alpha, `_has_alpha` chỉ thật
             # cho PNG: nhánh JPEG luôn ra "RGB".
-            final = transposed.convert("RGBA") if _has_alpha(transposed) else transposed.convert("RGB")
+            # Ảnh đã đúng mode đích thì không chép lại nguyên cỡ (NO-171).
+            target = "RGBA" if _has_alpha(transposed) else "RGB"
+            final = transposed if transposed.mode == target else transposed.convert(target)
             final.thumbnail(THUMBNAIL_SIZE)
             # `convert`/`thumbnail` chép `self.info` (icc_profile, exif, …) từ ảnh gốc; bộ ghi
             # PNG/JPEG của Pillow rơi về `info` khi `save()` không được truyền gì — xoá hẳn
@@ -234,14 +237,19 @@ async def process_avatar(content_b64: str, mime_type: Literal["image/png", "imag
         return await asyncio.to_thread(_process, content_b64, mime_type)
 
 
-async def avatar_url(storage: ObjectStorage, avatar_key: str | None) -> str | None:
-    """URL `inline` của ảnh đại diện; `None` khi chưa có. Không `stat` (B0-04, K15).
+async def avatar_urls(storage: ObjectStorage, avatar_keys: Sequence[str | None]) -> list[str | None]:
+    """URL `inline` cho cả lô khoá ảnh đại diện, cùng thứ tự; khoá `None` ra `None` (NO-207).
 
-    `kind` suy từ đuôi khoá do server chọn (`keys.server_chosen_kind`) — B1-05 dựng 1.000
-    dòng không gọi mạng.
+    Mọi khoá có giá trị ký trong **một** lời gọi `signed_urls`, nên 1.000 người là một luồng ký chứ
+    không phải 1.000 lượt (B1-05 #38). `kind` suy từ đuôi khoá do server chọn (`keys.server_chosen_kind`).
     """
-    if avatar_key is None:
-        return None
-    kind = server_chosen_kind(avatar_key)
-    signed = await storage.signed_url(avatar_key, disposition="inline", kind=kind)
-    return signed.url
+    present = [key for key in avatar_keys if key is not None]
+    signed = iter(
+        await storage.signed_urls([SignRequest(key, "inline", kind=server_chosen_kind(key)) for key in present])
+    )
+    return [None if key is None else next(signed).url for key in avatar_keys]
+
+
+async def avatar_url(storage: ObjectStorage, avatar_key: str | None) -> str | None:
+    """URL `inline` của ảnh đại diện; `None` khi chưa có. Không `stat` (B0-04, K15)."""
+    return (await avatar_urls(storage, [avatar_key]))[0]

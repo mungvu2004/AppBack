@@ -1,5 +1,6 @@
 """Mã lỗi của worker `ml`: hằng chuỗi cho `PermanentError(code)`, không `ERRORS.define`.
 
+Mã chuỗi thuần khai ở `apps.ml.runtime.error_codes` (nhập nhẹ) và nhập lại ở đây.
 Mã đi vào trạng thái hỏng của bước/job (J03), không lên dây HTTP; hai mã đầu B6-01 khai
 thành lỗi HTTP ở N26 bằng chính chuỗi này. Đọc trang dùng lại `FILE_CORRUPT`,
 `IMAGE_TOO_LARGE` của lõi (U-case).
@@ -28,17 +29,32 @@ from onnxruntime.capi.onnxruntime_pybind11_state import (  # type: ignore[import
     RuntimeException,
 )
 
+from apps.ml.runtime.error_codes import (
+    GPU_LOCK_LOST,
+    ML_DEVICE_UNAVAILABLE,
+    MODEL_CHECKSUM_MISMATCH,
+    MODEL_FORMAT_UNSUPPORTED,
+    MODEL_NOT_FOUND,
+    MODEL_VERSION_FAMILY_MISMATCH,
+    PIPELINE_ARTIFACT_MISSING,
+)
 from packages.core import error_codes
 
-MODEL_CHECKSUM_MISMATCH: Final = "MODEL_CHECKSUM_MISMATCH"
-MODEL_FORMAT_UNSUPPORTED: Final = "MODEL_FORMAT_UNSUPPORTED"
-MODEL_NOT_FOUND: Final = "MODEL_NOT_FOUND"
-ML_DEVICE_UNAVAILABLE: Final = "ML_DEVICE_UNAVAILABLE"
-GPU_LOCK_LOST: Final = "GPU_LOCK_LOST"
+__all__ = [
+    "FILE_CORRUPT",
+    "GPU_LOCK_LOST",
+    "IMAGE_TOO_LARGE",
+    "ML_DEVICE_UNAVAILABLE",
+    "MODEL_CHECKSUM_MISMATCH",
+    "MODEL_FORMAT_UNSUPPORTED",
+    "MODEL_NOT_FOUND",
+    "MODEL_VERSION_FAMILY_MISMATCH",
+    "ORT_ERRORS",
+    "PIPELINE_ARTIFACT_MISSING",
+]
+
 FILE_CORRUPT: Final = error_codes.FILE_CORRUPT.code
 IMAGE_TOO_LARGE: Final = error_codes.IMAGE_TOO_LARGE.code
-PIPELINE_ARTIFACT_MISSING: Final = "PIPELINE_ARTIFACT_MISSING"
-"""Trang vào của bước không còn trong kho (lượt bị dọn giữa chừng) — B5-06c đánh hỏng lượt."""
 
 ORT_ERRORS: Final[tuple[type[Exception], ...]] = (
     DeviceReset,

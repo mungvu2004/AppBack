@@ -10,10 +10,14 @@
 #   COMPOSE_PROJECT_NAME     appback
 #   BACKUP_TARGET            /var/backups/appback   — thư mục gốc chứa các bản sao lưu theo ngày giờ.
 #   APPBACK_STORAGE          s3                     — "s3" mirror bucket MinIO; "local" tar volume.
-#   BACKUP_AGE_RECIPIENT     (rỗng)                 — có thì mã hoá db.dump/objects.tar bằng age -r.
+#   BACKUP_AGE_RECIPIENT     (rỗng)                 — mã hoá db.dump/objects.tar bằng age -r; rỗng → thoát 1
+#                                                   (bắt buộc mã hoá ở mọi môi trường) trừ khi:
+#   BACKUP_ALLOW_PLAINTEXT   (rỗng)                 — đặt đúng "1" mới cho ghi bản rõ (chỉ dev, diễn tập).
 #
 # Mã thoát: 0 đạt; 1 hỏng (thư mục dở bị xoá trước khi thoát).
 set -euo pipefail
+# Bản sao lưu chứa hash mật khẩu và mọi bản vẽ: thư mục/tệp do script tạo chỉ chủ đọc được (SEC-040).
+umask 077
 
 : "${APPBACK_DIR:=/opt/appback}"
 : "${COMPOSE_FILE:=$APPBACK_DIR/prod.yml}"
@@ -23,6 +27,12 @@ export COMPOSE_FILE COMPOSE_PROJECT_NAME
 : "${BACKUP_TARGET:=/var/backups/appback}"
 : "${BACKUP_AGE_RECIPIENT:=}"
 : "${APPBACK_STORAGE:=s3}"
+
+# json_escape (manifest.json) dùng chung với healthcheck.sh qua lib.sh — không còn python3 (NO-189).
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+: "${APPBACK_SCRIPTS_DIR:=$script_dir/../scripts}"
+# shellcheck source=deploy/scripts/lib.sh
+source "$APPBACK_SCRIPTS_DIR/lib.sh"
 
 case "$APPBACK_STORAGE" in
   s3 | local) ;;
@@ -37,45 +47,49 @@ esac
 rotate_backups() {
   local target="$1"
   mkdir -p "$target"
-  python3 - "$target" <<'PY'
-import re
-import shutil
-import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-target = Path(sys.argv[1])
-pattern = re.compile(r"^\d{8}T\d{6}Z$")
-
-entries = []
-for child in target.iterdir():
-    if child.is_dir() and pattern.fullmatch(child.name):
-        ts = datetime.strptime(child.name, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-        entries.append((ts, child))
-
-if not entries:
-    sys.exit(0)
-
-entries.sort(key=lambda e: e[0], reverse=True)
-keep = {path for _, path in entries[:7]}
-
-now = datetime.now(timezone.utc)
-for i in range(4):
-    week_key = (now - timedelta(weeks=i)).isocalendar()[:2]
-    same_week = [e for e in entries if e[0].isocalendar()[:2] == week_key]
-    if same_week:
-        same_week.sort(key=lambda e: e[0], reverse=True)
-        keep.add(same_week[0][1])
-
-for _, path in entries:
-    if path not in keep:
-        shutil.rmtree(path)
-PY
+  local name week i path
+  local -a names=() keep=()
+  local -A week_of=() kept=()
+  # Tên yyyymmddThhmmssZ sắp theo chữ = sắp theo thời gian; mới nhất trước. Tên có ngày giờ
+  # không hợp lệ (`date` từ chối) hoặc không khớp mẫu thì giữ nguyên, không xét.
+  for path in "$target"/*/; do
+    name="${path%/}"
+    name="${name##*/}"
+    [[ "$name" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || continue
+    week="$(date -u -d "${name:0:8} ${name:9:2}:${name:11:2}:${name:13:2}" +%G-%V 2>/dev/null)" || continue
+    names+=("$name")
+    week_of["$name"]="$week"
+  done
+  (( ${#names[@]} > 0 )) || return 0
+  # Tên yyyymmddThhmmssZ sắp theo chữ = sắp theo thời gian; mới nhất trước.
+  mapfile -t names < <(printf '%s\n' "${names[@]}" | LC_ALL=C sort -r)
+  keep=("${names[@]:0:7}")
+  for i in 0 1 2 3; do
+    week="$(date -u -d "$i weeks ago" +%G-%V)"
+    for name in "${names[@]}"; do
+      if [[ "${week_of[$name]}" == "$week" ]]; then
+        keep+=("$name")
+        break
+      fi
+    done
+  done
+  for name in "${keep[@]}"; do kept["$name"]=1; done
+  for name in "${names[@]}"; do
+    path="$target/$name"
+    [[ -n "${kept[$name]:-}" ]] || rm -rf "$path"
+  done
 }
 
 if [[ "${1:-}" == "--rotate-only" ]]; then
   rotate_backups "$BACKUP_TARGET"
   exit 0
+fi
+
+# Mã hoá age là mặc định bắt buộc ở MỌI môi trường (B0-10 [6], C-18, C1): thiếu recipient thì dừng trước pg_dump,
+# không ghi bản rõ — trừ khi đặt tường minh BACKUP_ALLOW_PLAINTEXT=1 (chỉ dev, diễn tập; production vẫn thoát 1).
+if [[ -z "$BACKUP_AGE_RECIPIENT" && ( "${BACKUP_ALLOW_PLAINTEXT:-}" != "1" || "${APP_ENV:-}" == "production" ) ]]; then
+  echo "loi: thieu BACKUP_AGE_RECIPIENT (sao luu phai ma hoa age); chi dev/dien tap moi dat BACKUP_ALLOW_PLAINTEXT=1" >&2
+  exit 1
 fi
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -110,17 +124,18 @@ case "$APPBACK_STORAGE" in
     objects_dir="$stage_dir/objects"
     mkdir -p "$objects_dir"
     # shellcheck disable=SC2016 # $S3_ENDPOINT/$S3_BUCKET/... phải giãn TRONG container minio-init.
-    docker compose run --rm --no-deps --entrypoint sh -v "$objects_dir:/backup-objects" minio-init -c \
+    docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -e MC_CONFIG_DIR=/tmp/.mc \
+      --entrypoint sh -v "$objects_dir:/backup-objects" minio-init -c \
       'mc alias set local "$S3_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc mirror local/"$S3_BUCKET" /backup-objects'
     object_count="$(find "$objects_dir" -type f | wc -l | tr -d ' ')"
     ;;
   local)
-    docker compose run --rm --no-deps --entrypoint tar -v "$stage_dir:/backup-dest" api \
-      cf /backup-dest/objects.tar -C /var/lib/appback/storage .
-    object_count="$(
-      python3 -c 'import sys, tarfile; t = tarfile.open(sys.argv[1]); print(sum(1 for m in t.getmembers() if m.isfile()))' \
-        "$stage_dir/objects.tar"
-    )"
+    # tar ra stdout: stage_dir là 0700 của người chạy script, container `api` (uid 10001) không ghi vào đó được.
+    docker compose run --rm --no-deps -T --entrypoint tar api \
+      cf - -C /var/lib/appback/storage . > "$stage_dir/objects.tar"
+    # Thư mục trong tar kết thúc bằng "/"; còn lại là tệp. `tar -tf` hỏng thì `set -e` dừng ở dòng gán.
+    tar_listing="$(tar -tf "$stage_dir/objects.tar")"
+    object_count="$(printf '%s\n' "$tar_listing" | { grep -v '/$' || true; } | { grep -c . || true; })"
     ;;
 esac
 
@@ -143,37 +158,34 @@ if [[ -n "$BACKUP_AGE_RECIPIENT" ]]; then
   rm -f "$stage_dir/objects.tar"
 fi
 
-# 5) manifest.json — dựng bằng python3 (json.dumps), băm đúng tệp còn lại trên đĩa.
+# 5) manifest.json — dựng bằng bash thuần (không python3, NO-189), băm đúng tệp còn lại trên đĩa.
+# Khoá theo thứ tự chữ cái, thụt 2 dấu cách — cùng khuôn json.dumps(indent=2, sort_keys=True)
+# của bản cũ để restore.sh đọc được cả hai.
 created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-STAGE_DIR="$stage_dir" CREATED_AT="$created_at" ALEMBIC_HEAD="$alembic_head" \
-  STORAGE="$APPBACK_STORAGE" ENCRYPTED="$encrypted" OBJECT_COUNT="$object_count" \
-  python3 - <<'PY'
-import hashlib
-import json
-import os
-from pathlib import Path
-
-stage = Path(os.environ["STAGE_DIR"])
-files = {}
-for path in sorted(stage.rglob("*")):
-    if path.is_file():
-        rel = path.relative_to(stage).as_posix()
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1 << 20), b""):
-                digest.update(chunk)
-        files[rel] = digest.hexdigest()
-
-manifest = {
-    "created_at": os.environ["CREATED_AT"],
-    "alembic_head": os.environ["ALEMBIC_HEAD"],
-    "storage": os.environ["STORAGE"],
-    "encrypted": os.environ["ENCRYPTED"] == "true",
-    "object_count": int(os.environ["OBJECT_COUNT"]),
-    "files": files,
+manifest_files=""
+while IFS= read -r -d '' file; do
+  rel="${file#"$stage_dir"/}"
+  digest="$(sha256sum "$file")"
+  manifest_files+="${manifest_files:+,
+}    \"$(json_escape "$rel")\": \"${digest%% *}\""
+done < <(find "$stage_dir" -type f -print0 | LC_ALL=C sort -z)
+if [[ -n "$manifest_files" ]]; then
+  manifest_files="{
+$manifest_files
+  }"
+else
+  manifest_files="{}"
+fi
+cat > "$stage_dir/manifest.json" <<EOF
+{
+  "alembic_head": "$(json_escape "$alembic_head")",
+  "created_at": "$created_at",
+  "encrypted": $encrypted,
+  "files": $manifest_files,
+  "object_count": $object_count,
+  "storage": "$APPBACK_STORAGE"
 }
-(stage / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-PY
+EOF
 
 # 6) xoay vòng bản cũ trong cùng BACKUP_TARGET.
 rotate_backups "$BACKUP_TARGET"

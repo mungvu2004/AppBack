@@ -53,6 +53,7 @@ COPY packages/domain/ packages/domain/
 COPY packages/vision/ packages/vision/
 COPY packages/storage/ packages/storage/
 COPY packages/messaging/ packages/messaging/
+COPY packages/observability/ packages/observability/
 COPY packages/ml_contracts/ packages/ml_contracts/
 
 # Trọng số nhà cung cấp ghim SHA-256, xuất ONNX — có mạng lúc build (BE-00 §9).
@@ -91,6 +92,7 @@ COPY --from=deps /app/packages/domain/ packages/domain/
 COPY --from=deps /app/packages/vision/ packages/vision/
 COPY --from=deps /app/packages/storage/ packages/storage/
 COPY --from=deps /app/packages/messaging/ packages/messaging/
+COPY --from=deps /app/packages/observability/ packages/observability/
 COPY --from=deps /app/packages/ml_contracts/ packages/ml_contracts/
 
 # `/opt/models` chỉ đọc với 10001 (hợp đồng §1).

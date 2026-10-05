@@ -19,10 +19,10 @@ set -euo pipefail
 # RÀNG BUỘC (R-05): 11 = TTL cache DNS của nginx (10s, `resolver 127.0.0.11
 # valid=10s` ở deploy/nginx/templates/{dev,prod}/app.conf.template) + 1s biên an
 # toàn; test_deploy_default_swap_settle_s_covers_nginx_resolver_ttl chốt quan hệ đó.
-# Dùng `=` chứ không `:=` (bài học NO-114): test và người vận hành đặt
-# APPBACK_API_SWAP_SETTLE_S=0 để tắt hẳn lúc kiểm, `:=` coi 0 là hợp lệ nhưng coi
-# chuỗi rỗng như chưa đặt và sẽ ghi đè lại.
-: "${APPBACK_API_SWAP_SETTLE_S=11}"
+# Dùng `:=`: "0" (tắt hẳn lúc kiểm, bài học NO-114) vẫn được giữ vì không rỗng, còn
+# `APPBACK_API_SWAP_SETTLE_S=` rỗng trong appback.env về mặc định thay vì làm
+# `sleep ""` hỏng giữa swap_api (NO-200).
+: "${APPBACK_API_SWAP_SETTLE_S:=11}"
 export APPBACK_DIR IMAGE_REGISTRY APPBACK_BASE_URL APPBACK_HEALTH_TIMEOUT_S APPBACK_API_SWAP_SETTLE_S
 export COMPOSE_FILE="${COMPOSE_FILE:-$APPBACK_DIR/prod.yml}"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-appback}"
@@ -33,6 +33,29 @@ APPBACK_TAG_RE='^(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-f]{12}|[a-z0-9][a-z0-9._-]{0
 
 DRY_RUN="${DRY_RUN:-0}"
 STEP_NO=0
+
+# Thoát chuỗi "$1" thành thân một chuỗi JSON (không có dấu nháy bao): `\`, `"` và ký tự điều
+# khiển thường gặp. Thay `python3 json.dumps` — máy Windows chỉ có shim rỗng của Microsoft
+# Store (NO-189); dùng chung cho manifest.json (backup.sh) và thân cảnh báo (healthcheck.sh).
+# Mẫu/thay thế đặt trong biến có nháy vì dạng `${s//\\/…}` đếm sai số dấu `\` giữa các bản bash.
+json_escape() {
+  local s="$1" bs=$'\\' q='"'
+  s=${s//"$bs"/"$bs$bs"}
+  s=${s//"$q"/"$bs$q"}
+  s=${s//$'\n'/"${bs}n"}
+  s=${s//$'\r'/"${bs}r"}
+  s=${s//$'\t'/"${bs}t"}
+  printf '%s' "$s"
+}
+
+# Ngược của json_escape cho một khoá chuỗi đọc từ manifest.json: `\"` → `"`, còn `\\`, `\n`,
+# `\uXXXX`… do `printf %b` giải (đọc được cả manifest cũ do python json.dumps ghi, vốn thoát
+# ký tự ngoài ASCII thành \uXXXX).
+json_unescape() {
+  local bs=$'\\' q='"'
+  local s=${1//"$bs$q"/"$q"}
+  printf '%b' "$s"
+}
 
 # Đúng mẫu tag hợp đồng §2 (release, sha-<12>, hoặc nhánh tự do cho diễn tập).
 validate_tag() {

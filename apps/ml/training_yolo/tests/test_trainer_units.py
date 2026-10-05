@@ -5,6 +5,7 @@ dữ liệu ngoài, chưa tới hạn nhịp tim). Đây là test đơn vị cho
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -43,6 +44,73 @@ def test_heartbeat_waits_for_the_interval() -> None:
     callbacks.on_train_batch_end(None)
     assert reporter.heartbeats == []
     assert callbacks.batches == 1
+
+
+def _callbacks(reporter: RecordingReporter, *, monotonic: float = 0.0) -> _RunCallbacks:
+    """Callback một epoch với đồng hồ nhịp tim đứng yên ở `monotonic` và mốc nhịp tim cuối ở 0."""
+    return _RunCallbacks(
+        reporter=reporter,
+        clock=SystemClock(),
+        monotonic=lambda: monotonic,
+        heartbeat_every_s=60.0,
+        last_beat=0.0,
+        epochs=2,
+    )
+
+
+def test_on_fit_epoch_end__epoch_without_validation_skips_map50_not_loss() -> None:
+    """Epoch không có pha validate: một điểm `train`, log bỏ đúng `map50` (không log `loss` lần hai) (NO-320)."""
+    reporter = RecordingReporter()
+    callbacks = _callbacks(reporter)
+    callbacks.on_fit_epoch_end(SimpleNamespace(tloss={"box": 1.0}, metrics={}))
+    assert [p.split for p in reporter.metrics] == ["train"]
+    skipped = [params["metric"] for _level, template, params in reporter.logs if template == "training_metric_skipped"]
+    assert skipped == ["map50"]
+    assert callbacks.last_map50 is None
+
+
+def test_on_fit_epoch_end__nan_loss_keeps_the_valid_map50() -> None:
+    """`loss` NaN mà `map50` hợp lệ: điểm validation đã gửi thì `last_map50` phải nhận nó (NO-320)."""
+    reporter = RecordingReporter()
+    callbacks = _callbacks(reporter)
+    callbacks.on_fit_epoch_end(SimpleNamespace(tloss={"box": float("nan")}, metrics={"metrics/mAP50(B)": 0.4}))
+    assert [(p.split, p.map50) for p in reporter.metrics] == [("validation", 0.4)]
+    assert callbacks.last_map50 == pytest.approx(0.4)
+    skipped = [params["metric"] for _level, template, params in reporter.logs if template == "training_metric_skipped"]
+    assert skipped == ["loss"]
+    assert "training_epoch_finished" not in [template for _level, template, _params in reporter.logs]
+
+
+def test_on_val_batch_end__sends_heartbeat_once_interval_passed() -> None:
+    """Pha validate không có batch train: `on_val_batch_end` vẫn gửi nhịp tim khi qua hạn, và hỏi huỷ (NO-321)."""
+    reporter = RecordingReporter()
+    callbacks = _callbacks(reporter, monotonic=61.0)
+    callbacks.on_val_batch_end(None)
+    assert reporter.heartbeats == [1]
+    assert reporter.cancel_checks == 1
+
+
+def test_heartbeat_epochs_never_decrease_nor_exceed_spec_epochs() -> None:
+    """Pha `final_eval` chạy sau epoch cuối: nhịp tim không được báo `epochs + 1`, rồi `_export` báo `epochs` (lùi)."""
+    reporter = RecordingReporter()
+    clock = [0.0]
+    callbacks = _RunCallbacks(
+        reporter=reporter,
+        clock=SystemClock(),
+        monotonic=lambda: clock[0],
+        heartbeat_every_s=1.0,
+        last_beat=0.0,
+        epochs=2,
+    )
+    for _ in range(2):
+        clock[0] += 2.0
+        callbacks.on_train_batch_end(None)
+        callbacks.on_fit_epoch_end(SimpleNamespace(tloss={"box": 1.0}, metrics={"metrics/mAP50(B)": 0.4}))
+    clock[0] += 2.0
+    callbacks.on_val_batch_end(None)
+    reporter.heartbeat(2)  # `_export` báo `spec.epochs`
+    assert reporter.heartbeats == sorted(reporter.heartbeats)
+    assert max(reporter.heartbeats) <= 2
 
 
 def test_best_weights_falls_back_to_last(tmp_path: Path) -> None:

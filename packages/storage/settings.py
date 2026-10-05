@@ -16,6 +16,8 @@ from urllib.parse import urlsplit
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_PLACEHOLDER_PREFIX = "change-me"
+"""Tiền tố khoá mẫu của `deploy/compose/env.example` (SEC-041)."""
 _S3_FIELDS = ("s3_endpoint", "s3_public_endpoint", "s3_bucket", "s3_access_key")
 
 
@@ -23,12 +25,20 @@ def _check_endpoint(name: str, url: str) -> None:
     """Endpoint phải là URL tuyệt đối http(s) không có đường dẫn."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.netloc or parts.path or parts.query:
-        raise ValueError(f"{name.upper()} phải là URL tuyệt đối http(s), không có đường dẫn: {url!r}")
+        # Không in `url`: endpoint dán nhầm `user:mật-khẩu@host` sẽ lộ khoá vào log (SEC, `mask` không che userinfo).
+        raise ValueError(
+            f"{name.upper()} phải là URL tuyệt đối http(s), không có đường dẫn "
+            f"(nhận scheme={parts.scheme!r}, host={parts.hostname!r})"
+        )
 
 
 class StorageSettings(BaseSettings):
+    """Biến môi trường `STORAGE_*`/`S3_*` của kho; kiểm đủ trường cho backend đang chọn."""
+
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
+    app_env: Literal["dev", "test", "ci", "staging", "production"] = "dev"
+    """Chỉ để từ chối khoá mẫu ngoài dev; compose ép `APP_ENV` cho mọi dịch vụ nên mặc định không lọt production."""
     storage_backend: Literal["local", "s3"]
     storage_local_root: str = ""
     s3_endpoint: str = ""
@@ -50,6 +60,9 @@ class StorageSettings(BaseSettings):
             missing.append("s3_secret_key")
         if missing:
             raise ValueError(f"thiếu cấu hình S3: {', '.join(name.upper() for name in missing)}")
+        secrets = (self.s3_access_key, self.s3_secret_key.get_secret_value())
+        if self.app_env in ("staging", "production") and any(v.startswith(_PLACEHOLDER_PREFIX) for v in secrets):
+            raise ValueError("S3_ACCESS_KEY/S3_SECRET_KEY là khoá mẫu `change-me-*`: không nhận ở staging/production")
         for name in ("s3_endpoint", "s3_public_endpoint"):
             _check_endpoint(name, str(getattr(self, name)))
         return self

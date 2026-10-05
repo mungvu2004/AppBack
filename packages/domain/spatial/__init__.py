@@ -7,6 +7,7 @@ con), prompt gọi tự đổi sang mã HTTP của mình.
 
 from packages.domain.spatial.area import js_round, polygon_area_m2, signed_area_mm2, total_area_m2
 from packages.domain.spatial.diff import FieldChange, diff_layers, has_untracked_changes
+from packages.domain.spatial.document import LayerCounts, document_to_json, entity_ids, layer_counts
 from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, check_level_order, has_critical
 from packages.domain.spatial.kinds import (
     ID_PREFIX_BY_KIND,
@@ -45,6 +46,7 @@ __all__ = [
     "FieldChange",
     "Furniture",
     "IntegrityIssue",
+    "LayerCounts",
     "Level",
     "Note",
     "Opening",
@@ -59,9 +61,12 @@ __all__ = [
     "check_integrity",
     "check_level_order",
     "diff_layers",
+    "document_to_json",
+    "entity_ids",
     "has_critical",
     "has_untracked_changes",
     "js_round",
+    "layer_counts",
     "polygon_area_m2",
     "sample_building",
     "sample_layer",

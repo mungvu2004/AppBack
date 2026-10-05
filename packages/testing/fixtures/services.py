@@ -5,8 +5,9 @@ BE-00 §12, B0-01 [2]/[6]F. Ảnh ghim tag (K29, không `latest`). Phạm vi
 thật sự yêu cầu.
 
 FIX-114: Postgres và MinIO — hai thứ nặng nhất — dựng **một bản cho cả lượt
-`pytest -n`**, không phải một bản mỗi tiến trình (`_shared_container`). Redis và
-Mailpit vẫn một bản mỗi tiến trình: lý do ở docstring `_shared_container`.
+`pytest -n`**, không phải một bản mỗi tiến trình (`_shared_container`). NO-270: hai
+Redis cũng vậy, mỗi tiến trình một khối DB (`redis_db_base`). Mailpit vẫn một bản mỗi
+tiến trình: lý do ở docstring `_shared_container`.
 
 Factory `ephemeral_*` (function, không phải fixture pytest): test tạo một bản
 riêng để giả lập C13 (phụ thuộc hỏng) bằng cách gọi `.stop()`. **Chỉ dừng
@@ -48,9 +49,20 @@ from testcontainers.redis import RedisContainer  # type: ignore[import-untyped] 
 from packages.core.pinned_images import MINIO_IMAGE as MINIO_IMAGE
 from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
 from packages.core.pinned_images import REDIS_IMAGE as REDIS_IMAGE
+from packages.messaging.redis import BROKER_DB, CACHE_DB, SAFE_DB, STREAM_DB, with_db
 from packages.testing.fixtures.worker_id import xdist_worker_id
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
+
+REDIS_ROLE_DBS = max(BROKER_DB, STREAM_DB, SAFE_DB, CACHE_DB) + 1
+"""Số DB một tiến trình chiếm trên Redis dùng chung: đủ cho mọi vai của `packages/messaging/redis.py`."""
+REDIS_DEFAULT_DATABASES = 16
+"""`databases` mặc định của `redis-server`; Redis dùng chung nâng lên khối nhân số tiến trình khi cần."""
+XDIST_WORKER_COUNT_ENV = "PYTEST_XDIST_WORKER_COUNT"
+XDIST_IDS_PER_WORKER = 5
+"""Số mã `gwN` một chỗ xdist có thể tiêu: bản đầu + 4 lượt thay tiến trình chết (`--max-worker-restart`
+mặc định = 4 lần số tiến trình). execnet cấp mã tăng dần, không dùng lại, nên tiến trình thay thế mang
+`gwN` với N ≥ số tiến trình — khối DB của nó vẫn phải có trên Redis dùng chung."""
 
 SHARED_STATE_PREFIX = "shared-service-"
 
@@ -156,10 +168,10 @@ def _start[ContainerT: DockerContainer](container: ContainerT) -> ContainerT:
     return cast(ContainerT, container.start())
 
 
-def _redis(policy: str) -> RedisContainer:
-    """Redis ảnh ghim với chính sách bộ nhớ `policy`, **chưa** khởi động."""
+def _redis(policy: str, databases: int = REDIS_DEFAULT_DATABASES) -> RedisContainer:
+    """Redis ảnh ghim với chính sách bộ nhớ `policy` và `databases` DB, **chưa** khởi động."""
     container = RedisContainer(REDIS_IMAGE)
-    container.with_command(f"redis-server --maxmemory-policy {policy}")
+    container.with_command(f"redis-server --maxmemory-policy {policy} --databases {databases}")
     return container
 
 
@@ -221,10 +233,9 @@ def _shared_container[ValueT](
     Người rời cuối cùng (đếm về 0) xoá container theo id đã ghi trong file.
 
     Chỉ dùng được cho dịch vụ đã **tự cô lập theo tiến trình hay theo test**: Postgres (một
-    database mỗi tiến trình, `db.py`) và MinIO (một bucket mỗi test, `storage.py`). Redis thì
-    không — vai của nó cố định ở số hiệu DB (`packages/messaging/redis.py`), nên hai tiến trình
-    dùng chung một instance sẽ `FLUSHDB` lên nhau; Mailpit cũng không, vì `mailpit_inbox` dọn
-    **cả** hộp thư. Hai thứ đó giữ một bản mỗi tiến trình.
+    database mỗi tiến trình, `db.py`), MinIO (một bucket mỗi test, `storage.py`) và Redis (một
+    khối DB mỗi tiến trình, `redis_db_base`; vai là độ lệch trên DB của URL, `with_db`). Mailpit
+    thì không, vì `mailpit_inbox` dọn **cả** hộp thư — nó giữ một bản mỗi tiến trình.
 
     Ngoài xdist (chạy tay, `-p no:xdist`) không có gì để chia: dựng thẳng rồi dừng như trước.
     """
@@ -278,24 +289,42 @@ def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         yield url
 
 
-@pytest.fixture(scope="session")
-def redis_broker_url() -> Iterator[str]:
-    """URL Redis (chính sách `noeviction`) cho broker Celery, dùng chung cả phiên."""
-    container = _start(_redis("noeviction"))
-    try:
-        yield _redis_url(container)
-    finally:
-        container.stop()
+def redis_db_base() -> int:
+    """DB gốc của tiến trình này trên Redis dùng chung: `gwN` → khối thứ N; ngoài xdist → 0 (NO-270).
+
+    Mỗi khối rộng `REDIS_ROLE_DBS` nên mọi vai `with_db` dời lên (kể cả test lấy URL cache làm URL
+    broker) vẫn nằm trong khối của chính tiến trình.
+    """
+    worker = xdist_worker_id()
+    return int(worker.removeprefix("gw")) * REDIS_ROLE_DBS if worker else 0
+
+
+@contextmanager
+def _shared_redis(policy: str, tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """Một Redis chính sách `policy` cho cả lượt `pytest -n`; URL trỏ vào khối DB của tiến trình này."""
+
+    def start() -> tuple[DockerContainer, str]:
+        """Dựng container Redis dùng chung, đủ một khối DB cho mỗi tiến trình xdist; trả (container, URL `/0`)."""
+        ids = int(os.environ.get(XDIST_WORKER_COUNT_ENV, "1")) * XDIST_IDS_PER_WORKER
+        container = _start(_redis(policy, max(REDIS_DEFAULT_DATABASES, REDIS_ROLE_DBS * ids)))
+        return container, _redis_url(container)
+
+    with _shared_container(f"redis-{policy}", tmp_path_factory, start) as url:
+        yield with_db(url, redis_db_base())
 
 
 @pytest.fixture(scope="session")
-def redis_cache_url() -> Iterator[str]:
-    """URL Redis (chính sách `allkeys-lru`) cho cache, dùng chung cả phiên."""
-    container = _start(_redis("allkeys-lru"))
-    try:
-        yield _redis_url(container)
-    finally:
-        container.stop()
+def redis_broker_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """URL Redis (chính sách `noeviction`) cho broker Celery, dùng chung cả lượt chạy."""
+    with _shared_redis("noeviction", tmp_path_factory) as url:
+        yield url
+
+
+@pytest.fixture(scope="session")
+def redis_cache_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """URL Redis (chính sách `allkeys-lru`) cho cache, dùng chung cả lượt chạy."""
+    with _shared_redis("allkeys-lru", tmp_path_factory) as url:
+        yield url
 
 
 @pytest.fixture(scope="session")

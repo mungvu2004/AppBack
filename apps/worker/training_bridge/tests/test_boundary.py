@@ -13,8 +13,9 @@ from typing import Final
 
 import pytest
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 IMPORT_TIMEOUT_S: Final = 120.0
 
 _MODULES: Final = (
@@ -52,7 +53,7 @@ for module in MODULES:
 @pytest.mark.parametrize("module", _MODULES)
 def test_each_module_importable_alone_without_web_or_crypto_packages(module: str) -> None:
     """Mỗi module cầu nối nhập được một mình (không kéo module khác lộ phụ thuộc web/crypto)."""
-    script = _SCRIPT.format(blocked=BLOCKED, modules=(module,))
+    script = _SCRIPT.format(blocked=WORKER_BLOCKED, modules=(module,))
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", script],
         cwd=REPO_ROOT,

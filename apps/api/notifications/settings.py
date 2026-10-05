@@ -1,10 +1,12 @@
 """Hạn mức của thông báo (B4-02 [5]); đọc lười, test đổi bằng `monkeypatch.setenv` rồi xoá cache."""
 
 from functools import cache
-from typing import Self
+from typing import Final, Self
 
 from pydantic import PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+MARK_MAX_DEFAULT: Final = 200
 
 
 class NotificationsSettings(BaseSettings):
@@ -13,7 +15,7 @@ class NotificationsSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
     notifications_list_max: PositiveInt = 200
-    notifications_mark_max: PositiveInt = 200
+    notifications_mark_max: PositiveInt = MARK_MAX_DEFAULT
     notifications_keep_max: PositiveInt = 200
     notifications_dedupe_ttl_s: PositiveInt = 86400
     notifications_unsent_after_s: PositiveInt = 120

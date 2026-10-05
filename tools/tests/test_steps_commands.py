@@ -178,7 +178,7 @@ def test_số_tiến_trình_bước_5_theo_env(monkeypatch: pytest.MonkeyPatch, 
 def test_số_tiến_trình_bước_5_mặc_định(monkeypatch: pytest.MonkeyPatch) -> None:
     """Không đặt biến môi trường thì số tiến trình bước 5 là mặc định."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
-    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS
+    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS == "6"  # số đo NO-280: 6 nhanh nhất, 8 hết chỗ RAM
 
 
 # --- bước 5b ------------------------------------------------------------------------
@@ -437,15 +437,8 @@ def test_openapi_module_giả_ghi_đúng_file_xoá_file_cũ(repo: Path) -> None:
 # --- merge-heads --------------------------------------------------------------------
 
 _ALEMBIC_INI = "[alembic]\nscript_location = %(here)s/migrations\n"
-_MAKO = (
-    '"""${message}"""\n'
-    "revision = ${repr(up_revision)}\n"
-    "down_revision = ${repr(down_revision)}\n"
-    "branch_labels = None\n"
-    "depends_on = None\n\n\n"
-    "def upgrade() -> None:\n    pass\n\n\n"
-    "def downgrade() -> None:\n    pass\n"
-)
+# Template **thật** của repo, không bản tự chế: bản giả `repr(down_revision)` che lỗi tuple→chuỗi (NO-249).
+_MAKO = Path(__file__).resolve().parents[2] / "packages" / "db" / "migrations" / "script.py.mako"
 
 
 def _alembic_repo(root: Path, *revisions: tuple[str, str | None]) -> Path:
@@ -454,7 +447,7 @@ def _alembic_repo(root: Path, *revisions: tuple[str, str | None]) -> Path:
     versions = db / "migrations" / "versions"
     versions.mkdir(parents=True)
     (db / "alembic.ini").write_text(_ALEMBIC_INI, encoding="utf-8")
-    (db / "migrations" / "script.py.mako").write_text(_MAKO, encoding="utf-8")
+    shutil.copy(_MAKO, db / "migrations" / "script.py.mako")
     for rev, down in revisions:
         (versions / f"{rev}_viec.py").write_text(
             f'revision = "{rev}"\ndown_revision = {down!r}\n\n\n'
@@ -986,3 +979,16 @@ def test_bước_5b__junit_perf_vẫn_chép_khi_perf_hỏng(perf_junit: Path, mo
     )
     assert steps.step_perf().status == steps.STATUS_FAIL
     assert (perf_junit / "20261003T000000Z-abc.perf.junit.xml").is_file()
+
+
+# --- NO-350: deploy/ là đơn vị của bước 5b ------
+
+
+def test_5b_deploy_bị_chạm_chạy_perf_của_deploy(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """File dưới `deploy/` bị chạm thì bước 5b chạy pytest perf trong `deploy` (NO-350)."""
+    (repo / "deploy").mkdir()
+    monkeypatch.setenv("VERIFY_CHANGED", "deploy/scripts/healthcheck.sh")
+    fake = _fake(monkeypatch, **{"--collect-only": (0, "deploy/scripts/tests/test_p.py::test_speed\n")})
+    assert steps.step_perf().status == steps.STATUS_OK
+    perf_run = [c for c in fake.calls if "--junitxml=/tmp/junit-perf.xml" in c]
+    assert perf_run == [["pytest", "-m", "perf and not gpu", "--junitxml=/tmp/junit-perf.xml", "deploy"]]

@@ -52,7 +52,8 @@ def create_storage(settings: StorageSettings, core_settings: CoreSettings | None
 
     `core_settings` là của app phát URL cho trình duyệt (API, việc nền của nó): có nó thì
     kiểm luật khác origin trước khi dựng. `None` cho tiến trình không ký URL — `ml` không
-    cầm `SECRET_KEY`/`PUBLIC_BASE_URL` (NO-085); kho local khi đó từ chối `signed_url`.
+    cầm `SECRET_KEY`/`PUBLIC_BASE_URL` (NO-085); kho nào cũng từ chối `signed_url` khi đó, vì luật
+    khác origin chưa được kiểm (NO-203).
     """
     if core_settings is not None:
         _check_public_origin(settings, core_settings)
@@ -62,7 +63,7 @@ def create_storage(settings: StorageSettings, core_settings: CoreSettings | None
     pool = http_client()
     return S3Storage(
         client=minio_client(settings, settings.s3_endpoint, pool),
-        public_client=minio_client(settings, settings.s3_public_endpoint, pool),
+        public_client=None if core_settings is None else minio_client(settings, settings.s3_public_endpoint, pool),
         bucket=settings.s3_bucket,
         clock=clock,
     )

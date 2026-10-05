@@ -45,7 +45,7 @@ def _clear(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SegformerTrainer:
     """Huấn luyện SegFormer tách tường; mọi phụ thuộc ngoài (đồng hồ, đường trọng số) tiêm được.
 
@@ -58,7 +58,11 @@ class SegformerTrainer:
     pinned: Mapping[str, PinnedWeights] = PINNED
     clock: Clock = field(default_factory=SystemClock)
     monotonic: Callable[[], float] = time.monotonic
-    family: TrainableFamily = _FAMILY
+
+    @property
+    def family(self) -> TrainableFamily:
+        """Họ cố định `wallSegmentation` (khối [2]); không tiêm được."""
+        return _FAMILY
 
     def train(self, spec: TrainSpec, data_dir: Path, out_dir: Path, reporter: TrainReporter) -> TrainResult:
         """Huấn luyện rồi xuất `out_dir/model.onnx`; trả đúng một số đo `iou` đo bằng ONNX đã xuất.

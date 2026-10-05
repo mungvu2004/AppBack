@@ -22,7 +22,7 @@ from packages.core.error_codes import FILE_TYPE_MISMATCH, IMAGE_TOO_LARGE
 from packages.db.models.drawings import DrawingRow
 from packages.messaging.tasks import PermanentError
 from packages.storage import keys
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 from packages.vision.preprocess import (
     Homography,
     Quad,
@@ -149,12 +149,9 @@ async def _offload[ResultT](fn: Callable[[], ResultT]) -> ResultT:
 
 async def _read_capped(storage: ObjectStorage, key: str, *, max_bytes: int) -> bytes:
     """Đọc cả object nhưng dừng ngay khi vượt `max_bytes` (K13) → `PermanentError("IMAGE_TOO_LARGE")`."""
-    buffer = bytearray()
-    async for chunk in storage.open_read(key):
-        buffer += chunk
-        if len(buffer) > max_bytes:
-            raise PermanentError(IMAGE_TOO_LARGE.code)
-    return bytes(buffer)
+    return await read_all_capped(
+        storage, key, max_bytes=max_bytes, too_large=lambda: PermanentError(IMAGE_TOO_LARGE.code)
+    )
 
 
 def _render_base(data: bytes, kind: str, page_index: int, settings: OrchestrateSettings) -> tuple[_Base, bytes]:

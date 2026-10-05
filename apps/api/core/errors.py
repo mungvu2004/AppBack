@@ -15,7 +15,7 @@ Ba luật bất biến:
 import json
 import logging
 from collections.abc import Iterable, Mapping
-from typing import Final
+from typing import Any, Final
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -45,6 +45,9 @@ JSON_CONTENT_TYPE: Final = "application/json"
 
 _LOC_ROOTS: Final = frozenset({"body", "query", "path"})
 _JSON_INVALID: Final = "json_invalid"
+_UNION_TAG_ERRORS: Final = frozenset({"union_tag_invalid", "union_tag_not_found"})
+_BODY_ROOT: Final = "body"
+_ABSENT: Final = object()
 
 # `HTTPException` do Starlette/FastAPI ném (không phải mã nghiệp vụ) → mã W7 tương ứng.
 # 405 đi chung 404: hiến chương không cho FE thấy "method not allowed" (BE-00 §4).
@@ -101,17 +104,50 @@ def simple_error(code: ErrorCode, rid: str) -> Response:
     return error_response(AppError(code), rid)
 
 
-def field_of(loc: Iterable[object]) -> str | None:
+def _child(node: object, part: object) -> object:
+    """Giá trị của đoạn `part` trong `node` của thân, hay `_ABSENT` (loc của Pydantic ghi đúng khoá đã khớp)."""
+    if isinstance(node, dict) and part in node:
+        return node[part]
+    if isinstance(node, list) and isinstance(part, int) and 0 <= part < len(node):
+        return node[part]
+    return _ABSENT
+
+
+def _body_path(parts: list[object], body: object) -> list[object]:
+    """Đoạn loc thật sự là đường trong thân: bỏ tag nhánh union mà Pydantic chèn vào loc (NO-248).
+
+    Đi song song loc với thân JSON đã nhận. Đoạn không khớp khoá/chỉ số nào của thân ở mức đó
+    mà chưa phải đoạn cuối là tag nhánh (`wall` của union phân biệt, tên lớp của union thường):
+    bỏ, không đi xuống. Đoạn **cuối** không có trong thân là khoá vắng — vẫn là `field`.
+    """
+    kept: list[object] = []
+    node = body
+    last = len(parts) - 1
+    for index, part in enumerate(parts):
+        child = _child(node, part)
+        if child is not _ABSENT:
+            node = child
+        elif index < last:
+            continue
+        kept.append(part)
+    return kept
+
+
+def field_of(loc: Iterable[object], body: object = None) -> str | None:
     """`field` của một lỗi Pydantic (BE-00 §4).
 
-    Bỏ đoạn gốc (`body`/`query`/`path`), đổi từng đoạn sang camelCase và **dừng**
-    trước đoạn đầu tiên không khớp `^[A-Za-z0-9]+$` — khoá dict của người dùng
-    (`overrides.WALL-THICKNESS`) hay tên validator (`function-after[...]`) không
-    phải tên trường và không được lọt ra dây (`registry.ts:443`).
+    Bỏ đoạn gốc (`body`/`query`/`path`); khi thân JSON là object/mảng thì bỏ tag nhánh union
+    (`_body_path`; form multipart không truyền thân, giữ loc nguyên trạng). Đổi từng đoạn sang
+    camelCase và **dừng** trước đoạn đầu tiên không khớp `^[A-Za-z0-9]+$` — khoá dict của người
+    dùng (`overrides.WALL-THICKNESS`) hay tên validator (`function-after[...]`) không phải tên
+    trường và không được lọt ra dây (`registry.ts:443`).
     """
     parts = list(loc)
-    if parts and parts[0] in _LOC_ROOTS:
+    root = parts[0] if parts else None
+    if root in _LOC_ROOTS:
         parts = parts[1:]
+    if root == _BODY_ROOT and isinstance(body, dict | list):
+        parts = _body_path(parts, body)
     kept: list[str] = []
     for part in parts:
         segment = to_camel(part) if isinstance(part, str) else str(part)
@@ -121,13 +157,23 @@ def field_of(loc: Iterable[object]) -> str | None:
     return ".".join(kept) or None
 
 
+def _error_loc(error: Mapping[str, Any]) -> tuple[object, ...]:
+    """Loc của một lỗi; tag union lạ/vắng thì nối thêm tên khoá phân biệt (`objectKind`) — NO-248."""
+    loc = tuple(error.get("loc", ()))
+    ctx = error.get("ctx")
+    if error.get("type") in _UNION_TAG_ERRORS and isinstance(ctx, Mapping):
+        # `populate_by_name` cho ctx dạng `'object_kind' | 'objectKind'`: lấy tên trên dây (cuối).
+        loc += (str(ctx.get("discriminator", "")).split("|")[-1].strip(" '"),)
+    return loc
+
+
 def validation_error(exc: RequestValidationError, rid: str) -> Response:
     """Lỗi Pydantic → 422 `VALIDATION` (`field` của lỗi đầu, `count` = số lỗi), JSON hỏng → 400."""
     errors = list(exc.errors())
     if any(error.get("type") == _JSON_INVALID for error in errors):
         return error_response(AppError(MALFORMED_JSON), rid)
     count = len(errors)
-    field = field_of(errors[0].get("loc", ())) if errors else None
+    field = field_of(_error_loc(errors[0]), exc.body) if errors else None
     if field is None:
         return error_response(AppError(VALIDATION, count=count), rid)
     try:

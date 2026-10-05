@@ -5,8 +5,9 @@ import sys
 from pathlib import Path
 from typing import Final
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 
 
 def _python(code: str) -> subprocess.CompletedProcess[str]:

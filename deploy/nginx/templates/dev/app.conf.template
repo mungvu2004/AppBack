@@ -16,12 +16,18 @@ map '' $hsts_header {
 
 resolver 127.0.0.11 valid=10s;
 
+include /etc/nginx/appback/snippets/access_log_files_map.conf;
+include /etc/nginx/appback/snippets/streams_conn_zone.conf;
+
 server {
     listen 8080 default_server;
     root /usr/share/nginx/html;
 
     # Dùng bởi snippets/proxy_common.conf (BE-00 §11): chuẩn hoá bỏ cổng.
     set $appback_proxy_host $host;
+
+    # Lưới dự phòng tiền-location (NO-197): xem snippets/access_log_files_map.conf.
+    access_log /var/log/nginx/access.log main if=$appback_access_log;
 
     include /etc/nginx/appback/snippets/app_locations.conf;
 }

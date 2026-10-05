@@ -20,8 +20,8 @@ import asyncio
 import functools
 import hashlib
 import json
+import logging
 import os
-import re
 import subprocess
 import sys
 import textwrap
@@ -54,16 +54,17 @@ from apps.ml.training_runner.tests.support import (
 )
 from packages.core.clock import SystemClock
 from packages.messaging.celery_app import send_task
+from packages.messaging.payloads.training import WEIGHTS_NAME_RE
 from packages.messaging.redis import SyncRedis, broker_redis_sync
 from packages.storage.keys import model_artifact
 from packages.storage.local import LocalDiskStorage
 from packages.testing.fixtures.messaging import WorkerFactory
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
 
+_log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[4]
 QUEUE = "default"
 WAIT_S = 90.0
-WEIGHTS_NAME_RE = re.compile(r"\Aweights-[0-9a-f]{32}\.onnx\Z")
 
 
 def _fail_exit(code: int) -> None:
@@ -256,13 +257,26 @@ liệu** của test, không phải logic. Dấu ngoặc nhọn của chính scri
 """
 
 
-def test_run_training_job_cancel_while_waiting(
-    claim_client: SyncRedis,
-    local_storage: LocalDiskStorage,
-    redis_broker_url: str,
-    tmp_path: Path,
-) -> None:
-    """Token khác giữ `SLOT_KEY`, `cancel_key` có → huỷ trước khi nhập `torch` hay chạy trainer."""
+CANCEL_BUDGET_S: Final = 10.0
+"""Trần `perf` của lượt huỷ khi đang chờ slot (số đo ghi ở `tai-hien-F5.md`; ≥ 3x)."""
+
+
+@dataclass(frozen=True, slots=True)
+class _CancelOutcome:
+    """Dòng JSON cuối của tiến trình con huỷ-khi-chờ: payload `finished`, `torch` đã nhập chưa, thời gian tường."""
+
+    finished: list[dict[str, object]]
+    torch: bool
+    elapsed: float
+
+
+def _cancel_while_waiting(
+    claim_client: SyncRedis, local_storage: LocalDiskStorage, redis_broker_url: str, tmp_path: Path
+) -> _CancelOutcome:
+    """Chạy tiến trình con thật: token khác giữ `SLOT_KEY`, `cancel_key` có → trả `_CancelOutcome`.
+
+    Cảnh dùng chung của test chức năng và test `perf`; số đo in bằng `logging`, khẳng định thuộc về test gọi.
+    """
     dataset = asyncio.run(put_dataset(local_storage))
     payload = train_payload(dataset)
     other_token = "khac-" + keys.new_token()
@@ -274,17 +288,44 @@ def test_run_training_job_cancel_while_waiting(
     script = _CANCEL_WHILE_WAITING_SCRIPT.format(
         payload_json=json.dumps(payload.model_dump(mode="json")), claim_token=claim_token
     )
-    env = dict(os.environ) | _runner_env(storage_root=tmp_path / "objects", redis_broker_url=redis_broker_url)
+    env = dict(os.environ) | _runner_env(
+        storage_root=tmp_path / "objects", redis_broker_url=redis_broker_url, ml_device="auto"
+    )
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính venv, mã cố định
         [sys.executable, "-c", script], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False, timeout=60
     )
 
     assert result.returncode == 0, result.stderr
-    outcome = json.loads(result.stdout.strip().splitlines()[-1])
-    assert outcome["finished"], result.stderr
-    assert outcome["finished"][-1]["status"] == "cancelled"
-    assert outcome["elapsed"] <= 10
-    assert outcome["torch"] is False
+    raw = json.loads(result.stdout.strip().splitlines()[-1])
+    assert raw["finished"], result.stderr
+    _log.info("cancel_wait_elapsed_s=%.3f", raw["elapsed"])
+    return _CancelOutcome(raw["finished"], raw["torch"], float(raw["elapsed"]))
+
+
+def test_run_training_job_cancel_while_waiting(
+    claim_client: SyncRedis,
+    local_storage: LocalDiskStorage,
+    redis_broker_url: str,
+    tmp_path: Path,
+) -> None:
+    """Token khác giữ `SLOT_KEY`, `cancel_key` có → huỷ trước khi nhập `torch` hay chạy trainer."""
+    outcome = _cancel_while_waiting(claim_client, local_storage, redis_broker_url, tmp_path)
+
+    assert outcome.finished[-1]["status"] == "cancelled"
+    assert outcome.torch is False
+
+
+@pytest.mark.perf
+def test_run_training_job_cancel_while_waiting_within_budget(
+    claim_client: SyncRedis,
+    local_storage: LocalDiskStorage,
+    redis_broker_url: str,
+    tmp_path: Path,
+) -> None:
+    """Huỷ khi đang chờ slot xong trong `CANCEL_BUDGET_S` (cận trên đồng hồ tường, bước 5b)."""
+    outcome = _cancel_while_waiting(claim_client, local_storage, redis_broker_url, tmp_path)
+
+    assert outcome.elapsed <= CANCEL_BUDGET_S
 
 
 @dataclass(frozen=True, slots=True)

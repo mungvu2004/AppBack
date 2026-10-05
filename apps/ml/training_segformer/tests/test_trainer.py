@@ -11,15 +11,16 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pytest
 import torch
 from torch import nn
 from torch.nn import functional
+from torch.utils.data import DataLoader
 
 from apps.ml.runtime.trainers import discover_trainers
 from apps.ml.training_runner.errors import TrainingStopped
@@ -98,7 +99,7 @@ class _CountingAdamW(torch.optim.AdamW):
         super().step()
 
 
-def _fake_monotonic(advance: float) -> "object":
+def _fake_monotonic(advance: float) -> Callable[[], float]:
     """Đồng hồ `monotonic` giả tăng `advance` giây mỗi lần hỏi (J07 cần tất định, không ngủ thật)."""
     ticks = [0.0]
 
@@ -245,8 +246,8 @@ def _run_loop(
         data_dir=data_dir,
         reporter=reporter,
         clock=SystemClock(),
-        monotonic=_fake_monotonic(advance),  # type: ignore[arg-type]  # closure trả float, đúng Callable
-        optimizer_cls=optimizer_cls,  # type: ignore[arg-type]  # factory trả lớp con AdamW
+        monotonic=_fake_monotonic(advance),
+        optimizer_cls=optimizer_cls,
     )
     return net, optimizers[0]
 
@@ -381,16 +382,39 @@ def test_trainer_discovered() -> None:
 
 
 def test_settings_models_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """`models_dir=None` → `ML_MODELS_DIR` đọc lúc `train`, không lúc nhập module."""
-    from apps.ml.runtime.settings import reset_ml_settings_cache
-
+    """`models_dir=None` → `ML_MODELS_DIR` đọc lúc `train`, không lúc nhập module (cache do fixture autouse dọn)."""
     monkeypatch.setenv("ML_MODELS_DIR", str(tmp_path))
-    reset_ml_settings_cache()
-    try:
-        assert trainer._settings_models_dir() == tmp_path
-    finally:
-        monkeypatch.delenv("ML_MODELS_DIR")
-        reset_ml_settings_cache()
+    assert trainer._settings_models_dir() == tmp_path
+
+
+def test_loader__generator_seed_differs_per_epoch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mỗi epoch một seed xáo riêng (`seed + epoch`), cùng `seed` + `epoch` thì tái lập được (M06, NO-318 P3-9)."""
+    seeds: list[int] = []
+    real = DataLoader
+
+    def _spy(*args: Any, **kwargs: Any) -> object:
+        """Ghi seed của `generator` mà vòng đưa vào `DataLoader` thật."""
+        generator = kwargs["generator"]
+        assert isinstance(generator, torch.Generator)
+        seeds.append(generator.initial_seed())
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(loop, "DataLoader", _spy)
+    data_dir = tmp_path / "data"
+    write_dataset(data_dir)
+    _run_loop(data_dir, RecordingReporter(), epochs=2)
+    assert len(seeds) == 2
+    assert seeds[0] != seeds[1]
+
+
+def test_trainer__keyword_only_and_family_fixed() -> None:
+    """Ctor chỉ nhận keyword và không cho tiêm `family` (khối [2], NO-318 P3-10)."""
+    ctor: Any = trainer.SegformerTrainer
+    with pytest.raises(TypeError):
+        ctor(SegformerTrainConfig())
+    with pytest.raises(TypeError):
+        ctor(family="openingAndFurnitureDetection")
+    assert trainer.SegformerTrainer().family == "wallSegmentation"
 
 
 def test_train_metrics_log_every_steps(tmp_path: Path) -> None:

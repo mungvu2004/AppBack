@@ -12,7 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.core import extensions
 from apps.api.floors.errors import FLOOR_ID_AMBIGUOUS, FLOOR_ID_TAKEN, FLOOR_LIMIT_REACHED, FLOOR_REORDER_MISMATCH
-from apps.api.floors.lookup import floor_outs, floor_outs_by_project, get_floor, lock_project_floors, new_level_id
+from apps.api.floors.lookup import (
+    floor_outs,
+    floor_outs_by_project,
+    floor_outs_with_pk,
+    get_floor,
+    lock_project_floors,
+    new_level_id,
+)
 from apps.api.floors.settings import get_floors_settings, reset_floors_settings_cache
 from apps.api.projects.parts import FLOOR_DRAWINGS, ViewPart
 from apps.api.projects.summaries import set_layer_counts
@@ -291,3 +298,18 @@ def test_floor_errors_carry_the_right_status_and_field() -> None:
         422,
         {"field": "floorIds"},
     )
+
+
+async def test_floor_outs_with_pk__pairs_each_floor_with_its_row_pk(db_session: AsyncSession) -> None:
+    """NO-223: hàm anh em trả `(pk, FloorOut)` từ **cùng** câu `floors`, cùng thứ tự `floor_outs`."""
+    user = await make_user(db_session)
+    project = await make_project(db_session, owner=user)
+    first = await make_floor(db_session, project=project, order=1)
+    second = await make_floor(db_session, project=project, order=0)
+    await db_session.commit()
+
+    pairs = await floor_outs_with_pk(db_session, project_id=project.id)
+    plain = await floor_outs(db_session, project_id=project.id)
+
+    assert [(pk, floor.id) for pk, floor in pairs] == [(second.pk, second.level_id), (first.pk, first.level_id)]
+    assert [floor for _, floor in pairs] == plain

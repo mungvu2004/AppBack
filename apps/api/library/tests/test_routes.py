@@ -1,6 +1,6 @@
 """#14 `library_list_items` và #15 `library_read_item` qua app thật (B2-06 [8]): C01 C15 C17 C08, mine, URL."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import timedelta
 from typing import Final
 
@@ -20,6 +20,7 @@ from apps.api.library.tests._helpers import (
 )
 from packages.domain.library import CATALOGUE, build_glb
 from packages.storage.local import LocalDiskStorage
+from packages.storage.port import SignedUrl, SignRequest
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.library import make_library_item
 from packages.testing.fixtures.clock import FakeClock
@@ -193,3 +194,29 @@ async def test_library_urls_absolute_stable_within_hour(
     fake_clock.advance(timedelta(hours=1))
     assert (await api_client.get(LIST_PATH, headers=headers)).json() != first
     assert stats == []
+
+
+async def test_library_list_items__signs_every_url_in_one_batch(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    local_storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NO-207: #14 với 16 mục (mô hình + ảnh xem trước) ký 32 URL trong đúng **một** lượt `signed_urls`."""
+    user = await make_user(db_session)
+    for n in range(16):
+        await make_library_item(db_session, local_storage, id=f"item-{n:02d}", sort_order=n)
+    batches: list[int] = []
+    real = LocalDiskStorage.signed_urls
+
+    async def counting(self: LocalDiskStorage, requests: Sequence[SignRequest]) -> list[SignedUrl]:
+        """Ghi cỡ lô rồi ký bằng hàm thật (vá lớp: app dựng kho riêng, không dùng `local_storage`)."""
+        batches.append(len(requests))
+        return await real(self, requests)
+
+    monkeypatch.setattr(LocalDiskStorage, "signed_urls", counting)
+
+    items = (await api_client.get(LIST_PATH, headers=headers_of(user))).json()
+
+    assert len(items) == 16
+    assert batches == [32]

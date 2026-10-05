@@ -1,6 +1,6 @@
 # Mô hình mối đe doạ — B7-02
 
-Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.md`.
+Commit đã soát `2a63cfc5420f`. Dẫn chiếu `tệp:dòng` trỏ lại theo mã sau DEBT-02 W2–W9 (nhánh `fix/debt-02-w8-charter-docs`, FIX-311); dòng `lỗ` và chỗ ghi `(ở `2a63cfc`)` giữ số dòng ở commit soát vì mô tả mã trước khi sửa (xem `fixes/SEC-*.md`). Biện pháp dẫn `#` của `asvs-checklist.md`.
 
 ## Tài sản
 
@@ -37,17 +37,17 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | trình duyệt ↔ nginx/`api` (xác thực, phiên, quyền) | R | Người dùng chối đã đăng nhập/refresh; dùng lại token không để vết | A-08 (log `refresh_reuse_revoked` có `sid`, `userId`), A-05 (log `login_throttled` chỉ `emailKey`) | Không có nhật ký đăng nhập thành công bền (chỉ `last_active_at`, `created_ip`) · B1-01 |
 | trình duyệt ↔ nginx/`api` (xác thực, phiên, quyền) | I | Lộ sự tồn tại tài khoản (dò email), lộ dự án/tài nguyên người khác qua 403 thay 404 | A-03, A-04, A-19, A-21 | — |
 | trình duyệt ↔ nginx/`api` (xác thực, phiên, quyền) | D | Dồn đăng nhập làm cạn CPU argon2; Redis cache chập chờn làm FE đăng xuất mọi thẻ | A-05, A-11 (`on_error="open"` cho refresh), `apps/api/auth/passwords.py:81-92` (executor riêng, chờ > 2 s → 503) | Postgres hỏng → refresh 503 → FE đăng xuất mọi thẻ (`refresh.ts:243,265`); không tránh được ở BE · B1-01 / phía FE (F-*) |
-| trình duyệt ↔ nginx/`api` (xác thực, phiên, quyền) | E | Người thường gọi route admin; giữ quyền cũ sau khi bị hạ vai/vô hiệu | A-14, A-15, A-22, A-24 | Cửa sổ ≤ 5 s cache `Principal` (đúng hiến chương); ảnh chụp đọc từ DB rồi mới ghi cache, một lần hạ vai commit đúng giữa hai bước kéo dài thêm ≤ 5 s (`apps/api/auth/sessions.py:622-627`) — chặn bởi `bump_token_version` (A-15) · B1-01 |
+| trình duyệt ↔ nginx/`api` (xác thực, phiên, quyền) | E | Người thường gọi route admin; giữ quyền cũ sau khi bị hạ vai/vô hiệu | A-14, A-15, A-22, A-24 | Cửa sổ ≤ 5 s cache `Principal` (đúng hiến chương); ảnh chụp đọc từ DB rồi mới ghi cache, một lần hạ vai commit đúng giữa hai bước kéo dài thêm ≤ 5 s (`apps/api/auth/sessions.py:613-618`) — chặn bởi `bump_token_version` (A-15) · B1-01 |
 
 ### quản trị viên → `admin/*
 
 | ranh giới | chữ | mối đe doạ | biện pháp (dẫn #) | rủi ro tồn dư · chủ |
 |---|---|---|---|---|
 | quản trị viên → `admin/*` | S | Chiếm phiên admin (cookie bị đánh cắp) để dùng `admin/ml`, `users` | A-08, A-09, A-10, A-16 | Không có xác thực bước hai (MFA) cho admin — ASVS cấp 2 khuyến nghị; ngoài phạm vi v1 · B1-01 (Nợ hiến chương N-A1) |
-| quản trị viên → `admin/*` | T | Admin sửa vai/trạng thái người khác sai đích (đường ≠ thân); tự hạ vai admin cuối cùng | A-23; `apps/api/users/service.py:294-296` (`forbid_self`, `forbid_last_admin`) | — |
-| quản trị viên → `admin/*` | R | Admin chối đã đổi vai/vô hiệu | `apps/api/users/service.py:299` (`_log_activity` `USER_ROLE_CHANGE`) | Nhật ký hoạt động nằm cùng DB admin ghi được; không chống sửa · B1-05 |
+| quản trị viên → `admin/*` | T | Admin sửa vai/trạng thái người khác sai đích (đường ≠ thân); tự hạ vai admin cuối cùng | A-23; `apps/api/users/service.py:148-157` (`WriteScope.forbid_self`: tự sửa mình → `USER_SELF_MODIFICATION`, admin `active` duy nhất → `USER_LAST_ADMIN`; gọi ở `:289,302,450`) | — |
+| quản trị viên → `admin/*` | R | Admin chối đã đổi vai/vô hiệu | `apps/api/users/service.py:293` (`_log_activity` `USER_ROLE_CHANGE`) | Nhật ký hoạt động nằm cùng DB admin ghi được; không chống sửa · B1-05 |
 | quản trị viên → `admin/*` | I | Engineer/viewer đọc danh mục mô hình, dataset, job qua `admin/ml` | A-22 | Lỗ có chủ ý v1: admin dựng dataset từ tầng của mọi dự án, xuyên ranh giới thành viên · B6-02 |
-| quản trị viên → `admin/*` | D | Admin bị vô hiệu/hạ vai nhầm làm hệ thống mất admin | `apps/api/users/service.py:296` (`forbid_last_admin`); CLI `python -m apps.api.auth.cli create-admin` khôi phục | — |
+| quản trị viên → `admin/*` | D | Admin bị vô hiệu/hạ vai nhầm làm hệ thống mất admin | `apps/api/users/service.py:148-157` (`forbid_self` → `USER_LAST_ADMIN`; `lock_admin_set` `:162` đòi người thực hiện là admin `active`, nên admin cuối chỉ có thể là chính họ); CLI `python -m apps.api.auth.cli create-admin` khôi phục | — |
 | quản trị viên → `admin/*` | E | Người bị hạ vai/vô hiệu vẫn dùng token cũ gọi `admin/*` | A-14, A-15, A-22 | xem dòng E ở trên · B1-01 |
 
 ### api → hàng đợi → worker
@@ -56,9 +56,9 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 |---|---|---|---|---|
 | api → hàng đợi → worker | S | Giả mạo thông điệp trên Redis/Celery | Payload kiểm bằng `FrozenModel` `extra="forbid"` + `schema_version` (B-18); Redis ở mạng nội bộ compose | Ai ghi được Redis tạo được thông điệp hợp lệ về cấu trúc · B0-08 |
 | api → hàng đợi → worker | T | Sửa payload (khoá lạ, id chéo dự án) | `extra="forbid"`, mẫu `ObjectKey`/`Sha256`/`RunId` (B-18); worker kiểm lại dưới `lock_run` (B-19) | không đáng kể · B5-06 |
-| api → hàng đợi → worker | R | Chối tác vụ | `pipeline_result_ignored` log có `run_id` (`pipeline_persist/service.py:71`), `record_step` | không đáng kể · B5-06 |
+| api → hàng đợi → worker | R | Chối tác vụ | `pipeline_result_ignored` log có `run_id` (`pipeline_persist/service.py:70`), `record_step` | không đáng kể · B5-06 |
 | api → hàng đợi → worker | I | Rò thông tin qua log/lỗi | Log chỉ id và mã (B-22) | không đáng kể · B5-06 |
-| api → hàng đợi → worker | D | Dồn hàng bằng tải lên hàng loạt | Một lượt dở/tầng, `rate_limit` 60/phút/người, `prefetch=1` (B-26) | Không hạn mức theo dự án, một hàng `ml.infer` concurrency 1 → dự án khác chờ lâu (chưa kiểm — thiếu ảnh) · B2-05a/B5-06 |
+| api → hàng đợi → worker | D | Dồn hàng bằng tải lên hàng loạt | Một lượt dở/tầng, `rate_limit` 60/phút/người, `prefetch=1` (B-26) | Không hạn mức theo dự án, một hàng `ml.infer` concurrency 1 → dự án khác chờ lâu; đo sống: FIFO concurrency 1, lượt `running` không bị quét bù đánh hỏng (B-26, W10/L-07) · B2-05a/B5-06 |
 | api → hàng đợi → worker | E | Payload nâng quyền | Worker tải lại dòng DB, không tin id trong payload (B-19) | không đáng kể · B5-06 |
 
 ### worker ↔ ml (kết quả không tin)
@@ -80,7 +80,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | tiến trình con huấn luyện | T | Dữ liệu huấn luyện/`.pt` độc | SHA-256 trước khi nhập `ultralytics`, loại `.pt` ở byte đầu, không `pickle`/`torch.load` (B-14) | không đáng kể · B6-03b |
 | tiến trình con huấn luyện | R | Job chối kết quả | Báo `finished` qua cầu nối; log mẫu cố định (B-22) | không đáng kể · B6-03a |
 | tiến trình con huấn luyện | I | Con đọc bí mật môi trường | Con thừa hưởng env của `ml` (**B-23 lỗ, SEC-020**); `ml` không có DSN, khoá S3 giới hạn tiền tố | Chưa sửa: con có `S3_ML_SECRET_KEY` + URL Redis (lỗ B-23, `SEC-020`) · B6-03b |
-| tiến trình con huấn luyện | D | Con ăn hết RAM/GPU | `start_new_session`, watchdog hết hạn (`training_runner/watchdog.py:108`), khoá GPU TTL (B-20), `mem_limit` compose | Không `RLIMIT_AS` cho con huấn luyện (chỉ `ml_eval` có) · B6-03b |
+| tiến trình con huấn luyện | D | Con ăn hết RAM/GPU | `start_new_session`, watchdog hết hạn (`training_runner/watchdog.py:107`), khoá GPU TTL (B-20), `mem_limit` compose | Không `RLIMIT_AS` cho con huấn luyện (chỉ `ml_eval` có) · B6-03b |
 | tiến trình con huấn luyện | E | Thoát hộp, nâng quyền | Không `shell=True`, đối số cố định (B-15) | Container không root/mạng `internal` không kiểm sống (B-25) · B0-08 |
 
 ### quản trị viên → N26 (trọng số)
@@ -144,8 +144,8 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 |---|---|---|---|---|
 | api ↔ MinIO | S | Giả MinIO | mạng nội bộ, khoá riêng `ml` theo tiền tố (`deploy/minio/ml-policy.json`; thuộc việc D) | — |
 | api ↔ MinIO | T | Ghi đè object bằng khoá `..` | `check_key` chặn `..`/ký tự điều khiển (C-21) | — |
-| api ↔ MinIO | R | Chối tải lên | metadata SHA-256 ở `ObjectInfo` (`packages/storage/local.py:105-112`) | — |
-| api ↔ MinIO | I | Lộ object cho người ngoài | URL ký ≥ 60 phút, token tệp có MAC (C-19, C-20); S3 khác origin + `nosniff` → việc D | S3 khác origin sống qua nginx · chưa kiểm — thiếu ảnh · B0-08 |
+| api ↔ MinIO | R | Chối tải lên | metadata SHA-256 ở `ObjectInfo` (`packages/storage/local.py:108-115`) | — |
+| api ↔ MinIO | I | Lộ object cho người ngoài | URL ký ≥ 60 phút, token tệp có MAC (C-19, C-20); S3 khác origin + `nosniff` → việc D | S3 khác origin + vhost `nosniff`/`CSP sandbox` đo sống đạt (D-08, W10/L-01, L-02) · B0-08 |
 | api ↔ MinIO | D | MinIO chết/đĩa đầy | 503 `DEPENDENCY_UNAVAILABLE` (C-03); trần thân (C-38) | — |
 | api ↔ MinIO | E | `ml` ghi ngoài tiền tố | chính sách MinIO theo tiền tố — thuộc việc D (V1) | — |
 
@@ -156,7 +156,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | URL ký và `/api/files` | S | Giả token | HMAC-SHA256 khoá con `file`, `compare_digest` (C-20) | — |
 | URL ký và `/api/files` | T | Sửa một byte hay đổi khoá trong token | MAC trên `k\|e\|d\|n`; sửa → 404 (C-20, C-21) | — |
 | URL ký và `/api/files` | R | Chối truy cập | token không vào log (cố ý): truy vết bằng `requestId`/`routeTemplate` (C-07) | không truy được ai đã dùng token · B0-04 (chủ ý) |
-| URL ký và `/api/files` | I | Token lộ qua log/metric/referrer | log chỉ `routeTemplate` (C-07); nhãn metric là mẫu đường (C-45); `Referrer-Policy: same-origin`; nginx `access_log off` (C-08) | log nginx/uvicorn sống chưa kiểm (C-08) · B0-08 |
+| URL ký và `/api/files` | I | Token lộ qua log/metric/referrer | log chỉ `routeTemplate` (C-07); nhãn metric là mẫu đường (C-45); `Referrer-Policy: same-origin`; nginx `access_log off` (C-08) | log nginx/uvicorn sống: token không vào log (C-08, W10/L-01) · B0-08 |
 | URL ký và `/api/files` | D | Liên tục thử token rác | cùng 404, không chạm đĩa với token hỏng (`verify_token` trước `stat`) — không có hạn mức riêng | không hạn mức IP cho `/api/files` (chi phí HMAC thấp) · B0-06 |
 | URL ký và `/api/files` | E | Đọc object ngoài khoá được ký | khoá nằm trong MAC; `..` bị chặn; `inline` chỉ ảnh đã sniff (`apps/api/files/router.py:51-53`) | — |
 
@@ -178,8 +178,8 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | sao lưu và khôi phục | S | Giả bản sao lưu khi khôi phục | SHA-256 theo manifest kiểm trước khi dừng dịch vụ (`deploy/backup/restore.sh`, B0-10) | — |
 | sao lưu và khôi phục | T | Sửa bản sao lưu | manifest SHA-256; `age` xác thực tính toàn vẹn khi giải (C-16) | — |
 | sao lưu và khôi phục | R | Không áp dụng — không có hành vi người dùng; nhật ký chạy ở systemd/journald | — | — |
-| sao lưu và khôi phục | I | Lộ bản sao lưu (hash mật khẩu, dữ liệu dự án) | `age` khi có recipient (C-16); quyền tệp (C-17) | quyền 0644 mặc định → SEC-040; mặc định không mã hoá (C-18) → Nợ hiến chương · B0-10 |
-| sao lưu và khôi phục | D | Bản sao lưu dở làm đầy đĩa | xoá thư mục dở khi lỗi, xoay vòng 7 bản + tuần (`backup.sh:37-77,99`, B0-10) | — |
+| sao lưu và khôi phục | I | Lộ bản sao lưu (hash mật khẩu, dữ liệu dự án) | `age` khi có recipient (C-16); quyền tệp (C-17) | quyền 0644 mặc định → SEC-040; production không mã hoá (C-18) → SEC-044, đã vá FIX-339 (staging: Nợ hiến chương) · B0-10 |
+| sao lưu và khôi phục | D | Bản sao lưu dở làm đầy đĩa | xoá thư mục dở khi lỗi, xoay vòng 7 bản + tuần (`backup.sh:46-80,111`, B0-10) | — |
 | sao lưu và khôi phục | E | Khôi phục chạy bởi người không có quyền | chạy dưới `User=deploy` (`appback-backup.service`); khoá `age` cất ngoài máy (B0-10 [6]) | — |
 
 ### trình duyệt ↔ nginx
@@ -187,10 +187,10 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 | ranh giới | chữ | mối đe doạ | biện pháp (dẫn #) | rủi ro tồn dư · chủ |
 |---|---|---|---|---|
 | trình duyệt ↔ nginx | S | Giả mạo origin để ghi bằng cookie | `Origin` bắt buộc cho ghi cookie, lạ → 403 (A-10); luồng chặn `Origin` lạ (D-11) | cờ cookie đo tầng app ở A-09; qua nginx chưa đo (thiếu ảnh) · B1-01 |
-| trình duyệt ↔ nginx | T | Hạ cấp http, chèn nội dung | 301 sang https, HSTS (D-07) | HSTS/TLS chưa đo, thiếu ảnh · B0-08 |
+| trình duyệt ↔ nginx | T | Hạ cấp http, chèn nội dung | 301 sang https, HSTS (D-07) | HSTS + 301 đo sống đạt (D-07, W10/L-01) · B0-08 |
 | trình duyệt ↔ nginx | R | Không truy vết yêu cầu | `X-Request-Id` ở mọi phản hồi kể cả lỗi nginx (D-01, D-05) | — |
 | trình duyệt ↔ nginx | I | Lộ nội dung qua sniff, framing, referrer, cache lỗi | App đủ bốn header (D-01…D-03); CSP (D-06); lỗi do nginx sinh thiếu header (D-05) | thân lỗi nginx thiếu header · B0-08 (SEC-060) |
-| trình duyệt ↔ nginx | D | Thân lớn, dồn yêu cầu | `client_max_body_size 8m` (`app_locations.conf:3`), 413 của app (D-02), 429 (D-03) | giới hạn nginx chưa đo sống · B0-08 |
+| trình duyệt ↔ nginx | D | Thân lớn, dồn yêu cầu | `client_max_body_size 8m` (`app_locations.conf:3`), 413 của app (D-02), 429 (D-03) | trần 8 MiB/512 MiB N26 đo sống đạt (C-39, W10/L-01) · B0-08 |
 | trình duyệt ↔ nginx | E | Gọi chéo origin để chiếm quyền | không CORS (D-09) | — |
 
 ### nginx ↔ api
@@ -199,7 +199,7 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 |---|---|---|---|---|
 | nginx ↔ api | S | Giả `X-Request-Id`, `X-Forwarded-For` | nginx đặt lại `X-Forwarded-For`, chuẩn hoá `X-Request-Id` (`proxy_common.conf:9-10`, `templates/prod/app.conf.template:2-5`) | — |
 | nginx ↔ api | T | Sửa thân giữa đường | cùng mạng bridge nội bộ, không TLS nội bộ (theo hiến chương) | không mã hoá nội bộ · B0-08 |
-| nginx ↔ api | R | Mất vết khi api chết | log nginx giữ `request_id`; token tệp không vào log (`app_locations.conf:38-44`) | — |
+| nginx ↔ api | R | Mất vết khi api chết | log nginx giữ `request_id`; token tệp không vào log (`app_locations.conf:39-45`) | — |
 | nginx ↔ api | I | Lộ `/metrics`, cổng exporter | không location `/metrics`, 9464 không công bố (D-13) | đo sống chưa làm · B0-08 |
 | nginx ↔ api | D | api chết → treo client | `proxy_connect_timeout 1s`, thử lại 2 lần, 503 JSON (`proxy_common.conf:26-29`) | 503 thiếu header nền (D-05, SEC-060) · B0-08 |
 | nginx ↔ api | E | Gọi route nội bộ qua nginx | chỉ `/api/`, `/`, `/assets/`, `/draco/` được mở; quét route (D-26, D-27) | — |
@@ -220,5 +220,5 @@ Commit đã soát `2a63cfc5420f`. Biện pháp dẫn `#` của `asvs-checklist.m
 Mỗi dòng STRIDE có cột tồn dư kèm prompt chủ. Ba lỗ có chủ ý của v1 (không mở `SEC-*`):
 
 - admin dựng dataset từ tầng của mọi dự án, xuyên ranh giới thành viên · B6-02;
-- giấy phép CC BY-NC (CubiCasa), NVIDIA phi thương mại (mit-b0/b1), AGPL (YOLO) chảy vào bản được kích hoạt (D-24, D-25; D5 của kế hoạch) · B5-01, B6-01, B6-02b;
+- giấy phép CC BY-NC (CubiCasa), NVIDIA phi thương mại (mit-b0/b1), AGPL (YOLO) chảy vào bản được kích hoạt (D-24, D-25; D5 của kế hoạch; giấy phép CubiCasa nay in ở báo cáo nhập — FIX-343, SEC-063, chưa chặn kích hoạt) · B5-01, B6-01, B6-02b;
 - bản sao trang trong `ml/datasets/*` còn sống sau khi dự án bị xoá · B6-02, B2-01.

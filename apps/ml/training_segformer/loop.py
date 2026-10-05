@@ -82,14 +82,14 @@ class _Loop:
             self._validate(epoch)
 
     def _loader(self, epoch: int) -> DataLoader[tuple[object, object]]:
-        """`DataLoader` xáo bằng `Generator` đã seed — thứ tự lô tái lập được (M06)."""
+        """`DataLoader` xáo bằng `Generator` seed `seed + epoch` — tái lập được (M06), mỗi epoch một thứ tự lô."""
         split_dir = self.data_dir / "train"
         dataset = WallSegDataset(split_dir, crop_px=self.config.crop_px, seed=self.spec.seed, epoch=epoch)
         return DataLoader(
             dataset,  # type: ignore[arg-type]  # Dataset là protocol cấu trúc, WallSegDataset khớp
             batch_size=self.batch_size,
             shuffle=True,
-            generator=torch.Generator().manual_seed(self.spec.seed),
+            generator=torch.Generator().manual_seed(self.spec.seed + epoch),
             num_workers=self.config.num_workers,
         )
 
@@ -175,7 +175,7 @@ def train_model(
     reporter: TrainReporter,
     clock: Clock,
     monotonic: Callable[[], float],
-    optimizer_cls: type[AdamW] = AdamW,
+    optimizer_cls: Callable[..., AdamW] = AdamW,
 ) -> None:
     """Huấn luyện `model` tại chỗ; `optimizer_cls` tiêm được để test đếm bước thật, không mock `torch`.
 

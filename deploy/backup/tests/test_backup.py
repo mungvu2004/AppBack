@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tarfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 from deploy.scripts.tests.support import fake_bin, read_log, run_script
 
@@ -51,13 +54,11 @@ case "$args" in
     exit 0
     ;;
   *"entrypoint tar"*|*" tar "*)
-    if [ -n "$host_mount" ]; then
-      src="$(mktemp -d)"
-      printf 'vol-object-1' > "$src/x.bin"
-      printf 'vol-object-2' > "$src/y.bin"
-      tar -cf "$host_mount/objects.tar" -C "$src" .
-      rm -rf "$src"
-    fi
+    src="$(mktemp -d)"
+    printf 'vol-object-1' > "$src/x.bin"
+    printf 'vol-object-2' > "$src/y.bin"
+    tar -cf - -C "$src" .
+    rm -rf "$src"
     exit 0
     ;;
   *"DROP DATABASE"*|*"CREATE DATABASE"*|*pg_restore*)
@@ -117,7 +118,7 @@ def _sha256(path: Path) -> str:
 
 def test_backup__manifest_has_required_fields_and_correct_hashes(tmp_path: Path) -> None:
     """s3 không mã hoá: manifest đủ trường §3, files khớp SHA-256 thật, object_count đúng."""
-    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3"})
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "1"})
     assert code == 0, log
 
     dirs = [p for p in target.iterdir() if p.is_dir()]
@@ -140,7 +141,7 @@ def test_backup__manifest_has_required_fields_and_correct_hashes(tmp_path: Path)
 
 def test_backup__pg_dump_runs_before_mirror_and_mirror_has_no_remove(tmp_path: Path) -> None:
     """Log lệnh: pg_dump đứng trước mc mirror; không lệnh mirror nào dùng --remove."""
-    code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3"})
+    code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "1"})
     assert code == 0, log
 
     lines = log.splitlines()
@@ -155,7 +156,7 @@ def test_backup__pg_dump_runs_before_mirror_and_mirror_has_no_remove(tmp_path: P
 
 def test_backup__local_storage_produces_tar_and_skips_mirror(tmp_path: Path) -> None:
     """APPBACK_STORAGE=local → objects.tar, không lệnh mc mirror nào chạy."""
-    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "local"})
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "local", "BACKUP_ALLOW_PLAINTEXT": "1"})
     assert code == 0, log
     assert "mirror" not in log
 
@@ -187,9 +188,61 @@ def test_backup__age_recipient_encrypts_and_leaves_only_age_files(tmp_path: Path
         assert _sha256(stage / rel) == expected
 
 
+def test_backup__production_without_age_recipient_exits_1_before_dump(tmp_path: Path) -> None:
+    """APP_ENV=production mà thiếu BACKUP_AGE_RECIPIENT → thoát 1, không pg_dump, không bản rõ (C-18)."""
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "APP_ENV": "production"})
+    assert code == 1, log
+    assert "pg_dump" not in log
+    assert not target.exists() or not any(target.iterdir())
+
+
+@pytest.mark.parametrize("app_env", ["staging", "dev", ""])
+def test_backup__any_env_without_age_recipient_exits_1_before_dump(tmp_path: Path, app_env: str) -> None:
+    """Không chỉ production: staging, dev và `APP_ENV` rỗng thiếu recipient cũng thoát 1, không ghi gì."""
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": app_env}
+    code, log, target = _run_backup(tmp_path, env)
+    assert code == 1, log
+    assert "pg_dump" not in log
+    assert not target.exists() or not any(target.iterdir())
+
+
+def test_backup__plaintext_opt_out_runs_without_recipient(tmp_path: Path) -> None:
+    """`BACKUP_ALLOW_PLAINTEXT=1` là lối thoát tường minh duy nhất: chạy bản rõ, `encrypted: false`."""
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "dev", "BACKUP_ALLOW_PLAINTEXT": "1"}
+    code, log, target = _run_backup(tmp_path, env)
+    assert code == 0, log
+    stage = next(p for p in target.iterdir() if p.is_dir())
+    manifest = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["encrypted"] is False
+
+
+def test_backup__production_ignores_plaintext_opt_out(tmp_path: Path) -> None:
+    """Cờ `BACKUP_ALLOW_PLAINTEXT=1` chỉ cho dev/diễn tập: `APP_ENV=production` vẫn thoát 1, không pg_dump."""
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "production", "BACKUP_ALLOW_PLAINTEXT": "1"}
+    code, log, target = _run_backup(tmp_path, env)
+    assert code == 1, log
+    assert "pg_dump" not in log
+    assert not target.exists() or not any(target.iterdir())
+
+
+def test_backup__plaintext_opt_out_value_must_be_exactly_1(tmp_path: Path) -> None:
+    """Giá trị khác `1` (vd `true`) không phải opt-out: vẫn thoát 1."""
+    code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "true"})
+    assert code == 1, log
+
+
+def test_backup__production_with_age_recipient_encrypts(tmp_path: Path) -> None:
+    """APP_ENV=production có BACKUP_AGE_RECIPIENT → chạy bình thường, chỉ còn tệp .age (C-18)."""
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "production", "BACKUP_AGE_RECIPIENT": "age1testrecipient"}
+    code, log, target = _run_backup(tmp_path, env)
+    assert code == 0, log
+    stage = next(p for p in target.iterdir() if p.is_dir())
+    assert {p.name for p in stage.iterdir()} == {"db.dump.age", "objects.tar.age", "manifest.json"}
+
+
 def test_backup__pg_dump_failure_exits_1_and_removes_stage_dir(tmp_path: Path) -> None:
     """pg_dump hỏng → thoát 1, không để lại thư mục dở dang."""
-    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "_FAIL": "1"})
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "1", "_FAIL": "1"})
     assert code == 1, log
     if target.exists():
         assert not any(target.iterdir())
@@ -235,3 +288,45 @@ def test_backup__rotate_only_keeps_seven_days_and_weekly_and_untouched_stray(tmp
             expected.add((now - timedelta(days=latest)).strftime("%Y%m%dT000000Z"))
 
     assert set(dated) == expected
+
+
+def test_backup__stage_dir_and_dump_are_owner_only(tmp_path: Path) -> None:
+    """SEC-040: dưới `umask 022` của phiên SSH/systemd, thư mục bản sao lưu và tệp script tạo vẫn chỉ chủ đọc được.
+
+    Bản rõ (không `BACKUP_AGE_RECIPIENT`) chứa hash mật khẩu và mọi bản vẽ: 0644/0755 là cho mọi tài khoản
+    cục bộ đọc. Chạy qua `bash -c 'umask 022; exec …'` để kết quả không phụ thuộc umask của tiến trình pytest.
+    """
+    target = tmp_path / "target"
+    log = tmp_path / "log"
+    env = {"FAKE_LOG": str(log), "BACKUP_TARGET": str(target), "APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "1"}
+    wrapper = tmp_path / "umask022.sh"
+    wrapper.write_text(f'umask 022\nexec bash "{BACKUP_SH}"\n', encoding="utf-8")
+    result = run_script(wrapper, env=env, bin_dir=_bin_dir(tmp_path))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    (stage,) = [p for p in target.iterdir() if p.is_dir()]
+    # Chỉ khẳng định thứ script tự tạo: `objects/**` do container `mc`/`tar` sinh (docker giả ở đây ghi trên host nên
+    # không chứng minh gì về chúng) — chúng được bảo vệ bởi thư mục cha 0700.
+    modes = {name: (stage / name).stat().st_mode & 0o777 for name in (".", "db.dump", "manifest.json", "objects")}
+    assert modes == {".": 0o700, "db.dump": 0o600, "manifest.json": 0o600, "objects": 0o700}
+
+
+def test_backup__s3_mirror_runs_as_host_user(tmp_path: Path) -> None:
+    """NO-327: `mc mirror` chạy bằng uid:gid của người chạy script, không root — không thì `objects/**` thuộc root
+    và `rm -rf`/xoay vòng của `deploy` hỏng EPERM (đo bằng alpine: thư mục root-owned không xoá được)."""
+    code, log, _ = _run_backup(tmp_path, {"APPBACK_STORAGE": "s3", "BACKUP_ALLOW_PLAINTEXT": "1"})
+    assert code == 0, log
+    (mirror,) = [line for line in log.splitlines() if "mirror" in line]
+    assert f"--user {os.getuid()}:{os.getgid()}" in mirror, mirror
+
+
+def test_backup__local_tar_streams_to_a_host_owned_file(tmp_path: Path) -> None:
+    """NO-327: stage_dir là 0700 của `deploy` nên container `api` (uid 10001) không ghi vào đó được — tar đi qua
+    stdout (`-T`, không gắn volume đích) và host ghi `objects.tar` 0600."""
+    code, log, target = _run_backup(tmp_path, {"APPBACK_STORAGE": "local", "BACKUP_ALLOW_PLAINTEXT": "1"})
+    assert code == 0, log
+    (tar_line,) = [line for line in log.splitlines() if " tar " in f" {line} " and "docker" in line]
+    assert " -T " in tar_line, tar_line
+    assert "backup-dest" not in tar_line, tar_line
+    (stage,) = [p for p in target.iterdir() if p.is_dir()]
+    assert (stage / "objects.tar").stat().st_mode & 0o777 == 0o600

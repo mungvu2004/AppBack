@@ -24,12 +24,10 @@ from google.protobuf.message import DecodeError  # type: ignore[import-untyped] 
 
 from apps.ml.runtime.errors import MODEL_CHECKSUM_MISMATCH, MODEL_FORMAT_UNSUPPORTED, MODEL_NOT_FOUND, ORT_ERRORS
 from apps.ml.runtime.settings import get_ml_settings
-from packages.core.error_codes import NOT_FOUND
-from packages.core.errors import AppError
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.payloads import ModelRef
 from packages.ml_contracts.pinned import PINNED, PinnedWeights
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 
 MODEL_MAX_BYTES: Final = 512 * 1024 * 1024
 SESSION_CACHE_SIZE: Final = 3
@@ -190,24 +188,21 @@ def _read_file(path: Path) -> bytes:
     return data
 
 
-async def _read_object(storage: ObjectStorage, key: str) -> bytes:
-    """Object trọng số: `stat` trước, đọc theo khúc và dừng ngay khi vượt trần (kho có thể khai sai cỡ)."""
+async def read_model_object(storage: ObjectStorage, key: str) -> bytes:
+    """Object trọng số (công khai cho hộp cát đánh giá): `stat` trước,
+    đọc theo khúc và dừng ngay khi vượt trần (kho có thể khai sai cỡ)."""
     info = await storage.stat(key)
     if info is None:
         raise PermanentError(MODEL_NOT_FOUND)
     if info.size > MODEL_MAX_BYTES:
         raise _unsupported()
-    data = bytearray()
-    try:
-        async for chunk in storage.open_read(key):
-            data += chunk
-            if len(data) > MODEL_MAX_BYTES:
-                raise _unsupported()
-    except AppError as exc:
-        if exc.code is not NOT_FOUND:
-            raise
-        raise PermanentError(MODEL_NOT_FOUND) from exc
-    return bytes(data)
+    return await read_all_capped(
+        storage,
+        key,
+        max_bytes=MODEL_MAX_BYTES,
+        too_large=_unsupported,
+        on_missing=lambda: PermanentError(MODEL_NOT_FOUND),
+    )
 
 
 def _session(data: bytes, threads: int) -> ort.InferenceSession:
@@ -246,7 +241,7 @@ async def load_onnx(
             raise PermanentError(MODEL_NOT_FOUND)
         data = await asyncio.to_thread(_read_file, models_dir / f"{ref.pinned_name}.onnx")
     else:
-        data = await _read_object(storage, str(ref.weights_key))
+        data = await read_model_object(storage, str(ref.weights_key))
     await asyncio.to_thread(_verify, data, ref, pinned)
     session = await asyncio.to_thread(_session, data, get_ml_settings().ml_ort_threads)
     _SESSIONS.put(ref.checksum_sha256, session)

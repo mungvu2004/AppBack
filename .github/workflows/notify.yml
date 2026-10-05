@@ -16,6 +16,8 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Secret ALERT_WEBHOOK_URL nằm ở Environment `alerts` (không protection rule), không ở cấp repository (SEC-061).
+    environment: alerts
     env:
       WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
       CONCLUSION: ${{ github.event.workflow_run.conclusion }}

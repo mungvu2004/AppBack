@@ -7,8 +7,10 @@ import logging
 import re
 import secrets
 import tempfile
+import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -16,8 +18,10 @@ import pytest
 from minio import Minio
 from minio.error import S3Error
 
+from packages.core.error_codes import INTERNAL
 from packages.core.errors import AppError
 from packages.storage import keys
+from packages.storage.port import SignRequest
 from packages.storage.s3 import S3Storage, http_client
 from packages.storage.tests.fault_proxy import Fault, FaultProxy, delete_error_xml, fault_proxy, s3_error_xml
 from packages.testing.fixtures.clock import FakeClock
@@ -118,6 +122,7 @@ async def test_put_on_stopped_minio_returns_503(fake_clock: FakeClock) -> None:
 
 
 async def test_refused_endpoint_returns_503(fake_clock: FakeClock) -> None:
+    """Endpoint từ chối kết nối → 503 `DEPENDENCY_UNAVAILABLE` (C13)."""
     storage = storage_on(client_for(urlsplit(refused_url("http")).netloc), "bucket-nao-do", fake_clock)
 
     with pytest.raises(AppError, match="DEPENDENCY_UNAVAILABLE"):
@@ -229,15 +234,18 @@ class _FullDiskSpool:
         """Nhận mọi tham số của `SpooledTemporaryFile` và bỏ qua."""
 
     def __enter__(self) -> "_FullDiskSpool":
+        """Vào ngữ cảnh `with`: trả chính bộ đệm giả."""
         return self
 
     def __exit__(self, *args: object) -> None:
         """Không giữ tài nguyên nào."""
 
     def write(self, data: bytes) -> int:
+        """Luôn báo đĩa đầy."""
         raise OSError(errno.ENOSPC, "tiêm lỗi đĩa đầy")
 
     def seek(self, offset: int) -> int:
+        """Trả nguyên `offset` (bộ đệm giả không có dữ liệu)."""
         return offset
 
 
@@ -260,3 +268,82 @@ async def test_ensure_bucket_raises_when_cors_is_refused(proxied: tuple[S3Storag
 
     with pytest.raises(S3Error, match="AccessDenied"):
         await storage.ensure_bucket("https://appback.test")
+
+
+async def test_delete__missing_bucket_is_an_app_error(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """NO-230: `NoSuchBucket` (4xx) của `delete` thành `AppError` `INTERNAL`, không `Retry-After`."""
+    endpoint, access_key, secret_key = minio_endpoint
+    storage = storage_on(client_for(endpoint, access_key, secret_key), "bucket-chua-tao-bao-gio", fake_clock)
+
+    with pytest.raises(AppError) as exc:
+        await storage.delete(KEY)
+    assert exc.value.code is INTERNAL
+    assert exc.value.retry_after is None
+
+
+async def test_delete__denied_request_is_an_app_error(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """NO-230: khoá bí mật sai (MinIO trả `SignatureDoesNotMatch`) thành `AppError` `INTERNAL`, không `Retry-After`."""
+    endpoint, access_key, _ = minio_endpoint
+    storage = storage_on(client_for(endpoint, access_key, "sai-khoa-bi-mat"), "bucket-nao-do", fake_clock)
+
+    with pytest.raises(AppError) as exc:
+        await storage.delete(KEY)
+    assert exc.value.code is INTERNAL
+    assert exc.value.retry_after is None
+
+
+async def test_signed_url__without_a_public_client_is_refused(
+    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock
+) -> None:
+    """Tiến trình không có `PUBLIC_BASE_URL` (ml): kho S3 dựng với `public_client=None` từ chối ký (NO-203)."""
+    endpoint, access_key, secret_key = minio_endpoint
+    client = client_for(endpoint, access_key, secret_key)
+    storage = S3Storage(client=client, public_client=None, bucket="b", clock=fake_clock)
+
+    with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL"):
+        await storage.signed_url(KEY, disposition="attachment")
+
+
+def _record_presign_threads(storage: S3Storage, monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Bọc `presigned_get_object` thật của client công khai để ghi mã luồng mỗi lần ký (vẫn ký thật)."""
+    threads: list[int] = []
+    client = storage._public_client
+    assert client is not None
+    real = client.presigned_get_object
+
+    def recording(*args: Any, **kwargs: Any) -> str:
+        """Ghi luồng gọi rồi ký bằng hàm thật."""
+        threads.append(threading.get_ident())
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(client, "presigned_get_object", recording)
+    return threads
+
+
+async def test_signed_url__presigns_off_the_event_loop(s3_storage: S3Storage, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-207: ký là việc CPU nên không chạy trên luồng của vòng sự kiện."""
+    threads = _record_presign_threads(s3_storage, monkeypatch)
+
+    await s3_storage.signed_url(KEY, disposition="attachment")
+
+    assert threads
+    assert threading.get_ident() not in threads
+
+
+async def test_signed_urls__signs_a_whole_batch_in_one_thread(
+    s3_storage: S3Storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-207: 1.000 khoá là một lượt chuyển luồng, không phải 1.000."""
+    threads = _record_presign_threads(s3_storage, monkeypatch)
+    requests = [SignRequest(KEY, "attachment", filename=f"{i}.png") for i in range(1000)]
+
+    signed = await s3_storage.signed_urls(requests)
+
+    assert len(signed) == 1000
+    assert len(set(threads)) == 1
+    assert len(threads) == 1000
+    assert threading.get_ident() not in threads

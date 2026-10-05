@@ -4,7 +4,7 @@ import importlib
 import secrets
 import sys
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, Literal, cast
 
 import pytest
 from pydantic import ValidationError
@@ -39,12 +39,14 @@ def seed_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _write(package: Path, name: str, *, order: int, envs: tuple[str, ...] = ("ci", "dev")) -> None:
+    """Hàm phụ của test: write."""
     package.joinpath(f"{name}.py").write_text(
         SEED_TEMPLATE.format(order=order, envs=sorted(envs), name=name), encoding="utf-8"
     )
 
 
 def test_load_seeds_sorted_by_order_then_name(seed_package: Path) -> None:
+    """Kiểm test load seeds sorted by order then name."""
     _write(seed_package, "b_late", order=2)
     _write(seed_package, "a_late", order=2)
     _write(seed_package, "z_early", order=1)
@@ -52,6 +54,7 @@ def test_load_seeds_sorted_by_order_then_name(seed_package: Path) -> None:
 
 
 def test_load_seeds_filters_by_env(seed_package: Path) -> None:
+    """Kiểm test load seeds filters by env."""
     _write(seed_package, "demo", order=1, envs=("dev",))
     _write(seed_package, "core", order=1, envs=("ci", "production"))
     assert [seed.name for seed in load_seeds("ci", seed_package, seed_package.name)] == ["core"]
@@ -68,12 +71,14 @@ def test_load_seeds_filters_by_env(seed_package: Path) -> None:
     ],
 )
 def test_load_seeds_requires_all_attributes(seed_package: Path, body: str, missing: str) -> None:
+    """Kiểm test load seeds requires all attributes."""
     seed_package.joinpath("broken.py").write_text(body, encoding="utf-8")
     with pytest.raises(ValueError, match=f"thiếu {missing}"):
         load_seeds("ci", seed_package, seed_package.name)
 
 
 def test_load_seeds_rejects_wrong_envs_type(seed_package: Path) -> None:
+    """Kiểm test load seeds rejects wrong envs type."""
     seed_package.joinpath("odd.py").write_text(
         "ORDER = 1\nENVS = 'ci'\n\n\nasync def seed(session):\n    pass\n", encoding="utf-8"
     )
@@ -82,6 +87,7 @@ def test_load_seeds_rejects_wrong_envs_type(seed_package: Path) -> None:
 
 
 async def test_apply_seeds_runs_in_order(seed_package: Path) -> None:
+    """Kiểm test apply seeds runs in order."""
     _write(seed_package, "second", order=2)
     _write(seed_package, "first", order=1)
     recorder: list[str] = []
@@ -128,6 +134,7 @@ def test_repo_demo_seeds_never_reach_production() -> None:
 
 
 def test_settings_defaults() -> None:
+    """Kiểm test settings defaults."""
     settings = DatabaseSettings(database_url=URL)
     assert (settings.db_pool_size, settings.db_max_overflow, settings.db_pool_timeout_s) == (10, 5, 5)
     assert (settings.db_statement_timeout_ms, settings.db_lock_timeout_ms) == (10000, 5000)
@@ -136,11 +143,13 @@ def test_settings_defaults() -> None:
 
 @pytest.mark.parametrize("url", ["postgresql://u@h/db", "postgres://u@h/db", "sqlite+aiosqlite:///x.db", ""])
 def test_settings_require_asyncpg_driver(url: str) -> None:
+    """Kiểm test settings require asyncpg driver."""
     with pytest.raises(ValidationError, match="postgresql\\+asyncpg"):
         DatabaseSettings(database_url=url)
 
 
 def test_settings_read_env_and_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kiểm test settings read env and cache."""
     monkeypatch.setenv("DATABASE_URL", URL)
     monkeypatch.setenv("DB_POOL_SIZE", "3")
     reset_database_settings_cache()
@@ -159,6 +168,7 @@ def test_settings_read_env_and_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_seeds_main_requires_app_env(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Kiểm test seeds main requires app env."""
     monkeypatch.delenv("APP_ENV", raising=False)
     assert seeds_main() == 2
     assert "thiếu APP_ENV" in capsys.readouterr().out
@@ -185,6 +195,7 @@ def test_seeds_main_reports_what_it_ran(
 
 
 def test_load_all_models_imports_every_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kiểm test load all models imports every file."""
     package = tmp_path / f"modelpkg_{secrets.token_hex(4)}"
     package.mkdir()
     (package / "__init__.py").write_text("", encoding="utf-8")
@@ -195,3 +206,14 @@ def test_load_all_models_imports_every_file(tmp_path: Path, monkeypatch: pytest.
     assert model_modules(package) == ["thing"]
     load_all_models(package, package.name)
     assert sys.modules[f"{package.name}.thing"].LOADED is True
+
+
+@pytest.mark.parametrize("app_env", ["staging", "production"])
+def test_database_url_placeholder_rejected_outside_dev(app_env: Literal["staging", "production"]) -> None:
+    """NO-328 mở rộng: DSN mẫu của `env.example` (`change-me-pg`) bị từ chối ở staging/production; dev/ci dùng được."""
+    placeholder = "postgresql+asyncpg://appback:change-me-pg@postgres:5432/appback"
+    with pytest.raises(ValidationError, match="change-me") as caught:
+        DatabaseSettings(database_url=placeholder, app_env=app_env)
+    assert "change-me-pg" not in str(caught.value), "thông điệp lỗi không được in lại DSN"
+    assert DatabaseSettings(database_url=placeholder, app_env="ci").database_url == placeholder
+    assert DatabaseSettings(database_url=placeholder).database_url == placeholder

@@ -7,7 +7,11 @@ cáo — file này chỉ kiểm cấu trúc script (đỏ trên bản trước s
 
 from __future__ import annotations
 
-from deploy.tests.support import require_path
+import os
+import subprocess
+from pathlib import Path
+
+from deploy.tests.support import REPO_ROOT, require_path
 
 
 def _script_text() -> str:
@@ -54,8 +58,8 @@ def test_minio_init_generates_real_policies_from_templates_into_tmp() -> None:
     assert text.count(substitution) == 1, (
         f"init.sh: thay thế __BUCKET__ phải nằm ở đúng MỘT chỗ (hàm dùng chung), có {text.count(substitution)}"
     )
-    assert "/tmp/app-policy.json" in text, "init.sh: chính sách app thật phải sinh vào /tmp"  # noqa: S108
-    assert "/tmp/ml-policy.json" in text, "init.sh: chính sách ml thật phải sinh vào /tmp"  # noqa: S108
+    assert "/tmp/app-policy.json" in text, "init.sh: chính sách app phải sinh vào /tmp"  # noqa: S108 — trong container
+    assert "/tmp/ml-policy.json" in text, "init.sh: chính sách ml phải sinh vào /tmp"  # noqa: S108 — trong container
     policy_create_lines = [line for line in text.splitlines() if "mc admin policy create" in line]
     assert len(policy_create_lines) == 2, (
         f"init.sh: phải có đúng hai lệnh mc admin policy create, có {policy_create_lines}"
@@ -95,3 +99,62 @@ def test_minio_init_revokes_identities_left_over_from_key_rotation() -> None:
         'revoke_stale_users app-policy "${S3_ACCESS_KEY}"',
         'revoke_stale_users ml-policy "${S3_ML_ACCESS_KEY}"',
     ], f"init.sh: phải gỡ danh tính cũ của CẢ HAI chính sách, đang có {calls}"
+
+
+_FAKE_MC = r"""#!/bin/sh
+echo "mc $*" >> "$FAKE_LOG"
+case "$*" in
+  *"policy entities"*"--user"*) echo "Query time: now" ;;
+  *"policy entities"*"--policy"*) printf '%b' "$MC_POLICY_OUT"; exit "${MC_POLICY_RC:-0}" ;;
+esac
+exit 0
+"""
+
+
+def _run_init(tmp_path: Path, policy_out: str, policy_rc: int) -> tuple[int, str]:
+    """Chạy bản chép của `init.sh` (đường `/deploy`, `/tmp` trỏ sang tmp) với `mc` giả; trả (mã thoát, log)."""
+    text = _script_text().replace('"/tmp/', f'"{tmp_path}/').replace('"/deploy/minio/', f'"{REPO_ROOT}/deploy/minio/')
+    script = tmp_path / "init.sh"
+    script.write_text(text, encoding="utf-8", newline="\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    mc = bin_dir / "mc"
+    mc.write_text(_FAKE_MC, encoding="utf-8", newline="\n")
+    mc.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "FAKE_LOG": str(tmp_path / "log"),
+        "MC_POLICY_OUT": policy_out,
+        "MC_POLICY_RC": str(policy_rc),
+        "S3_ENDPOINT": "http://x", "MINIO_ROOT_USER": "r", "MINIO_ROOT_PASSWORD": "p", "S3_BUCKET": "b",
+        "S3_ACCESS_KEY": "keep", "S3_SECRET_KEY": "s", "S3_ML_ACCESS_KEY": "mlkeep", "S3_ML_SECRET_KEY": "s",
+    }  # fmt: skip
+    cmd = ["bash", str(script)]
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True, check=False)  # noqa: S603 — lệnh cố định
+    log = tmp_path / "log"
+    return result.returncode, log.read_text(encoding="utf-8") if log.exists() else ""
+
+
+_ENTITIES_OK = "Query time: t\nPolicy -> Entity Mappings:\n  Policy: p\n    User Mappings:\n      stale\n      keep\n"
+
+
+def test_minio_init_revoke_fails_when_mc_entities_fails__no199(tmp_path: Path) -> None:
+    """NO-199: `mc admin policy entities` thoát khác 0 ⇒ `init.sh` phải thoát khác 0, không coi
+    danh sách rỗng là "không còn ai" (hỏng ngầm theo hướng mở)."""
+    code, log = _run_init(tmp_path, "", 1)
+    assert code != 0, "init.sh thoát 0 dù mc entities hỏng"
+    assert "user remove" not in log
+
+
+def test_minio_init_revoke_fails_on_unrecognised_output__no199(tmp_path: Path) -> None:
+    """NO-199: mc thoát 0 nhưng đầu ra mất mốc `Query time:` (đổi định dạng) ⇒ thoát khác 0."""
+    code, _ = _run_init(tmp_path, "garbage\n", 0)
+    assert code != 0, "init.sh thoát 0 với đầu ra mc không nhận ra"
+
+
+def test_minio_init_revoke_removes_only_stale_users__no199(tmp_path: Path) -> None:
+    """NO-199 (nhánh xanh): đầu ra đúng định dạng ⇒ gỡ `stale` và thoát 0."""
+    code, log = _run_init(tmp_path, _ENTITIES_OK, 0)
+    assert code == 0
+    assert "user remove local stale" in log

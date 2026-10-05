@@ -12,8 +12,10 @@ from typing import Final
 
 import pytest
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2", "sqlalchemy", "asyncpg", "torch", "onnxruntime")
+BLOCKED: Final = (*WORKER_BLOCKED, "sqlalchemy", "asyncpg", "torch", "onnxruntime")
 IMPORT_TIMEOUT_S: Final = 120.0
 
 

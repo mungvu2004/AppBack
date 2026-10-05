@@ -1,6 +1,6 @@
 """Test hợp đồng của #13 `floors_reorder_floors` (B2-03 [2], [6], [7], [8]).
 
-Route (`router.py`, `service.py`, `lookup.py`, `resolvers.py`) chưa hợp nhất trên nhánh này.
+Route (`router.py`, `service.py`, `lookup.py`, `resolvers.py`) đã hợp nhất.
 Ma trận case: G → C01 C02 C03 C06 C07 C08 C17 C18; `cases.toml` `extra = ["C14"]`,
 `waive = {C16 = "thân chỉ có id tầng, không có chuỗi người nhập"}`.
 """

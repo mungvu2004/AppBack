@@ -57,24 +57,31 @@ SCAN_DIRS = ("packages", "apps", "tools", "deploy", "docs", "tests")
 
 @dataclass
 class Finding:
+    """Một vi phạm: tên luật và chi tiết để in ra."""
+
     rule: str
     detail: str
 
 
 @dataclass
 class Report:
+    """Kết quả cổng: các vi phạm (`findings`) và số đo in kèm (`numbers`)."""
+
     findings: list[Finding] = field(default_factory=list)
     numbers: list[str] = field(default_factory=list)  # số đo in kèm, không ảnh hưởng đạt/hỏng
 
     def add(self, rule: str, detail: str) -> None:
+        """Thêm một vi phạm `rule`/`detail` vào báo cáo."""
         self.findings.append(Finding(rule, detail))
 
     @property
     def ok(self) -> bool:
+        """Đạt khi không có vi phạm nào."""
         return not self.findings
 
 
 def _iter_files(root: Path) -> Iterator[Path]:
+    """Duyệt mọi tệp dưới các thư mục của `SCAN_DIRS` (bỏ thư mục không tồn tại)."""
     for base in SCAN_DIRS:
         d = root / base
         if not d.is_dir():
@@ -83,6 +90,7 @@ def _iter_files(root: Path) -> Iterator[Path]:
 
 
 def check_forbidden_files(root: Path, report: Report) -> None:
+    """Cấm tệp cấu hình công cụ riêng và `conftest.py` ngoài gốc."""
     for p in _iter_files(root):
         if p.name in FORBIDDEN_CONFIG_BASENAMES:
             report.add("cấu hình riêng bị cấm", str(p.relative_to(root)))
@@ -91,6 +99,7 @@ def check_forbidden_files(root: Path, report: Report) -> None:
 
 
 def check_forbidden_text(root: Path, report: Report) -> None:
+    """Cấm chú thích né cổng trong mã `.py` ngoài `tools/` (tools/ được nhắc tới các mẫu cấm)."""
     # tools/ giữ chính mã ba công cụ cổng — chúng được phép NHẮC tới các mẫu
     # cấm (làm hằng regex), nên loại khỏi vùng quét nội dung.
     for p in _iter_files(root):
@@ -109,6 +118,7 @@ def check_forbidden_text(root: Path, report: Report) -> None:
 
 
 def check_member_pyproject_tables(root: Path, report: Report) -> None:
+    """Cấm bảng ngoài `project`/`tool.uv` trong `pyproject.toml` của gói/app thành viên."""
     for base in ("packages", "apps"):
         d = root / base
         if not d.is_dir():
@@ -128,6 +138,7 @@ def check_member_pyproject_tables(root: Path, report: Report) -> None:
 
 
 def check_addopts_no_cov(root: Path, report: Report) -> None:
+    """Cấm `--cov` trong `addopts` của pytest (độ phủ chỉ bật ở bước 5)."""
     data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     addopts = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("addopts", "")
     if "--cov" in addopts:
@@ -135,6 +146,7 @@ def check_addopts_no_cov(root: Path, report: Report) -> None:
 
 
 def check_test_files_location(root: Path, report: Report) -> None:
+    """Mọi `test_*.py` phải nằm dưới một thư mục `tests/`."""
     for p in _iter_files(root):
         if p.suffix != ".py" or not p.name.startswith("test_"):
             continue
@@ -144,6 +156,7 @@ def check_test_files_location(root: Path, report: Report) -> None:
 
 
 def check_missing_init(root: Path, report: Report) -> None:
+    """Mọi thư mục có `.py` phải có `__init__.py` (trừ `migrations/versions`)."""
     dirs_with_py: set[Path] = set()
     for p in _iter_files(root):
         if p.suffix == ".py":
@@ -157,6 +170,7 @@ def check_missing_init(root: Path, report: Report) -> None:
 
 
 def check_coverage_config(root: Path, report: Report) -> None:
+    """Đối chiếu cấu hình coverage đang nạp với giá trị bắt buộc [6]D."""
     import coverage
 
     cwd = Path.cwd()
@@ -187,6 +201,11 @@ def check_coverage_config(root: Path, report: Report) -> None:
 
 
 def unit_of(rel_path: str) -> str | None:
+    """Đơn vị (gói/app/thư mục gốc) của một đường tương đối; `None` nếu không thuộc đơn vị nào.
+
+    `deploy` và `tests` là đơn vị dù ngoài `[tool.coverage.run] source`: bước 5b chọn test `perf` theo
+    đơn vị bị chạm (NO-350); độ phủ của đơn vị không có tệp đo được là 100% (`Totals` rỗng), không đỏ.
+    """
     parts = Path(rel_path).parts
     if not parts:
         return None
@@ -196,19 +215,22 @@ def unit_of(rel_path: str) -> str | None:
     if parts[0] == "apps" and len(parts) >= 3:
         # file nằm thẳng trong apps/<app>/ (len==3, không có thư mục module) thuộc apps/<app>
         return f"apps/{parts[1]}" if len(parts) <= 3 else f"apps/{parts[1]}/{parts[2]}"
-    if parts[0] == "tools":
-        return "tools"
+    if parts[0] in ("tools", "deploy", "tests"):
+        return parts[0]
     return None
 
 
 @dataclass
 class Totals:
+    """Tổng dòng/nhánh đã phủ và tổng số, tính % cho một đơn vị hoặc toàn bộ."""
+
     covered_lines: int = 0
     num_statements: int = 0
     covered_branches: int = 0
     num_branches: int = 0
 
     def add(self, summary: Summary) -> None:
+        """Cộng các số dòng/nhánh của một tóm tắt coverage vào tổng."""
         self.covered_lines += summary.get("covered_lines", 0)
         self.num_statements += summary.get("num_statements", 0)
         self.covered_branches += summary.get("covered_branches", 0)
@@ -216,23 +238,28 @@ class Totals:
 
     @property
     def line_pct(self) -> float:
+        """% dòng đã phủ; 100 khi không có câu lệnh nào."""
         return 100.0 if self.num_statements == 0 else 100.0 * self.covered_lines / self.num_statements
 
     @property
     def branch_pct(self) -> float:
+        """% nhánh đã phủ; 100 khi không có nhánh nào."""
         return 100.0 if self.num_branches == 0 else 100.0 * self.covered_branches / self.num_branches
 
 
 def _norm(p: str) -> str:
+    """Đổi dấu gạch chéo ngược thành `/` để so đường tương đối giữa Windows và Linux."""
     return p.replace("\\", "/")
 
 
 def load_changed_files() -> list[str]:
+    """Các tệp bị chạm, đọc từ biến môi trường `VERIFY_CHANGED` (mỗi dòng một đường)."""
     raw = os.environ.get("VERIFY_CHANGED", "")
     return [_norm(line.strip()) for line in raw.splitlines() if line.strip()]
 
 
 def check_thresholds(coverage_data: dict[str, Any], branch: str, changed: list[str], report: Report) -> None:
+    """Kiểm ngưỡng 90% dòng/nhánh: tổng, từng đơn vị bị chạm và tập tệp bị chạm."""
     files: dict[str, dict[str, Any]] = {_norm(k): v for k, v in coverage_data.get("files", {}).items()}
     totals_summary = coverage_data.get("totals", {})
 
@@ -262,6 +289,8 @@ def check_thresholds(coverage_data: dict[str, Any], branch: str, changed: list[s
 
     for u in sorted(touched_units):
         t = units.get(u, Totals())
+        if t.num_statements == 0:
+            continue  # không có câu lệnh nào: in "100%" là số giả
         report.numbers.append(f"{u}: dòng {t.line_pct:.2f}% · nhánh {t.branch_pct:.2f}%")
         if t.line_pct < THRESHOLD:
             report.add("độ phủ dòng đơn vị bị chạm < 90%", f"{u}: {t.line_pct:.2f}%")
@@ -289,6 +318,7 @@ def check_thresholds(coverage_data: dict[str, Any], branch: str, changed: list[s
 
 
 def run(root: Path) -> Report:
+    """Chạy mọi kiểm tra cấu trúc rồi kiểm ngưỡng trên `coverage.json`, trả `Report`."""
     report = Report()
     check_forbidden_files(root, report)
     check_forbidden_text(root, report)
@@ -311,6 +341,7 @@ def run(root: Path) -> Report:
 
 
 def main() -> int:
+    """Điểm vào dòng lệnh: in số đo và vi phạm, thoát 0 khi đạt, 1 khi hỏng."""
     report = run(REPO_ROOT)
     for line in report.numbers:
         print(f"  {line}")

@@ -18,7 +18,6 @@ from packages.testing.fixtures.clock import FakeClock
 
 LIST_PATH: Final = "/api/library"
 FILES_PATH: Final = "/api/files/"
-BLOCKED: Final = ("fastapi", "jwt", "argon2")
 
 
 def item_path(item_id: str) -> str:
@@ -56,6 +55,7 @@ def spy(monkeypatch: pytest.MonkeyPatch, storage: LocalDiskStorage, name: str) -
     keys: list[str] = []
 
     async def wrapper(key: str, *args: Any, **kwargs: Any) -> Any:
+        """Ghi khoá rồi gọi hàm thật."""
         keys.append(key)
         return await real(key, *args, **kwargs)
 
@@ -67,6 +67,7 @@ def fail_put(monkeypatch: pytest.MonkeyPatch, storage: LocalDiskStorage) -> None
     """Mọi `put` sau đó ném `DEPENDENCY_UNAVAILABLE` (storage sập)."""
 
     async def broken(*_args: Any, **_kwargs: Any) -> Any:
+        """`put` luôn ném `DEPENDENCY_UNAVAILABLE`."""
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=5)
 
     monkeypatch.setattr(storage, "put", broken)

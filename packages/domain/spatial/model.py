@@ -8,7 +8,6 @@ A5 (`source="ai"` kèm `reviewed=True`) **không** kiểm ở đây: B3-03 cần
 `REVIEW_BY_AI_FORBIDDEN` thay cho `VALIDATION`, nên dùng `kinds.ai_reviewed_ids`.
 """
 
-import unicodedata
 from typing import Annotated, Final, Literal, Self
 
 from pydantic import (
@@ -26,14 +25,10 @@ from pydantic.alias_generators import to_camel
 
 from packages.core.ids import SPATIAL_PREFIX, SpatialKind, is_spatial_id
 from packages.core.instants import parse_wire
-from packages.core.text import nfc
+from packages.core.text import first_forbidden_char, nfc
 
 MAX_SAFE_INTEGER: Final = 2**53 - 1
 """`Number.MAX_SAFE_INTEGER`: FE cộng số nguyên bằng số thực chính xác tới đây."""
-
-# Ký tự đảo chiều hiển thị (U+202A-U+202E, U+2066-U+2069): đổi thứ tự chữ trên màn
-# mà không đổi byte, nên tên phòng có thể hiện khác cái đã lưu.
-_BIDI_CONTROLS: Final = frozenset(map(chr, (*range(0x202A, 0x202F), *range(0x2066, 0x206A))))
 
 
 class DomainModel(BaseModel):
@@ -64,7 +59,7 @@ def _human_text(value: str) -> str:
     text = nfc(value)
     if not text:
         raise ValueError("chuỗi rỗng")
-    if any(unicodedata.category(char) == "Cc" or char in _BIDI_CONTROLS for char in text):
+    if first_forbidden_char(text) is not None:
         raise ValueError("chuỗi chứa ký tự điều khiển hoặc ký tự đảo chiều")
     return text
 

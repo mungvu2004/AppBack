@@ -1,8 +1,8 @@
 """Runtime của `pipeline.quality.run`: task thật, Redis treo, K36 (B5-07 [8] "runtime").
 
-Chia việc với test lõi (việc A, `test_rules.py`): ở đây chỉ ca phải đi qua **dây** thật — hàm
+Tách với test lõi (`test_service.py`): ở đây chỉ ca phải đi qua **dây** thật — hàm
 task mỏng, `define_task`/`on_failed`, hàng `pipeline.cpu`, pool CSDL, client Redis — còn luật
-nghiệp vụ từng bước của `run_quality` kiểm ở lõi. Cảnh dùng chung: `open_run_at_quality` (A)
+nghiệp vụ từng bước của `run_quality` kiểm ở lõi. Cảnh dùng chung: `open_run_at_quality`
 dựng lượt đứng ở `qualityCheck` trên cảnh `pipeline_persist` + lõi `run_persist` thật (K23:
 Postgres, Redis, kho đĩa thật — không mock).
 """
@@ -11,7 +11,8 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterable, Callable, Coroutine
+from collections.abc import AsyncIterable, Callable, Coroutine, Iterator
+from dataclasses import dataclass
 from typing import Final, NoReturn, cast
 
 import pytest
@@ -24,6 +25,7 @@ from apps.api.drawings.progress import progress_wire
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_quality import service, tasks
 from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
+from apps.worker.pipeline_quality.tasks import override_quality_storage
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
 from apps.worker.pipeline_quality.tests.helpers import process_env as process_env
 from packages.db.engine import create_engine, create_sessionmaker
@@ -44,8 +46,17 @@ type Maker = async_sessionmaker[AsyncSession]
 CPU_QUEUE: Final = "pipeline.cpu"
 WAIT_S: Final = 30.0
 """Trần **chờ** chống treo cho các pha dùng `asyncio.Event` — không phải trần hiệu năng."""
+HANG_BUDGET_S: Final = 4.0
+"""Trần `perf` khi Redis treo: số đo 1,01 s (`_XREVRANGE_TIMEOUT_S` = 1 s) x ≥ 3."""
 
 _log = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def storage_override(local_storage: LocalDiskStorage) -> Iterator[None]:
+    """Task chạy trên `local_storage` của test (đã mồi `layer.json`) thay vì kho dựng từ môi trường."""
+    with override_quality_storage(lambda: local_storage):
+        yield
 
 
 def on_own_loop[T](db_url: str, work: Callable[[Maker], Coroutine[object, object, T]]) -> T:
@@ -142,20 +153,18 @@ async def test_check_pipeline_quality__J01(
     assert json.loads(entries[0][1][FIELD])["status"] == "completed"
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_check_pipeline_quality__J01_smoke(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`send_task` tới worker thật nghe `pipeline.cpu`: ≤ 5 s có sự kiện `completed` trên stream.
 
     Không gọi `after_commit_idle`: dây task + callback sau commit tự lo, test chỉ quan sát từ
     ngoài qua Redis. Không mang marker `perf` (luật 14): 5 s là điều kiện chờ chống treo.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     arranged = on_own_loop(db_url, lambda maker: open_run_at_quality(maker, local_storage, fake_clock))
 
     start = time.monotonic()
@@ -203,20 +212,18 @@ async def test_check_pipeline_quality__J06(
     assert await _completed_count(streams_client, upload_stream(arranged.upload_id)) == 1
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_check_pipeline_quality__J03(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tài liệu ghi `schema_version=2` (hỏng) → `failed` `PIPELINE_RESULT_INVALID`, không `endedAt`.
 
     `load_document` kiểm cột `schema_version` trước khi gọi codec ([4] "ĐỌC FILE NÀO" → B3-02),
     nên lượt tải tay bằng SQL đủ để dựng tài liệu "hỏng" không cần một bộ giải mã lỗi riêng.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     arranged = on_own_loop(db_url, lambda maker: open_run_at_quality(maker, local_storage, fake_clock))
 
     async def _corrupt(maker: Maker) -> None:
@@ -288,23 +295,26 @@ class _FailingXrevrange:
         raise redis.exceptions.RedisError("redis-broker giả lập hỏng")
 
 
-@pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.usefixtures("messaging_env")
-async def test_quality_replay_redis_hang_skips(
-    db_url: str,
-    local_storage: LocalDiskStorage,
-    fake_clock: FakeClock,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`xrevrange` treo (Event không bao giờ đặt) → lõi trả `skipped` ≤ 2 s qua trần nội bộ 1 s.
+@dataclass(frozen=True, slots=True)
+class _HangReplay:
+    """Kết quả lần gọi thứ hai khi `xrevrange` treo: kết cục, thời gian tường, số kết nối giữ lúc treo."""
 
-    Lượt đã `completed` ở lần gọi trước, nên lần hai đi vào nhánh đọc Redis trước khi quyết định
-    phát lại. Engine riêng của test (không phải `db_sessionmaker` của fixture) để đọc được
-    `pool.checkedout()` — lõi không được giữ session nào trong lúc chờ Redis treo. `started` báo
-    đúng lúc lõi đã vào lời gọi `xrevrange` để lần đọc pool không rơi vào lúc phiên đọc đầu còn mở.
+    outcome: str
+    elapsed: float
+    checked_out: int
+
+
+async def _replay_with_hanging_redis(
+    db_url: str, local_storage: LocalDiskStorage, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> _HangReplay:
+    """Lượt đã `completed` rồi gọi lại khi `xrevrange` treo: cảnh dùng chung của test chức năng và `perf`.
+
+    Lần hai đi vào nhánh đọc Redis trước khi quyết định phát lại. Engine riêng (không phải
+    `db_sessionmaker` của fixture) để đọc được `pool.checkedout()` — lõi không được giữ session nào
+    trong lúc chờ Redis treo. `started` báo đúng lúc lõi đã vào lời gọi `xrevrange` để lần đọc pool
+    không rơi vào lúc phiên đọc đầu còn mở. Số đo in bằng `logging`; khẳng định thuộc về test gọi.
     """
-    settings = DatabaseSettings(database_url=db_url)
-    engine = create_engine(settings)
+    engine = create_engine(DatabaseSettings(database_url=db_url))
     maker = create_sessionmaker(engine)
     try:
         arranged = await open_run_at_quality(maker, local_storage, fake_clock)
@@ -319,15 +329,37 @@ async def test_quality_replay_redis_hang_skips(
             service.run_quality(arranged.payload, sessionmaker=maker, storage=local_storage, clock=fake_clock)
         )
         await asyncio.wait_for(started.wait(), WAIT_S)
-        assert cast("QueuePool", engine.pool).checkedout() == 0
+        checked_out = cast("QueuePool", engine.pool).checkedout()
         outcome = await asyncio.wait_for(task, WAIT_S)
-
         elapsed = time.monotonic() - start
         _log.info("redis_hang_elapsed_s=%.3f", elapsed)
-        assert outcome == "skipped"
-        assert elapsed <= 2.0
+        return _HangReplay(outcome, elapsed, checked_out)
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.usefixtures("messaging_env")
+async def test_quality_replay_redis_hang_skips(
+    db_url: str, local_storage: LocalDiskStorage, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`xrevrange` treo (Event không bao giờ đặt) → lõi trả `skipped` qua trần nội bộ 1 s, pool rỗng lúc treo."""
+    replay = await _replay_with_hanging_redis(db_url, local_storage, fake_clock, monkeypatch)
+
+    assert replay.outcome == "skipped"
+    assert replay.checked_out == 0
+
+
+@pytest.mark.perf
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.usefixtures("messaging_env")
+async def test_quality_replay_redis_hang_within_budget(
+    db_url: str, local_storage: LocalDiskStorage, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`xrevrange` treo → lõi trả trong `HANG_BUDGET_S` (số đo 1,01 s x ≥ 3; cận trên đồng hồ tường, bước 5b)."""
+    replay = await _replay_with_hanging_redis(db_url, local_storage, fake_clock, monkeypatch)
+
+    assert replay.elapsed <= HANG_BUDGET_S
 
 
 @pytest.mark.asyncio(loop_scope="function")

@@ -434,3 +434,40 @@ def test_compose_ci_api_publishes_no_host_port() -> None:
     assert not api.get("ports"), f"ci: api không được publish cổng host, đang có {api.get('ports')}"
     web = _resolved_services("ci")["web"]
     assert web.get("ports"), "ci: web phải publish cổng host để smoke/e2e đi qua nó"
+
+
+def _scrape_targets() -> set[str]:
+    """Mọi target của `prometheus.yml`, dạng `host:port`."""
+    config = load_yaml(require_path(_SCRAPE_CONFIG))
+    return {t for job in config["scrape_configs"] for static in job["static_configs"] for t in static["targets"]}
+
+
+def _celery_concurrency(service: dict[str, Any]) -> int:
+    """`--concurrency` của lệnh celery trong dịch vụ; `${VAR:-N}` lấy mặc định N."""
+    command = [str(part) for part in service["command"]]
+    raw = command[command.index("--concurrency") + 1]
+    m = re.fullmatch(r"\$\{\w+:-(\d+)\}|(\d+)", raw)
+    assert m, f"--concurrency {raw!r} không đọc được"
+    return int(m.group(1) or m.group(2))
+
+
+@pytest.mark.parametrize("name", ["worker"])
+def test_compose_scrape_covers_celery_worker_port_range__no201(name: str) -> None:
+    """NO-201: worker Celery prefork phơi `/metrics` ở `METRICS_PORT … +N-1`
+    (`metrics_port_for_process`, N = `--concurrency`); `prometheus.yml` phải có đủ
+    target của dải đó. Cổng gốc đọc từ `ObservabilitySettings`, N từ `base.yml` —
+    không chép số cứng (R-07)."""
+    from packages.observability.settings import ObservabilitySettings
+
+    base_port = ObservabilitySettings.model_fields["metrics_port"].default
+    n = _celery_concurrency(_resolved_services("ci")[name])
+    expected = {f"{name}:{base_port + i}" for i in range(n)}
+    missing = expected - _scrape_targets()
+    assert not missing, f"{_SCRAPE_CONFIG}: thiếu target {sorted(missing)}"
+
+
+@pytest.mark.parametrize("env", ["dev", "ci"])
+def test_compose_mailpit_disables_rdns__no212(env: str) -> None:
+    """NO-212: Mailpit dev/ci tắt tra rDNS — máy có PTR chậm (~11s) làm chậm mọi thư."""
+    environment = _resolved_services(env)["mailpit"].get("environment") or {}
+    assert str(environment.get("MP_SMTP_DISABLE_RDNS")).lower() == "true", f"{env}: mailpit còn bật rDNS"

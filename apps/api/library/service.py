@@ -5,6 +5,7 @@ Mục hiển thị khi đã phát hành, chưa rút và (của hệ thống ho�
 không `stat` (W23): CHECK `published` của bảng bảo đảm mục hiển thị luôn có số đo và khoá.
 """
 
+from collections.abc import Sequence
 from typing import Final, cast
 
 from sqlalchemy import ColumnElement, and_, or_, select
@@ -15,7 +16,7 @@ from apps.api.library.settings import get_library_settings
 from packages.core.error_codes import NOT_FOUND
 from packages.db.models.library import LibraryItemRow
 from packages.domain.library import is_item_id
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, SignRequest
 
 RESOURCE: Final = "libraryItem"
 
@@ -29,30 +30,40 @@ def visible_to(user_id: str) -> ColumnElement[bool]:
     )
 
 
-async def _to_out(storage: ObjectStorage, row: LibraryItemRow, user_id: str) -> LibraryItemOut:
-    """Dựng response từ một dòng đã phát hành; URL ký `attachment`, không `kind`, không `stat`."""
-    model_key = cast("str", row.model_key)  # CHECK `published`: mục hiển thị luôn có khoá mô hình
-    model = await storage.signed_url(model_key, disposition="attachment", filename=f"{row.id}.glb")
-    preview = (
-        None
-        if row.preview_key is None
-        else await storage.signed_url(row.preview_key, disposition="attachment", filename=f"{row.id}.png")
-    )
-    return LibraryItemOut.model_validate(
-        {
-            "id": row.id,
-            "name": row.name,
-            "group": row.item_group,
-            "source": "mine" if row.owner_id == user_id else "catalogue",
-            "width_mm": row.width_mm,
-            "depth_mm": row.depth_mm,
-            "height_mm": row.height_mm,
-            "triangle_count": row.triangle_count,
-            "file_size_bytes": row.file_size_bytes,
-            "model_url": model.url,
-            "preview_url": None if preview is None else preview.url,
-        }
-    )
+async def _to_outs(storage: ObjectStorage, rows: Sequence[LibraryItemRow], user_id: str) -> list[LibraryItemOut]:
+    """Dựng response từ các dòng đã phát hành; URL ký `attachment`, không `kind`, không `stat`.
+
+    Mô hình và ảnh xem trước của mọi dòng ký trong **một** lượt `signed_urls` (NO-207).
+    """
+    requests: list[SignRequest] = []
+    for row in rows:
+        # CHECK `published`: mục hiển thị luôn có khoá mô hình
+        requests.append(SignRequest(cast("str", row.model_key), "attachment", filename=f"{row.id}.glb"))
+        if row.preview_key is not None:
+            requests.append(SignRequest(row.preview_key, "attachment", filename=f"{row.id}.png"))
+    signed = iter(await storage.signed_urls(requests))
+    outs = []
+    for row in rows:
+        model = next(signed)
+        preview = None if row.preview_key is None else next(signed)
+        outs.append(
+            LibraryItemOut.model_validate(
+                {
+                    "id": row.id,
+                    "name": row.name,
+                    "group": row.item_group,
+                    "source": "mine" if row.owner_id == user_id else "catalogue",
+                    "width_mm": row.width_mm,
+                    "depth_mm": row.depth_mm,
+                    "height_mm": row.height_mm,
+                    "triangle_count": row.triangle_count,
+                    "file_size_bytes": row.file_size_bytes,
+                    "model_url": model.url,
+                    "preview_url": None if preview is None else preview.url,
+                }
+            )
+        )
+    return outs
 
 
 async def list_items(db: AsyncSession, storage: ObjectStorage, user_id: str) -> list[LibraryItemOut]:
@@ -64,7 +75,7 @@ async def list_items(db: AsyncSession, storage: ObjectStorage, user_id: str) -> 
         .limit(get_library_settings().library_list_max)
     )
     rows = (await db.execute(stmt)).scalars().all()
-    return [await _to_out(storage, row, user_id) for row in rows]
+    return await _to_outs(storage, rows, user_id)
 
 
 async def read_item(db: AsyncSession, storage: ObjectStorage, user_id: str, item_id: str) -> LibraryItemOut:
@@ -76,4 +87,4 @@ async def read_item(db: AsyncSession, storage: ObjectStorage, user_id: str, item
     ).scalar_one_or_none()
     if row is None:
         raise NOT_FOUND.error(resource=RESOURCE)
-    return await _to_out(storage, row, user_id)
+    return (await _to_outs(storage, [row], user_id))[0]

@@ -5,9 +5,14 @@ tự mở session từ `db_sessionmaker` và `commit`; các test còn lại dùn
 commit, nên `on_after_commit` không chạy và không cần Redis.
 """
 
+import re
+import socket
+import threading
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import timedelta
 from typing import Final
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import pytest_asyncio
@@ -16,7 +21,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.errors import FLOOR_DELETED
-from apps.api.drawings.runs import fail_run, lock_run, record_step, start_run
+from apps.api.drawings.runs import (
+    fail_run,
+    lock_run,
+    publish_progress_after_commit,
+    record_step,
+    restore_window_elapsed,
+    start_run,
+)
 from apps.api.drawings.tests._helpers import Scene, make_scene, read_run, sync_bus_reset
 from apps.api.floors.settings import get_floors_settings
 from apps.api.projects.summaries import unregister_floor
@@ -25,6 +37,7 @@ from packages.db.hooks import after_commit_idle
 from packages.db.models.drawings import PipelineRunRow, UploadRow
 from packages.db.models.projects import ProjectFloorSummary
 from packages.messaging.redis import broker_redis_sync
+from packages.messaging.settings import reset_messaging_settings_cache
 from packages.messaging.streams import upload_stream
 from packages.testing.factories.drawings import make_upload
 from packages.testing.factories.floors import make_floor
@@ -431,3 +444,110 @@ async def test_fail_run_rejects_a_non_upper_snake_code(db_session: AsyncSession,
     _, run = await _started_run(db_session, fake_clock)
     with pytest.raises(ValueError, match="UPPER_SNAKE"):
         await fail_run(db_session, run_id=run.id, error_code="stalled", clock=fake_clock)
+
+
+def test_restore_window_elapsed__boundary(fake_clock: FakeClock) -> None:
+    """NO-297: luật cửa sổ khôi phục công khai — chưa xoá = chưa hết; đúng `window` giây = đã hết."""
+    window = get_floors_settings().floor_restore_window_s
+    assert restore_window_elapsed(None, fake_clock) is False
+    assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window - 1), fake_clock) is False
+    assert restore_window_elapsed(fake_clock.now() - timedelta(seconds=window), fake_clock) is True
+
+
+async def test_record_step_fails_the_run_exactly_at_the_window_edge(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Biên cửa sổ: đúng `FLOOR_RESTORE_WINDOW_S` giây sau khi xoá là đã hết (nửa mở [0, window))."""
+    scene, run = await _started_run(db_session, fake_clock)
+    scene.floor.deleted_at = fake_clock.now()
+    await unregister_floor(db_session, project_id=scene.project.id, floor_level_id=scene.floor.level_id)
+    await db_session.flush()
+    fake_clock.advance(timedelta(seconds=get_floors_settings().floor_restore_window_s))
+
+    assert await record_step(db_session, run_id=run.id, step="preprocess", status="running", clock=fake_clock) is None
+    assert (await read_run(db_session, run.id)).error_code == FLOOR_DELETED
+
+
+# ---------------------------------------------------------------------------
+# publish_progress_after_commit — không trùng khi mất phản hồi (NO-187)
+# ---------------------------------------------------------------------------
+
+_EVENT_ID_REPLY: Final = re.compile(rb"\$\d+\r\n\d+-\d+\r\n")
+"""Phản hồi RESP mang id mục stream (`XADD`, hay script `publish_once`): lệnh ghi đã chạy xong."""
+
+
+class _ReplyCutter:
+    """Proxy TCP tới Redis **thật**: chuyển nguyên từng byte, trừ phản hồi id sự kiện đầu tiên.
+
+    Gặp nó thì đóng kết nối phía client thay vì chuyển — máy chủ đã chạy lệnh ghi, client thấy
+    `ConnectionError` ở pha đọc và redis-py thử lại trên kết nối mới (đúng cảnh NO-187 còn hở).
+    """
+
+    def __init__(self, host: str, port: int) -> None:
+        """Mở cổng nghe cục bộ, chuyển tới `host:port`."""
+        self._target = (host, port)
+        self._server = socket.create_server(("127.0.0.1", 0))
+        self.port = int(self._server.getsockname()[1])
+        self.cut = False
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self) -> None:
+        """Mỗi kết nối client một kết nối tới Redis, hai luồng bơm byte hai chiều."""
+        while True:
+            try:
+                client, _ = self._server.accept()
+            except OSError:
+                return
+            upstream = socket.create_connection(self._target)
+            threading.Thread(target=self._pump, args=(client, upstream, False), daemon=True).start()
+            threading.Thread(target=self._pump, args=(upstream, client, True), daemon=True).start()
+
+    def _pump(self, source: socket.socket, sink: socket.socket, replies: bool) -> None:
+        """Chép `source` → `sink`; chiều phản hồi cắt đúng một lần tại id sự kiện đầu tiên."""
+        try:
+            while chunk := source.recv(65536):
+                if replies and not self.cut and _EVENT_ID_REPLY.match(chunk):
+                    self.cut = True
+                    break
+                sink.sendall(chunk)
+        except OSError:
+            pass
+        finally:
+            for side in (source, sink):
+                with suppress(OSError):
+                    side.shutdown(socket.SHUT_RDWR)
+                side.close()
+
+    def close(self) -> None:
+        """Ngừng nhận kết nối mới."""
+        self._server.close()
+
+
+async def test_publish_progress_after_commit__a_lost_reply_publishes_one_frame(
+    committing_db: AsyncSession,
+    streams_client: AsyncRedis,
+    redis_broker_url: str,
+    sync_bus_reset: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NO-187: máy chủ đã ghi khung `Progress` nhưng phản hồi mất → lượt thử lại không ghi khung thứ hai."""
+    target = urlsplit(redis_broker_url)
+    assert target.hostname is not None
+    assert target.port is not None
+    cutter = _ReplyCutter(target.hostname, target.port)
+    monkeypatch.setenv("REDIS_BROKER_URL", urlunsplit(target._replace(netloc=f"127.0.0.1:{cutter.port}")))
+    reset_messaging_settings_cache()
+    try:
+        scene = await make_scene(committing_db)
+        upload = await _complete_upload(committing_db, scene)
+        await committing_db.commit()
+        await publish_progress_after_commit(committing_db, upload.id)
+        await committing_db.commit()
+        await after_commit_idle(committing_db)
+    finally:
+        cutter.close()
+        monkeypatch.setenv("REDIS_BROKER_URL", redis_broker_url)
+        reset_messaging_settings_cache()
+
+    assert cutter.cut, "proxy phải đã cắt một phản hồi id sự kiện"
+    assert await streams_client.xlen(upload_stream(upload.id)) == 1

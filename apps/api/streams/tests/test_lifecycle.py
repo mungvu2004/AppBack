@@ -8,9 +8,9 @@ from typing import Final
 from apps.api.streams.lifecycle import UPLOAD_STREAM_TTL_S, finalize_upload_stream, finalize_upload_stream_sync
 from packages.messaging.redis import AsyncRedis, streams_redis_sync, sync_result
 from packages.messaging.streams import EventBus, SyncEventBus, upload_stream
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 WORKER_MODULES: Final = ("apps.api.streams.lifecycle", "apps.api.streams.jobs")
 
 UPLOAD_ID: Final = "upl_01ARZ3NDEKTSV4RRFFQ69G5FAV"

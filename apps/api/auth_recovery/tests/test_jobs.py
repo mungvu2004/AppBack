@@ -45,6 +45,7 @@ from packages.messaging.payloads.auth_recovery import SendTokenMailPayload
 from packages.messaging.redis import broker_redis_sync
 from packages.messaging.schedules import schedule_entries
 from packages.messaging.tasks import PermanentError, TransientError
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.mail import MailpitInbox, extract_token
@@ -53,7 +54,6 @@ from packages.testing.fixtures.services import refused_url
 from packages.testing.fixtures.storage import PUBLIC_BASE_URL, STORAGE_SECRET
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 ROTATED_SECRET: Final = "khoa-moi-sau-khi-xoay-0000000000000"  # noqa: S105 — khoá giả của test
 OTHER_SECRET: Final = "khoa-hoan-toan-khac-vong-xoay-000000"  # noqa: S105 — khoá giả của test
 
@@ -151,7 +151,7 @@ async def test_send_token_mail__J03(
 ) -> None:
     """Người nhận bị SMTP từ chối hẳn (550) → `PermanentError(MAIL_REJECTED)`, không thử lại.
 
-    NO-149a: log `token_mail_failed` phải giữ `smtp_code` (550) — trước sửa, `except MailRejectedError`
+    NO-149a: log `token_mail_isolated` phải giữ `smtp_code` (550) — trước sửa, `except MailRejectedError`
     không đọc `exc.smtp_code` nên log không phân biệt được 550 với 554.
     """
     async with db_sessionmaker() as setup:
@@ -170,13 +170,28 @@ async def test_send_token_mail__J03(
         await run_send_token_mail(db_sessionmaker, fake_clock, [row.id])
     assert excinfo.value.code == MAIL_REJECTED
 
-    record = next(r for r in caplog.records if r.msg == "token_mail_failed" and r.token_id == row.id)  # type: ignore[attr-defined]
-    assert record.smtp_code == 550  # type: ignore[attr-defined]
+    record = next(
+        r for r in caplog.records if r.msg == "token_mail_isolated" and getattr(r, "token_id", None) == row.id
+    )
+    assert record.smtp_code == 550  # type: ignore[attr-defined]  # LogRecord: trường `extra` gắn động
 
     async with db_sessionmaker() as check:
         refreshed = await check.get(OneTimeToken, row.id)
     assert refreshed is not None
-    assert refreshed.sent_at is not None  # NO-143: cô lập khỏi resend_unsent dù chưa tới hộp thư
+    assert refreshed.sent_at is None  # NO-150: bị từ chối hẳn không phải "đã gửi"
+    assert refreshed.failed_at is not None  # NO-143: vẫn cô lập khỏi resend_unsent
+    assert refreshed.failure_code == MAIL_REJECTED
+
+    async with db_sessionmaker() as backdate:
+        # Đẩy `created_at` quá hạn quét bù để chắc chắn chỉ `failed_at` giữ token ngoài tập quét.
+        await backdate.execute(
+            update(OneTimeToken)
+            .where(OneTimeToken.id == row.id)
+            .values(created_at=fake_clock.now() - timedelta(seconds=get_recovery_settings().resend_unsent_after_s + 1))
+        )
+        await backdate.commit()
+    assert await run_resend_unsent(db_sessionmaker, fake_clock) == 0
+    assert await run_send_token_mail(db_sessionmaker, fake_clock, [row.id]) == 0  # lô cũng bỏ qua token đã failed
 
 
 async def test_send_token_mail__J01_isolates_bad_token_from_batch(
@@ -220,7 +235,7 @@ async def test_send_token_mail__J01_isolates_bad_token_from_batch(
 async def test_send_token_mail__logs_isolated_failure_before_later_transient(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
-    memory_mailer: MemoryMailer,
+    memory_mailer: MemoryMailer,  # đặt env mail mà `get_mail_settings()` đọc trước `create_mailer` bị thay
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -247,7 +262,10 @@ async def test_send_token_mail__logs_isolated_failure_before_later_transient(
         await corrupt.commit()
 
     class _TransientMailer:
+        """Mailer luôn ném lỗi tạm thời SMTP 451: chứng minh lỗi tạm làm task thử lại thay vì đánh dấu hỏng."""
+
         def send(self, message: MailMessage) -> None:
+            """Từ chối mọi thư bằng `MailTransientError(451)`."""
             raise MailTransientError(451)
 
     monkeypatch.setattr(jobs, "create_mailer", lambda _settings: _TransientMailer())
@@ -256,17 +274,45 @@ async def test_send_token_mail__logs_isolated_failure_before_later_transient(
         await run_send_token_mail(db_sessionmaker, fake_clock, [bad_row.id, transient_row.id])
 
     record = next(
-        (r for r in caplog.records if r.msg == "token_mail_failed" and getattr(r, "token_id", None) == bad_row.id),
+        (r for r in caplog.records if r.msg == "token_mail_isolated" and getattr(r, "token_id", None) == bad_row.id),
         None,
     )
     assert record is not None
-    assert record.code == TOKEN_KEY_ROTATED  # type: ignore[attr-defined]
-    assert record.smtp_code is None  # type: ignore[attr-defined]
+    assert record.code == TOKEN_KEY_ROTATED  # type: ignore[attr-defined]  # LogRecord nhận thuộc tính từ `extra=`
+    assert record.smtp_code is None  # type: ignore[attr-defined]  # LogRecord nhận thuộc tính từ `extra=`
 
     async with db_sessionmaker() as check:
         bad_after = await check.get(OneTimeToken, bad_row.id)
     assert bad_after is not None
     assert bad_after.superseded_at is not None  # cô lập đã ghi dù batch cuối cùng ném TransientError
+
+
+async def test_send_token_mail__one_token_mail_failed_record_per_bad_token(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    fake_clock: FakeClock,
+    memory_mailer: MemoryMailer,  # đặt env mail cho `get_mail_settings()`; token hỏng không tới mailer
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """NO-195: một token hỏng chỉ sinh **một** bản ghi `token_mail_failed` (luật cảnh báo đếm theo tên).
+
+    Log cô lập từng token mang tên riêng `token_mail_isolated` (`token_id`, `smtp_code`); tên
+    `token_mail_failed` dành cho bản tóm tắt lô ở `on_failed` (`token_ids`). Trước sửa, cả hai
+    cùng tên nên đường `PermanentError` → `on_failed` đếm đôi.
+    """
+    async with db_sessionmaker() as setup:
+        user = await make_user(setup)
+        row, _ = await seed_token(setup, user_id=user.id, purpose="invite", clock=fake_clock)
+    async with db_sessionmaker() as corrupt:
+        await corrupt.execute(update(OneTimeToken).where(OneTimeToken.id == row.id).values(token_hash="0" * 64))
+        await corrupt.commit()
+
+    with caplog.at_level(logging.ERROR), pytest.raises(PermanentError) as excinfo:
+        await run_send_token_mail(db_sessionmaker, fake_clock, [row.id])
+    jobs._on_send_token_mail_failed(SendTokenMailPayload(token_ids=[row.id]), excinfo.value.code)
+
+    assert [r.msg for r in caplog.records].count("token_mail_failed") == 1
+    isolated = [r for r in caplog.records if r.msg == "token_mail_isolated"]
+    assert [getattr(r, "token_id", None) for r in isolated] == [row.id]
 
 
 def test_send_token_mail_task_is_registered_under_tokens_constant() -> None:
@@ -282,8 +328,8 @@ def test_on_send_token_mail_failed_logs_only_ids_and_code(caplog: pytest.LogCapt
         jobs._on_send_token_mail_failed(payload, MAIL_REJECTED)
 
     record = next(r for r in caplog.records if r.msg == "token_mail_failed")
-    assert record.token_ids == payload.token_ids  # type: ignore[attr-defined]
-    assert record.code == MAIL_REJECTED  # type: ignore[attr-defined]
+    assert record.token_ids == payload.token_ids  # type: ignore[attr-defined]  # LogRecord nhận thuộc tính từ `extra=`
+    assert record.code == MAIL_REJECTED  # type: ignore[attr-defined]  # LogRecord nhận thuộc tính từ `extra=`
 
 
 async def _seed_on_url[ResultT](db_url: str, work: Callable[[AsyncSession], Awaitable[ResultT]]) -> ResultT:
@@ -311,6 +357,7 @@ def test_send_token_mail_task_wiring_smoke(
     """
 
     async def _seed(session: AsyncSession) -> OneTimeToken:
+        """Một user cùng token mời còn hiệu lực (giờ thật) để task mỏng xử lý."""
         user = await make_user(session)
         row, _ = await seed_token(session, user_id=user.id, purpose="invite", clock=SystemClock())
         return row
@@ -443,6 +490,7 @@ def test_resend_unsent_smoke(db_url: str, monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_resend_unsent_schedule_is_registered() -> None:
+    """Lịch beat có mục `resend_unsent` trỏ đúng hàm job."""
     entries = {entry.name: entry for entry in schedule_entries()}
     assert entries[RESEND_UNSENT_TASK].function == "resend_unsent"
 
@@ -511,6 +559,7 @@ def test_purge_tokens_smoke(db_url: str, monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_purge_tokens_schedule_is_registered() -> None:
+    """Lịch beat có mục `purge_tokens` trỏ đúng hàm job."""
     entries = {entry.name: entry for entry in schedule_entries()}
     assert entries[PURGE_TOKENS_TASK].function == "purge_tokens"
 

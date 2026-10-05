@@ -11,6 +11,7 @@ một trạng thái đua bình thường như `None`.
 Module này là "hàm worker nhập" (BE-00 §7): không `fastapi`/`starlette`.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import select
@@ -18,12 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import lock_run
 from packages.core.clock import Clock
-from packages.core.ids import new_id
+from packages.core.ids import new_id, new_ulid
 from packages.core.object_keys import upload_prefix_of
 from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.db.models.floors import FloorRow
-from packages.storage.keys import check_key, upload_prefix
-from packages.storage.port import ObjectStorage
+from packages.storage.keys import server_chosen_kind, upload_page_revision, upload_prefix
+from packages.storage.port import Disposition, ObjectStorage, SignRequest
 
 PAGES_SEGMENT = "pages/"
 """Thư mục con của trang **đã nắn** dưới `upload_prefix` ([5]); dùng cả lúc dựng và lúc kiểm."""
@@ -38,15 +39,27 @@ def new_page_key(*, project_id: str, level_id: str, upload_id: str, page_index: 
     """
     if page_index < 0:
         raise ValueError(f"page_index phải >= 0, nhận {page_index}")
-    # Không có hàm ULID trần công khai (`new_id` luôn kèm tiền tố) — cắt tiền tố là đường
-    # rẻ nhất; nâng cấp là thêm `new_ulid()` vào `packages/core/ids.py` (ngoài whitelist).
-    ulid = new_id("drw", clock).removeprefix("drw_")
-    return check_key(f"{upload_prefix(project_id, level_id, upload_id)}{PAGES_SEGMENT}{page_index}-{ulid}.png")
+    return upload_page_revision(project_id, level_id, upload_id, page_index, new_ulid(clock))
+
+
+async def drawing_urls(storage: ObjectStorage, page_keys: Sequence[str]) -> list[str]:
+    """URL ký của cả lô trang đã nắn, cùng thứ tự, trong một lượt `signed_urls` (NO-207).
+
+    Mỗi khoá theo luật của `drawing_url`: `inline` + `kind` png khi khoá do server đặt
+    (`keys.server_chosen_kind`); khoá khác giữ `attachment`, không `kind`, vì `inline` sẽ buộc kho
+    `stat` object và ký loại tệp người dùng khai (K15).
+    """
+    requests = []
+    for key in page_keys:
+        kind = server_chosen_kind(key)
+        disposition: Disposition = "attachment" if kind is None else "inline"
+        requests.append(SignRequest(key, disposition, kind=kind))
+    return [signed.url for signed in await storage.signed_urls(requests)]
 
 
 async def drawing_url(storage: ObjectStorage, page_key: str) -> str:
-    """URL ký của một trang đã nắn: `attachment`, **không** `kind` (khoá không phải do server chọn)."""
-    return (await storage.signed_url(page_key, disposition="attachment")).url
+    """URL ký của một trang đã nắn; cùng đường ký với `drawing_urls`."""
+    return (await drawing_urls(storage, [page_key]))[0]
 
 
 async def current_drawing(db: AsyncSession, floor_pk: int, *, for_update: bool = False) -> DrawingRow | None:

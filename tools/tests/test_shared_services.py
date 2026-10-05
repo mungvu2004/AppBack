@@ -15,7 +15,8 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
-from docker.errors import NotFound  # type: ignore[import-untyped]
+from docker.errors import NotFound  # type: ignore[import-untyped]  # không có stub
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # không có stub
 
 from packages.testing.fixtures import services
 from packages.testing.fixtures.services import SHARED_STATE_PREFIX, _shared_container
@@ -26,6 +27,8 @@ KEY = "svc"
 
 @dataclass
 class _FakeWrapped:
+    """Container Docker giả: chỉ có `id`."""
+
     id: str
 
 
@@ -37,9 +40,11 @@ class _FakeContainer:
     stopped: list[str] = field(default_factory=list)
 
     def get_wrapped_container(self) -> _FakeWrapped:
+        """Container Docker bên dưới (giả), mang `id`."""
         return _FakeWrapped(self.id)
 
     def stop(self) -> None:
+        """Ghi lại lần dừng thay vì gọi Docker."""
         self.stopped.append(self.id)
 
 
@@ -51,12 +56,14 @@ class _FakeTempPathFactory:
     worker: str
 
     def getbasetemp(self) -> Path:
+        """Basetemp của tiến trình: `<gốc>/popen-<worker>`, tạo nếu chưa có."""
         base = self.root / f"popen-{self.worker}"
         base.mkdir(parents=True, exist_ok=True)
         return base
 
 
 def _factory(root: Path, worker: str) -> pytest.TempPathFactory:
+    """`TempPathFactory` giả của tiến trình `worker` dưới gốc `root`."""
     return cast(pytest.TempPathFactory, _FakeTempPathFactory(root, worker))
 
 
@@ -68,6 +75,7 @@ class _Starter:
     containers: list[_FakeContainer] = field(default_factory=list)
 
     def __call__(self) -> tuple[_FakeContainer, str]:
+        """Dựng một container giả mới, trả (container, endpoint)."""
         container = _FakeContainer(id=f"cid-{len(self.calls)}")
         self.calls.append(container.id)
         self.containers.append(container)
@@ -75,6 +83,7 @@ class _Starter:
 
 
 def _state(root: Path) -> dict[str, object]:
+    """Nội dung file trạng thái của dịch vụ `KEY` dưới gốc `root`."""
     return cast(dict[str, object], json.loads((root / f"{SHARED_STATE_PREFIX}{KEY}.json").read_text(encoding="utf-8")))
 
 
@@ -157,3 +166,42 @@ def test_container_bị_xoá_dù_thân_test_ném_lỗi(tmp_path: Path, monkeypat
             raise ValueError("hỏng")
     remove.assert_called_once_with("cid-0")
     assert not list(tmp_path.glob(f"{SHARED_STATE_PREFIX}*.json"))  # người cuối đi thì file đi theo
+
+
+@pytest.mark.parametrize(("worker", "base"), [("", 0), ("gw0", 0), ("gw5", 5 * services.REDIS_ROLE_DBS)])
+def test_redis_db_base__each_worker_gets_its_own_block(monkeypatch: pytest.MonkeyPatch, worker: str, base: int) -> None:
+    """NO-270: khối DB của `gwN` bắt đầu ở N nhân số vai; ngoài xdist là DB 0 như production."""
+    monkeypatch.setenv(XDIST_WORKER_ENV, worker)
+    assert services.redis_db_base() == base
+
+
+def test_shared_redis__two_workers_share_one_container_on_their_own_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NO-270: hai tiến trình xdist dựng **một** Redis mỗi chính sách, mỗi bên một URL khối DB riêng.
+
+    `--databases` đủ cho cả mã `gwN` của tiến trình thay thế (N ≥ số tiến trình, execnet cấp tăng dần).
+    """
+    starter = _Starter()
+    commands: list[str] = []
+
+    def fake_start(container: RedisContainer) -> _FakeContainer:
+        """Thay `_start`: ghi lệnh khởi động và một lần dựng, không chạm Docker."""
+        commands.append(container._command)
+        return starter()[0]
+
+    with (
+        patch.object(services, "_start", fake_start),
+        patch.object(services, "_redis_url", lambda _container: "redis://redis:6379/0"),
+        patch.object(services, "_remove_container") as remove,
+    ):
+        monkeypatch.setenv(services.XDIST_WORKER_COUNT_ENV, "4")
+        monkeypatch.setenv(XDIST_WORKER_ENV, "gw0")
+        with services._shared_redis("noeviction", _factory(tmp_path, "gw0")) as first:
+            monkeypatch.setenv(XDIST_WORKER_ENV, "gw1")
+            with services._shared_redis("noeviction", _factory(tmp_path, "gw1")) as second:
+                assert (first, second) == ("redis://redis:6379/0", f"redis://redis:6379/{services.REDIS_ROLE_DBS}")
+        assert starter.calls == ["cid-0"]
+        databases = services.REDIS_ROLE_DBS * 4 * services.XDIST_IDS_PER_WORKER
+        assert commands == [f"redis-server --maxmemory-policy noeviction --databases {databases}"]
+        remove.assert_called_once_with("cid-0")

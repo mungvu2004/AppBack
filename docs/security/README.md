@@ -1,8 +1,6 @@
-kiểm toán chưa đủ — nhóm Giấy phép (V14) 100 % chưa kiểm
-
 # Kiểm toán bảo mật B7-02
 
-- Commit đã soát: `2a63cfc5420f` (cây mã = `main` `096e870`).
+- Commit đã soát: `2a63cfc5420f` (cây mã = `main` `096e870`); 18 mục `chưa kiểm` soát lại sống ở DEBT-02 W10 trên `7ae1292` (nhánh `fix/debt-02-w10-security-probe`).
 - Chuẩn: OWASP ASVS 4.0.3, cấp 2, chương V1–V14.
 - Tệp: `asvs-checklist.md`, `threat-model.md`, `fixes/SEC-*.md` (số theo dải của từng việc soát, có khoảng trống — chủ ý).
 
@@ -10,18 +8,18 @@ kiểm toán chưa đủ — nhóm Giấy phép (V14) 100 % chưa kiểm
 
 | kết quả | số mục |
 |---|---|
-| đạt | 100 |
-| lỗ | 8 |
+| đạt | 116 |
+| lỗ | 10 |
 | không áp dụng | 0 |
-| chưa kiểm | 18 |
+| chưa kiểm | 0 |
 | **tổng** | 126 |
 
 | mức | số `SEC-*` |
 |---|---|
 | nghiêm trọng | 0 |
 | cao | 0 |
-| trung bình | 2 |
-| thấp | 6 |
+| trung bình | 3 |
+| thấp | 7 |
 
 - `SEC-020` (thấp): FIX SEC-020 cho B6-03b — tiến trình con huấn luyện thừa hưởng toàn bộ môi trường của `ml` (gồm `S3_SECRET_KEY` khoá riêng của ml và URL Redis), không lọc như `ml_eval`.
 - `SEC-040` (trung bình): FIX SEC-040 cho B0-10 — `backup.sh` không đặt `umask`: `db.dump` và `objects.tar` (dạng rõ khi không có `BACKUP_AGE_RECIPIENT`) sinh ra với quyền 0644, thư mục 0755, mọi tài khoản trên máy đọc được.
@@ -31,6 +29,8 @@ kiểm toán chưa đủ — nhóm Giấy phép (V14) 100 % chưa kiểm
 - `SEC-060` (thấp): FIX SEC-060 cho B0-08 — thân 413/503 do chính nginx sinh ra không mang bộ header nền B0-06 (nosniff, Referrer-Policy, X-Frame-Options, no-store)
 - `SEC-061` (thấp): FIX SEC-061 cho B0-10 — `ALERT_WEBHOOK_URL` của notify.yml là secret cấp repository, không nằm ở GitHub Environment
 - `SEC-062` (thấp): FIX SEC-062 cho B6-04a — `HF_HUB_OFFLINE=1` mà BE-00 §9 đòi cho transformers không được đặt ở đâu trong mã hay compose
+- `SEC-044` (trung bình, đã vá FIX-339): FIX SEC-044 cho B0-10 — `backup.sh` ở `APP_ENV=production` thiếu `BACKUP_AGE_RECIPIENT` vẫn thoát 0 và ghi `db.dump`/object dạng rõ (thăm dò sống W10/L-05).
+- `SEC-063` (thấp, đã vá FIX-343): FIX SEC-063 cho B5-01 — giấy phép CC BY-NC 4.0 của dataset CubiCasa5K không được ghi ở đâu trong mã nhập (W10/L-08).
 
 Nhóm theo 10 dòng "Phạm vi bắt buộc" của khối [6]; dòng V14 chia theo nội dung: D-24, D-25 → Giấy phép; D-13 (`/metrics`) → Chuỗi cung ứng, triển khai; C-22 (`compare_digest`, K16) → Dữ liệu, bí mật; V14 còn lại → Giao tiếp, cấu hình.
 
@@ -39,20 +39,23 @@ Nhóm theo 10 dòng "Phạm vi bắt buộc" của khối [6]; dòng V14 chia th
 | Xác thực, phiên (V2, V3) | 18 | 0 | 0 % |
 | Quyền (V4) | 7 | 0 | 0 % |
 | Đầu vào, tệp (V5, V12) | 19 | 0 | 0 % |
-| Lỗi, log (V7) | 11 | 3 | 27 % |
-| Dữ liệu, bí mật (V6, V8) | 12 | 3 | 25 % |
-| Giao tiếp, cấu hình (V9, V14) | 11 | 4 | 36 % |
-| Giới hạn, API (V11, V13) | 26 | 2 | 7 % |
-| Chuỗi cung ứng, triển khai (V10, V14) | 11 | 2 | 18 % |
-| ML, việc nền (V1) | 9 | 2 | 22 % |
-| Giấy phép (V14) | 2 | 2 | 100 % |
+| Lỗi, log (V7) | 11 | 0 | 0 % |
+| Dữ liệu, bí mật (V6, V8) | 12 | 0 | 0 % |
+| Giao tiếp, cấu hình (V9, V14) | 11 | 0 | 0 % |
+| Giới hạn, API (V11, V13) | 26 | 0 | 0 % |
+| Chuỗi cung ứng, triển khai (V10, V14) | 11 | 0 | 0 % |
+| ML, việc nền (V1) | 9 | 0 | 0 % |
+| Giấy phép (V14) | 2 | 0 | 0 % |
 
 ## Giới hạn
 
 - Phương án (a), người dùng chốt 2026-10-02: trên máy không có ảnh `appback-api:dev`, `appback-worker:dev`, `appback-web` và ảnh nền để build; khối [5]/[9] cấm tải. Thăm dò chạy ở **tầng ứng dụng** (app FastAPI thật `create_app`, Postgres/Redis/MinIO thật của container verify, token thật qua `signed_in`), **không qua nginx**. Mục chỉ chứng minh được qua nginx/`prod.yml` (CSP/HSTS sống, 443, cổng metrics từ máy chủ, S3 khác origin sống) ghi `chưa kiểm — thiếu ảnh`.
 - Bằng chứng "test đạt": `run.sh` không đưa `junit.xml` ra khỏi container; thay bằng log cổng 1 (`gate-1.log`, bảng E.10, bước 5 đạt, `7868 passed` ở dòng 383, `mã thoát: 0`) cộng danh sách thu thập `collect.txt` (7868 nodeid), cùng sha. Cổng cấm skip/xfail.
+- DEBT-02 W10 (2026-10-04, NO-334): 18 mục `chưa kiểm` của phương án (a) đã thăm dò sống qua nginx/`prod.yml` với ảnh dựng thật (mục "Tái lập thăm dò" → DEBT-02 W10); không còn mục `chưa kiểm`. Hai mục ra `lỗ` (C-18, D-25) đã vá trong cùng lượt (FIX-339, FIX-343).
 
 ## Tái lập thăm dò
+
+> Lệnh và đầu ra dưới đây là bản ghi ở `2a63cfc`: số dòng trong đầu ra giữ nguyên, không trỏ lại theo mã sau DEBT-02.
 
 Mỗi việc chạy script `dieu-phoi/chay/B7-02/<việc>/probe-<n>.sh` qua `export APPFRONT_REPO=F:/App/AppFront; bash tools/verify/run.sh shell < <script>`; script sinh test tạm ở `/tmp/w/b7_02_probe/` (bản chép trong container, không commit) và in dòng `PROBE`. Lệnh và đầu ra rút gọn (bí mật che `***`):
 
@@ -241,6 +244,26 @@ Không chạy được (thiếu ảnh/compose): nginx sống (C-08, C-39), `back
 - **D/L-08** `git grep -n "license" -- apps packages ':!*tests*'` và `git grep -n "\.license" -- apps packages` → chỉ `packages/ml_contracts/pinned.py` khai `license`; 0 chỗ đọc.
 - **D/L-09** `sed -n 380,479p dieu-phoi/chay/B7-02/P/gate-1.log | grep -c "| đạt"` → 83; dòng không `đạt` trong bảng: 0; `gate-1.log:479` `case_gate: đạt`; `gate-1.log:523` `mã thoát: 0`.
 
+### DEBT-02 W10 (NO-334 — 18 mục `chưa kiểm` cũ)
+
+Thăm dò sống trên ảnh dựng thật từ cây `7ae1292` (+ vá W10), một lượt build có mạng người dùng cho phép: `appback-api:w10`,
+`appback-worker:w10`, `appback-web:w10` (AppFront `9cf0b0bf`), `appback-ml:w10` (sau FIX-340); lệnh, thời gian, digest ở
+`dieu-phoi/chay/DEBT-02/W10/C47/build.log`. Stack `prod.yml --profile minio` cục bộ (project `w10probe`, host 80/443),
+`appback.env` giả (khoá `openssl rand`, `APP_ENV=production`, `PUBLIC_BASE_URL=https://app.w10.test`,
+`S3_PUBLIC_ENDPOINT=https://s3.w10.test`), chứng chỉ tự ký SAN hai tên, `curl --resolve …:127.0.0.1`. Script và log thô ở
+`dieu-phoi/chay/DEBT-02/W10/C47/`; tổng hợp kết luận từng mục ở `probe.log`. Bí mật che `***`.
+
+- **W10/L-01** `bash probe.sh` (`probe-raw.log`) → D-06, D-07, D-08 (vhost), D-13, C-39, C-04, C-08. Dừng ở lệnh cuối `cat /var/log/nginx/*.log` (symlink stdout, treo) — phần đã chạy đủ cho các mục trên.
+- **W10/L-02** `bash probe2.sh` (`probe2-raw.log`) → D-08 (api `production` cùng origin → `ValueError`, thoát 3), D-13 (exporter chỉ nội bộ), C-39 (413 dưới 8 MiB là của app), B-25 (`mc` khoá `S3_ML_*`: 2 OK, 4 DENIED, rm/ls DENIED).
+- **W10/L-03** `bash probe3.sh` (`probe3-raw.log`) → C-45 (5 chuỗi, 4 route mẫu, method ∈ {`-`,`GET`,`POST`}).
+- **W10/L-04** `probe4-raw.log` → D-04 (`/api/ready` 503 khi Postgres dừng, đủ header B0-06).
+- **W10/L-05** `w10-ops:local` (alpine + docker CLI/compose + `age` 1.3.1) chạy `backup-in-ops.sh plain|age` → `backup-red.log` (cây `0ccfd9a`: production bản rõ, thoát 0), `backup-green.log` (sau FIX-339: thoát 1; có recipient: chỉ `.age`) → C-16, C-18.
+- **W10/L-06** `bash trivy.sh` (`trivy.log`) → D-17 (3 ảnh, 0 CRITICAL, thoát 0).
+- **W10/L-07** `b26-raw.log` → B-26 (`celery inspect` của `ml` thật).
+- **W10/L-08** `probe-code.log` (`probe-code-all.sh`, `probe-code-b22run.sh` qua `run.sh shell`) → B-22, C-22, D-24, D-25.
+- **W10/L-09** `probe-dev-hsts.log` → D-07 phía dev (0 dòng HSTS).
+- Diễn tập kho `local` (W5/C17, `drill-host.sh` → `drill-local.log`): lượt đầu thoát 0 nhưng bảng so sánh chỉ 1 bảng + 1 object (vòng chụp mất stdin vào `docker compose exec -T`) → FIX-341; lượt sau vá xem `drill-local.log`.
+
 ## Nợ hiến chương
 
 ### Việc A
@@ -250,20 +273,20 @@ Không chạy được (thiếu ảnh/compose): nginx sống (C-08, C-39), `back
 
 ### Việc B
 
-- **Môi trường của tiến trình con huấn luyện** (BE-00 §7 "Tiến trình huấn luyện", dòng 326): hiến chương không nói con huấn luyện chạy với env tối thiểu như `ml_eval`; `training_runner/tasks.py:73` thừa hưởng cả `S3_ML_SECRET_KEY` và URL Redis (B-23). Đề xuất: thêm một câu "con nhận env lọc theo danh sách cho phép (`S3_*` của `ml`, `REDIS_*`, `TRAINING_*`, `ML_*`)". Lỗ code ứng với nợ này đã mở `SEC-020`.
+- **Môi trường của tiến trình con huấn luyện** (BE-00 §7 "Tiến trình huấn luyện", dòng 326): hiến chương không nói con huấn luyện chạy với env tối thiểu như `ml_eval`; `training_runner/tasks.py:89` thừa hưởng cả `S3_ML_SECRET_KEY` và URL Redis (B-23). Đề xuất: thêm một câu "con nhận env lọc theo danh sách cho phép (`S3_*` của `ml`, `REDIS_*`, `TRAINING_*`, `ML_*`)". Lỗ code ứng với nợ này đã mở `SEC-020`.
 - **Công bằng hàng ML giữa các dự án** (BE-00 §7, hàng `ml.infer`/`ml.training`, B-26): hiến chương không đặt hạn mức/hàng theo dự án; chỉ có `rate_limit` khởi tạo theo người dùng. Đề xuất: ghi mục tiêu "dự án A không làm đói dự án B" thành luật có số đo (hạn mức lượt dở/dự án) hoặc ghi rõ chấp nhận ở v1.
 - **Redis ACL** (BE-00 §7, dòng "Không tin `apps/ml`": "Redis ACL để v2"): `ml` dùng chung Redis với mọi dịch vụ không giới hạn khoá. Đã là lỗ có chủ ý của v1, ghi nhận ở STRIDE (api → hàng đợi → worker · S), không mở `SEC-*`.
 
 ### Việc C
 
-1. **Sao lưu mã hoá không bắt buộc ở production.** `backup.sh:24` mặc định `BACKUP_AGE_RECIPIENT` rỗng và ghi bản rõ; "bắt buộc mã hoá" chỉ nằm trong runbook (`deploy/scripts/README.md:283`, B0-10 [6]); BE-00 không nhắc `age`. Đề xuất: BE-00 §13 thêm luật "ở `staging`/`production`, `backup.sh` thoát 2 khi thiếu `BACKUP_AGE_RECIPIENT` (trừ khi đặt cờ cho phép bản rõ tường minh)" và khai biến trong `env.example`. (C-18)
+1. **Sao lưu mã hoá không bắt buộc ở production.** (Mã: từ FIX-339 `backup.sh` thoát 1 khi `APP_ENV=production` thiếu recipient; luật hiến chương + `staging` vẫn chờ.) `backup.sh:24` mặc định `BACKUP_AGE_RECIPIENT` rỗng và ghi bản rõ; "bắt buộc mã hoá" chỉ nằm trong runbook (`deploy/scripts/README.md:295`, B0-10 [6]); BE-00 không nhắc `age`. Đề xuất: BE-00 §13 thêm luật "ở `staging`/`production`, `backup.sh` thoát 2 khi thiếu `BACKUP_AGE_RECIPIENT` (trừ khi đặt cờ cho phép bản rõ tường minh)" và khai biến trong `env.example`. (C-18)
 2. **BE-00 §11 không ghi hạn mức cho N3, #5, #44, #45, #37, SSE, `health_ready`** (chỉ có số cho N8–N10, N13, N14, đăng nhập, refresh). Mã đang dùng 60/3600 s, 60/600 s, 30/3600 s, 120/60 s, 6 và 500 kết nối, 60/60 s. Đề xuất: thêm bảng số liệu vào §11. (C-30..C-37)
-3. **Không hạn mức tầng nginx.** Không có `limit_req`/`limit_conn` (C/L-03); chống lạm dụng chỉ ở app, `/api/files/{token}` và các GET công khai không có hạn mức. Đề xuất: hiến chương ghi rõ quyết định, hoặc thêm `limit_conn` cho `/api/streams/`.
+3. **Không hạn mức tầng nginx.** Không có `limit_req`/`limit_conn` (C/L-03); chống lạm dụng chỉ ở app, `/api/files/{token}` và các GET công khai không có hạn mức. Đề xuất: hiến chương ghi rõ quyết định, hoặc thêm `limit_conn` cho `/api/streams/`. Đã sửa — FIX-314 (limit_conn /api/streams/), FIX-316 (test __C11).
 4. **Bộ che log chỉ phủ khoá dict + ba mẫu chuỗi.** BE-00 §11 không đòi che bí mật nhúng trong chuỗi tự do (URL kết nối, `password=…`); đề xuất mở rộng luật, `SEC-042` thực thi phần URL. (C-06)
 5. **`env.example` có giá trị mẫu hợp lệ về độ dài** (`SECRET_KEY` 33 byte): hiến chương §5/§13 nên cấm khoá mẫu ngoài dev (→ `SEC-041`).
 6. **W23 "≥ 60 phút, làm tròn theo giờ"** thực tế cho 60–120 phút (đo 60,5 phút lúc 00:59:30); đề xuất ghi "60–120 phút". (C-19)
 7. **Chính sách miễn `.gitleaks.toml`** theo SHA cố định: mỗi test mới có chuỗi giống khoá lại làm cổng lịch sử đỏ (11 phát hiện, `SEC-043`); đề xuất chọn một cách miễn thống nhất (dòng `gitleaks:allow`).
-8. **Tên test C11 của N14** (`test_me_replace_avatar_rate_limited`) không mang mã `C11` nên `case_gate` không đếm; đề xuất CASE §2 nhắc quy ước đặt tên cho test hạn mức. (C-29; chủ B1-04)
+8. **Tên test C11 của N14** (`test_me_replace_avatar_rate_limited`) không mang mã `C11` nên `case_gate` không đếm; đề xuất CASE §2 nhắc quy ước đặt tên cho test hạn mức. (C-29; chủ B1-04) Đã sửa — FIX-314 (limit_conn /api/streams/), FIX-316 (test __C11).
 
 ### Việc D
 

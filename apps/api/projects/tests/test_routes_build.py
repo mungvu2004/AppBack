@@ -20,9 +20,13 @@ from apps.api.projects.parts import PROJECT_FLOORS, SUBMODULE, ViewPart
 from apps.api.projects.tests.sql_count import count_sql
 from apps.api.projects.tests.test_routes_common import PROJECTS_PATH, SUMMARIES_PATH, headers_of, seed_project
 from apps.api.projects.wire import FloorOut
+from packages.core.clock import SystemClock
+from packages.core.ids import new_ulid
 from packages.db.models.auth import User
+from packages.storage.keys import avatar as avatar_key_of
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
+from packages.testing.fixtures.storage import PUBLIC_BASE_URL
 
 BATCH_SIZE: Final = 20
 _FORBIDDEN_KEYS: Final = frozenset({"currentVersion", "progress", "deletedAt"})
@@ -88,7 +92,7 @@ async def test_projects_list_summaries_query_count_is_constant_across_batch_size
 async def test_projects_list_projects_excludes_soft_deleted_members_and_sorts_by_user_id(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """`members` bỏ người xoá mềm, sắp `user_id ASC`, không `avatarUrl` (B1-04 chưa cắm)."""
+    """`members` bỏ người xoá mềm, sắp `user_id ASC`, thành viên chưa tải ảnh không có `avatarUrl`."""
     owner = await make_user(db_session)
     alive = await make_user(db_session)
     gone = await make_user(db_session)
@@ -157,3 +161,21 @@ async def test_empty_page_runs_only_the_project_query(
         response = await api_client.get(path, headers=headers_of(owner))
     assert response.status_code == 200
     assert counter.count == 1, counter.statements
+
+
+async def test_projects_list__members_carry_signed_avatar_url_from_app_storage(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """NO-194: thành viên có `avatar_key` → `GET /api/projects` trả `avatarUrl` ký qua `app.state.storage` thật."""
+    owner = await make_user(db_session)
+    with_avatar = await make_user(db_session)
+    without = await make_user(db_session)
+    with_avatar.avatar_key = avatar_key_of(with_avatar.id, new_ulid(SystemClock()), "png")
+    project = await seed_project(db_session, owner=owner, members=[with_avatar, without])
+    await db_session.commit()
+
+    response = await api_client.get(PROJECTS_PATH, headers=headers_of(owner))
+    item = next(row for row in response.json() if row["id"] == project.id)
+    by_id = {member["id"]: member for member in item["members"]}
+    assert by_id[with_avatar.id]["avatarUrl"].startswith(f"{PUBLIC_BASE_URL}/api/files/")
+    assert "avatarUrl" not in by_id[without.id]

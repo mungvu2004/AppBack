@@ -22,10 +22,11 @@ from typing import Any, Final
 from celery.exceptions import SoftTimeLimitExceeded
 
 from apps.ml.ml_eval.evaluate import evaluate_family
-from apps.ml.ml_eval.sandbox import build_adapter
+from apps.ml.ml_eval.sandbox import RESULT_PREFIX, build_adapter
 from apps.ml.ml_eval.settings import get_eval_settings
+from apps.ml.runtime.child_env import allowlisted_env
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED
-from apps.ml.runtime.loader import _read_object, load_onnx
+from apps.ml.runtime.loader import load_onnx, read_model_object
 from apps.ml.runtime.tasks_util import infer_context
 from packages.core.clock import SystemClock
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -71,8 +72,7 @@ def on_failed(payload: EvaluateVersionPayload, code: str) -> None:
 
 def _child_env() -> dict[str, str]:
     """Môi trường tối thiểu của con: không khoá, không biến kho; luồng và arena bị chặn trên."""
-    env = {name: value for name, value in os.environ.items() if name in _ENV_KEEP or name.startswith(_ENV_PREFIX)}
-    env.setdefault("PYTHONPATH", os.getcwd())
+    env = allowlisted_env(_ENV_KEEP, _ENV_PREFIX)
     threads = min(int(env.get("ML_ORT_THREADS", "1") or "1"), MAX_ORT_THREADS)
     env["ML_ORT_THREADS"] = str(threads)
     env["MALLOC_ARENA_MAX"] = "2"
@@ -88,22 +88,28 @@ def _kill_group(proc: "subprocess.Popen[str]") -> None:
 
 
 def _result(out: str, returncode: int) -> dict[str, float]:
-    """Diễn giải một dòng stdout cùng mã thoát của con thành số đo hay lỗi có mã.
+    """Diễn giải dòng kết quả (có `RESULT_PREFIX`) trong stdout cùng mã thoát của con thành số đo hay lỗi có mã.
 
     `SIGKILL` mà cha **không** giết là OOM của cgroup `ml` dùng chung với huấn luyện —
     lỗi tạm của hạ tầng, không phải lỗi của model: `DEPENDENCY_UNAVAILABLE` → J02 thử
     lại, hết lượt thì `define_task` báo `RETRY_EXHAUSTED`.
     """
+    lines = [line for line in out.splitlines() if line.startswith(RESULT_PREFIX)]
     try:
-        reply = json.loads(out) if out.strip() else {}
+        reply = json.loads(lines[-1][len(RESULT_PREFIX) :]) if lines else {}
     except json.JSONDecodeError:
+        reply = {}
+    if not isinstance(reply, dict):
         reply = {}
     code = reply.get("code")
     if isinstance(code, str):
         raise PermanentError(code)
     metrics = reply.get("metrics")
     if returncode == 0 and isinstance(metrics, dict):
-        return {str(key): float(value) for key, value in metrics.items()}
+        try:
+            return {str(key): float(value) for key, value in metrics.items()}
+        except (TypeError, ValueError):
+            raise PermanentError(MODEL_FORMAT_UNSUPPORTED) from None
     if returncode == -signal.SIGKILL:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=5)
     raise PermanentError(MODEL_FORMAT_UNSUPPORTED)
@@ -158,7 +164,7 @@ async def _metrics(payload: EvaluateVersionPayload) -> dict[str, float]:
     if ref.pinned_name is not None:
         session = await load_onnx(context.storage, ref, models_dir=Path(context.settings.ml_models_dir))
         return evaluate_family(ref.family, build_adapter(ref, session), seeds=EVAL_SEEDS)
-    data = await _read_object(context.storage, str(ref.weights_key))
+    data = await read_model_object(context.storage, str(ref.weights_key))
     return await run_sandbox(data, ref, EVAL_SEEDS)
 
 

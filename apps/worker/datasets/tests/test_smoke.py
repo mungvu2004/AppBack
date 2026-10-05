@@ -28,7 +28,7 @@ from packages.db.models.admin_ml_datasets import DatasetVersionRow
 from packages.db.settings import get_database_settings, reset_database_settings_cache
 from packages.messaging.payloads.datasets import BUILD_VERSION_TASK
 from packages.messaging.redis import SyncRedis, broker_redis_sync
-from packages.storage.keys import dataset_object
+from packages.storage.keys import dataset_object, dataset_version_prefix
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
 from packages.testing.fixtures.clock import FakeClock
@@ -156,10 +156,18 @@ def test_build_dataset_version_smoke(celery_test_app: object, broker: SyncRedis)
     """
     version_id = asyncio.run(_seed_building(stalled=False))
 
-    result = celery_test_app.tasks[BUILD_VERSION_TASK].apply(  # type: ignore[attr-defined]
+    result = celery_test_app.tasks[BUILD_VERSION_TASK].apply(  # type: ignore[attr-defined]  # `tasks` là mapping động
         args=({"schema_version": 1, "dataset_version_id": version_id},)
     )
     reset_database_settings_cache()
 
     assert result.successful()
     assert asyncio.run(_read_status(version_id)) == ("failed", DATASET_EMPTY)
+
+
+def test_version_prefix__follows_storage_keys() -> None:
+    """NO-263: tiền tố phiên bản là `keys.dataset_version_prefix` (kiểm `dsv_`), không f-string chép bố cục."""
+    version_id = "dsv_01ARZ3NDEKTSV4RRFFQ69G5FHB"
+    assert version_prefix(version_id) == dataset_version_prefix(version_id)
+    with pytest.raises(ValueError, match="dsv_"):
+        version_prefix("khong-phai-dsv")

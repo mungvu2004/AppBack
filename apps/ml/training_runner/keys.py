@@ -1,37 +1,37 @@
 """Khoá Redis, id bản model, khoá object trọng số của một job huấn luyện (B6-03b [2]).
 
-Khai lại **đúng mẫu** của `packages/messaging/payloads/training.py` (B6-03a): runner không
-được nhập module đó ([9]); `test_training_keys_literal` của hai bên ghim cùng chuỗi. Gộp hai
-nơi là nợ của điều phối (NO-305).
+`trained_version_id`, `cancel_key`, `claim_key` nhập lại từ `packages/messaging/payloads/training.py`
+(B6-03a, một nguồn — NO-305): runner và cầu nối không thể lệch mẫu; `test_training_keys_literal`
+của hai bên vẫn ghim cùng chuỗi.
 """
 
 import secrets
 from typing import Final, cast
 
-from packages.core.ids import check_id
-from packages.core.object_keys import check_key
+from packages.messaging.payloads.training import cancel_key, claim_key, trained_version_id
 from packages.ml_contracts.datasets import Split, sample_path
-from packages.storage.keys import model_artifact
+from packages.storage.keys import dataset_object, model_artifact
 
 SLOT_KEY: Final = "training:slot"
 """Khoá "một job mỗi lúc" cho mọi thiết bị (BE-00 §7); `cuda` giữ thêm `gpu:0`."""
 
 TOKEN_BYTES: Final = 16
 
-
-def trained_version_id(job_id: str) -> str:
-    """`mdl_` + ULID của `job_id` (một job ↔ một bản); `job_id` sai mẫu → `ValueError`."""
-    return "mdl_" + check_id("job", job_id).removeprefix("job_")
-
-
-def cancel_key(job_id: str) -> str:
-    """Khoá huỷ: có mặt thì launcher không khởi chạy, runner dừng (BE-00 §7)."""
-    return f"training:cancel:{job_id}"
-
-
-def claim_key(job_id: str) -> str:
-    """Khoá claim mang token 32 hex của lượt; chỉ người giữ token được gia hạn hay xoá."""
-    return f"training:claim:{job_id}"
+__all__ = [
+    "FINISHED_TASK",
+    "HEARTBEAT_TASK",
+    "LOG_TASK",
+    "METRICS_TASK",
+    "SLOT_KEY",
+    "START_TASK",
+    "TOKEN_BYTES",
+    "cancel_key",
+    "claim_key",
+    "new_token",
+    "sample_key",
+    "trained_version_id",
+    "weights_key",
+]
 
 
 def new_token() -> str:
@@ -47,14 +47,14 @@ def weights_key(job_id: str, token: str) -> str:
 def sample_key(dataset_version_id: str, path: str) -> str:
     """Khoá object một tệp mẫu: `ml/datasets/<dsv>/` + đường manifest `{split}/{sample_id}/{filename}` (B6-02).
 
-    Không qua `dataset_object`: nó chỉ nhận tên một đoạn (NO-263), cùng cách lách với
-    `apps/worker/datasets/writer.py` `_sample_key`. Đường không đủ ba đoạn hay sai luật `sample_path` → `ValueError`.
+    Dựng qua `dataset_object` (một nguồn bố cục); trước đó kiểm đường đủ ba đoạn và đúng luật
+    `sample_path`, nếu không → `ValueError`.
     """
     parts = path.split("/")
     if len(parts) != 3:
         raise ValueError(f"đường mẫu phải có ba đoạn: {path!r}")
     sample_path(cast("Split", parts[0]), parts[1], parts[2])
-    return check_key(f"ml/datasets/{check_id('dsv', dataset_version_id)}/{path}")
+    return dataset_object(dataset_version_id, path)
 
 
 START_TASK: Final = "ml.training.runner.start"

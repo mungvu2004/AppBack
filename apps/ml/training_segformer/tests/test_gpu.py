@@ -15,7 +15,7 @@ import torch
 
 from apps.ml.training_segformer import loop
 from apps.ml.training_segformer.config import SegformerTrainConfig
-from apps.ml.training_segformer.tests.support import RecordingReporter, write_split
+from apps.ml.training_segformer.tests.support import RecordingReporter, load_pinned_base, write_split
 from packages.core.clock import SystemClock
 from packages.ml_contracts.ports import TrainSpec
 
@@ -29,14 +29,10 @@ def test_train_gpu_mitb1_fits_6gb(tmp_path: Path) -> None:
 
     Không tự `.to("cuda")`: `loop.train_model` chuyển model theo `spec.device`.
     """
-    from apps.ml.training_segformer import model as segformer_model
-    from packages.ml_contracts.pinned import PINNED
-
     data_dir = tmp_path / "data"
-    write_split(data_dir, "train", 64, seed=0)
-    write_split(data_dir, "validation", 2, seed=1000)
-    models_dir = Path(PINNED["mitB1"].name)
-    net = segformer_model.load_pretrained(models_dir.parent, "mitB1", PINNED)
+    write_split(data_dir, "train", 64, seed=0, width_px=1600, height_px=1200)
+    write_split(data_dir, "validation", 2, seed=1000, width_px=1600, height_px=1200)
+    net = load_pinned_base("mitB1")
     spec = TrainSpec(
         job_id="job_gpu",
         family="wallSegmentation",

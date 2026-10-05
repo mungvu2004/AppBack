@@ -17,31 +17,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.drawings import new_page_key
 from apps.api.drawings.settings import get_drawings_settings
-from apps.api.drawings.uploads import chunk_key as chunk_key
+from apps.api.drawings.uploads import EXT_KIND, KIND_MIME
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.text import nfc
 from packages.db.models.drawings import DrawingRow, UploadChunkRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.projects import Project
-from packages.storage.keys import upload_original
+from packages.storage.keys import upload_chunk, upload_original
 from packages.storage.port import ObjectStorage
 
 DEFAULT_FILE_NAME: Final = "ban-ve.png"
 DEFAULT_SIZE_BYTES: Final = 1024
 
-_EXT_TYPE: Final = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "pdf": "application/pdf"}
-_EXT_KIND: Final = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf"}
-
 PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
-
-"""`chunk_key` xuất lại từ `apps.api.drawings.uploads`: một luật khoá khúc, một chủ (đính chính §15)."""
 
 
 def _extension(file_name: str) -> str:
     """Đuôi thường của tên tệp; không có đuôi biết → `png` (tên mặc định của factory)."""
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "png"
-    return ext if ext in _EXT_TYPE else "png"
+    return ext if ext in EXT_KIND else "png"
 
 
 async def make_upload(
@@ -67,7 +62,7 @@ async def make_upload(
         floor_pk=floor.pk,
         file_name=nfc(file_name),
         declared_size_bytes=size_bytes,
-        declared_type=_EXT_TYPE[_extension(file_name)],
+        declared_type=KIND_MIME[EXT_KIND[_extension(file_name)]],
         page_index=page_index,
         chunk_count=-(-size_bytes // chunk_bytes),
         status=status,
@@ -104,15 +99,15 @@ async def make_complete_upload(
     for index in range(upload.chunk_count):
         piece = data[index * chunk_bytes : (index + 1) * chunk_bytes]
         digest = hashlib.sha256(piece).hexdigest()
-        key = chunk_key(project.id, floor.level_id, upload.id, index, digest)
+        key = upload_chunk(project.id, floor.level_id, upload.id, index, digest)
         await storage.put(key, piece, content_type="application/octet-stream", max_bytes=chunk_bytes)
         db.add(
             UploadChunkRow(upload_id=upload.id, chunk_index=index, size_bytes=len(piece), sha256=digest, object_key=key)
         )
     original_key = upload_original(project.id, floor.level_id, upload.id, ext)
-    await storage.put(original_key, data, content_type=_EXT_TYPE[ext], max_bytes=len(data))
+    await storage.put(original_key, data, content_type=KIND_MIME[EXT_KIND[ext]], max_bytes=len(data))
     upload.status = "complete"
-    upload.sniffed_kind = _EXT_KIND[ext]
+    upload.sniffed_kind = EXT_KIND[ext]
     upload.original_key = original_key
     await db.flush()
     return upload

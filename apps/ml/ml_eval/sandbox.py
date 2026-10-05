@@ -1,12 +1,14 @@
 """Tiến trình con của hộp cát đánh giá: nạp model người dùng và chạy vòng đánh giá, cách ly.
 
 Chạy bằng `python -m apps.ml.ml_eval.sandbox`. Giao thức: **một** object JSON vào stdin,
-**một** dòng JSON ra stdout — `{"metrics": {...}}` hay `{"code": "<mã>"}`; mọi thứ khác
+**một** dòng kết quả ra stdout — `RESULT_PREFIX` rồi `{"metrics": {...}}` hay `{"code": "<mã>"}`;
+cha chỉ đọc dòng có tiền tố nên dòng lạ do thư viện in không phá lượt đạt. Mọi thứ khác
 (thoát ≠ 0, tín hiệu) do tiến trình cha diễn giải.
 
 Bất biến: `RLIMIT_AS` đặt **trước** lần nhập `onnxruntime`/`apps.ml.runtime` đầu tiên —
 ORT cấp bộ nhớ ngay lúc nhập, trần đặt sau là trần không có tác dụng. Vì vậy mọi nhập
-nặng nằm trong `_evaluate`, mức module chỉ có thư viện chuẩn.
+nặng nằm trong `_evaluate`; mức module chỉ có thư viện chuẩn và `apps.ml.runtime.error_codes`
+(chỉ `typing`, test `test_error_codes__import_light`).
 
 Con **không** cầm khoá hay client storage nào: cha chép bytes trọng số vào một thư mục
 tạm và con dựng `LocalDiskStorage` trên thư mục ấy, nên lỗi tạm của kho thật (J02) xảy ra
@@ -18,10 +20,12 @@ import resource
 import sys
 from typing import IO, Any, Final
 
-__all__ = ["main"]
+from apps.ml.runtime.error_codes import MODEL_FORMAT_UNSUPPORTED
 
-MODEL_FORMAT_UNSUPPORTED: Final = "MODEL_FORMAT_UNSUPPORTED"
-"""Lặp lại hằng của `apps.ml.runtime.errors`: module ấy kéo `onnxruntime` vào."""
+__all__ = ["RESULT_PREFIX", "main"]
+
+RESULT_PREFIX: Final = "ML_EVAL_RESULT "
+"""Khung của dòng kết quả trên stdout: chuỗi này không thể là đầu một JSON hợp lệ."""
 
 
 def build_adapter(ref: Any, session: Any) -> Any:
@@ -73,14 +77,16 @@ def _reply(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def main(stdin: IO[str], stdout: IO[str]) -> None:
-    """Đọc yêu cầu, đặt trần bộ nhớ, ghi đúng một dòng JSON ra `stdout`.
+    """Đọc yêu cầu, đặt trần bộ nhớ, ghi đúng một dòng `RESULT_PREFIX` + JSON ra `stdout`
+    (mở bằng xuống dòng để dòng lạ chưa kết thúc không dính vào tiền tố).
 
     Nhận luồng làm tham số để test gọi thẳng được (không cần dựng tiến trình).
     """
     request = json.load(stdin)
     max_bytes = int(request["max_bytes"])
     resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
-    stdout.write(json.dumps(_reply(request)) + "\n")
+    # xuống dòng đầu: dòng lạ chưa kết thúc không nuốt tiền tố
+    stdout.write("\n" + RESULT_PREFIX + json.dumps(_reply(request)) + "\n")
     stdout.flush()
 
 

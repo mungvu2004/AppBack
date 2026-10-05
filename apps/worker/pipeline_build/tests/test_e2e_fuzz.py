@@ -6,31 +6,23 @@
 
 import math
 import random
-from datetime import UTC, datetime
-from decimal import Decimal
-from typing import Final
 
 import pytest
 
-from apps.worker.pipeline_build.build import build_layer
-from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.tests.helpers import SPATIAL_LEVEL_ID, build_wrapped
 from packages.domain.spatial.integrity import check_integrity, has_critical
 from packages.ml_contracts.artifacts import (
     BoxPx,
     DetectionPx,
-    ObjectsResult,
     TextPx,
-    TextResult,
     WallPx,
-    WallsResult,
 )
 from packages.ml_contracts.labels import DETECTION_LABELS
 from packages.testing.fixtures.clock import FakeClock
 
 _WIDTH_PX = 1600
 _HEIGHT_PX = 1200
-_FALLBACK_MM_PER_PX = Decimal("10")
-_LEVEL_ID: Final = new_spatial_id("level", FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)))
+_LEVEL_ID = SPATIAL_LEVEL_ID
 
 
 def _random_box(rng: random.Random) -> BoxPx:
@@ -80,15 +72,8 @@ def test_build_layer__fuzz_does_not_raise(seed: int, fake_clock: FakeClock) -> N
     detections = tuple(_random_detection(rng) for _ in range(rng.randint(0, 20)))
     texts = tuple(_random_text(rng) for _ in range(rng.randint(0, 10)))
 
-    built = build_layer(
-        level_id=_LEVEL_ID,
-        walls=WallsResult(walls=walls),
-        objects=ObjectsResult(detections=detections),
-        text=TextResult(items=texts),
-        width_px=_WIDTH_PX,
-        height_px=_HEIGHT_PX,
-        fallback_mm_per_px=_FALLBACK_MM_PER_PX,
-        clock=fake_clock,
+    built = build_wrapped(
+        walls=walls, detections=detections, texts=texts, width_px=_WIDTH_PX, height_px=_HEIGHT_PX, clock=fake_clock
     )
 
     issues = check_integrity(built.layer, level_id=_LEVEL_ID)

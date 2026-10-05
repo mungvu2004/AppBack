@@ -13,7 +13,7 @@ from typing import Final
 
 import pytest
 from celery import Celery
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.admin_ml_registry.jobs import (
@@ -38,13 +38,14 @@ from packages.messaging.schedules import schedule_entries
 from packages.storage.keys import model_artifact
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.factories.admin_ml_registry import make_model_version
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 BASELINE_IDS: Final = ("mdl_01KB6010000000000000000001", "mdl_01KB6010000000000000000002")
-BLOCKED: Final = ("fastapi", "starlette", "uvicorn", "jwt", "argon2", "torch", "onnxruntime", "onnx", "ultralytics")
+BLOCKED: Final = (*WORKER_BLOCKED, "torch", "onnxruntime", "onnx", "ultralytics")
 WORKER_WAIT_S: Final = 2.0
 
 
@@ -108,6 +109,29 @@ async def test_requeue_pending_model_evaluations__J01(
         assert row.evaluation_attempts == settings.model_eval_max_attempts
     assert len(_sent(broker)) == 2 * settings.model_eval_max_attempts
     assert await run_model_evaluation_requeue(db_sessionmaker, fake_clock) == 0
+
+
+@pytest.mark.usefixtures("celery_test_app")
+async def test_requeue_pending_model_evaluations__locks_the_batch_once(
+    db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock, broker: SyncRedis
+) -> None:
+    """Lô đã `FOR UPDATE SKIP LOCKED` sẵn: lượt chạy phát đúng một câu khoá, không khoá lại từng dòng (NO-260)."""
+    statements: list[str] = []
+
+    def record_locks(_conn: object, _cursor: object, statement: str, *_rest: object) -> None:
+        """Ghi mọi câu `SELECT … FOR UPDATE` đi qua engine."""
+        if "FOR UPDATE" in statement:
+            statements.append(statement)
+
+    sync_engine = db_sessionmaker.kw["bind"].sync_engine
+    event.listen(sync_engine, "before_cursor_execute", record_locks)
+    try:
+        assert await run_model_evaluation_requeue(db_sessionmaker, fake_clock) == len(BASELINE_IDS)
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", record_locks)
+
+    assert len(statements) == 1
+    assert sorted(_sent(broker)) == list(BASELINE_IDS)
 
 
 @pytest.mark.usefixtures("celery_test_app")
@@ -281,6 +305,7 @@ async def test_purge_batches_lookups_and_never_holds_a_connection_while_deleting
     real_delete = local_storage.delete
 
     async def spy(key: str) -> None:
+        """Ghi số kết nối đang mượn rồi xoá thật."""
         checked_out.append(pool.checkedout())
         await real_delete(key)
 

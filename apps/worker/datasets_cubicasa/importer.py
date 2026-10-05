@@ -111,6 +111,8 @@ class ImportReport:
 _log: Final = logging.getLogger(__name__)
 
 SOURCE: Final = "cubicasa5k"
+SOURCE_LICENSE: Final = "CC-BY-NC-4.0 (https://creativecommons.org/licenses/by-nc/4.0/)"
+"""Giấy phép bộ dữ liệu CubiCasa5K: chỉ dùng phi thương mại, ghi công; in ở mọi báo cáo nhập (D-25)."""
 CREATED_BY: Final = "cli:datasets_cubicasa"
 DATASET_NOT_FOUND: Final = "DATASET_NOT_FOUND"
 ARCHIVE_UNSAFE: Final = "ARCHIVE_UNSAFE"

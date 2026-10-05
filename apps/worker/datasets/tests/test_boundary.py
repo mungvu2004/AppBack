@@ -14,8 +14,9 @@ from typing import Final
 
 import pytest
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-BLOCKED: Final = ("fastapi", "starlette", "uvicorn", "jwt", "argon2")
 IMPORT_TIMEOUT_S: Final = 120.0
 
 
@@ -33,7 +34,7 @@ IMPORT_TIMEOUT_S: Final = 120.0
 )
 def test_imports_without_web_or_crypto_packages(module: str) -> None:
     """Nhập được khi `fastapi`, `starlette`, `uvicorn`, `jwt`, `argon2` bị chặn (ảnh `worker` không cài chúng)."""
-    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in BLOCKED)
+    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import {module}"],
         cwd=REPO_ROOT,

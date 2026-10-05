@@ -137,6 +137,26 @@ async def _alembic(action: Callable[[Config, str], None], config: Config, revisi
     return ""
 
 
+def _one_step_down(script: ScriptDirectory) -> str:
+    """Đích của `downgrade -1`: cha của head; head là revision merge thì đi theo cha thứ nhất (NO-249).
+
+    `downgrade -1` từ revision merge là `Ambiguous walk`, còn hạ xuống chính một cha chỉ gỡ revision
+    merge (thân rỗng) — bước "revision mới nhất trên DB có dữ liệu" thành vô nghĩa. Đi theo cha thứ
+    nhất tới revision một cha rồi hạ xuống cha của nó: Alembic gỡ mọi revision không là tổ tiên của
+    đích (merge, nhánh đó, và nhánh kia nếu cùng gốc), nên `upgrade head` sau đó chạy lại revision
+    thật. Merge lồng merge cũng đi tiếp được. Revision gốc (không cha) → `base`.
+    """
+    revision = script.get_revision(script.get_heads()[0])
+    while revision.down_revision is not None and not isinstance(revision.down_revision, str):
+        revision = script.get_revision(revision.down_revision[0])
+    return revision.down_revision or "base"
+
+
+async def _downgrade_one(config: Config) -> str:
+    """`downgrade -1` của vòng kiểm, đích giải bằng `_one_step_down` (bước đúng-1-head đã chạy trước)."""
+    return await _alembic(command.downgrade, config, _one_step_down(ScriptDirectory.from_config(config)))
+
+
 async def _seed_twice(engine: AsyncEngine, seed_runner: SeedRunner) -> str:
     """Seed `SEED_ENV` hai lần: số dòng mọi bảng sau lượt hai phải bằng sau lượt một (idempotent)."""
     async with AsyncSession(engine) as session:
@@ -176,7 +196,7 @@ def _steps(config: Config, engine: AsyncEngine, target: MetaData, seed_runner: S
         ("đúng 1 head", lambda: _one_head(config)),
         ("upgrade head", lambda: _alembic(command.upgrade, config, "head")),
         (f"seed {SEED_ENV} hai lần", lambda: _seed_twice(engine, seed_runner)),
-        ("downgrade -1", lambda: _alembic(command.downgrade, config, "-1")),
+        ("downgrade -1", lambda: _downgrade_one(config)),
         ("upgrade head trên DB có dữ liệu", lambda: _alembic(command.upgrade, config, "head")),
         ("downgrade base", lambda: _alembic(command.downgrade, config, "base")),
         ("chỉ còn alembic_version", lambda: _only_version_table(engine)),

@@ -219,3 +219,42 @@ def test_claim_lease_exit_survives_redis_error_on_delete(monkeypatch: pytest.Mon
             raise ValueError("lỗi trong thân khối")
     finally:
         client.close()
+
+
+def test_training_slot__holds_through_shared_lease(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`training_slot` giữ `SLOT_KEY` qua lõi `held_lease` của `apps/ml/runtime`, như `gpu_slot` (NO-308)."""
+    from apps.ml.runtime import lease  # nhập trong thân: cây thiếu `lease` chỉ làm đỏ test này
+
+    names: list[str] = []
+    real = lease.held_lease
+
+    def spy(ops: lease.LeaseOps[str], *, wait_s: float, ttl_ms: int, renew_every_ms: int) -> object:
+        """Ghi tên khoá rồi chuyển nguyên cho lõi thật."""
+        names.append(ops.name)
+        return real(ops, wait_s=wait_s, ttl_ms=ttl_ms, renew_every_ms=renew_every_ms)
+
+    monkeypatch.setattr(slot_module, "held_lease", spy)
+    with training_slot(wait_s=1, ttl_ms=TTL_MS, renew_every_ms=RENEW_MS) as held:
+        held.check()
+    assert names == [SLOT_KEY]
+
+
+def test_claim_lease__unexpected_error_marks_lost(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nhịp gia hạn claim ném lỗi lạ (không phải Redis) → luồng `RenewThread` chung bật `lost` (fail-closed)."""
+    client = training_redis()
+    job_id = "job_01J0000000000000000000000H"
+    token = new_token()
+
+    def _bug(*_args: object, **_kwargs: object) -> bool | None:
+        """Lỗi lập trình giả lập trong nhịp gia hạn."""
+        raise RuntimeError("hỏng")
+
+    try:
+        with claim_lease(client, job_id, token, ttl_ms=TTL_MS) as lease:
+            assert not lease.lost.is_set()
+            monkeypatch.setattr(slot_module, "_claim_step", _bug)
+            assert lease.lost.wait(5)
+        assert client.get(claim_key(job_id)) is None
+    finally:
+        client.delete(claim_key(job_id))
+        client.close()

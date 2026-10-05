@@ -12,7 +12,6 @@ thật nghe `pipeline.cpu` (ca hỏng không gửi thông điệp nào, worker k
 """
 
 import asyncio
-import dataclasses
 import logging
 import time
 from collections.abc import Callable, Coroutine, Iterator
@@ -23,7 +22,6 @@ from typing import Final
 import pytest
 from celery import Celery
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.progress import progress_wire
 from apps.api.spatial_read.documents import load_document
@@ -31,7 +29,15 @@ from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN
 from apps.worker.pipeline_build.errors import PIPELINE_ARTIFACT_INVALID, PIPELINE_ARTIFACT_MISSING
 from apps.worker.pipeline_persist import service, tasks
 from apps.worker.pipeline_persist.constants import STEP
-from apps.worker.pipeline_persist.tests.helpers import Arranged, open_run_at_build, put_layer, sample_built
+from apps.worker.pipeline_persist.tests.helpers import (
+    CPU_QUEUE,
+    Arranged,
+    Maker,
+    arrange,
+    broken_layer,
+    open_run_at_build,
+    put_layer,
+)
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.settings import reset_settings_cache
@@ -50,9 +56,6 @@ from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.db import drop_after_commit
 from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 
-type Maker = async_sessionmaker[AsyncSession]
-
-CPU_QUEUE: Final = "pipeline.cpu"
 PERSIST_TASK: Final = "pipeline.persist.run"
 FAIL_WAIT_S: Final = 60.0
 """Trần **chờ** worker đánh hỏng một lượt — chống treo, không phải trần hiệu năng (nên không `perf`)."""
@@ -96,6 +99,13 @@ def process_env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         reset()
 
 
+@pytest.fixture
+def storage_override(local_storage: LocalDiskStorage) -> Iterator[None]:
+    """Task chạy trên `local_storage` của test (đã mồi `layer.json`) thay vì kho dựng từ môi trường."""
+    with tasks._STORAGE.override(lambda: local_storage):
+        yield
+
+
 def on_own_loop[T](db_url: str, work: Callable[[Maker], Coroutine[object, object, T]]) -> T:
     """Chạy `work` trên engine dựng riêng cho vòng `asyncio.run` này; trả kết quả của nó.
 
@@ -114,25 +124,6 @@ def on_own_loop[T](db_url: str, work: Callable[[Maker], Coroutine[object, object
             await engine.dispose()
 
     return asyncio.run(main())
-
-
-def _broken_layer(level_id: str) -> bytes:
-    """`layer.json` hợp lệ về schema nhưng ô mở trỏ tường không có — bỏ hết `walls` khỏi lớp AI.
-
-    `merge_pipeline_result` không kiểm tham chiếu chéo, nên lỗi đến từ chính `write_layer` (B3-03)
-    như trên đường thật, chứ không phải từ bước trộn.
-    """
-    built = sample_built(level_id)
-    return dataclasses.replace(built, layer=built.layer.model_copy(update={"walls": ()})).to_json()
-
-
-async def _arrange(
-    maker: Maker, storage: LocalDiskStorage, clock: FakeClock, *, layer: bytes | None = None
-) -> Arranged:
-    """Lượt đang ở `spatialDataBuild` + `layer.json` trong kho; `layer=None` → lớp mẫu hợp lệ."""
-    arranged = await open_run_at_build(maker, clock)
-    await put_layer(storage, arranged, sample_built(arranged.level_id).to_json() if layer is None else layer)
-    return arranged
 
 
 def _quality_messages(client: SyncRedis, run_id: str) -> list[dict[str, object]]:
@@ -177,14 +168,13 @@ def _wait_failed(db_url: str, upload_id: str, deadline: float) -> dict[str, obje
     return wire
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_persist_pipeline_result__J01_smoke(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     broker: SyncRedis,
     celery_test_app: Celery,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Task thật qua `task.apply`, **không** gọi `after_commit_idle`: đúng một `pipeline.quality.run`.
 
@@ -193,12 +183,11 @@ def test_persist_pipeline_result__J01_smoke(
     đặt `DB_AFTER_COMMIT_INLINE=1` như tiến trình worker, nên `on_after_commit` chạy tại chỗ trong
     lượt commit và test không phải chờ gì.
 
-    Kho vẫn trỏ qua `_STORAGE._factory` để dùng chung `local_storage` đã mồi `layer.json`; DB thì
+    Kho vẫn trỏ qua fixture `storage_override` để dùng chung `local_storage` đã mồi `layer.json`; DB thì
     task tự dựng từ `DATABASE_URL` của `process_env`. Không mang marker `perf`: test mang mã case
     không được là test `perf` (cổng bước 5b), số đo thời gian ghi bằng `logging`.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
-    arranged = on_own_loop(db_url, lambda maker: _arrange(maker, local_storage, fake_clock))
+    arranged = on_own_loop(db_url, lambda maker: arrange(maker, local_storage, fake_clock))
 
     start = time.monotonic()
     tasks.persist_pipeline_result.apply(args=[arranged.payload.model_dump(mode="json")])
@@ -208,14 +197,13 @@ def test_persist_pipeline_result__J01_smoke(
     assert on_own_loop(db_url, lambda maker: _progress(maker, arranged.upload_id))["status"] == "running"
 
 
-@pytest.mark.usefixtures("process_env")
+@pytest.mark.usefixtures("process_env", "storage_override")
 def test_persist_pipeline_result__J03(
     db_url: str,
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
     broker: SyncRedis,
     celery_worker_factory: WorkerFactory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ba ca hỏng qua worker thật: `Progress` `failed` + đúng mã, không `endedAt`, không ghi gì.
 
@@ -226,11 +214,10 @@ def test_persist_pipeline_result__J03(
     có. Mỗi ca một lượt chạy riêng vì lượt đã `failed` không nhận kết quả nữa. Worker nghe
     `pipeline.cpu` được: ca hỏng không gửi thông điệp nào nên không có gì bị nuốt.
     """
-    monkeypatch.setattr(tasks._STORAGE, "_factory", lambda: local_storage)
     cases: tuple[tuple[str, Callable[[Arranged], bytes | None], str], ...] = (
         ("artifact vắng", lambda _a: None, PIPELINE_ARTIFACT_MISSING),
         ("json hỏng", lambda _a: b"{khong-phai-json", PIPELINE_ARTIFACT_INVALID),
-        ("ô mở trỏ tường không có", lambda a: _broken_layer(a.level_id), LAYER_INTEGRITY_BROKEN.code),
+        ("ô mở trỏ tường không có", lambda a: broken_layer(a.level_id), LAYER_INTEGRITY_BROKEN.code),
     )
 
     with celery_worker_factory([CPU_QUEUE]):
@@ -263,7 +250,7 @@ async def test_persist_pipeline_result__J09(
     `create_version` của bước 4 — giao dịch không rollback thì phiên bản "trước" sẽ còn lại.
     """
     arranged = await open_run_at_build(db_sessionmaker, fake_clock)
-    await put_layer(local_storage, arranged, _broken_layer(arranged.level_id))
+    await put_layer(local_storage, arranged, broken_layer(arranged.level_id))
 
     with pytest.raises(PermanentError) as caught:
         await service.run_persist(
@@ -292,7 +279,7 @@ async def test_persist_pipeline_result__J10(
     mục `user_stream`. Nhánh phát lại phải bù đúng **một** lần mỗi thứ (K18, K32).
     """
     monkeypatch.setenv("APP_ENV", "test")
-    arranged = await _arrange(db_sessionmaker, local_storage, fake_clock)
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock)
     before = await streams_client.xlen(upload_stream(arranged.upload_id))
 
     with drop_after_commit():

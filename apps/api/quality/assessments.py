@@ -22,7 +22,7 @@ from sqlalchemy import Row, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.drawings.drawings import drawing_url
+from apps.api.drawings.drawings import drawing_urls
 from apps.api.drawings.runs import lock_run
 from apps.api.quality.schemas import (
     CornerOut,
@@ -273,6 +273,7 @@ async def read_view(
     rows = (await db.execute(stmt)).all()
     if not rows:
         raise NOT_FOUND.error(resource="upload")
-    floors = [_floor_out(row, source_url=await drawing_url(storage, row.page_key)) for row in rows]
+    urls = await drawing_urls(storage, [row.page_key for row in rows])  # một lô cho mọi tầng (NO-207)
+    floors = [_floor_out(row, source_url=url) for row, url in zip(rows, urls, strict=True)]
     focus = level_id if any(floor.floor_id == level_id for floor in floors) else floors[0].floor_id
     return QualityAssessmentOut(project_id=project_id, floor_id=focus, floors=floors)

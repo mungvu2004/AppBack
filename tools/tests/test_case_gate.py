@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import types
 from pathlib import Path
@@ -53,6 +54,21 @@ def _op(**kw: Any) -> Operation:
 
 
 # --- required_cases_for: các nhánh chính của §2.2 -----------------------------
+
+
+def test_fixed_extra_khớp_case_md() -> None:
+    """`_FIXED_EXTRA` khớp đúng mục "Case thêm cố định" của CASE.md §2.2 (nguồn duy nhất, NO-335: N14 → C11).
+
+    Mỗi gạch `- Cxx ở #10 (…), N3 (…), …`: tách id dòng trước dấu ngoặc; `#10` của CASE là row_id `10`.
+    """
+    text = (case_gate.REPO_ROOT / "docs" / "charter" / "CASE.md").read_text(encoding="utf-8")
+    block = text.split("**Case thêm cố định**", 1)[1].split("\n\n", 1)[0]
+    expected: dict[str, set[str]] = {}
+    for case_id, rest in re.findall(r"^- (C\d+) ở (.+)$", block, flags=re.M):
+        rows = re.sub(r"\([^)]*\)", "", rest.split(". ", 1)[0])
+        for row_id in re.findall(r"#?(N?\d+)", rows):
+            expected.setdefault(row_id, set()).add(case_id)
+    assert expected == case_gate._FIXED_EXTRA
 
 
 def test_case_chung_chỉ_khi_protected() -> None:
@@ -324,6 +340,9 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
 <testcase classname="pkg.tests.test_c" name="test_c__C03">
   <skipped type="pytest.xfail" message="lý do" />
 </testcase>
+<testcase classname="pkg.tests.test_d" name="test_d__C04">
+  <skipped type="other.xfail" message="lý do" />
+</testcase>
 </testsuite></testsuites>""",
         encoding="utf-8",
     )
@@ -332,6 +351,8 @@ def test_parse_junit_skipped_xfail(tmp_path: Path) -> None:
     assert by_name["test_a__C01"].outcome == "passed"
     assert by_name["test_b__C02"].outcome == "skipped"
     assert by_name["test_c__C03"].is_xfail is True
+    assert by_name["test_d__C04"].is_xfail is False
+    assert by_name["test_d__C04"].outcome == "skipped"
 
 
 def test_parse_case_trace_jsonl(tmp_path: Path) -> None:
@@ -636,3 +657,11 @@ def test_main__in_dòng_task_đạt(
     monkeypatch.setattr(case_gate, "load_cases_toml", lambda _paths: ({}, requirements))
     assert case_gate.main() == 0
     assert "  train | bắt buộc ['J01', 'J06', 'M01'] | tìm thấy ['J01', 'J06', 'M01'] | đạt" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("op_name", ["files_read_object", "health_live", "health_ready"])
+def test_evaluate__infra_op_without_bind_row_no_warning(op_name: str) -> None:
+    """Route hạ tầng/tệp (`INFRA_OPS`) không có dòng BE-BIND thì miễn cảnh báo, không vào bảng."""
+    result = evaluate([_op(op=op_name)], [], {}, [], [], [], [])
+    assert not result.unmounted_warnings
+    assert not result.op_results

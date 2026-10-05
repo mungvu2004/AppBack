@@ -13,8 +13,9 @@ from apps.api.drawings.tests._helpers import Scene
 from packages.core.clock import Clock, SystemClock
 from packages.db.hooks import after_commit_idle
 from packages.db.models.drawings import UploadChunkRow, UploadRow
+from packages.storage.keys import upload_chunk
 from packages.storage.local import LocalDiskStorage
-from packages.testing.factories.drawings import chunk_key, make_upload
+from packages.testing.factories.drawings import make_upload
 
 
 def real_now() -> datetime:
@@ -31,7 +32,7 @@ async def put_bytes(storage: LocalDiskStorage, key: str) -> str:
 async def put_chunk(db: AsyncSession, storage: LocalDiskStorage, scene: Scene, upload: UploadRow, index: int) -> str:
     """Khúc thật: object trong kho **và** dòng `upload_chunks` trỏ tới nó; trả khoá object."""
     sha = f"{index:064x}"
-    key = chunk_key(scene.project.id, scene.floor.level_id, upload.id, index, sha)
+    key = upload_chunk(scene.project.id, scene.floor.level_id, upload.id, index, sha)
     await put_bytes(storage, key)
     db.add(UploadChunkRow(upload_id=upload.id, chunk_index=index, size_bytes=1, sha256=sha, object_key=key))
     await db.flush()

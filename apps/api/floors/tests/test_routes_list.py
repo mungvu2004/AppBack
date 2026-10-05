@@ -1,6 +1,6 @@
 """Test hợp đồng của #12 `floors_list_floors` (B2-03 [2], [6], [8]).
 
-Route (`router.py`, `service.py`, `lookup.py`) chưa hợp nhất trên nhánh này. Ma trận case:
+Route (`router.py`, `service.py`, `lookup.py`) đã hợp nhất. Ma trận case:
 Đ → C01 C06 C08 C15 C17. Cũng kiểm số truy vấn SQL không đổi theo số tầng (dựng lô, [6]
 "Dựng `Floor`") và cổng `project.floors` mà #24 của B2-01 đọc lại đúng thứ tự.
 """

@@ -38,7 +38,7 @@ from apps.api.projects.wire import (
     ProjectRollup,
     ProjectSummaryOut,
     project_summary_out,
-    user_out,
+    user_outs,
 )
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND
@@ -100,12 +100,15 @@ async def _floor_parts(
 def _storage_of(app: object | None) -> ObjectStorage | None:
     """Kho object của app hiện tại, hay `None` khi gọi thẳng service không qua app (NO-135).
 
+    Có `app` mà thiếu `state.storage` → `AttributeError` ngay, không lặng lẽ bỏ `avatarUrl` (NO-194).
+
     Cùng nguồn `app.state.storage` mà `apps.api.core.deps.storage` đọc (`lifespan` dựng một
     lần) — không tự đọc `STORAGE_BACKEND` ở đây (BE-00 §2.1: module nghiệp vụ không đọc biến
     môi trường kho trực tiếp).
     """
-    storage = getattr(getattr(app, "state", None), "storage", None)
-    return cast("ObjectStorage", storage) if storage is not None else None
+    if app is None:
+        return None
+    return cast("ObjectStorage", app.state.storage)  # type: ignore[attr-defined]  # app: object, như deps.storage
 
 
 async def _project_outs(
@@ -116,9 +119,11 @@ async def _project_outs(
     storage: ObjectStorage | None,
 ) -> list[ProjectOut]:
     """Ba mảnh đã tải theo lô → `ProjectOut`; dự án vắng khoá trong `floors` nghĩa là `[]` (B2-01 [6])."""
+    # Ký avatar của thành viên mọi dự án trong một lô (NO-207), rồi chia lại theo dự án.
+    signed = iter(await user_outs([row for project in projects for row in members[project.id]], storage))
     outs = []
     for project in projects:
-        member_outs = [await user_out(row, storage) for row in members[project.id]]
+        member_outs = [next(signed) for _ in members[project.id]]
         outs.append(
             ProjectOut(
                 id=project.id,

@@ -33,7 +33,7 @@ from packages.core.error_codes import IMAGE_TOO_LARGE, NOT_FOUND
 from packages.core.errors import AppError
 from packages.db.models.drawings import PipelineRunRow, UploadRow
 from packages.storage import keys
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectStorage, read_all_capped
 from packages.vision.preprocess.types import Homography
 
 _log: Final = logging.getLogger(__name__)
@@ -207,12 +207,7 @@ def _skew_is_settled(state: _State, min_deg: float) -> bool:
 
 async def _read_capped(storage: ObjectStorage, key: str, *, max_bytes: int) -> bytes:
     """Đọc cả object nhưng dừng khi vượt `max_bytes` (K13): quá trần → 422 `IMAGE_TOO_LARGE`."""
-    buffer = bytearray()
-    async for chunk in storage.open_read(key):
-        buffer += chunk
-        if len(buffer) > max_bytes:
-            raise IMAGE_TOO_LARGE.error()
-    return bytes(buffer)
+    return await read_all_capped(storage, key, max_bytes=max_bytes, too_large=IMAGE_TOO_LARGE.error)
 
 
 async def _read_source(
@@ -279,8 +274,9 @@ async def _discard_orphan(storage: ObjectStorage, key: str) -> None:
 
     Chạy trong `finally` của một request đang thoát bằng 409/422: nếu `delete` ném thì lỗi kho
     sẽ đè lỗi thật và client nhận 503/500 thay vì mã có nghĩa. Chỉ bắt lỗi mà `ObjectStorage.delete`
-    ném: `AppError` (kho local/S3 báo 503 khi đĩa đầy hay mất kết nối) và `OSError` (lỗi tệp local
-    khác). Object sót lại do lịch dọn mồ côi 24 h của B2-04 nhặt.
+    ném (hợp đồng đã đóng, NO-230): `AppError` (503 khi đĩa đầy hay mất kết nối, 500 khi S3 từ chối vì
+    cấu hình/quyền) và `OSError` (lỗi tệp local khác); không còn `S3Error` thô.
+    Object sót lại do lịch dọn mồ côi 24 h của B2-04 nhặt.
     """
     try:
         await storage.delete(key)

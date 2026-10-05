@@ -17,11 +17,11 @@ from packages.messaging.schedules import schedule_entries
 from packages.storage.keys import avatar as avatar_key_of
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 
 
 def _ulid(n: int) -> str:
@@ -30,6 +30,7 @@ def _ulid(n: int) -> str:
 
 
 async def _seed_object(storage: LocalDiskStorage, user_id: str, n: int, ext: str = "png") -> str:
+    """Ghi một ảnh PNG hợp lệ vào storage dưới khoá avatar thứ `n` của user; trả về khoá."""
     key = avatar_key_of(user_id, _ulid(n), ext)
     await storage.put(key, png_bytes(), content_type="image/png", max_bytes=2 * 1024 * 1024)
     return key
@@ -119,6 +120,7 @@ def test_purge_avatars_smoke(db_url: str, monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_purge_avatars_schedule_is_registered() -> None:
+    """Lịch beat có mục `purge_avatars` trỏ đúng hàm job."""
     entries = {entry.name: entry for entry in schedule_entries()}
     assert entries[TASK_NAME].function == "purge_avatars"
 

@@ -226,3 +226,11 @@ def test_ml_env_example_holds_only_ml_knobs() -> None:
     for name in ("ml", "ml-gpu"):
         shadowed = sorted(set(values) & set(services[name].get("environment") or {}))
         assert not shadowed, f"{_ML_ENV_EXAMPLE}: {shadowed} bị environment: của prod/{name} đè"
+
+
+def test_env_example_declares_backup_encryption_vars() -> None:
+    """C1: `backup.sh` đọc `BACKUP_AGE_RECIPIENT` và `BACKUP_ALLOW_PLAINTEXT`; cả hai phải khai ở `env.example`,
+    và cờ opt-out để trống (không bật sẵn bản rõ)."""
+    values = _load_env_lines()
+    assert "BACKUP_AGE_RECIPIENT" in values
+    assert values.get("BACKUP_ALLOW_PLAINTEXT") == ""

@@ -26,10 +26,11 @@ from schemathesis.core.result import Err
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.openapi import Operation
-from packages.core.clock import SystemClock
-from packages.core.ids import is_id, new_id
+from packages.core.ids import is_id
 from packages.core.settings import reset_settings_cache
 from packages.db.models.auth import User
+from packages.db.seeds import apply_seeds
+from packages.db.seeds.users import SEED_ADMIN_ID
 from packages.db.settings import reset_database_settings_cache
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.storage.settings import reset_storage_settings_cache
@@ -183,25 +184,25 @@ def test_max_examples_reads_valid_custom_value(monkeypatch: pytest.MonkeyPatch) 
     assert h2._max_examples() == 7
 
 
-def test_admin_header_matches_fake_token_pattern() -> None:
-    """Header admin đúng mẫu `fake:<usr_ULID>:<sid>:admin` mà `FakeTokenVerifier` nhận, cho đúng id truyền vào."""
-    admin_id = new_id("usr", SystemClock())
-    token = h2._admin_header(admin_id)["Authorization"].removeprefix("Bearer ")
+def test_admin_header__uses_seed_admin_id() -> None:
+    """Header admin đúng mẫu `fake:<usr_ULID>:<sid>:admin` mà `FakeTokenVerifier` nhận, với id là
+    `SEED_ADMIN_ID` — một nguồn với seed, không dựng tay (NO-107)."""
+    token = h2._admin_header()["Authorization"].removeprefix("Bearer ")
     prefix, user_id, session_id, role = token.split(":")
     assert prefix == "fake"
-    assert user_id == admin_id
+    assert user_id == SEED_ADMIN_ID
     assert is_id("usr", user_id)
     assert session_id
     assert role == "admin"
 
 
-async def test_seed_admin_user_inserts_a_real_row(db_session: AsyncSession) -> None:
-    """`_seed_admin_user` chèn đúng dòng `users` vai admin, active, cho id truyền vào (NO-132): route
-    ghi có FK tới `users` cần dòng này tồn tại thật, không chỉ id đúng mẫu qua được `FakeTokenVerifier`."""
-    admin_id = new_id("usr", SystemClock())
-    await h2._seed_admin_user(db_session, admin_id)
+async def test_admin_header__id_exists_after_seeding(db_session: AsyncSession) -> None:
+    """Sau `apply_seeds` ở `APP_ENV=test` (môi trường H2), id trong header admin có dòng `users` vai
+    admin, active (NO-107): route ghi có FK tới `users` không còn 500 vì thiếu dòng."""
+    await apply_seeds(db_session, "test")
     await db_session.commit()
-    row = await db_session.get(User, admin_id)
+    user_id = h2._admin_header()["Authorization"].split(":")[1]
+    row = await db_session.get(User, user_id)
     assert row is not None
     assert row.role == "admin"
     assert row.status == "active"
@@ -252,7 +253,7 @@ def test_main_returns_1_when_report_fails(monkeypatch: pytest.MonkeyPatch) -> No
     """Nhánh `else 1` của `main()`: hạ tầng và app được giả (không cần Testcontainers), chỉ soát kết nối hai phần."""
     monkeypatch.setattr(h2, "_provision", lambda: nullcontext(None))
     monkeypatch.setattr(h2, "_set_env", lambda infra: None)
-    monkeypatch.setattr(h2, "_migrate_and_seed", lambda admin_id: None)
+    monkeypatch.setattr(h2, "_migrate_and_seed", lambda: None)
     monkeypatch.setattr(h2, "create_app", lambda **kwargs: FastAPI())
     failing = (
         h2.OperationOutcome(

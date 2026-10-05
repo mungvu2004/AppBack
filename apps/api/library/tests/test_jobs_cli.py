@@ -13,7 +13,6 @@ from sqlalchemy import func, select
 
 from apps.api.library import cli
 from apps.api.library.jobs import TASK_NAME, publish_library_assets
-from apps.api.library.tests._helpers import BLOCKED
 from packages.core.clock import SystemClock
 from packages.core.settings import reset_settings_cache
 from packages.db.engine import create_engine, create_sessionmaker, session_scope
@@ -23,6 +22,7 @@ from packages.db.settings import get_database_settings, reset_database_settings_
 from packages.messaging.schedules import schedule_entries
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
+from packages.testing.boundary import WORKER_BLOCKED
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
 
@@ -97,6 +97,7 @@ def test_cli_publish_exits_one_when_storage_is_down(
     """Đĩa đầy (ENOSPC → `DEPENDENCY_UNAVAILABLE`): mọi mục `failed`, lỗi ra stderr, thoát 1."""
 
     def full_disk(_path: Path) -> NoReturn:
+        """Giả lập đĩa đầy."""
         raise OSError(errno.ENOSPC, "no space left")
 
     broken = LocalDiskStorage(tmp_path / "broken", SystemClock(), "https://appback.test", _open=full_disk)
@@ -114,8 +115,8 @@ def test_cli_publish_exits_one_when_storage_is_down(
     ["apps.api.library.assets", "apps.api.library.jobs", "apps.api.library.cli", "packages.domain.library"],
 )
 def test_imports_without_web_or_crypto_packages(module: str) -> None:
-    """Worker/CLI nhập được các module này khi `fastapi`, `jwt`, `argon2` bị chặn trong `sys.modules`."""
-    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in BLOCKED)
+    """Worker/CLI nhập được các module này khi 5 gói `WORKER_BLOCKED` (web, jwt, argon2) bị chặn trong `sys.modules`."""
+    blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import {module}"],
         cwd=REPO_ROOT,

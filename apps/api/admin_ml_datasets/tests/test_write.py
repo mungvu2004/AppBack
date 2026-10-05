@@ -30,6 +30,7 @@ from packages.testing.fixtures.messaging import queued_payloads
 async def _post(
     client: httpx.AsyncClient, principal: Principal, path: str, json: object, **headers: str
 ) -> httpx.Response:
+    """POST `json` bằng header của `principal` cộng `headers`."""
     return await client.post(path, headers={**auth_headers(principal), **headers}, json=json)
 
 
@@ -50,6 +51,7 @@ async def _make_projects(db: AsyncSession, n: int) -> list[str]:
 async def test_ml_create_dataset__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
+    """C01: tạo dataset trả 201 và đúng bốn khoá."""
     response = await _post(api_client, fake_principal, DATASETS_PATH, {"name": "bo du lieu 1", "family": WALL})
 
     body = response.json()
@@ -72,6 +74,7 @@ async def test_ml_create_dataset__C02_name_bounds(api_client: httpx.AsyncClient,
 
 
 async def test_ml_create_dataset__C02_family(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
+    """C02: họ lạ bị 422 ở trường `family`."""
     response = await _post(api_client, fake_principal, DATASETS_PATH, {"name": "x", "family": "walls"})
 
     assert response.status_code == 422
@@ -124,6 +127,7 @@ async def test_ml_create_dataset__C14_concurrent_same_name(
 async def test_ml_create_dataset__C18(
     api_client: httpx.AsyncClient, db_sessionmaker: async_sessionmaker[AsyncSession], fake_principal: Principal
 ) -> None:
+    """C18: tạo dataset ghi đúng một dòng hoạt động."""
     response = await _post(api_client, fake_principal, DATASETS_PATH, {"name": "bo du lieu hoat dong", "family": WALL})
 
     activity = await assert_one_activity(
@@ -181,6 +185,7 @@ async def test_ml_build_dataset_version__C17(
 async def test_ml_build_dataset_version__C02_project_ids(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
+    """C02: `projectIds` rỗng, sai dạng hay quá giới hạn đều 422."""
     dataset = await make_dataset(db_session, family=WALL)
     project_ids = await _make_projects(db_session, 2)
 
@@ -219,6 +224,7 @@ async def test_ml_build_dataset_version__C02_project_ids_over_max(
 async def test_ml_build_dataset_version__C02_project_soft_deleted(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
+    """C02: dự án đã xoá mềm bị từ chối."""
     dataset = await make_dataset(db_session, family=WALL)
     clock = SystemClock()
     deleted = Project(id=new_id("prj", clock), name="da xoa", created_by="usr_test", deleted_at=clock.now())
@@ -234,6 +240,7 @@ async def test_ml_build_dataset_version__C02_project_soft_deleted(
 async def test_ml_build_dataset_version__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
+    """C03: khoá lạ trong thân bị 422."""
     dataset = await make_dataset(db_session, family=WALL)
 
     response = await _post(api_client, fake_principal, versions_path(dataset.id), {"unexpected": True})
@@ -243,6 +250,7 @@ async def test_ml_build_dataset_version__C03(
 
 
 async def test_ml_build_dataset_version__C08(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
+    """C08: dataset không có thì 404 `dataset`."""
     response = await _post(api_client, fake_principal, versions_path("dst_01KB6020000000000000000404"), {})
 
     assert response.status_code == 404
@@ -252,6 +260,7 @@ async def test_ml_build_dataset_version__C08(api_client: httpx.AsyncClient, fake
 async def test_ml_build_dataset_version__already_building(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
+    """Đã có bản `building` thì lượt xây mới bị 409."""
     dataset = await make_dataset(db_session, family=WALL)
     await make_dataset_version(db_session, dataset=dataset, status="building")
 
@@ -282,6 +291,7 @@ async def test_ml_build_dataset_version__C18(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
+    """C18: xây bản mới ghi đúng một dòng hoạt động."""
     dataset = await make_dataset(db_session, family=WALL, name="bo hoat dong")
 
     response = await _post(api_client, fake_principal, versions_path(dataset.id), {})

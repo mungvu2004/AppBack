@@ -27,7 +27,7 @@ from apps.api.access.activity import record_activity
 from apps.api.access.kinds import ActivityKind
 from apps.api.auth.sessions import bump_token_version, revoke_sessions
 from apps.api.auth_recovery.tokens import InvitationWindow, issue_token, latest_invitations, revoke_tokens
-from apps.api.me.avatar import avatar_url
+from apps.api.me.avatar import avatar_urls
 from apps.api.projects.memberships import (
     count_projects_of_users,
     list_projects_of_user,
@@ -146,18 +146,14 @@ class WriteScope:
     admins: tuple[str, ...]
 
     def forbid_self(self) -> None:
-        """#41, #42, #46: mục tiêu là chính người thực hiện → 422 `USER_SELF_MODIFICATION`."""
-        if self.target.id == self.actor_id:
-            raise USER_SELF_MODIFICATION.error()
+        """#41, #42, #46: mục tiêu là chính người thực hiện → 422.
 
-    def forbid_last_admin(self) -> None:
-        """Mục tiêu là admin `active` duy nhất → 422 `USER_LAST_ADMIN`.
-
-        Người thực hiện luôn nằm trong tập nên với tập 1 người thì mục tiêu chính là họ và
-        `forbid_self` đã chặn trước; đây là lớp chốt cuối nếu thứ tự kiểm đổi (C14).
+        `lock_admin_set` đòi người thực hiện nằm trong `admins`, nên "mục tiêu là admin `active` duy nhất" chỉ xảy ra
+        khi mục tiêu là chính họ: bất biến ra trước — `USER_LAST_ADMIN` (B1-05 [6] bước 3, C14), không thì
+        `USER_SELF_MODIFICATION` (NO-206).
         """
-        if self.target.id in self.admins and len(self.admins) == 1:
-            raise USER_LAST_ADMIN.error()
+        if self.target.id == self.actor_id:
+            raise (USER_LAST_ADMIN if len(self.admins) == 1 else USER_SELF_MODIFICATION).error()
 
 
 # --------------------------------------------------------------------------- khoá
@@ -222,15 +218,14 @@ def _admin_view(user: User, *, count: int, invite: InvitationWindow | None, avat
 
 
 async def admin_views(db: AsyncSession, storage: ObjectStorage, users: Sequence[User]) -> list[AdminUserOut]:
-    """`AdminUser` cho cả lô bằng **hai** truy vấn gộp (số dự án, lời mời); `avatar_url` không chạm DB."""
+    """`AdminUser` cho cả lô bằng **hai** truy vấn gộp (số dự án, lời mời); `avatar_url` ký cả lô một lần (NO-207)."""
     ids = [user.id for user in users]
     counts = await count_projects_of_users(db, ids)
     invites = await latest_invitations(db, ids)
+    avatars = await avatar_urls(storage, [user.avatar_key for user in users])
     return [
-        _admin_view(
-            user, count=counts[user.id], invite=invites.get(user.id), avatar=await avatar_url(storage, user.avatar_key)
-        )
-        for user in users
+        _admin_view(user, count=counts[user.id], invite=invites.get(user.id), avatar=avatar)
+        for user, avatar in zip(users, avatars, strict=True)
     ]
 
 
@@ -293,7 +288,6 @@ async def change_role(
     scope = await open_scope(db, actor_id, user_id)
     scope.forbid_self()
     if scope.target.role != role:
-        scope.forbid_last_admin()
         scope.target.role = role
         await bump_token_version(db, user_id)
         await _log_activity(db, scope, ActivityKind.USER_ROLE_CHANGE, clock)
@@ -307,7 +301,6 @@ async def disable_user(
     scope = await open_scope(db, actor_id, user_id)
     scope.forbid_self()
     if scope.target.status != "disabled":
-        scope.forbid_last_admin()
         scope.target.status = "disabled"
         await revoke_sessions(db, user_id=user_id, reason="disabled", clock=clock)
         await bump_token_version(db, user_id)
@@ -455,7 +448,6 @@ async def delete_user(
     scope = await open_scope(db, actor_id, user_id)
     _require_confirm(scope.target, confirm_email)
     scope.forbid_self()
-    scope.forbid_last_admin()
     view = await _view_of(db, storage, scope.target)
     scope.target.deleted_at = clock.now()
     scope.target.status = "disabled"

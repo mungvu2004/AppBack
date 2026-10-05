@@ -12,8 +12,9 @@ from typing import Final
 
 import pytest
 
+from packages.testing.boundary import WORKER_BLOCKED
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-WORKER_BLOCKED: Final = ("fastapi", "starlette", "jwt", "argon2")
 
 
 def _python(code: str) -> subprocess.CompletedProcess[str]:

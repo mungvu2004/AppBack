@@ -77,6 +77,29 @@ def test_perf_apply_post_rules_on_a_real_sized_page() -> None:
     assert seconds < RULES_BUDGET_S
 
 
+def _diagonal_layer() -> SpatialLayer:
+    """2.000 tường chéo 45° dài ~72 m (hình dạng xấu nhất của lưới ô) và 2.000 đồ áp tường khe 51..300."""
+    run = 51_000
+    walls = tuple(wall(index, (index * 1000, 0), (index * 1000 + run, run)) for index in range(2000))
+    fixtures = tuple(
+        furniture(index, (index * 1000 + 25_000 + 400 + (index * 37) % 250, 25_000), kind="sanitaryFixture")
+        for index in range(2000)
+    )
+    return layer(walls=walls, furniture_items=fixtures)
+
+
+@pytest.mark.perf
+def test_perf_apply_post_rules_on_long_diagonal_walls() -> None:
+    """2.000 tường chéo ~72 m + 2.000 đồ: `apply_post_rules` dưới 5 giây (lưới ô theo đường tim, NO-252)."""
+    apply_post_rules(_rules_layer_small())
+    source = _diagonal_layer()
+    start = time.perf_counter()
+    apply_post_rules(source)
+    seconds = time.perf_counter() - start
+    _LOG.info("apply_post_rules 2.000 tường chéo 72 m/2.000 đồ: %.2fs (trần %.0fs)", seconds, RULES_BUDGET_S)
+    assert seconds < RULES_BUDGET_S
+
+
 def _rules_layer_small() -> SpatialLayer:
     """Lớp nhỏ cho lượt khởi động (nạp module, cấp phát lần đầu)."""
     return layer(

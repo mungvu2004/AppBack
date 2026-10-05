@@ -5,6 +5,8 @@ from typing import Any
 import pytest
 
 from packages.domain.rules_ai import apply_post_rules, gap_to_wall_face, wall_side
+from packages.domain.rules_ai.constants import GRID_CELL_MM
+from packages.domain.rules_ai.post_rules import _WallIndex
 from packages.domain.rules_ai.tests.builders import (
     box_room,
     fid,
@@ -146,6 +148,30 @@ def test_index_matches_full_scan__long_diagonal_cell_edges_and_negatives() -> No
     assert sum(after != before for after, before in zip(result.furniture, items, strict=True)) >= 3
 
 
+def test_wall_index__diagonal_wall_cells_linear_in_length() -> None:
+    """Tường chéo 45° dài ~70 m chỉ vào các ô dọc đường tim (O(dài/cạnh)), không vào cả hộp bao (O(dài²/cạnh²))."""
+    span = 50 * GRID_CELL_MM
+    index = _WallIndex((wall(1, (0, 0), (span, span)),))
+    columns = span // GRID_CELL_MM + 2
+    assert len(index._cells) <= 5 * columns
+
+
+def test_wall_index__vertical_and_negative_walls_match_full_scan() -> None:
+    """Tường đứng (không nội suy `y`) và tường chéo qua gốc toạ độ âm→dương: bằng hệt bản quét hết."""
+    walls = (wall(1, (500, -20_000), (500, 20_000)), wall(2, (-7000, -6000), (6000, 5000)))
+    items = (
+        furniture(1, (950, -15_000)),  # khe 100 tới tường đứng
+        furniture(2, (1000, 13_000), kind="kitchenCabinet"),
+        furniture(3, (-3300, -1900)),  # sát tường chéo ở phần âm
+        furniture(4, (2400, 1500)),
+    )
+    source = layer(walls=walls, furniture_items=items)
+    result = apply_post_rules(source)
+    assert result == ref_apply_post_rules(source)
+    assert result.furniture[0] != items[0]
+    assert len(_WallIndex(walls[:1])._cells) <= 3 * 42
+
+
 def _rooms_layer(
     wall_items: tuple[Wall, ...], openings: tuple[Opening, ...], *, with_rooms: bool = True
 ) -> SpatialLayer:
@@ -192,6 +218,26 @@ def test_window_on_exterior_wall_not_editable__window_capped_wall_kept(flags: di
     result = apply_post_rules(source)
     assert result == ref_apply_post_rules(source)
     assert result.walls == with_openings((protected,), source.openings)
+    assert result.openings[0].confidence == 0.5
+
+
+def test_apply_post_rules__duplicate_wall_id_human_copy_untouched() -> None:
+    """Hai tường trùng id (bản AI ngoài + bản người đã duyệt): chỉ bản AI thành `envelope`, bản người nguyên (K21)."""
+    human = wall(1, (4000, 0), (4000, 4000), kind="partition", source="human", reviewed=True)
+    source = _rooms_layer((OUTER, human), (opening(1, 1),))
+    result = apply_post_rules(source)
+    assert result == ref_apply_post_rules(source)
+    assert result.walls[0].kind == "envelope"
+    assert result.walls[1] == source.walls[1]
+
+
+def test_apply_post_rules__duplicate_wall_id_human_first_nothing_promoted() -> None:
+    """Bản người đứng trước làm tường chủ (không được đổi): cả hai tường nguyên, cửa sổ hạ tin cậy."""
+    human = wall(1, (4000, 0), (4000, 4000), kind="partition", source="human", reviewed=True)
+    source = _rooms_layer((human, OUTER), (opening(1, 1),))
+    result = apply_post_rules(source)
+    assert result == ref_apply_post_rules(source)
+    assert result.walls == source.walls
     assert result.openings[0].confidence == 0.5
 
 

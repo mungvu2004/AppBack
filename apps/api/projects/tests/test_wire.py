@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Final, cast
+from typing import Final
 
 import pytest
 
@@ -15,29 +15,15 @@ from apps.api.projects.wire import (
     project_summary_out,
     summary_member_out,
     user_out,
+    user_outs,
 )
 from packages.db.models.auth import User
 from packages.db.models.projects import Project
-from packages.storage.port import Disposition, ObjectStorage, SignedUrl
-from packages.storage.sniff import ImageKind
+from packages.storage.keys import avatar
+from packages.storage.local import FILES_ROUTE, LocalDiskStorage
+from packages.testing.fixtures.storage import PUBLIC_BASE_URL
 
 AT: Final = datetime(2026, 9, 23, 7, 8, 9, tzinfo=UTC)
-
-
-class _FakeAvatarStorage:
-    """`ObjectStorage` giả tối thiểu: chỉ `signed_url`, đủ cho `user_out` (NO-135)."""
-
-    async def signed_url(
-        self, key: str, *, disposition: Disposition, filename: str | None = None, kind: ImageKind | None = None
-    ) -> SignedUrl:
-        """URL tất định từ `key`, không ký thật — test chỉ cần chứng minh `user_out` gọi kho."""
-        assert disposition == "inline"
-        return SignedUrl(url=f"https://storage.test/{key}?inline=1", expires_at=AT)
-
-
-def _storage() -> ObjectStorage:
-    """`_FakeAvatarStorage` ép kiểu sang `ObjectStorage` (Protocol không kiểm ở runtime)."""
-    return cast("ObjectStorage", _FakeAvatarStorage())
 
 
 def _user(name: str = "Chị Hà") -> User:
@@ -112,18 +98,31 @@ async def test_user_out_omits_avatar_url_without_storage() -> None:
     assert dumped == {"id": _user().id, "email": "ha@example.com", "name": "Chị Hà", "role": "engineer"}
 
 
-async def test_user_out_omits_avatar_url_when_never_uploaded() -> None:
+async def test_user_out_omits_avatar_url_when_never_uploaded(local_storage: LocalDiskStorage) -> None:
     """`avatar_key` vắng (chưa từng tải ảnh) → `avatarUrl` vắng dù có kho (NO-135)."""
-    dumped = (await user_out(_user(), _storage())).model_dump(by_alias=True)
+    dumped = (await user_out(_user(), local_storage)).model_dump(by_alias=True)
     assert "avatarUrl" not in dumped
 
 
-async def test_user_out_signs_avatar_url_via_b1_04() -> None:
+async def test_user_outs__signs_the_whole_batch_in_order(local_storage: LocalDiskStorage) -> None:
+    """NO-207: lô trộn người có/không ảnh ra đúng thứ tự, mỗi phần tử y hệt `user_out` đơn."""
+    with_avatar, without = _user(), _user()
+    with_avatar.avatar_key = avatar(with_avatar.id, "0" * 26, "jpg")
+    without.avatar_key = None
+
+    batch = await user_outs([without, with_avatar], local_storage)
+
+    assert batch == [await user_out(without, local_storage), await user_out(with_avatar, local_storage)]
+    assert batch[0].avatar_url is None
+    assert batch[1].avatar_url is not None
+
+
+async def test_user_out_signs_avatar_url_via_b1_04(local_storage: LocalDiskStorage) -> None:
     """`avatar_key` có sẵn và có kho → `avatarUrl` là URL ký qua `apps.api.me.avatar.avatar_url` (NO-135)."""
     user = _user()
-    user.avatar_key = "usr/avatar.jpg"
-    dumped = (await user_out(user, _storage())).model_dump(by_alias=True)
-    assert dumped["avatarUrl"] == "https://storage.test/usr/avatar.jpg?inline=1"
+    user.avatar_key = avatar(user.id, "0" * 26, "jpg")
+    dumped = (await user_out(user, local_storage)).model_dump(by_alias=True)
+    assert dumped["avatarUrl"].startswith(f"{PUBLIC_BASE_URL}{FILES_ROUTE}")
 
 
 def test_user_out_rejects_unknown_role() -> None:
