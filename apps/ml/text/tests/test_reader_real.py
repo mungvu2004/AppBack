@@ -43,7 +43,9 @@ DIMENSION_SEEDS = range(100, 110)
 DIMENSION_READ_RATE = 0.90
 """Đo 114/122 = 0,934 trên `DIMENSION_SEEDS`, bằng `RapidOCR()` của wheel (NO-254); trước sàn
 `REC_MIN_WIDTH_PX` đo 105/122 = 0,861. 8 chữ hụt là bộ dò tách `2.` khỏi phần sau, không thuộc bộ đọc."""
-WIDTH_SEEDS = (100, 101, 102)
+WIDTH_SEEDS = tuple(range(100, 106))
+WIDTH_MIN_CHECKED_PER_SEED = 2
+"""Số vùng **thật** (rộng đã co > `REC_MIN_WIDTH_PX`) tối thiểu mỗi seed; đo 9 vùng / 3 seed ở seed 100-102 (F11)."""
 WIDTH_ROUNDING_RATE = 0.90
 """Phần vùng tối thiểu **giữ nguyên** chuỗi khi đệm `W`; tự chỉnh từ số đo 15/16 (BE-00 §12)."""
 
@@ -151,8 +153,8 @@ def test_reader_reads_dimension_texts(pinned_models_dir: Path) -> None:
 def test_width_rounding_keeps_most_strings(pinned_models_dir: Path) -> None:
     """Làm tròn `W` lên bội 80 giữ nguyên chuỗi của ≥ `WIDTH_ROUNDING_RATE` phần vùng **chữ thật**.
 
-    So tensor thật với chính nó cắt còn `max(rộng đã co, REC_MIN_WIDTH_PX)`: chỉ phần làm tròn
-    bội 80 khác nhau, sàn 320 (NO-254) giữ ở cả hai vì tensor hẹp hơn 320 đọc sai có hệ thống.
+    So tensor thật với chính nó cắt còn rộng đã co: chỉ phần làm tròn bội 80 khác nhau. Vùng có rộng
+    đã co ≤ `REC_MIN_WIDTH_PX` bị bỏ: sàn 320 (NO-254) đệm cả hai về cùng một tensor nên so chúng vô nghĩa (F11).
     Lệch khỏi prompt: [8] đòi "không đổi chuỗi nào", đo được 15/16 vùng trên seed 100.
     Đầu ra PP-OCR dài `T` bước **phụ thuộc `W`**, nên bất biến tuyệt đối theo bề rộng là
     điều model không hứa; chính `RapidOCR()` của wheel cũng đệm bằng một `W` khác hẳn mà
@@ -172,12 +174,14 @@ def test_width_rounding_keeps_most_strings(pinned_models_dir: Path) -> None:
             if crop.size == 0:
                 continue
             resized, _padded = _rec_widths(crop.shape[1], crop.shape[0])
+            if resized <= REC_MIN_WIDTH_PX:
+                continue  # sàn 320 che hết làm tròn: hai tensor trùng nhau, so chúng chẳng chứng minh gì
             padded_input = _rec_input(crop)
-            unrounded = padded_input[:, :, :, : max(resized, REC_MIN_WIDTH_PX)]
+            unrounded = padded_input[:, :, :, :resized]
             same += _decode(reader, padded_input)[0] == _decode(reader, unrounded)[0]
             checked += 1
     _log.info("ocr_width_rounding same=%d checked=%d rate=%.3f", same, checked, same / checked)
-    assert checked >= 5 * len(WIDTH_SEEDS)
+    assert checked >= WIDTH_MIN_CHECKED_PER_SEED * len(WIDTH_SEEDS)
     assert same >= WIDTH_ROUNDING_RATE * checked
 
 
