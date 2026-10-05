@@ -83,7 +83,7 @@ _STR_PATTERNS: Final = (
     (re.compile(r"eyJ[\w-]*\.[\w-]*\.[\w-]*"), MASK),
     (re.compile(r"(?i)(\bBearer\s+)\S+"), rf"\g<1>{MASK}"),
     (re.compile(r"(?i)([?&](?:X-Amz-Signature|X-Amz-Credential|token)=)[^&#\s\"']*"), rf"\g<1>{MASK}"),
-    # `scheme://user:mật-khẩu@host`: tham lam tới `/`, `?`, `#`: mật khẩu chứa `@` che hết, không lan sang host/query (SEC-042).
+    # `scheme://user:mật-khẩu@host`: dừng ở `/`, `?`, `#` — mật khẩu chứa `@` che hết, host/query giữ nguyên (SEC-042).
     (re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^\s:/@]*:)[^\s/?#]+@"), rf"\g<1>{MASK}@"),
 )
 # Thuộc tính sẵn có của LogRecord; phần còn lại là `extra=` của lời gọi.
