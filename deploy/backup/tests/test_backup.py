@@ -208,7 +208,7 @@ def test_backup__any_env_without_age_recipient_exits_1_before_dump(tmp_path: Pat
 
 def test_backup__plaintext_opt_out_runs_without_recipient(tmp_path: Path) -> None:
     """`BACKUP_ALLOW_PLAINTEXT=1` là lối thoát tường minh duy nhất: chạy bản rõ, `encrypted: false`."""
-    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "staging", "BACKUP_ALLOW_PLAINTEXT": "1"}
+    env = {"APPBACK_STORAGE": "s3", "APP_ENV": "dev", "BACKUP_ALLOW_PLAINTEXT": "1"}
     code, log, target = _run_backup(tmp_path, env)
     assert code == 0, log
     stage = next(p for p in target.iterdir() if p.is_dir())
