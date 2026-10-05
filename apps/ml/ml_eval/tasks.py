@@ -99,12 +99,17 @@ def _result(out: str, returncode: int) -> dict[str, float]:
         reply = json.loads(lines[-1][len(RESULT_PREFIX) :]) if lines else {}
     except json.JSONDecodeError:
         reply = {}
+    if not isinstance(reply, dict):
+        reply = {}
     code = reply.get("code")
     if isinstance(code, str):
         raise PermanentError(code)
     metrics = reply.get("metrics")
     if returncode == 0 and isinstance(metrics, dict):
-        return {str(key): float(value) for key, value in metrics.items()}
+        try:
+            return {str(key): float(value) for key, value in metrics.items()}
+        except (TypeError, ValueError):
+            raise PermanentError(MODEL_FORMAT_UNSUPPORTED) from None
     if returncode == -signal.SIGKILL:
         raise DEPENDENCY_UNAVAILABLE.error(retry_after=5)
     raise PermanentError(MODEL_FORMAT_UNSUPPORTED)
