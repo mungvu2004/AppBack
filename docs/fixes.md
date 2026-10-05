@@ -312,6 +312,25 @@
 | FIX-348 | 2026-10-04 | F-01b | NO-154 | DEBT-02 W10/C45: luồng tiến độ xin refresh một lần mỗi chuỗi SSE chết | `9ce307a6` (AppFront, nhánh `fix/debt-02-w10-fe`) |
 | FIX-349 | 2026-10-04 | F-01b | NO-209 | DEBT-02 W10/C45: `expiresIn` đọc theo giờ máy chủ như lịch hẹn | `09bffa11` (AppFront, nhánh `fix/debt-02-w10-fe`) |
 | FIX-350 | 2026-10-05 | B0-01 | NO-271, NO-280 | DEBT-02 W10/C48: đo lại `-n` 4/6/8, giữ mặc định 6, docstring `pytest_workers()` theo số đo mới | `cf542eb`, `a681354`, `4870259` (nhánh `fix/debt-02-w10-gate-measure`) |
+| FIX-351 | 2026-10-05 | B0-10 | — | DEBT-02 R1/RA: backup.sh ghi bản rõ ở staging/APP_ENV rỗng (review R1 F4, F21) | `19e6dd5`, `2d1184d`, `21a1a1d` (nhánh `fix/debt-02-r1-deploy-tools`) |
+| FIX-352 | 2026-10-05 | B0-08 | NO-197 | DEBT-02 R1/RA: env.example thiếu hai biến sao lưu; test map nginx lỏng (review R1 F4, F12) | `6aecb51`, `a51986a`, `9960254` (nhánh `fix/debt-02-r1-deploy-tools`) |
+| FIX-353 | 2026-10-05 | B0-01 | — | DEBT-02 R1/RA: case_gate nới xfail; coverage_gate in 100% giả (review R1 F7, F24) | `debb053`, `39cec55` (nhánh `fix/debt-02-r1-deploy-tools`) |
+| FIX-354 | 2026-10-05 | B0-02 | — | DEBT-02 R1/RA: regex userinfo che cả host khi query có @ (review R1 F19) | `031f3a7`, `3ada64f` (nhánh `fix/debt-02-r1-deploy-tools`) |
+| FIX-355 | 2026-10-05 | B0-04 | — | DEBT-02 R1/RA: assert lỏng + docstring sai ở test storage (review R1 F10, F22) | `9e5c81b`, `6b2569a`, `9612c27`, `2a54c11` (nhánh `fix/debt-02-r1-deploy-tools`) |
+| FIX-357 | 2026-10-05 | B5-06c | — | DEBT-02 R1/RB: test sweep gắn perf cho test chức năng; tên test sai khuôn (F5, F21) | `8928b9d` (nhánh `fix/debt-02-r1-ml-worker`) |
+| FIX-358 | 2026-10-05 | B5-07 | NO-304 | DEBT-02 R1/RB: test chạm _STORAGE/_storage riêng tư; perf gắn nhầm test chức năng (F5, F6b) | `a3a6113` (nhánh `fix/debt-02-r1-ml-worker`) |
+| FIX-359 | 2026-10-05 | B6-03b | NO-263 | DEBT-02 R1/RB: huấn luyện: perf gắn nhầm, thiếu LOG_LEVEL/LOG_JSON trong env con, docstring cũ, tên test (F5, F17, F18, F21) | `27e4a49` (nhánh `fix/debt-02-r1-ml-worker`) |
+| FIX-360 | 2026-10-05 | B6-04b | — | DEBT-02 R1/RB: _result sập khi reply không phải dict / float() lỗi; dòng kết quả dính dòng lạ (F8, F9) | `8a1a8be` (nhánh `fix/debt-02-r1-ml-worker`) |
+| FIX-361 | 2026-10-05 | B5-04 | — | DEBT-02 R1/RB: test làm tròn bề rộng so mảng với chính nó (F11) | `c72b5e3` (nhánh `fix/debt-02-r1-ml-worker`) |
+| FIX-362 | 2026-10-05 | B5-06b | NO-296 | DEBT-02 R1/RB: docstring trần 30 s nhắc 'nợ ghi riêng' sai (F22) | `d9ab535` (nhánh `fix/debt-02-r1-ml-worker`) |
+| FIX-364 | 2026-10-05 | B1-04 | — | DEBT-02 R1/RC: assert hành vi khoá avatar là ULID (review R1 F13) | `ff02ba7` (nhánh `fix/debt-02-r1-api`) |
+| FIX-365 | 2026-10-05 | B2-07 | — | DEBT-02 R1/RC: assert danh tính lock_project_scope (review R1 F13) | `a518dd4` (nhánh `fix/debt-02-r1-api`) |
+| FIX-366 | 2026-10-05 | B4-02 | — | DEBT-02 R1/RC: một nguồn mark_max + test dòng bị xoá giữa INSERT và SELECT (review R1 F14) | `a5bdb63` (nhánh `fix/debt-02-r1-api`) |
+| FIX-367 | 2026-10-05 | B3-04 | — | DEBT-02 R1/RC: dùng count_sql và regex FROM\|JOIN floors (review R1 F16) | `f1d735c` (nhánh `fix/debt-02-r1-api`) |
+| FIX-368 | 2026-10-05 | B2-01 | — | DEBT-02 R1/RC: đổi tên test theo hàm__điều kiện (review R1 F21) | `91e8ae7` (nhánh `fix/debt-02-r1-api`) |
+| FIX-369 | 2026-10-05 | B4-01 | — | DEBT-02 R1/RC: đổi tên test (review R1 F21) | `f2e817e` (nhánh `fix/debt-02-r1-api`) |
+| FIX-370 | 2026-10-05 | B2-06 | — | DEBT-02 R1/RC: docstring 5 WORKER_BLOCKED (review R1 F22) | `ee6a42f` (nhánh `fix/debt-02-r1-api`) |
+| FIX-371 | 2026-10-05 | B2-04 | — | DEBT-02 R1/RC: hoàn docstring Create Date (review R1 F23) | `2a68539` (nhánh `fix/debt-02-r1-api`) |
 
 > **Giao việc FIX-003..005.** Ba FIX này sửa test của prompt khác ngay trên nhánh B0-06 (ngoại lệ của K27):
 > người điều phối chọn "Tôi FIX ngay trong phiên này" ngày 2026-09-20 khi cổng bước 5 đỏ vì chúng,
@@ -2639,7 +2658,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[2 TÁI HIỆN]** `bash tools/verify/run.sh shell < W7/C26/red.sh` trên `ab8ba73` + test mới: 6 failed, 2 passed, mã thoát 1 (`W7/C26/red.log`, `tai-hien-NO-275.md`, `tai-hien-NO-276.md`).
 - **[3 BẰNG CHỨNG]** `packages/db/models/admin_ml_datasets.py:91-94`; `W7/C26/red.log`.
 - **[4 KHOANH VÙNG]** Model, revision `r20261004_b6_02_fix273`, test/helper datasets (B6-02). Cấm: `DEBT.md`, `docs/*`, `changes/*`, tệp chủ khác.
-- **[5 SỬA NHỎ NHẤT]** CHECK mới `failure_code_failed` (expand, không drop CHECK cũ do lint); backfill `UNKNOWN_FAILURE`; docstring.
+- **[5 SỬA NHỎ NHẤT]** CHECK mới `failure_code_failed` (expand, không drop CHECK cũ do lint); backfill `UNKNOWN_FAILURE`; docstring. Không làm revision contract drop `ck_dataset_versions_failure_code` (review R1 F6a): CHECK cũ chặn cả "có mã ⇒ `failed`" lẫn **định dạng mã** (`failure_code ~ FAILURE_CODE_PATTERN`), CHECK mới chỉ chặn chiều có/không — bỏ CHECK cũ làm mất ràng buộc định dạng; phần chồng nhau vô hại. Câu "việc còn lại: drop" ở `W7/C26/quyet-dinh.md:14` chỉ là phương án gọn tên, không bắt buộc — `R/RC/tai-hien-F6a.md`.
 - **[6 TEST CHẶN TÁI PHÁT]** `apps/api/admin_ml_datasets/tests/test_versions.py::test_check_failed_requires_failure_code`; `test_docstrings.py[admin_ml_datasets|worker/datasets]` — đỏ (`red.log`) → xanh (`green.log`, mã thoát 0).
 - **[7 NGHIỆM THU]** Commit `1ee1ae7`; `verify --steps 1,2,3,4` đạt (`W7/C26/verify1234.log`, mã thoát 0); `cov.sh` 295 passed, độ phủ 100%/99% (`cov.log`, mã thoát 0); `audit.py` đạt.
 
@@ -2898,7 +2917,7 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[1 TRIỆU CHỨNG]** `ROLES` gương ở `packages/db/models/auth.py:29` trùng `packages.domain.permissions.ROLES`; `apps/api/auth/sessions.py` có `_role` riêng.
 - **[2 TÁI HIỆN]** `W5/C19/red2.sh` → mã thoát 1: `test_users_roles__is_the_permissions_mirror` FAILED (`ROLES` không phải cùng đối tượng với gương domain) (`W5/C19/red2.log`).
 - **[3 BẰNG CHỨNG]** `packages/db/models/auth.py:29`, `apps/api/auth/sessions.py` (`W5/C19/spec.md` dòng NO-188).
-- **[4 KHOANH VÙNG]** `packages/db/models/auth.py`, `apps/api/auth/sessions.py`, `packages/db/tests/test_roles_mirror.py`.
+- **[4 KHOANH VÙNG]** `packages/db/models/auth.py`, `apps/api/auth/sessions.py`, `packages/db/tests/test_roles_mirror.py`. Tệp test `packages/db/tests/test_roles_mirror.py` thuộc **B0-03** (kiểm `packages.db.models.auth.ROLES is packages.domain.permissions.ROLES` — hành vi model của `packages/db/**`), nằm trong commit `Prompt: B1-01` là lỗi K27 lịch sử; review R1 F2 xét: giữ nguyên, không dời, không hoàn (trên `main` tệp không tồn tại nên hoàn = xoá một test đúng của B0-03) — `R/RC/tai-hien-F2.md`.
 - **[5 SỬA NHỎ NHẤT]** `models/auth.py` nhập `ROLES` từ domain; `sessions.py` dùng `parse_role` (FIX-303).
 - **[6 TEST CHẶN TÁI PHÁT]** `packages/db/tests/test_roles_mirror.py::test_users_roles__is_the_permissions_mirror`; `test_sessions__reuses_core_parse_role` (FIX-303).
 - **[7 NGHIỆM THU]** `W5/C19/cov2.log` mã thoát 0 (1183 passed; `models/auth.py` 100 %, `sessions.py` 99 % — dòng 589 cũ); `verify.log` bước 1–4 mã thoát 0; commit `12e0178`, `13a4e2c` (test kiểu an toàn) (trailer thay FIX-243 nhầm, C19b).
@@ -3332,3 +3351,193 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[5 SỬA NHỎ NHẤT]** Giữ mặc định 6 (nhanh nhất, `-n 8` không nhanh hơn mà chỉ chừa ~1,4 GiB VM); docstring nêu số đo mới thay lý do cũ; test mặc định khẳng định `"6"`. `a681354`, `4870259` sửa dòng docstring cho ruff. Trailer commit ghi `Prompt: DEBT-02-W10-C48` thay vì chủ B0-01; `DEBT.md`, `changes/FIX-350.md` worker tự sửa bị bỏ khi gộp (`timeline.md` 18:30Z).
 - **[6 TEST CHẶN TÁI PHÁT]** `tools/tests/test_steps_commands.py::test_số_tiến_trình_bước_5_mặc_định`.
 - **[7 NGHIỆM THU]** Commit `cf542eb`, `a681354`, `4870259` (nhánh `fix/debt-02-w10-gate-measure`); bước 1–4 đạt trên `4870259`, mã thoát 0 (`W10/C48/steps1234.log`); pytest `tools/tests/test_steps*.py` 94 passed, exit 0 (`pytest-steps.log`).
+
+## FIX-351 cho B0-10 — backup.sh ghi bản rõ ở staging/APP_ENV rỗng (review R1 F4, F21)
+
+- **[1 TRIỆU CHỨNG]** F4: staging hoặc APP_ENV rỗng thiếu BACKUP_AGE_RECIPIENT vẫn rc 0, bản rõ.
+- **[2 TÁI HIỆN]** bash backup.sh với APP_ENV=staging, không recipient (`R/RA/tai-hien-F4.md`)
+- **[3 BẰNG CHỨNG]** docs/reviews/2026-10-05-fix-debt-02-tich-hop.md F4; backup.sh:87-90
+- **[4 KHOANH VÙNG]** deploy/backup/**, deploy/scripts/{drill.sh,README.md,tests/test_drill.py} · cấm sửa: tệp prompt khác, DEBT.md, docs/fixes.md, changes/*
+- **[5 SỬA NHỎ NHẤT]** Chặn mọi env trừ BACKUP_ALLOW_PLAINTEXT=1; drill.sh tự đặt cờ khi thiếu age; README + đổi tên 2 test drill (F21).
+- **[6 TEST CHẶN TÁI PHÁT]** test_backup__any_env_without_age_recipient_exits_1_before_dump[staging|dev|rỗng], …plaintext_opt_out_runs_without_recipient, …value_must_be_exactly_1
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 + cov.sh (xem `R/RA/cov.log`); test đỏ→xanh trong tai-hien-*.md; commit fix(B0-10)… + Prompt/Fix. Commit `19e6dd5`, `2d1184d`, `21a1a1d` (nhánh `fix/debt-02-r1-deploy-tools`).
+
+## FIX-352 cho B0-08 — env.example thiếu hai biến sao lưu; test map nginx lỏng (review R1 F4, F12)
+
+- **[1 TRIỆU CHỨNG]** F4 (env.example) + F12: không khai BACKUP_*; test NO-197 không kiểm map.
+- **[2 TÁI HIỆN]** `R/RA/tai-hien-rest.md` (F12)
+- **[3 BẰNG CHỨNG]** docs/reviews/2026-10-05-fix-debt-02-tich-hop.md F4, F12; deploy/tests/test_nginx.py:576
+- **[4 KHOANH VÙNG]** deploy/compose/env.example, deploy/tests/test_nginx.py · cấm sửa: tệp prompt khác, DEBT.md, docs/fixes.md, changes/*
+- **[5 SỬA NHỎ NHẤT]** Khai BACKUP_AGE_RECIPIENT/BACKUP_ALLOW_PLAINTEXT; assert cấu trúc map.
+- **[6 TEST CHẶN TÁI PHÁT]** test_nginx_access_log_map_logs_by_default_and_drops_files_uris
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 + cov.sh (xem `R/RA/cov.log`); test đỏ→xanh trong tai-hien-*.md; commit fix(B0-08)… + Prompt/Fix. Commit `6aecb51`, `a51986a`, `9960254` (nhánh `fix/debt-02-r1-deploy-tools`).
+
+## FIX-353 cho B0-01 — case_gate nới xfail; coverage_gate in 100% giả (review R1 F7, F24)
+
+- **[1 TRIỆU CHỨNG]** F7: endswith('.xfail') + test né grep; F24: đơn vị 0 câu lệnh in 100%.
+- **[2 TÁI HIỆN]** `R/RA/tai-hien-rest.md`
+- **[3 BẰNG CHỨNG]** docs/reviews/2026-10-05-fix-debt-02-tich-hop.md F7, F24; case_gate.py:262, coverage_gate.py:291
+- **[4 KHOANH VÙNG]** tools/case_gate.py, tools/coverage_gate.py, tools/tests/test_{case,coverage}_gate.py · cấm sửa: tệp prompt khác, DEBT.md, docs/fixes.md, changes/*
+- **[5 SỬA NHỎ NHẤT]** Hoàn == 'pytest.xfail'; bỏ dòng khi num_statements == 0.
+- **[6 TEST CHẶN TÁI PHÁT]** test_parse_junit_skipped_xfail (thêm ca other.xfail), test_đơn_vị_không_câu_lệnh_không_in_số_đo
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 + cov.sh (xem `R/RA/cov.log`); test đỏ→xanh trong tai-hien-*.md; commit fix(B0-01)… + Prompt/Fix. Commit `debb053`, `39cec55` (nhánh `fix/debt-02-r1-deploy-tools`).
+
+## FIX-354 cho B0-02 — regex userinfo che cả host khi query có @ (review R1 F19)
+
+- **[1 TRIỆU CHỨNG]** F19: redis://:pw@host?x=a@b che host.
+- **[2 TÁI HIỆN]** `R/RA/tai-hien-rest.md`
+- **[3 BẰNG CHỨNG]** docs/reviews/2026-10-05-fix-debt-02-tich-hop.md F19; logging.py:84
+- **[4 KHOANH VÙNG]** packages/core/logging.py, packages/core/tests/test_logging.py · cấm sửa: tệp prompt khác, DEBT.md, docs/fixes.md, changes/*
+- **[5 SỬA NHỎ NHẤT]** [^\s/]+@ → [^\s/?#]+@.
+- **[6 TEST CHẶN TÁI PHÁT]** test_mask_url_userinfo_password[redis://:pw@host?x=a@b]
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 + cov.sh (xem `R/RA/cov.log`); test đỏ→xanh trong tai-hien-*.md; commit fix(B0-02)… + Prompt/Fix. Commit `031f3a7`, `3ada64f` (nhánh `fix/debt-02-r1-deploy-tools`).
+
+## FIX-355 cho B0-04 — assert lỏng + docstring sai ở test storage (review R1 F10, F22)
+
+- **[1 TRIỆU CHỨNG]** F10: pytest.raises(AppError) không khẳng định mã; docstring AccessDenied; F22 docstring 'không đọc tiếp'.
+- **[2 TÁI HIỆN]** không cần đỏ — assert chặt hơn + docstring
+- **[3 BẰNG CHỨNG]** docs/reviews/2026-10-05-fix-debt-02-tich-hop.md F10, F22; test_s3.py:279,290; test_read_all_capped.py:34
+- **[4 KHOANH VÙNG]** packages/storage/tests/test_s3.py, test_read_all_capped.py · cấm sửa: tệp prompt khác, DEBT.md, docs/fixes.md, changes/*
+- **[5 SỬA NHỎ NHẤT]** as exc + code is INTERNAL + retry_after None; sửa docstring.
+- **[6 TEST CHẶN TÁI PHÁT]** chính hai test delete (siết assert)
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 + cov.sh (xem `R/RA/cov.log`); test đỏ→xanh trong tai-hien-*.md; commit fix(B0-04)… + Prompt/Fix. Commit `9e5c81b`, `6b2569a`, `9612c27`, `2a54c11` (nhánh `fix/debt-02-r1-deploy-tools`).
+
+## FIX-357 cho B5-06c — test sweep gắn perf cho test chức năng; tên test sai khuôn (F5, F21)
+
+- **[1 TRIỆU CHỨNG]** Review F5: `test_sweep_survives_unreadable_queue` mang `perf` nên luật `calls==2`, `checked_out==0` rời bước 5; trần 2,0 s với số đo 1,04 s (1,9x).
+- **[2 TÁI HIỆN]** Đọc `test_sweep_rules.py` trước/sau; `run.sh shell < cov2.sh` mã thoát 0.
+- **[3 BẰNG CHỨNG]** `apps/worker/pipeline_steps/tests/test_sweep_rules.py:245-290` (trước sửa)
+- **[4 KHOANH VÙNG]** Sửa: `apps/worker/pipeline_steps/tests/test_sweep_rules.py`. Cấm: DEBT.md, docs/fixes.md, changes/*, charter, tệp của prompt khác.
+- **[5 SỬA NHỎ NHẤT]** Tách helper `_sweep_with_hanging_llen`; test chức năng không đo giờ; `test_sweep_hang_returns_within_budget` (perf) trần 4,0 s (≥ 3x số đo 1,04-1,08 s); hạn chờ `ENTER_WAIT_S`; đổi tên hai test `test_requeue_one__…`.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_sweep_survives_unreadable_queue[treo|connection_error]` (bước 5), `test_sweep_hang_returns_within_budget` (perf) — tái cấu trúc, không cần đỏ (`R/RB/tai-hien-F5.md`).
+- **[7 NGHIỆM THU]** `verify --steps 1,2,3,4` (`R/RB/steps1234.log`); độ phủ ở cov*.log; commit `Prompt: B5-06c`, `Fix: FIX-357`. Commit `8928b9d` (nhánh `fix/debt-02-r1-ml-worker`).
+
+## FIX-358 cho B5-07 — test chạm _STORAGE/_storage riêng tư; perf gắn nhầm test chức năng (F5, F6b)
+
+- **[1 TRIỆU CHỨNG]** NO-304 sót: test gọi `tasks._STORAGE.override`, `tasks._storage()`; `test_quality_replay_redis_hang_skips` mang `perf` với `elapsed <= 2.0` (số đo 1,009 s).
+- **[2 TÁI HIỆN]** grep `_STORAGE\|\._storage` trong `pipeline_quality/tests` trước sửa.
+- **[3 BẰNG CHỨNG]** `apps/worker/pipeline_quality/tests/test_runtime.py:54,293-330`; `test_service.py:322`
+- **[4 KHOANH VÙNG]** Sửa: `apps/worker/pipeline_quality/tasks.py`, `apps/worker/pipeline_quality/tests/*`. Cấm: DEBT.md, docs/fixes.md, changes/*, charter, tệp của prompt khác.
+- **[5 SỬA NHỎ NHẤT]** Mở `override_quality_storage` (context manager) và `open_storage` (đổi tên `_storage`) công khai; test dùng chúng. Tách `_replay_with_hanging_redis`; test chức năng không đo giờ, test perf trần 4,0 s (≥ 3x 1,015 s).
+- **[6 TEST CHẶN TÁI PHÁT]** Tái cấu trúc/đổi tên, không cần đỏ; `test_quality_replay_redis_hang_skips` + `..._within_budget` (perf) xanh (`R/RB/tai-hien-F5.md`).
+- **[7 NGHIỆM THU]** `verify --steps 1,2,3,4` (`R/RB/steps1234.log`); độ phủ ở cov*.log; commit `Prompt: B5-07`, `Fix: FIX-358`. Commit `a3a6113` (nhánh `fix/debt-02-r1-ml-worker`).
+
+## FIX-359 cho B6-03b — huấn luyện: perf gắn nhầm, thiếu LOG_LEVEL/LOG_JSON trong env con, docstring cũ, tên test (F5, F17, F18, F21)
+
+- **[1 TRIỆU CHỨNG]** F17 con huấn luyện luôn JSON/INFO vì allowlist thiếu hai biến; F18 docstring `_download_one` sai từ NO-263; F21 tên test; F5 `test_run_training_job_cancel_while_waiting` mang `perf`.
+- **[2 TÁI HIỆN]** `red.sh`/`R/RB/red.log`: `test_start_training_runner_child_env_is_allowlisted` đỏ (mã 1); xanh ở `R/RB/cov2.log`.
+- **[3 BẰNG CHỨNG]** `apps/ml/training_runner/tasks.py:29-33`, `dataset.py:107`
+- **[4 KHOANH VÙNG]** Sửa: `apps/ml/training_runner/**`. Cấm: DEBT.md, docs/fixes.md, changes/*, charter, tệp của prompt khác.
+- **[5 SỬA NHỎ NHẤT]** Thêm `LOG_LEVEL`, `LOG_JSON` vào `_ENV_KEEP`; viết lại docstring; đổi tên `test_claim_lease__unexpected_error_marks_lost`; tách `_cancel_while_waiting` + test perf `CANCEL_BUDGET_S` 10 s (đo 0,007-0,017 s).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_start_training_runner_child_env_is_allowlisted` (đỏ mã 1 → xanh mã 0, `R/RB/tai-hien-F17.md`); docstring/tên không cần đỏ.
+- **[7 NGHIỆM THU]** `verify --steps 1,2,3,4` (`R/RB/steps1234.log`); độ phủ ở cov*.log; commit `Prompt: B6-03b`, `Fix: FIX-359`. Commit `27e4a49` (nhánh `fix/debt-02-r1-ml-worker`).
+
+## FIX-360 cho B6-04b — _result sập khi reply không phải dict / float() lỗi; dòng kết quả dính dòng lạ (F8, F9)
+
+- **[1 TRIỆU CHỨNG]** `reply` là `null`/`[]`/`5` → AttributeError; `float("x")` → ValueError rơi ra ngoài; dòng lạ không xuống dòng nuốt tiền tố `ML_EVAL_RESULT`.
+- **[2 TÁI HIỆN]** `R/RB/red.log`: 6 ca đỏ trong `test_sandbox.py` (mã 1).
+- **[3 BẰNG CHỨNG]** `apps/ml/ml_eval/tasks.py:96-108`, `sandbox.py:87`
+- **[4 KHOANH VÙNG]** Sửa: `apps/ml/ml_eval/**`. Cấm: DEBT.md, docs/fixes.md, changes/*, charter, tệp của prompt khác.
+- **[5 SỬA NHỎ NHẤT]** `tasks._result`: reply không dict → `{}`; `float()` lỗi → `MODEL_FORMAT_UNSUPPORTED`. `sandbox.main` ghi `"\n" + RESULT_PREFIX …`.
+- **[6 TEST CHẶN TÁI PHÁT]** 5 ca tham số `test_ml_eval_sandbox_result_without_metrics`, `test_ml_eval_sandbox_main__result_survives_unterminated_previous_line` (đỏ mã 1 → xanh mã 0, `R/RB/tai-hien-F8-F9.md`).
+- **[7 NGHIỆM THU]** `verify --steps 1,2,3,4` (`R/RB/steps1234.log`); độ phủ ở cov*.log; commit `Prompt: B6-04b`, `Fix: FIX-360`. Commit `8a1a8be` (nhánh `fix/debt-02-r1-ml-worker`).
+
+## FIX-361 cho B5-04 — test làm tròn bề rộng so mảng với chính nó (F11)
+
+- **[1 TRIỆU CHỨNG]** `unrounded` bằng `padded_input` khi `resized <= REC_MIN_WIDTH_PX` → assert vô nghĩa.
+- **[2 TÁI HIỆN]** `test_reader_real.py:177`; đo `checked`.
+- **[3 BẰNG CHỨNG]** `apps/ml/text/tests/test_reader_real.py`
+- **[4 KHOANH VÙNG]** Sửa: `apps/ml/text/tests/test_reader_real.py`. Cấm: DEBT.md, docs/fixes.md, changes/*, charter, tệp của prompt khác.
+- **[5 SỬA NHỎ NHẤT]** Bỏ ca `resized <= REC_MIN_WIDTH_PX`; `WIDTH_SEEDS` 100-105 (còn 19 vùng thật, 19/19 giữ chuỗi); sàn `2 x len(WIDTH_SEEDS)`.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_width_rounding_keeps_most_strings` xanh (`checked=19 same=19`, `R/RB/tai-hien-F11.md`); siết test, không cần đỏ.
+- **[7 NGHIỆM THU]** `verify --steps 1,2,3,4` (`R/RB/steps1234.log`); độ phủ ở cov*.log; commit `Prompt: B5-04`, `Fix: FIX-361`. Commit `c72b5e3` (nhánh `fix/debt-02-r1-ml-worker`).
+
+## FIX-362 cho B5-06b — docstring trần 30 s nhắc 'nợ ghi riêng' sai (F22)
+
+- **[1 TRIỆU CHỨNG]** Docstring `BIG_HOLD_CEILING_S` nói nợ ghi riêng, thực là NO-296 (➖ đã duyệt).
+- **[2 TÁI HIỆN]** `test_persist_lock.py:52-56`.
+- **[3 BẰNG CHỨNG]** `apps/worker/pipeline_persist/tests/test_persist_lock.py`
+- **[4 KHOANH VÙNG]** Sửa: `apps/worker/pipeline_persist/tests/test_persist_lock.py`. Cấm: DEBT.md, docs/fixes.md, changes/*, charter, tệp của prompt khác.
+- **[5 SỬA NHỎ NHẤT]** Viết lại câu docstring trỏ NO-296.
+- **[6 TEST CHẶN TÁI PHÁT]** Chỉ docstring — không cần đỏ.
+- **[7 NGHIỆM THU]** `verify --steps 1,2,3,4` (`R/RB/steps1234.log`); độ phủ ở cov*.log; commit `Prompt: B5-06b`, `Fix: FIX-362`. Commit `d9ab535` (nhánh `fix/debt-02-r1-ml-worker`).
+
+## FIX-364 cho B1-04 — assert hành vi khoá avatar là ULID (review R1 F13)
+
+- **[1 TRIỆU CHỨNG]** Review F13 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** me/tests/test_text_source.py:14 chỉ quét chuỗi nguồn
+- **[4 KHOANH VÙNG]** chỉ apps/api/me/tests/test_text_source.py
+- **[5 SỬA NHỎ NHẤT]** thêm test PUT /api/me/avatar kiểm tên khoá is_ulid
+- **[6 TEST CHẶN TÁI PHÁT]** test_me_replace_avatar__stored_key_name_is_a_bare_ulid; đột biến router new_ulid→chuỗi sai: đỏ (`R/RC/cov.log` RED_EXIT=1) → xanh
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `ff02ba7` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-365 cho B2-07 — assert danh tính lock_project_scope (review R1 F13)
+
+- **[1 TRIỆU CHỨNG]** Review F13 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** templates/tests/test_locks_source.py:8
+- **[4 KHOANH VÙNG]** chỉ apps/api/templates/tests/test_locks_source.py
+- **[5 SỬA NHỎ NHẤT]** thêm assert is
+- **[6 TEST CHẶN TÁI PHÁT]** test_templates_service__lock_is_the_packages_db_function; đột biến bọc hàm: đỏ → xanh
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `a518dd4` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-366 cho B4-02 — một nguồn mark_max + test dòng bị xoá giữa INSERT và SELECT (review R1 F14)
+
+- **[1 TRIỆU CHỨNG]** Review F14,15 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** notifications/service.py:152-158; schemas.py:41 max_length=200
+- **[4 KHOANH VÙNG]** chỉ apps/api/notifications/**
+- **[5 SỬA NHỎ NHẤT]** hằng MARK_MAX_DEFAULT ở settings.py dùng cho schemas; test hook before_cursor_execute xoá dòng
+- **[6 TEST CHẶN TÁI PHÁT]** test_notify__row_trimmed_between_insert_and_select_returns_none (đột biến bỏ 'existing is not None': đỏ → xanh); test_mark_body__schema_max_items_is_the_settings_default (refactor, không cần đỏ)
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `a5bdb63` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-367 cho B3-04 — dùng count_sql và regex FROM|JOIN floors (review R1 F16)
+
+- **[1 TRIỆU CHỨNG]** Review F16 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** versions/tests/test_snapshots.py:421-437
+- **[4 KHOANH VÙNG]** chỉ apps/api/versions/tests/test_snapshots.py
+- **[5 SỬA NHỎ NHẤT]** thay bộ nghe tự viết bằng count_sql
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — tái cấu trúc test
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `f1d735c` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-368 cho B2-01 — đổi tên test theo hàm__điều kiện (review R1 F21)
+
+- **[1 TRIỆU CHỨNG]** Review F21 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** projects/tests/test_routes_build.py:166, test_wire.py:107
+- **[4 KHOANH VÙNG]** chỉ hai tệp test
+- **[5 SỬA NHỎ NHẤT]** đổi tên (grep: chỉ docs/fixes.md nhắc, ngoài whitelist)
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — tên
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `91e8ae7` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-369 cho B4-01 — đổi tên test (review R1 F21)
+
+- **[1 TRIỆU CHỨNG]** Review F21 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** streams/tests/test_fixture_streams.py:394
+- **[4 KHOANH VÙNG]** chỉ tệp test
+- **[5 SỬA NHỎ NHẤT]** test_next_frames__raises_when_the_app_exits_without_sending_a_body
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — tên
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `f2e817e` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-370 cho B2-06 — docstring 5 WORKER_BLOCKED (review R1 F22)
+
+- **[1 TRIỆU CHỨNG]** Review F22 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** library/tests/test_jobs_cli.py:117
+- **[4 KHOANH VÙNG]** chỉ tệp test
+- **[5 SỬA NHỎ NHẤT]** sửa docstring
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — docstring
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `ee6a42f` (nhánh `fix/debt-02-r1-api`).
+
+## FIX-371 cho B2-04 — hoàn docstring Create Date (review R1 F23)
+
+- **[1 TRIỆU CHỨNG]** Review F23 (docs/reviews/2026-10-05-fix-debt-02-tich-hop.md)
+- **[2 TÁI HIỆN]** nhánh fix/debt-02-r1-api @ b017a58
+- **[3 BẰNG CHỨNG]** r20260925_b2_04_drawings.py:5 (3cba227)
+- **[4 KHOANH VÙNG]** chỉ revision
+- **[5 SỬA NHỎ NHẤT]** git checkout main -- tệp
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — docstring
+- **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `2a68539` (nhánh `fix/debt-02-r1-api`).
