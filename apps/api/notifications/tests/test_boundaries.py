@@ -9,6 +9,7 @@ from typing import Final
 import pytest
 from pydantic import ValidationError
 
+from apps.api.notifications.schemas import NotificationMarkReadBody
 from apps.api.notifications.settings import NotificationsSettings, get_notifications_settings
 from apps.api.notifications.tests.support import settings_env
 from packages.testing.boundary import WORKER_BLOCKED
@@ -71,3 +72,9 @@ def test_settings__env_override_and_cache(monkeypatch: pytest.MonkeyPatch) -> No
         assert get_notifications_settings().notifications_list_max == 3
         assert get_notifications_settings() is get_notifications_settings()
     assert get_notifications_settings().notifications_list_max == 200
+
+
+def test_mark_body__schema_max_items_is_the_settings_default() -> None:
+    """`maxItems` của `openapi.json` cùng một nguồn với mặc định `notifications_mark_max`."""
+    schema = NotificationMarkReadBody.model_json_schema()
+    assert schema["properties"]["ids"]["maxItems"] == NotificationsSettings().notifications_mark_max

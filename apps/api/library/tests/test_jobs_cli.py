@@ -115,7 +115,7 @@ def test_cli_publish_exits_one_when_storage_is_down(
     ["apps.api.library.assets", "apps.api.library.jobs", "apps.api.library.cli", "packages.domain.library"],
 )
 def test_imports_without_web_or_crypto_packages(module: str) -> None:
-    """Worker/CLI nhập được các module này khi `fastapi`, `jwt`, `argon2` bị chặn trong `sys.modules`."""
+    """Worker/CLI nhập được các module này khi 5 gói `WORKER_BLOCKED` (web, jwt, argon2) bị chặn trong `sys.modules`."""
     blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import {module}"],

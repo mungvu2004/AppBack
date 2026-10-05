@@ -6,6 +6,7 @@ bằng SQL trên `floor_documents`, để `revision` tăng đúng như đường
 
 import copy
 import logging
+import re
 from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
@@ -15,6 +16,7 @@ from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.projects.tests.sql_count import count_sql
 from apps.api.spatial_read.documents import FloorDocument, load_document
 from apps.api.spatial_read.tests._helpers import race
 from apps.api.versions.snapshots import (
@@ -421,17 +423,8 @@ async def test_versions__boundary_row_and_duplicate_sequence(db_session: AsyncSe
 async def test_create_version__reads_floors_once(db_session: AsyncSession, fake_clock: FakeClock) -> None:
     """Một lượt chụp chỉ chạm `floors` một lần (câu khoá); `project_id` lấy từ câu đó (NO-245)."""
     vs = await make_version_scene(db_session, fake_clock)
-    statements: list[str] = []
-
-    def capture(_conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
-        """Ghi lại mọi câu SQL gửi tới Postgres."""
-        statements.append(statement)
-
-    engine = db_session.get_bind()
-    event.listen(engine, "before_cursor_execute", capture)
-    try:
+    with count_sql() as counter:
         created = await snap(db_session, vs, fake_clock)
-    finally:
-        event.remove(engine, "before_cursor_execute", capture)
     assert created.project_id == vs.floor.project_id
-    assert len([s for s in statements if s.startswith("SELECT") and "FROM floors" in s]) == 1
+    floors_reads = [s for s in counter.statements if re.search(r"(?:FROM|JOIN)\s+floors\b", s)]
+    assert len(floors_reads) == 1

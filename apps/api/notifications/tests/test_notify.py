@@ -7,8 +7,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 import pytest
+from sqlalchemy import delete, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]
+from testcontainers.redis import RedisContainer  # type: ignore[import-untyped]  # testcontainers chưa có py.typed
 
 from apps.api.notifications.jobs import run_notification_publish
 from apps.api.notifications.service import notify
@@ -16,6 +17,7 @@ from apps.api.notifications.tests.support import FLOOR, commit_notify, rows_of, 
 from packages.core.ids import is_id
 from packages.core.text import nfc
 from packages.db.hooks import after_commit_idle
+from packages.db.models.notifications import NotificationRow
 from packages.messaging.redis import AsyncRedis
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.messaging.streams import EventBus, user_stream
@@ -247,3 +249,32 @@ async def test_notify__J10(
     assert await streams_client.xlen(stream) == 1
     entry_id = (await stream_ids(streams_client, stream))[0]
     assert (await rows_of(db_session, user.id))[0].stream_id == entry_id
+
+
+async def test_notify__row_trimmed_between_insert_and_select_returns_none(
+    db_session: AsyncSession, fake_clock: FakeClock, streams_client: AsyncRedis
+) -> None:
+    """Dòng trùng bị xoá giữa `INSERT … DO NOTHING` và `SELECT` đọc lại → `None`, không XADD thêm."""
+    user, project = await _fixture_pair(db_session)
+    common: dict[str, Any] = {"user_id": user.id, "project_id": project.id, "project_name": "A", "dedupe_key": KEY}
+    assert await commit_notify(db_session, fake_clock, **common) is not None
+
+    connection = await db_session.connection()
+    fired: list[str] = []
+
+    def _trim_before_select(conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
+        """Ngay trước câu `SELECT` đọc lại: xoá dòng đang xung đột (như lượt dọn đồng thời)."""
+        if statement.lstrip().upper().startswith("SELECT") and not fired:
+            fired.append(statement)
+            conn.execute(delete(NotificationRow).where(NotificationRow.dedupe_key == KEY))
+
+    event.listen(connection.sync_connection, "before_cursor_execute", _trim_before_select)
+    try:
+        second = await commit_notify(db_session, fake_clock, **common)
+    finally:
+        event.remove(connection.sync_connection, "before_cursor_execute", _trim_before_select)
+
+    assert fired
+    assert second is None
+    assert await rows_of(db_session, user.id) == []
+    assert await streams_client.xlen(user_stream(user.id)) == 1
