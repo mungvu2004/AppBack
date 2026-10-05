@@ -11,7 +11,7 @@
 #                        DRILL_COMPOSE_FILE khác ci.yml — ci.yml ép STORAGE_BACKEND=s3)
 #   IMAGE_TAG             tag ảnh (mặc định ci)
 #   WEB_HTTP_PORT, POSTGRES_HOST_PORT  cổng host (hop-dong.md §6)
-#   BACKUP_AGE_RECIPIENT/BACKUP_AGE_IDENTITY  do script tự đặt nếu máy có age/age-keygen
+#   BACKUP_AGE_RECIPIENT/BACKUP_AGE_IDENTITY  do script tự đặt nếu máy có age/age-keygen; thiếu age → BACKUP_ALLOW_PLAINTEXT=1
 #
 # Mã thoát: 0 hai pha khớp; 1 lệch hoặc một bước hỏng; 2 tham số dòng lệnh sai
 # (hop-dong.md §2). Gọi không tham số để chạy diễn tập đầy đủ; `--compare <gốc>
@@ -261,7 +261,8 @@ main() {
     BACKUP_AGE_IDENTITY="$AGE_DIR/key.txt"
     export BACKUP_AGE_RECIPIENT BACKUP_AGE_IDENTITY
   else
-    echo "mã hoá: chưa chạy — thiếu age"
+    echo "mã hoá: chưa chạy — thiếu age (diễn tập bản rõ: BACKUP_ALLOW_PLAINTEXT=1)"
+    export BACKUP_ALLOW_PLAINTEXT=1
   fi
 
   # Bước 1: dựng compose, seed, admin, 3 object gốc.

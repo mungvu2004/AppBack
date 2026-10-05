@@ -105,6 +105,17 @@ class TestThresholds:
         r = self._run(tmp_path, files, totals, "integration", [])
         assert r.ok
 
+    def test_đơn_vị_không_câu_lệnh_không_in_số_đo(self, tmp_path: Path) -> None:
+        """Đơn vị không có câu lệnh nào (vd `deploy` chỉ có shell) không in dòng "100%" giả."""
+        files = {
+            "packages/core/x.py": {"summary": _summary(10, 10)},
+            "deploy/scripts/x.sh": {"summary": _summary(0, 0)},
+        }
+        r = self._run(tmp_path, files, _summary(10, 10), "integration", [])
+        assert r.ok
+        assert [n for n in r.numbers if n.startswith("packages/core:")]
+        assert not [n for n in r.numbers if n.startswith("deploy:")]
+
     def test_nhánh_worker_chỉ_tính_đơn_vị_bị_chạm(self, tmp_path: Path) -> None:
         """Nhánh worker chỉ nêu đơn vị bị chạm, không nêu đơn vị khác."""
         files = {

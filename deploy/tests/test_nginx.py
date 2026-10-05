@@ -584,6 +584,19 @@ def test_nginx_app_server_has_conditional_access_log_backstop__no197() -> None:
         assert any(a.startswith("if=$") for c in logs for a in c.args), f"{path}: server app thiếu access_log if="
 
 
+def test_nginx_access_log_map_logs_by_default_and_drops_files_uris() -> None:
+    """NO-197: `map $request_uri $appback_access_log` ghi log mặc định (`default 1`) và chỉ bỏ URI có `files/` (→ `0`);
+    xoá `default 1` thì mọi truy cập mất log, và `access_log … if=` ở server phải đọc đúng biến của map."""
+    path = require_path("deploy/nginx/snippets/access_log_files_map.conf")
+    (map_node,) = find_directive(parse_nginx(path.read_text(encoding="utf-8")), "map")
+    assert map_node.args == ["$request_uri", "$appback_access_log"]
+    rules = {c.directive: c.args for c in map_node.children}
+    assert rules == {"default": ["1"], "~*files/": ["0"]}
+    for server_path, server in _app_servers():
+        logs = [c for c in server.children if c.directive == "access_log"]
+        assert any("if=$appback_access_log" in c.args for c in logs), f"{server_path}: if= không đọc biến của map"
+
+
 def test_nginx_proxy_common_comment_has_no_false_resolve_claim__no198() -> None:
     """NO-198: `resolve` trong `upstream{}` có ở OSS từ 1.27.3 (ảnh ghim 1.30.x); comment
     của `proxy_common.conf` không được nói nó chỉ có ở NGINX Plus."""
