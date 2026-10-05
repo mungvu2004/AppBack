@@ -231,6 +231,35 @@ def test_nginx_streams_location_sse_tuning() -> None:
         assert ("proxy_read_timeout", ("1h",)) in pairs, f"{path}: streams thiếu proxy_read_timeout 1h"
 
 
+def test_nginx_streams_location_limits_conn_per_ip() -> None:
+    """BE-00 §11 (NO-335, phương án B): mỗi template app khai `limit_conn_zone` theo IP ở mức http,
+    `/api/streams/` giới hạn số luồng mở đồng thời mỗi IP, vượt → 429 JSON W7 `RATE_LIMITED` của nginx
+    (`internal`, `Retry-After`, `requestId`) chứ không phải trang HTML mặc định hay 503."""
+    for path, nodes in _entry_files_assembled().items():
+        if _is_minio_vhost(path):
+            continue
+        zones = [n.args for n in nodes if n.directive == "limit_conn_zone"]
+        assert zones == [["$binary_remote_addr", "zone=appback_streams_ip:1m"]], (
+            f"{path}: thiếu limit_conn_zone mức http"
+        )
+        streams = _locations_matching({path: nodes}, lambda loc: loc.args[-1:] == ["/api/streams/"])
+        assert streams, f"{path}: không tìm thấy location /api/streams/"
+        for _, loc in streams:
+            pairs = {(n.directive, tuple(n.args)) for n in loc.children}
+            assert ("limit_conn", ("appback_streams_ip", "30")) in pairs, f"{path}: streams thiếu limit_conn 30"
+            assert ("limit_conn_status", ("429",)) in pairs, f"{path}: streams phải trả 429 khi vượt"
+            assert ("error_page", ("429", "/__errors/429")) in pairs, f"{path}: 429 của streams phải thành JSON W7"
+        errors = _locations_matching({path: nodes}, lambda loc: loc.args[-1:] == ["/__errors/429"])
+        assert len(errors) == 1, f"{path}: cần đúng một location /__errors/429"
+        children = errors[0][1].children
+        body = " ".join(" ".join(n.args) for n in children)
+        assert "internal" in {n.directive for n in children}, f"{path}: /__errors/429 thiếu internal"
+        assert ["application/json"] in [n.args for n in children if n.directive == "default_type"]
+        assert '"code":"RATE_LIMITED"' in body, f"{path}: thân 429 thiếu mã RATE_LIMITED (W7)"
+        assert "$appback_request_id" in body, f"{path}: thân 429 thiếu requestId (W7)"
+        assert ["Retry-After", "10", "always"] in [n.args for n in children if n.directive == "add_header"]
+
+
 def test_nginx_files_location_disables_access_log() -> None:
     """`/api/files/`: `access_log off` NGAY TRONG location, và cả hai `error_page`
     của nó trỏ sang location lỗi riêng cũng `access_log off`.

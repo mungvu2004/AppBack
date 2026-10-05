@@ -77,6 +77,17 @@
 | FIX-068 | 2026-09-22 | B0-01 | NO-092 | Dọn log cổng cũ hỏng thì `run.sh verify` thoát trước khi chạy cổng | `2debb52` |
 | FIX-069 | 2026-09-22 | B0-05 | NO-093 | Test FIX-067 không chốt phần `captureWarnings` của fixture worker | `47efe53` |
 | FIX-070 | 2026-09-22 | B0-08 | NO-102, NO-112 | Ảnh `web` dính CVE OpenSSL CRITICAL và CVE nginx rewrite/map | `b232603` (nhánh `fix/b0-08-web-openssl-cve`) |
+| FIX-071 | 2026-09-22 | B0-01 | — | Bước 5 chạy toàn bộ ~2 460 test ở mọi lượt verify của nhánh worker | `f18546a`, `5f254f7` (nhánh `fix/b0-01-fast-verify`, **không gộp** — review REQUEST CHANGES, vòng sửa bỏ dở) |
+| FIX-072 | 2026-09-22 | B0-01 | NO-101, NO-108 | Khởi động container verify ~77 s; mỗi worktree một volume `appback-work` | `e73af37` (nhánh `fix/b0-01-fast-verify-startup`, **không gộp**; NO-101/NO-108 đóng sau bằng FIX-083) |
+| FIX-073 | 2026-09-23 | B0-06 | NO-127, NO-134 | `test_common__C10` không đạt được với route ghi được bảo vệ; bản mồi để thân giả lọt kho golden | `68c872e`, `e2b791d`, `950a791` (squash `d461ec8`) |
+| FIX-074 | 2026-09-23 | B0-08 | NO-126 | `node` 26 trong ảnh verify thoát 127 thiếu `libatomic.so.1` | `07bd7c1` (squash `d461ec8`) |
+| FIX-075 | 2026-09-23 | B0-01 | NO-128, NO-133 | `load_bind_rows` giữ backtick ở cột Khoá; `tools/charter.py` phủ nhánh 83,33 % | `77acfb8`, `45f7747` (squash `d461ec8`) |
+| FIX-076 | 2026-09-23 | B0-06 | NO-129 | `test_common__C05` parametrize kép nên `case_gate` tách sai op | `8a61c20` (squash `d461ec8`) |
+| FIX-077 | 2026-09-23 | B0-03 | NO-131 | `test_new_revision` dùng mã prompt thật `B2-01` làm dữ liệu mẫu | `165d9fc` (squash `d461ec8`) |
+| FIX-078 | 2026-09-23 | B0-09 | NO-132 | Admin giả của H2 không có dòng `users`, route ghi có FK tới `users` → 500 | `e44e791` (squash `d461ec8`) |
+| FIX-079 | 2026-09-23 | — | — | không dùng — việc "C10 lọt kho golden" (NO-134) làm dưới FIX-073 ở `950a791` (`spec-m-luot2.md:10`, thân `d461ec8`); không commit nào mang `Fix: FIX-079` | — |
+| FIX-080 | 2026-09-23 | B0-05, B0-06, B1-01 | NO-148 | `mypy --strict` đỏ 6 lỗi trên `main` sau Dependabot bump `redis` 6.4 → 8.1 | `dfc9a8b`, `0d73ade`, `58b932c`, `cc57a74` (gộp `a26ee15`) |
+| FIX-081 | 2026-09-23 | B0-06 | NO-163 | Test dò router khẳng định mỗi module đúng một router | `f15437c` (gộp cùng B7-01 `--no-ff` ở `591eaf6`) |
 | FIX-082 | 2026-09-24 | B2-01 | — | Hai test fallback của cổng `view_parts` giả định "chưa module nào cài", đỏ khi B2-03 cài thật | nhánh `feature/b2-03-floors` |
 | FIX-083 | 2026-09-24 | B0-01 | NO-101, NO-164, NO-103, NO-106, NO-108, NO-130 | Nợ cổng verify: `tr` của `gc`, marker `ci_integration`, hằng ảnh ghim trong test, ảnh/volume verify theo worktree, `concurrency` coverage | `531c690`, `7eaa0f9`, `ebe32cc`, `7ff240a` (nhánh `fix/debt-01-tooling`) |
 | FIX-084 | 2026-09-24 | B0-09 | NO-051, NO-106, NO-110, NO-111, NO-113, NO-153 | Nợ CI: `VERIFY_OUT_DIR`, ảnh ghim chép tay ở `h2.py`, `types` của `pull_request`, test `job.sh`, `nginx -v` của ảnh `web`, dependabot major | `844fea3`, `a99fabb`, `86b31b9` (nhánh `fix/debt-01-tooling`) |
@@ -225,7 +236,9 @@ không làm đỏ lại.
 **[2 TÁI HIỆN]** Trên cùng commit: `pytest packages/db/tests/test_new_revision.py -k charter_name` → `1 failed`.
 
 **[3 BẰNG CHỨNG]** `packages/db/tests/test_new_revision.py:54`
-`assert 'down_revision: str | None = "r20260920_b0_03"' in body`. BE-00 §6.1 cho **mỗi prompt
+`assert 'down_revision: str | None = "r20260920_b0_03"' in body` (annotation của mẫu lúc đó; từ FIX-292
+`374c7ab`, `script.py.mako` sinh `down_revision: str | Sequence[str] | None = …` và test khẳng định chuỗi đó,
+`test_new_revision.py:78`). BE-00 §6.1 cho **mỗi prompt
 một revision**, nên head đổi sau mỗi lần hợp nhất; revision `r20260920_b0_06` của B0-06 là head
 mới. Hằng này sẽ đỏ với B2-01, B2-03… y như vậy.
 
@@ -783,6 +796,137 @@ thì `beat` rỗng còn `beat_ledger` (dò lại độc lập) khác rỗng → 
 - **[5]** Nền `nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1…` (stable, digest tự tra `imagetools`); lượt 1 (1.29.8) bị REQUEST CHANGES vì 1.29 hết đời và còn trong dải CVE-2026-42945.
 - **[6]** Không có test đơn vị (chỉ đổi ảnh nền): bằng chứng là trivy CRITICAL mã thoát 0 (0 lỗ hổng mọi mức), `nginx -v` = 1.30.5; test tĩnh ghim digest có sẵn ở `deploy/tests/test_dockerfiles.py`.
 - **[7]** `fix(deploy): move web base image to nginx 1.30 stable` (`b232603`, `Prompt: B0-08`, `Fix: FIX-070`); review lượt 2 APPROVE 4,94/5, `run.sh verify` thoát 0 (3754 passed, tổng 99,06 % / 97,71 %).
+
+---
+
+> **Giao việc FIX-071..FIX-072.** 2026-09-22, phiên B0-09: người dùng duyệt cắt thời gian cổng verify (đo
+> `backend/dieu-phoi/chay/B0-09/do-verify.log`). Hai worker song song, hai nhánh: FIX-071 `fix/b0-01-affected-tests`
+> (`steps.py`, `affected.py`, `*gate*.py`), FIX-072 `fix/b0-01-fast-verify-startup` (`run.sh`, `in_container.sh`,
+> `verify.yml`); hợp đồng chung `VERIFY_SCOPE` ∈ `affected|full`. Review gộp chung trên `fix/b0-01-fast-verify`.
+
+## FIX-071 cho B0-01 — bước 5 chạy toàn bộ test ở mọi lượt worker (không mã nợ)
+
+- **[1]** Bước 5 chạy ~2 460 test (~5,5–7 phút, đơn luồng) ở mọi lượt verify, kể cả nhánh chỉ sửa `tools/ci` (`spec-f071-affected-tests.md`).
+- **[2]** `bash tools/verify/run.sh verify` trên `main` (2026-09-22); số đo từng bước ở `backend/dieu-phoi/chay/B0-09/do-verify.log`.
+- **[3]** `tools/verify/steps.py` bước 5/5b luôn truyền cả cây test; không có khái niệm phạm vi.
+- **[4]** Sửa: `tools/verify/affected.py` (mới), `tools/verify/steps.py`, `tools/coverage_gate.py`, `tools/case_gate.py` + test dưới `tools/tests/`. Cấm: `run.sh`, `in_container.sh`, `verify.yml` (của FIX-072).
+- **[5]** `affected()` từ file bị chạm → thư mục test của đơn vị bị chạm + đơn vị import ngược (đồ thị `grimp`); file toàn cục/không ánh xạ được → chạy đủ; `integration` luôn `full`; `coverage_gate` bỏ ngưỡng tổng ở phạm vi `affected`; `case_gate` chỉ đòi case của op thuộc đơn vị đã chạy (fail-closed).
+- **[6]** `tools/tests/test_affected.py` (mới) + test thêm ở `test_case_gate.py`, `test_coverage_gate*.py`, `test_steps_commands.py` (`f18546a`).
+- **[7]** `fix(verify): run only affected tests on worker branches` (`f18546a`) và `docs(charter): describe affected-scope verify and shared work volume` (`5f254f7`), `Prompt: B0-01`, `Fix: FIX-071`. Review `docs/reviews/2026-09-22-fix-b0-01-fast-verify.md` REQUEST CHANGES 3,82/5: `run.sh verify --full` thoát 1 (8 failed — test không cô lập `VERIFY_SCOPE`), `affected()` bỏ sót nạp động của `apps/api` và đổi tên file (3 P1). Vòng sửa (`spec-f071-fix.md`) giao 2026-09-22 23:48, **không có commit**; nhánh không vào `main` (`git merge-base --is-ancestor f18546a main` sai).
+
+## FIX-072 cho B0-01 — khởi động container verify chậm, volume theo worktree (NO-101, NO-108)
+
+- **[1]** Từ lúc gọi `run.sh shell` tới lệnh đầu trong container 77 s; một prompt gọi ~99 lần (`spec-f072-fast-startup.md` §1). Mỗi worktree một volume `appback-verify-<tên>_appback-work` ~2 GB (NO-108); `run.sh gc` thoát 1 ở `tr` (NO-101).
+- **[2]** Mốc thời gian tạm quanh build/`cp`/`chmod`/`uv sync`: lạnh 91,37 s, ấm 26,75 s, `cp -r /src` chiếm 62,27 s / 18,28 s (`bao-cao-fix072.md` §2.1).
+- **[3]** `tools/verify/in_container.sh` chép cả `.cache` (1 356 file nhỏ) qua bind mount; `deploy/compose/verify.yml` khai `appback-work` không `name:`; `tools/verify/run.sh:150` `tr -c 'a-z0-9_-\n'`.
+- **[4]** Sửa: `tools/verify/run.sh`, `tools/verify/in_container.sh`, `tools/verify/copy_work.sh` (mới), `deploy/compose/verify.yml`, `tools/tests/test_run_sh.py`, `tools/tests/test_copy_work.py` (mới). Cấm: file của FIX-071.
+- **[5]** Chép bằng `tar` loại `.git`/`.cache`/`node_modules`/cache công cụ; build ảnh chỉ khi băm `verify.Dockerfile` đổi; volume `appback-work` tên cố định; `run.sh verify --full` → `VERIFY_SCOPE=full`; `tr -c 'a-z0-9_\n-'`; bỏ `git -C` hỏng dưới `MSYS_NO_PATHCONV`.
+- **[6]** `test_copy_work.py`, test `--full`/`gc` trong `test_run_sh.py`: 18/18 qua; đo sau: lạnh 57,51 s, ấm 5,99 s (`bao-cao-fix072.md` §2.7). Bước 5–8 chưa chạy ở tác giả.
+- **[7]** `perf(verify): cut container startup and share the work volume` (`e73af37`, `Prompt: B0-01`, `Fix: FIX-072`); review chung với FIX-071 REQUEST CHANGES 3,82/5 (finding #4, #5 P3 của FIX-072). Vòng sửa dừng giữa chừng, chỉ còn stash `a044496` ("FIX-072 vòng sửa review (dừng giữa chừng 2026-09-22): run.sh"); **không gộp**. NO-101, NO-108 đóng sau bằng FIX-083 (`531c690`).
+
+---
+
+> **Giao việc FIX-073..FIX-078.** 2026-09-23, phiên B2-01: B2-01 là prompt đầu tiên mount route ghi được bảo vệ và có cột
+> Khoá khác rỗng ở BE-BIND, làm lộ sáu lỗi của chủ khác. Người dùng chọn gộp một nhánh `fix/verify-unblock-c10-node`
+> (mỗi FIX một commit, trailer riêng); vào `main` bằng squash `d461ec8`. Review lượt 1 REQUEST CHANGES 4,69/5, lượt 2
+> APPROVE 4,97/5 (`docs/reviews/2026-09-23-fix-verify-unblock-c10-node{,-round-2}.md`).
+
+## FIX-073 cho B0-06 — C10 chung không đạt được, thân mồi lọt kho golden (NO-127, NO-134)
+
+- **[1]** `test_common__C10[projects_create_project|projects_update_project|projects_delete_project]` đỏ (assert 202 lệch content). Sau bản mồi đầu: bước 7 H1 hỏng `createdAt` ở 3 mẫu `C10-*.json` (NO-134).
+- **[2]** Worktree tạm `--detach` gộp `feature/b2-01-projects-summaries@2b5d28d`, `pytest apps/api/core/tests/test_common.py -k "C10 or C22"` với bản test cũ: 3 failed (`B2-01/log-fix-c10-before.log`).
+- **[3]** `apps/api/core/tests/test_common.py:196-207` gửi `json={}` tới id mẫu → lượt đầu luôn lỗi, BE-00 §7 xoá dòng idempotency nên không có gì để phát lại (`DEBT.md` NO-127). Thân mồi `{"mau":"c10"}` status 201 bị bộ ghi golden lưu làm mẫu thành công của op (NO-134).
+- **[4]** Sửa: `apps/api/core/tests/test_common.py`. Cấm: bộ ghi golden B0-07, mã sản phẩm.
+- **[5]** Mồi sẵn dòng `completed` như C22 mồi `in_progress`, một hàm `_seed` chung, `state` kiểu `Literal["in_progress","completed"]`; trong C10 `monkeypatch.delenv(SAMPLES_ENV)` để lượt phát lại không ghi golden (C01 vẫn là nguồn mẫu 2xx).
+- **[6]** Sau sửa `-k "C10 or C22"` 6 passed (`B2-01/log-fix-c10-worktree-check.log`); cổng lượt 2 bước 7 H1 đạt.
+- **[7]** `68c872e` `test(core): seed a completed record in the common c10 case`, `e2b791d` `test(core): type the idempotency seed state` (finding 3 lượt 1), `950a791` `test(core): keep C10's fake replay body out of golden samples` (`Prompt: B0-06`, `Fix: FIX-073`); squash `d461ec8`; verify lượt 2 thoát 0, 8/8, 2796 qua.
+
+## FIX-074 cho B0-08 — `node` 26 thiếu `libatomic1` trong ảnh verify (NO-126)
+
+- **[1]** `main` đỏ bước 5: 13 failed + 66 errors (`tools/contract/tests/*`, `test_golden_issue_token__C01`), `node` thoát 127 `libatomic.so.1: cannot open shared object file`.
+- **[2]** Verify tích hợp sau gộp B2-05a (`f797ba9`) trên `main`.
+- **[3]** Dependabot PR #3 (`3c266b8`) nâng `node:20` → `node:26-bookworm-slim` ở `deploy/docker/verify.Dockerfile:4`; binary `node` chép sang nền Python không có `libatomic1` (`DEBT.md` NO-126).
+- **[4]** Sửa: `deploy/docker/verify.Dockerfile`. Cấm: mọi file khác.
+- **[5]** Thêm `libatomic1` vào `apt-get install` sẵn có, sửa chú thích "Node 20" (người dùng chọn giữ node 26).
+- **[6]** Không có test đơn vị (đổi ảnh): `node --version` v26.10.0 thoát 0; `pytest tools/contract/tests packages/testing/golden/tests apps/api/core/tests` 395 passed, 0 failed (`B2-01/log-fix-shell-node-pytest.log`).
+- **[7]** `fix(docker): install libatomic1 for node 26 in the verify image` (`07bd7c1`, `Prompt: B0-08`, `Fix: FIX-074`); squash `d461ec8`.
+
+## FIX-075 cho B0-01 — cột Khoá giữ backtick, `charter.py` thiếu phủ nhánh (NO-128, NO-133)
+
+- **[1]** `apps/api/core/tests/test_routes.py::test_permission_keys_match_bind_rows` đỏ (`'project.create' == '`project.create`'`), `apps/api/access/tests/test_deps.py::test_role_key_on_bind_route_fails_the_route_scan` đỏ. Sau sửa đầu: bước 5 review lượt 1 hỏng `[độ phủ nhánh tập file bị chạm < 90%] 83.33%`.
+- **[2]** Bước 5 của B2-01; review lượt 1 `run.sh verify` @ `165d9fc` thoát 1.
+- **[3]** `tools/charter.py:115` `lock=cells[col_lock].strip()` không `_strip_markdown`; `tools/charter.py` thiếu dòng 40, 57, 66, nhánh 46->48, 48->50 (`DEBT.md` NO-128, NO-133).
+- **[4]** Sửa: `tools/charter.py`, `tools/tests/test_charter.py`.
+- **[5]** `lock=_strip_markdown(cells[col_lock])` như cột op/chủ; 5 test đường lỗi phân tích bảng bằng `_write_table`; `test_khoá_bỏ_backtick` không ghim hàng 25 của BE-BIND thật.
+- **[6]** `test_khoá_bỏ_backtick` + 5 test lỗi bảng; `tools/charter.py` 100 % dòng và nhánh (thân `45f7747`).
+- **[7]** `77acfb8` `fix(tools): strip markdown from the bind lock column`, `45f7747` `test(tools): cover charter table parsing errors` (`Prompt: B0-01`, `Fix: FIX-075`); squash `d461ec8`.
+
+## FIX-076 cho B0-06 — C05 parametrize kép làm `case_gate` tách sai op (NO-129)
+
+- **[1]** `case_gate` báo thiếu C05 cho mọi op được bảo vệ dù test xanh.
+- **[2]** Bước 5b của B2-01; id test `test_common__C05[chuoi-rac-projects_create_project]`.
+- **[3]** `apps/api/core/tests/test_common.py:128-133` parametrize `token` × `operation`; `_TEST_COMMON_RE` ở `tools/case_gate.py:294` chỉ tách đúng op khi id là `test_common__C05[<op>]` (`DEBT.md` NO-129).
+- **[4]** Sửa: `apps/api/core/tests/test_common.py`. Cấm: `tools/case_gate.py`.
+- **[5]** Lặp `BAD_TOKENS` trong thân test, chỉ parametrize theo op.
+- **[6]** `case_gate` trên worktree tạm gộp B2-01: 5 op `projects_*` đều "đạt" C05 (`B2-01/log-fix-c05-gate-check.log`); cổng lượt 2 bước 5b đạt.
+- **[7]** `test(core): loop bad tokens in c05 body, not a second parametrize` (`8a61c20`, `Prompt: B0-06`, `Fix: FIX-076`); squash `d461ec8`.
+
+## FIX-077 cho B0-03 — test `new_revision` dùng mã prompt thật (NO-131)
+
+- **[1]** 4 test đỏ khi B2-01 có revision `r20260923_b2_01`: `test_creates_revision_with_charter_name`, `test_revision_date_read_from_clock_at_call_time`, `test_second_revision_for_same_prompt_is_rejected`, `test_fix_revision_allowed_once`.
+- **[2]** Worktree tạm gộp `feature/b2-01-projects-summaries@2b5d28d`, bản test cũ: 4 failed + 10 passed (`B2-01/log-fix077-merged-before.log`).
+- **[3]** `packages/db/tests/test_new_revision.py:65-107` dùng `B2-01` trên bản sao `versions` thật; luật một-revision-mỗi-prompt (BE-00 §6.1) (`DEBT.md` NO-131).
+- **[4]** Sửa: `packages/db/tests/test_new_revision.py`.
+- **[5]** Mã mẫu `B9-98` (cùng họ head mẫu `b9_99`), một hằng `CODE`/`CODE_LOWER` dùng chung.
+- **[6]** Sau sửa 14 passed cả trên nhánh lẫn bản gộp B2-01 (`B2-01/log-fix077-branch.log`, `log-fix077-merged-after.log`).
+- **[7]** `test(db): use an unused prompt code in new_revision tests` (`165d9fc`, `Prompt: B0-03`, `Fix: FIX-077`); squash `d461ec8`.
+
+## FIX-078 cho B0-09 — admin giả của H2 không có dòng `users` (NO-132)
+
+- **[1]** `tools/ci/tests/test_h2.py::test_main_real_app_passes` đỏ (`assert 1 == 0`), `ForeignKeyViolationError` trên `fk_project_memberships_user_id_users` → 500 ở `POST /api/projects` (cổng M của B2-01: 3014 qua / 1 hỏng).
+- **[2]** Worktree tạm gộp B2-01, `pytest tools/ci/tests/test_h2.py::test_main_real_app_passes` → 1 failed (`B2-01/log-fix-round2-h2-before.log`).
+- **[3]** `tools/ci/h2.py:336-340` `_admin_header` sinh `usr_<ULID>` không seed (`DEBT.md` NO-132; `B2-01/bao-cao-m-luot1.md` mục G).
+- **[4]** Sửa: `tools/ci/h2.py`, `tools/ci/tests/test_h2.py`. Cấm: `apps/api/projects/service.py` (không bắt `IntegrityError` che lỗi).
+- **[5]** Sinh `admin_id` một lần trong `main()`, `_migrate_and_seed()` chèn dòng `users` (vai admin, active) qua `_seed_admin_user`, `_admin_header()` dùng cùng id; sửa docstring.
+- **[6]** `test_seed_admin_user_inserts_a_real_row`; `test_main_real_app_passes` qua sau sửa (`B2-01/log-fix-round2-h2-after.log`), chạy thật 8,4 s ở review lượt 2.
+- **[7]** `fix(ci): seed the h2 fake admin as a real user row` (`e44e791`, `Prompt: B0-09`, `Fix: FIX-078`); squash `d461ec8`.
+
+## FIX-079 — không dùng
+
+Cấp ở `backend/dieu-phoi/chay/B2-01/bao-cao-m-luot1.md:118` cho lỗi "lượt phát lại C10 lọt kho golden" (NO-134), rồi người
+điều phối gom vào FIX-073 (`spec-m-luot2.md:10`: "FIX-073 = C10 chung (NO-127, và NO-134)"); bản sửa là `950a791`
+(`Fix: FIX-073`), thân squash `d461ec8` ghi "FIX-073 (B0-06, NO-127, NO-134)". Không commit nào mang `Fix: FIX-079`.
+
+---
+
+> **Giao việc FIX-080.** 2026-09-23, phiên B4-01: Dependabot gộp `redis` 6.4.0 → 8.1.0 (`d0bb175`, PR #5) thẳng trên GitHub,
+> vào `main` qua `4f4f295`; bước 3 của mọi prompt đỏ. Một nhánh `fix/b0-05-redis8-mypy`, mỗi chủ một commit với trailer
+> `Prompt:` của mình; gộp `--no-ff` `a26ee15`.
+
+## FIX-080 cho B0-05, B0-06, B1-01 — `mypy --strict` đỏ sau bump redis-py 8 (NO-148)
+
+- **[1]** Bước 3 `mypy --strict` trên `main`: 6 lỗi — `packages/messaging/streams.py:143` (3, `arg-type`/`index`), `packages/messaging/tests/test_locks.py:66` (`arg-type`), `apps/api/core/tests/test_internals.py:251` và `apps/api/auth/tests/test_units.py:180` (`redundant-cast`).
+- **[2]** Xoá hết file B4-01 rồi chạy mypy trên `main`: vẫn đúng 6 lỗi (`B4-01/log-viec-a-tests-1.log`, mục BASELINE MYPY).
+- **[3]** Stub redis-py 8 gộp kiểu trả `xread` RESP2/RESP3 (thêm nhánh `dict`) và đổi kiểu `Awaitable` của lệnh (`DEBT.md` NO-148, `B4-01/spec-fix-080.md` §1).
+- **[4]** Sửa: B0-05 `packages/messaging/streams.py`, `tests/test_locks.py`, `tests/test_streams.py`; B0-06 `apps/api/core/tests/test_internals.py`; B1-01 `apps/api/auth/tests/test_units.py`. Cấm: `uv.lock`, `docs/charter/*`.
+- **[5]** Thu hẹp kết quả `xread` ở một chỗ (`_stream_entries`, dạng không phải list → `TypeError`), không `type: ignore`/`cast` mù; bỏ `cast` thừa.
+- **[6]** Test gọi thẳng `_stream_entries` cho hai nhánh `TypeError` (vòng sửa `B4-01/spec-fix-080-vs1.md`); mypy 6 → 0; `packages/messaging` 100 % / 100 %.
+- **[7]** `dfc9a8b` `fix(messaging): narrow xread results for redis-py 8 stubs` (B0-05), `0d73ade` (B0-06), `58b932c` (B1-01), `cc57a74` `test(messaging): cover RESP3 guards of the xread narrowing` (B0-05), đều `Fix: FIX-080`; review `docs/reviews/2026-09-23-fix-b0-05-redis8-mypy.md` APPROVE 4,64/5, verify thoát 0, 8/8, 3029 qua; gộp `a26ee15`, đóng NO-148 ở `5ec6505`; nợ review NO-151..NO-153.
+
+---
+
+> **Giao việc FIX-081.** 2026-09-23, phiên B7-01: review lượt 1 B7-01 finding 3 (P1). Người dùng chọn FIX ngay trên nhánh
+> B7-01 (ngoại lệ K27 như FIX-082): commit riêng chỉ chạm test của B0-06, trailer `Prompt: B0-06` + `Fix: FIX-081`; gộp `--no-ff`.
+
+## FIX-081 cho B0-06 — test dò router giả định một router mỗi module (NO-163)
+
+- **[1]** Bước 5 hỏng ở `apps/api/core/tests/test_app.py::test_discover_routers_finds_real_modules` khi `apps/api/telemetry` khai hai router (#9 bảo vệ, #37 công khai).
+- **[2]** `run.sh verify` của review lượt 1 B7-01 (`docs/reviews/2026-09-23-feature-b7-01-telemetry-flags-metrics.md`, bảng cổng bước 5).
+- **[3]** `apps/api/core/tests/test_app.py:158` `names == sorted(set(names))`, trong khi `discover_routers` (`apps/api/core/app.py:89-96`) nhận `ROUTERS: tuple[APIRouter, ...]` (`DEBT.md` NO-163).
+- **[4]** Sửa: `apps/api/core/tests/test_app.py`. Cấm: mã sản phẩm của B0-06.
+- **[5]** `assert names == sorted(names)` và `assert sorted(set(names)) == on_disk` (giữ ý "không sót module").
+- **[6]** Test sửa xanh với module hai router thật (`apps/api/telemetry`); bước 5 review lượt 2 đạt.
+- **[7]** `test(core): allow several routers per module in discovery test` (`f15437c`, `Prompt: B0-06`, `Fix: FIX-081`); review B7-01 lượt 2 APPROVE 4,84/5 (finding 3 đóng); gộp `--no-ff` `591eaf6`.
 
 ## FIX-100 cho B0-08 — ảnh `web` không build vì ảnh node ghim bỏ `corepack` (NO-174)
 

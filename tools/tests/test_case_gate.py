@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import types
 from pathlib import Path
@@ -53,6 +54,21 @@ def _op(**kw: Any) -> Operation:
 
 
 # --- required_cases_for: các nhánh chính của §2.2 -----------------------------
+
+
+def test_fixed_extra_khớp_case_md() -> None:
+    """`_FIXED_EXTRA` khớp đúng mục "Case thêm cố định" của CASE.md §2.2 (nguồn duy nhất, NO-335: N14 → C11).
+
+    Mỗi gạch `- Cxx ở #10 (…), N3 (…), …`: tách id dòng trước dấu ngoặc; `#10` của CASE là row_id `10`.
+    """
+    text = (case_gate.REPO_ROOT / "docs" / "charter" / "CASE.md").read_text(encoding="utf-8")
+    block = text.split("**Case thêm cố định**", 1)[1].split("\n\n", 1)[0]
+    expected: dict[str, set[str]] = {}
+    for case_id, rest in re.findall(r"^- (C\d+) ở (.+)$", block, flags=re.M):
+        rows = re.sub(r"\([^)]*\)", "", rest.split(". ", 1)[0])
+        for row_id in re.findall(r"#?(N?\d+)", rows):
+            expected.setdefault(row_id, set()).add(case_id)
+    assert expected == case_gate._FIXED_EXTRA
 
 
 def test_case_chung_chỉ_khi_protected() -> None:
