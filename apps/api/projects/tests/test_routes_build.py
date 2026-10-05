@@ -163,7 +163,7 @@ async def test_empty_page_runs_only_the_project_query(
     assert counter.count == 1, counter.statements
 
 
-async def test_projects_list_members_carry_signed_avatar_url_from_app_storage(
+async def test_projects_list__members_carry_signed_avatar_url_from_app_storage(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """NO-194: thành viên có `avatar_key` → `GET /api/projects` trả `avatarUrl` ký qua `app.state.storage` thật."""

@@ -104,7 +104,7 @@ async def test_user_out_omits_avatar_url_when_never_uploaded(local_storage: Loca
     assert "avatarUrl" not in dumped
 
 
-async def test_user_outs_signs_the_whole_batch_in_order(local_storage: LocalDiskStorage) -> None:
+async def test_user_outs__signs_the_whole_batch_in_order(local_storage: LocalDiskStorage) -> None:
     """NO-207: lô trộn người có/không ảnh ra đúng thứ tự, mỗi phần tử y hệt `user_out` đơn."""
     with_avatar, without = _user(), _user()
     with_avatar.avatar_key = avatar(with_avatar.id, "0" * 26, "jpg")
