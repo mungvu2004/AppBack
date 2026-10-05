@@ -281,12 +281,12 @@ Thăm dò sống trên ảnh dựng thật từ cây `7ae1292` (+ vá W10), mộ
 
 1. **Sao lưu mã hoá không bắt buộc ở production.** (Mã: từ FIX-339 `backup.sh` thoát 1 khi `APP_ENV=production` thiếu recipient; luật hiến chương + `staging` vẫn chờ.) `backup.sh:24` mặc định `BACKUP_AGE_RECIPIENT` rỗng và ghi bản rõ; "bắt buộc mã hoá" chỉ nằm trong runbook (`deploy/scripts/README.md:295`, B0-10 [6]); BE-00 không nhắc `age`. Đề xuất: BE-00 §13 thêm luật "ở `staging`/`production`, `backup.sh` thoát 2 khi thiếu `BACKUP_AGE_RECIPIENT` (trừ khi đặt cờ cho phép bản rõ tường minh)" và khai biến trong `env.example`. (C-18)
 2. **BE-00 §11 không ghi hạn mức cho N3, #5, #44, #45, #37, SSE, `health_ready`** (chỉ có số cho N8–N10, N13, N14, đăng nhập, refresh). Mã đang dùng 60/3600 s, 60/600 s, 30/3600 s, 120/60 s, 6 và 500 kết nối, 60/60 s. Đề xuất: thêm bảng số liệu vào §11. (C-30..C-37)
-3. **Không hạn mức tầng nginx.** Không có `limit_req`/`limit_conn` (C/L-03); chống lạm dụng chỉ ở app, `/api/files/{token}` và các GET công khai không có hạn mức. Đề xuất: hiến chương ghi rõ quyết định, hoặc thêm `limit_conn` cho `/api/streams/`.
+3. **Không hạn mức tầng nginx.** Không có `limit_req`/`limit_conn` (C/L-03); chống lạm dụng chỉ ở app, `/api/files/{token}` và các GET công khai không có hạn mức. Đề xuất: hiến chương ghi rõ quyết định, hoặc thêm `limit_conn` cho `/api/streams/`. Đã sửa — FIX-314 (limit_conn /api/streams/), FIX-316 (test __C11).
 4. **Bộ che log chỉ phủ khoá dict + ba mẫu chuỗi.** BE-00 §11 không đòi che bí mật nhúng trong chuỗi tự do (URL kết nối, `password=…`); đề xuất mở rộng luật, `SEC-042` thực thi phần URL. (C-06)
 5. **`env.example` có giá trị mẫu hợp lệ về độ dài** (`SECRET_KEY` 33 byte): hiến chương §5/§13 nên cấm khoá mẫu ngoài dev (→ `SEC-041`).
 6. **W23 "≥ 60 phút, làm tròn theo giờ"** thực tế cho 60–120 phút (đo 60,5 phút lúc 00:59:30); đề xuất ghi "60–120 phút". (C-19)
 7. **Chính sách miễn `.gitleaks.toml`** theo SHA cố định: mỗi test mới có chuỗi giống khoá lại làm cổng lịch sử đỏ (11 phát hiện, `SEC-043`); đề xuất chọn một cách miễn thống nhất (dòng `gitleaks:allow`).
-8. **Tên test C11 của N14** (`test_me_replace_avatar_rate_limited`) không mang mã `C11` nên `case_gate` không đếm; đề xuất CASE §2 nhắc quy ước đặt tên cho test hạn mức. (C-29; chủ B1-04)
+8. **Tên test C11 của N14** (`test_me_replace_avatar_rate_limited`) không mang mã `C11` nên `case_gate` không đếm; đề xuất CASE §2 nhắc quy ước đặt tên cho test hạn mức. (C-29; chủ B1-04) Đã sửa — FIX-314 (limit_conn /api/streams/), FIX-316 (test __C11).
 
 ### Việc D
 
