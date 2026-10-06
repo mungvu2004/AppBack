@@ -15,16 +15,16 @@ from apps.api.telemetry.settings import TelemetrySettings, get_telemetry_setting
 from apps.api.telemetry.tests.mirror import read_ts_array
 
 
-def test_feature_flag_keys_has_five_valid_keys() -> None:
-    assert len(FEATURE_FLAG_KEYS) == 5
-    assert len(set(FEATURE_FLAG_KEYS)) == 5
+def test_feature_flag_keys_has_six_valid_keys() -> None:
+    assert len(FEATURE_FLAG_KEYS) == 6
+    assert len(set(FEATURE_FLAG_KEYS)) == 6
     for key in FEATURE_FLAG_KEYS:
         assert FEATURE_FLAG_KEY_PATTERN.fullmatch(key), key
         assert len(key) <= MAX_FEATURE_FLAG_KEY_LENGTH
 
 
 def test_feature_flag_keys_mirror_appfront(appfront_dir: Path) -> None:
-    """`FEATURE_FLAG_KEYS` == `FEATURE_FLAG_KEYS` của `src/lib/telemetry/flags.ts:86-92`, so như tập hợp."""
+    """`FEATURE_FLAG_KEYS` == `FEATURE_FLAG_KEYS` của `src/lib/telemetry/flags.ts` (FE), so như tập hợp."""
     fe_keys = read_ts_array(appfront_dir / "src/lib/telemetry/flags.ts", "FEATURE_FLAG_KEYS")
     assert set(fe_keys) == set(FEATURE_FLAG_KEYS)
 

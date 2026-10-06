@@ -152,6 +152,7 @@ services:
     environment:
       <<: *app-env
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS}
+      FEATURE_FLAGS: ${FEATURE_FLAGS:-{}}
     networks:
       - appback
     healthcheck:

@@ -140,6 +140,8 @@ services:
       service: ml
     image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-ml:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
     profiles: ["ml"]
+    environment:
+      ML_BACKEND: ${ML_BACKEND:-onnx}
     depends_on:
       redis-broker:
         condition: service_healthy

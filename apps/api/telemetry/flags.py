@@ -1,6 +1,6 @@
-"""5 khoá cờ tính năng #9 và cách tính theo vai (B7-01 [2], [5], [6]).
+"""6 khoá cờ tính năng #9 và cách tính theo vai (B7-01 [2], [5], [6]).
 
-Gương `src/lib/telemetry/flags.ts:73,76,86-92` (FE): 5 khoá, cùng mẫu và trần độ dài,
+Gương `src/lib/telemetry/flags.ts:73,76,86-92` (FE): 6 khoá, cùng mẫu và trần độ dài,
 client không giải mã bằng schema nên khoá lạ/kiểu sai phải bị chặn ngay lúc **nạp cấu
 hình** ở BE (K01/K02), không phải lúc trả response.
 """
@@ -21,6 +21,7 @@ FEATURE_FLAG_KEYS: Final = (
     "rules.parallel-run",
     "export.pdf-vector",
     "qc.live-collaboration",
+    "scene.pascal-viewer",
 )
 
 _MIN_ROLES: Final = 1

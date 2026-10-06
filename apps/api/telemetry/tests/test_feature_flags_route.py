@@ -22,13 +22,14 @@ from packages.testing.fixtures.clock import FakeClock
 
 PATH = "/api/feature-flags"
 
-FIVE_KEYS_ONE_ROLE = json.dumps(
+SIX_KEYS_ONE_ROLE = json.dumps(
     {
         "scene.instanced-walls": True,
         "scene.soft-shadows": False,
         "rules.parallel-run": {"roles": ["admin"]},
         "export.pdf-vector": True,
         "qc.live-collaboration": False,
+        "scene.pascal-viewer": True,
     }
 )
 TWO_KEYS = json.dumps({"scene.instanced-walls": True, "export.pdf-vector": False})
@@ -51,8 +52,8 @@ def _principal(fake_clock: FakeClock, role: Role) -> Principal:
 async def test_telemetry_read_feature_flags__C01(
     api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, fake_clock: FakeClock
 ) -> None:
-    """C01: 5 khoá cấu hình đủ, một khoá theo vai — `admin` → true, `viewer` → false."""
-    monkeypatch.setenv("FEATURE_FLAGS", FIVE_KEYS_ONE_ROLE)
+    """C01: 6 khoá cấu hình đủ, một khoá theo vai — `admin` → true, `viewer` → false."""
+    monkeypatch.setenv("FEATURE_FLAGS", SIX_KEYS_ONE_ROLE)
     reset_telemetry_settings_cache()
 
     admin = await api_client.get(PATH, headers=auth_headers(_principal(fake_clock, "admin")))
@@ -64,6 +65,7 @@ async def test_telemetry_read_feature_flags__C01(
         "rules.parallel-run": True,
         "export.pdf-vector": True,
         "qc.live-collaboration": False,
+        "scene.pascal-viewer": True,
     }
 
     viewer = await api_client.get(PATH, headers=auth_headers(_principal(fake_clock, "viewer")))

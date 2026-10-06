@@ -11,9 +11,9 @@ COPY --from=appfront . .
 # node; ghim đủ ba số để hai lần build dùng cùng một bản pnpm.
 RUN npm install -g pnpm@9.4.0 \
     && pnpm install --frozen-lockfile \
-    && pnpm draco \
     && pnpm build \
-    && test -f dist/draco/draco_decoder.wasm
+    && test -f dist/draco/draco_decoder.wasm \
+    && test -f dist/assets/pascal/pascal-mount.js
 
 # Dòng stable. Sàn theo advisory nginx.org (2026-09-24): 1.30.5 là bản stable
 # đầu tiên "not vulnerable" ở MỌI dòng advisory, kể cả CVE-2026-90439

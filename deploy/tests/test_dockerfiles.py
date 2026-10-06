@@ -282,11 +282,13 @@ def test_dockerfile_python_minor_matches_across_stages_and_workspace() -> None:
 
 
 def test_dockerfile_web_has_draco_build_and_wasm_check() -> None:
-    """`web`: tầng build chạy `pnpm draco` và kiểm `test -f dist/draco/draco_decoder.wasm`."""
+    """`web`: tầng build chạy `pnpm build` (đã chép Draco và dựng Pascal) rồi kiểm
+    `dist/draco/draco_decoder.wasm` và `dist/assets/pascal/pascal-mount.js`."""
     _, instructions = _load("web")
     run_text = " ".join(i.args for i in instructions if i.name == "RUN")
-    assert "pnpm draco" in run_text, "web: thiếu pnpm draco"
+    assert "pnpm build" in run_text, "web: thiếu pnpm build"
     assert "test -f dist/draco/draco_decoder.wasm" in run_text, "web: thiếu kiểm draco_decoder.wasm"
+    assert "test -f dist/assets/pascal/pascal-mount.js" in run_text, "web: thiếu kiểm pascal-mount.js"
 
 
 def test_dockerfile_web_removes_base_image_default_server() -> None:

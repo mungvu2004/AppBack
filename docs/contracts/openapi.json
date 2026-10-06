@@ -1066,7 +1066,7 @@
       },
       "FeatureFlagsOut": {
         "additionalProperties": false,
-        "description": "`GET /api/feature-flags` — đúng 5 khoá của `flags.FEATURE_FLAG_KEYS`.",
+        "description": "`GET /api/feature-flags` — đúng 6 khoá của `flags.FEATURE_FLAG_KEYS`.",
         "properties": {
           "export.pdf-vector": {
             "anyOf": [
@@ -1111,6 +1111,17 @@
               }
             ],
             "title": "Scene.Instanced-Walls"
+          },
+          "scene.pascal-viewer": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene.Pascal-Viewer"
           },
           "scene.soft-shadows": {
             "anyOf": [

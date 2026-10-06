@@ -154,6 +154,8 @@ services:
         ML_VARIANT: cpu
     image: appback-ml:dev
     profiles: ["ml"]
+    environment:
+      ML_BACKEND: ${ML_BACKEND:-onnx}
     depends_on:
       redis-broker:
         condition: service_healthy

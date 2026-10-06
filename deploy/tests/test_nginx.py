@@ -613,3 +613,14 @@ def test_nginx_upstream_block_if_any_is_resolvable__no198() -> None:
             servers = [c for c in up.children if c.directive == "server"]
             assert servers
             assert all("resolve" in c.args for c in servers), f"{path}: upstream server thiếu resolve"
+
+
+def test_nginx_pascal_mount_is_no_cache_with_security_headers() -> None:
+    """B-V10-41: `/assets/pascal/pascal-mount.js` (tên không băm) là `location =` riêng,
+    `no-cache` thay cho `immutable` của `/assets/`, và vẫn `include security_headers.conf`."""
+    nodes = parse_nginx(require_path("deploy/nginx/snippets/app_locations.conf").read_text(encoding="utf-8"))
+    locs = [loc for loc in find_directive(nodes, "location") if loc.args == ["=", "/assets/pascal/pascal-mount.js"]]
+    assert len(locs) == 1, "thiếu location = /assets/pascal/pascal-mount.js"
+    headers = [c.args for c in locs[0].children if c.directive == "add_header"]
+    assert ["Cache-Control", "no-cache", "always"] in headers
+    assert "security_headers.conf" in direct_includes(locs[0])

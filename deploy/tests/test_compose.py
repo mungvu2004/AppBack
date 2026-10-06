@@ -471,3 +471,14 @@ def test_compose_mailpit_disables_rdns__no212(env: str) -> None:
     """NO-212: Mailpit dev/ci tắt tra rDNS — máy có PTR chậm (~11s) làm chậm mọi thư."""
     environment = _resolved_services(env)["mailpit"].get("environment") or {}
     assert str(environment.get("MP_SMTP_DISABLE_RDNS")).lower() == "true", f"{env}: mailpit còn bật rDNS"
+
+
+def test_compose_ml_backend_and_feature_flags_wired() -> None:
+    """`api` nhận `FEATURE_FLAGS` (mặc định `{}`) ở mọi môi trường; `ml` nhận `ML_BACKEND` (mặc định onnx)
+    ở `dev`/`ci` — prod đọc `/etc/appback/ml.env` nên `environment:` ở đó sẽ đè nó (NO-085)."""
+    for env in ENVS:
+        api_env = _resolved_services(env)["api"]["environment"]
+        assert api_env.get("FEATURE_FLAGS") == "${FEATURE_FLAGS:-{}}", f"{env}: api thiếu FEATURE_FLAGS"
+    for env in ("dev", "ci"):
+        ml_env = _resolved_services(env)["ml"]["environment"]
+        assert ml_env.get("ML_BACKEND") == "${ML_BACKEND:-onnx}", f"{env}: ml thiếu ML_BACKEND"
