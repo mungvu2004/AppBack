@@ -502,14 +502,15 @@ Gắn nhãn **không** sinh phiên bản. `note` của bản khôi phục do ser
 
 ### 7.3 `featureFlags.ts` — #9
 
-**`FeatureFlagsSchema`:** object strict, 5 khoá boolean tuỳ chọn:
+**`FeatureFlagsSchema`:** object strict, 6 khoá boolean tuỳ chọn:
 - `scene.instanced-walls`
 - `scene.soft-shadows`
 - `rules.parallel-run`
 - `export.pdf-vector`
 - `qc.live-collaboration`
+- `scene.pascal-viewer`
 
-Nguồn: `S:lib/telemetry/flags.ts:86-92`. Schema này **chỉ H1 và test dùng**; client cố ý không giải mã (`flags.ts:60-72`).
+Nguồn: `S:lib/telemetry/flags.ts:86-93`. Schema này **chỉ H1 và test dùng**; client cố ý không giải mã (`flags.ts:60-72`).
 
 ### 7.4 Năm mã chất lượng ảnh — thêm vào `quality.ts`
 
