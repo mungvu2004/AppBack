@@ -3541,3 +3541,734 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[5 SỬA NHỎ NHẤT]** git checkout main -- tệp
 - **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — docstring
 - **[7 NGHIỆM THU]** verify --steps 1,2,3,4 thoát 0; cov.sh (219 passed; notifications service/schemas/settings 100% dòng+nhánh); commit có trailer Prompt/Fix Commit `8041fa1` (nhánh `fix/debt-02-r1-api`).
+
+
+## FIX-382 cho GHEP-MASTER — chú thích stepZoom khớp thứ tự zoom trước quay (DEBT-03 NO-383 | GHEP-MASTER Nợ)
+
+- **[1 TRIỆU CHỨNG]** Docblock `stepZoom` (`e2e/viewer3d.spec.ts`, từ master 3079c439) nói zoom chạy "SAU bước quay", còn bài "ba việc" của integrate chạy zoom TRƯỚC quay (B-V8-01); chú thích lệch mã.
+- **[2 TÁI HIỆN]** nhánh merge/ghep-master @ cbfdbaae (commit gộp); sửa ở 81ad9154
+- **[3 BẰNG CHỨNG]** e2e/viewer3d.spec.ts docblock `stepZoom`; chay/GHEP-MASTER/bao-cao.md mục "Nợ" và "Bổ sung — NO-383"; chay/GHEP-MASTER/xung-dot.md dòng `stepZoom`
+- **[4 KHOANH VÙNG]** chỉ chú thích `stepZoom` ở `e2e/viewer3d.spec.ts`
+- **[5 SỬA NHỎ NHẤT]** bỏ câu "chạy SAU bước quay"; ghi bài "ba việc" zoom TRƯỚC quay, thu phóng góc phẳng có bài riêng
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — chỉ chú thích (R-33b)
+- **[7 NGHIỆM THU]** `pnpm typecheck` EXIT 0, `pnpm lint` EXIT 0 (chay/GHEP-MASTER/fix382-*.log); không chạy lại verify/e2e. Commit `81ad9154` (AppFront nhánh `fix/debt-03-fe-master`; vào qua merge 8af95279, nguồn nhánh merge/ghep-master).
+
+## FIX-383 cho GHEP-MASTER — EditorTour giữ một bộ dò neo muộn, sửa chú thích mặc định chip (DEBT-03 NO-383 | review merge-ghep-master finding 2, 4)
+
+- **[1 TRIỆU CHỨNG]** Gộp giữ hai cơ chế cùng giải "neo tour xuất hiện muộn" (integrate f35ce7ab `subscribeDom` + `useSyncExternalStore`; master eae963a9 `useEffect` + MutationObserver + rAF + `setAnchorTick`) — mã trùng, mỗi lượt đổi DOM chạy cả hai bộ dò. Chú thích prop `chipAnchorClassName` nói sai "mặc định góc trên phải" (thật là giữa cạnh dưới).
+- **[2 TÁI HIỆN]** nhánh merge/ghep-master @ 81ad9154; sửa ở 1b5ca43e
+- **[3 BẰNG CHỨNG]** src/screens/system/EditorTour/useEditorTour.ts:448-461,514-518 và :551-593; :122 (chú thích); EditorTour.tsx `DEFAULT_CHIP_ANCHOR`; docs/reviews/2026-10-06-merge-ghep-master.md finding 2, 4
+- **[4 KHOANH VÙNG]** chỉ `useEditorTour.ts` (EditorTour)
+- **[5 SỬA NHỎ NHẤT]** bỏ khối `useEffect` của master, giữ `subscribeDom`; chú thích → "Mặc định giữa cạnh dưới (B-V2-05) — xem `DEFAULT_CHIP_ANCHOR`"
+- **[6 TEST CHẶN TÁI PHÁT]** bài NO-208 "neo có mặt SAU commit đầu" (`EditorTour.test.tsx`); đột biến tạm `subscribeDom` → `new MutationObserver(() => undefined)`: đỏ (`fix383-mutation-subscribeDom.log`, EXIT 1) → khôi phục xanh (EditorTour 30/30, `fix383-vitest-editortour.log`)
+- **[7 NGHIỆM THU]** round 2 (sha 5bf3a9ee): typecheck 0, lint 0, length 0, vitest EditorTour+ProcessingScreen+lib/realtime 9 tệp/176 test EXIT 0, e2e đích editor-tour-chip + viewer3d 20 qua EXIT 0 (chay/GHEP-MASTER/round2-*.log); review lượt 2 APPROVE. Commit `1b5ca43e` (AppFront nhánh `fix/debt-03-fe-master`; vào qua merge 0b094516).
+
+## FIX-384 cho GHEP-MASTER — test cổng tiến độ truyền refreshAuth (DEBT-03 NO-383 | review merge-ghep-master finding 3)
+
+- **[1 TRIỆU CHỨNG]** Dòng NO-154 `refreshAuth` thêm tay vào `createProgressStream` khi giải xung đột không có test nào bắt: xoá dòng thì cổng vẫn xanh.
+- **[2 TÁI HIỆN]** nhánh merge/ghep-master @ 1b5ca43e; sửa ở 5bf3a9ee
+- **[3 BẰNG CHỨNG]** src/screens/pipeline/ProcessingScreen/processingGateway.ts:826; docs/reviews/2026-10-06-merge-ghep-master.md finding 3
+- **[4 KHOANH VÙNG]** chỉ `useProcessingScreen.test.ts` (khối riêng, không chạm `processingGateway.test.ts` để tránh đụng cụm P)
+- **[5 SỬA NHỎ NHẤT]** thêm bài đi qua cổng với `EventSourceImpl` giả: SSE chết `SSE_FAILURE_LIMIT` lần → `refreshSingleFlight` đúng 1 lần `{source:'local'}`, chết tiếp không xin thêm
+- **[6 TEST CHẶN TÁI PHÁT]** "processingGateway — NO-154 qua cổng tiến độ" (`useProcessingScreen.test.ts`); đột biến xoá dòng `refreshAuth` ở processingGateway.ts: đỏ "expected spy to be called 1 times, but got 0" (`fix384-mutation-red.log`, EXIT 1) → xanh 27/27 (`fix384-vitest-green.log`, EXIT 0)
+- **[7 NGHIỆM THU]** typecheck 0, lint 0, length 0, vitest 3 thư mục EXIT 0 (176 test), e2e đích 20 qua (chay/GHEP-MASTER/round2-*.log). Commit `5bf3a9ee` (AppFront nhánh `fix/debt-03-fe-master`; vào qua merge 0b094516).
+
+## FIX-385 cho F-05b — N7 latestUploads gửi limit=200 trên mọi trang (DEBT-03 NO-362)
+
+- **[1 TRIỆU CHỨNG]** `drawings.latestUploads` gọi `callGet` không query nên dùng limit mặc định 50 của N7 (tối đa 200).
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-a @ 8c28ef96
+- **[3 BẰNG CHỨNG]** src/api/client.ts `drawings.latestUploads`; docs/contracts/openapi.json:7394 (limit mặc định 50, tối đa 200)
+- **[4 KHOANH VÙNG]** chỉ `src/api/client.ts` + test
+- **[5 SỬA NHỎ NHẤT]** `http.get(path,{query:{limit:200}})` cho mọi trang
+- **[6 TEST CHẶN TÁI PHÁT]** `src/api/__tests__/client.test.ts` "sends limit=200 (the N7 maximum) on every page of latestUploads"; đỏ trên base: `pnpm vitest run src/api/__tests__/client.test.ts src/screens/export/VersionHistory/versionHistoryFixtures.test.ts` EXIT 1 (red1.log) → xanh `pnpm vitest run src/api/__tests__/client.test.ts` EXIT 0, 28 passed (green-362.log)
+- **[7 NGHIỆM THU]** typecheck 0, lint 0, length 0; vitest 1371 pass (src/api, RoomLabelReview, VersionHistory) (chay/DEBT-03/w1/A/bao-cao.md); hồ sơ w1/A/tai-hien-NO-362.md. Commit `f6822ce9` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-386 cho F-08 — gỡ spatial.listVersions và endpoint spatial.versions không ai dùng (DEBT-03 NO-366)
+
+- **[1 TRIỆU CHỨNG]** Phương thức client `spatial.listVersions` (kèm kiểu, bản mock) và `ENDPOINTS.spatial.versions` không có nơi gọi nào; màn Lịch sử phiên bản dùng gateway riêng.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-a @ 8c28ef96
+- **[3 BẰNG CHỨNG]** src/api/client.ts, src/api/__mocks__/client.ts (định nghĩa); src/api/endpoints.ts:268; `git grep -n "spatial.listVersions"` ngoài định nghĩa rỗng (w1/A/tai-hien-NO-366.md, grep-366.log)
+- **[4 KHOANH VÙNG]** `src/api/client.ts`, `src/api/__mocks__/client.ts`, `endpoints.ts`; giữ `FloorVersionPageSchema`/`makeFloorVersionPage` (mock N17–N20 còn dùng)
+- **[5 SỬA NHỎ NHẤT]** xoá kiểu, cài đặt và mock `listVersions`; xoá `spatial.versions`; import `FloorVersionPageSchema` kiểu-chỉ (b92b3e4d)
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — mã chết; bằng chứng `git grep` rỗng sau sửa + `pnpm typecheck` EXIT 0 (tc2.log)
+- **[7 NGHIỆM THU]** `pnpm vitest run src/api src/screens/export src/screens/dashboard` EXIT 0. Commit `23d98fb7`, `b92b3e4d`, `fab27832` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-387 cho F-08 — bộ mẫu lịch sử phiên bản đánh dấu bản mới nhất là Hiện tại (DEBT-03 NO-367)
+
+- **[1 TRIỆU CHỨNG]** Bộ mẫu VersionHistory đánh dấu v13 "Hiện tại" trong khi bản mới nhất là v14.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-a @ 8c28ef96
+- **[3 BẰNG CHỨNG]** src/screens/export/VersionHistory/versionHistoryFixtures.ts; w1/A/tai-hien-NO-367.md
+- **[4 KHOANH VÙNG]** `versionHistoryFixtures.ts` + tệp test mới `versionHistoryFixtures.test.ts` (ngoài whitelist, đã ghi ở bao-cao.md)
+- **[5 SỬA NHỎ NHẤT]** thêm v15 (mới nhất, hiện tại) vào bộ mẫu thay vì đẩy v14 thành hiện tại (bài "nút phục hồi CÓ mặt" cần bản đang xem không hiện tại); trạng thái `empty` đặt `isCurrent: true` cho hàng duy nhất
+- **[6 TEST CHẶN TÁI PHÁT]** `versionHistoryFixtures.test.ts` "marks the newest version of the sample history as current"; đỏ trên base (red1.log, EXIT 1) → xanh `pnpm vitest run src/screens/export` EXIT 0, 151 passed (green-367.log)
+- **[7 NGHIỆM THU]** typecheck 0, lint 0, length 0; chú thích story theo FIX-408. Commit `bf5b5f64` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-388 cho F-07 — dự án mẫu Sunrise không tầng có 0 tường (DEBT-03 NO-370)
+
+- **[1 TRIỆU CHỨNG]** Sunrise báo `floorCount: 0` nhưng `wallsTotalCount: 132`: dự án có tường mà không có tầng.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-a @ 8c28ef96
+- **[3 BẰNG CHỨNG]** src/api/__mocks__/client.ts (dòng dữ liệu `wallsTotalCount` 132 → 0 nằm trong commit 23d98fb7, xem mục "Hồ sơ lệch"; af01f518 chỉ sửa chú thích bộ mẫu + test); w1/A/tai-hien-NO-370.md
+- **[4 KHOANH VÙNG]** `src/api/__mocks__/client.ts`, `src/api/__tests__/client.test.ts`
+- **[5 SỬA NHỎ NHẤT]** Sunrise `wallsTotalCount: 0`, giữ `floorCount: 0` (projectGroups.test.ts:191 cần); ba thẻ, ba `status` giữ nguyên
+- **[6 TEST CHẶN TÁI PHÁT]** `client.test.ts` "mock project summaries: a project with walls has at least one floor"; đỏ trên base (red1.log, EXIT 1: floorCount 0, wallsTotalCount 132) → xanh `pnpm vitest run src/api src/screens/dashboard src/screens/onboarding` EXIT 0, 1338 passed (green-370.log)
+- **[7 NGHIỆM THU]** e2e dashboard + room-label 37 pass (e2e3.log); ảnh chuẩn dashboard cập nhật theo FIX-408. Commit `af01f518` (+ dòng dữ liệu ở `23d98fb7`) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-389 cho F-04x-1 — ô tên phòng chặn tên rỗng; bộ mẫu mặc định không còn phòng rỗng (DEBT-03 NO-358)
+
+- **[1 TRIỆU CHỨNG]** Tên phòng rỗng bị lệnh chặn nhưng ô không báo gì; ba phòng mẫu mặc định tên rỗng bị schema lưu #35 từ chối cả lớp.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-a @ 8c28ef96
+- **[3 BẰNG CHỨNG]** roomFloorCommands.ts:196-200; RoomLabelNameField.tsx; roomLabelFixture.ts:205; spatialLayerSave.ts:188; BE `Room.name` luôn không rỗng (model.py:57-61,201; openapi.json:3984); w1/A/quyet-dinh.md
+- **[4 KHOANH VÙNG]** `src/screens/qc/RoomLabelReview/**` (RoomLabelNameField, roomLabelFixture, roomLabelReviewScenarios, test), `e2e/v7/room-label-review.spec.ts`
+- **[5 SỬA NHỎ NHẤT]** ô nhập chặn tên rỗng (báo lỗi, giữ tên cũ, không gọi onCommit); bộ mẫu mặc định đặt tên khác rỗng, trạng thái chưa tên giữ ở biến thể cục bộ `ROOM_LABEL_FIXTURE_ROOMS_UNNAMED` (phương án A do điều phối chọn ở vòng c)
+- **[6 TEST CHẶN TÁI PHÁT]** `RoomLabelNameField.test.tsx` "chặn tên rỗng ở ô: báo lỗi, giữ tên cũ, không gọi onCommit" (đỏ `pnpm vitest run …/RoomLabelNameField.test.tsx` EXIT 1 red-358.log → `pnpm vitest run src/screens/qc/RoomLabelReview` EXIT 0, 52 passed green-358.log); `roomLabelFixture.test.ts` "every default sample room passes the real room schema" (đỏ EXIT 1 red-358b.log, 3 phòng bị RoomSchema từ chối → xanh `pnpm vitest run src/screens/qc/RoomLabelReview src/api src/lib/autosave` EXIT 0, 1402 passed; e2e room-label-review 15 passed EXIT 0, e2e5.log)
+- **[7 NGHIỆM THU]** typecheck 0, lint 0, length 0. Commit `b1e64d17` (ô tên), `6faf1e61` (test commit/Esc/gợi ý), `8cb184f5` (bộ mẫu) (AppFront nhánh `fix/debt-03-fe-master`). Lệch chủ commit 8cb184f5 và dòng đầu 6faf1e61 dài 74 ký tự: xem mục "Hồ sơ lệch".
+
+## FIX-390 cho F-08 — phiếu hoàn tác lượt phục hồi không bị dùng trước khi N19 ngược xong (DEBT-03 NO-365)
+
+- **[1 TRIỆU CHỨNG]** Bấm "Hoàn tác" khi N19 ngược hỏng (mạng/5xx): dải lỗi, toast đã đóng, phiếu đã `used`, mất lối hoàn tác dù còn trong 8 s; bấm đúp: lượt hai hiện dải "đã được hoàn tác" sai lúc.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ 8c28ef96: `pnpm vitest run src/screens/export/VersionHistory/VersionHistory.test.tsx -t "NO-36"` EXIT 1
+- **[3 BẰNG CHỨNG]** versionHistoryGateway.ts:286 (`ticket.undo()` trước `listVersionPage`/`send`); undoTicket.ts:64; Toast.tsx:98-105
+- **[4 KHOANH VÙNG]** `versionHistoryGateway.ts` (revertRestore, xoá `listVersions`/`undoRestore` chết), `useVersionHistory.ts` (runUndo), `types.ts`, `versionHistoryModel.ts` (UNDO_RETRY_TOAST), test; cấm `src/lib/mutations/**`, `src/api/**`
+- **[5 SỬA NHỎ NHẤT]** gateway kiểm `used`/đang bay → UNDO_USED_NOTICE, `expired` → UNDO_EXPIRED_NOTICE; WeakSet "đang bay"; `ticket.undo()` chỉ khi N19 có câu trả lời; lỗi ném giữ phiếu active; hook: WeakSet theo phiếu trước `flushFirst`, lỗi ném + phiếu còn active → toast `UNDO_RETRY_TOAST` cùng phiếu
+- **[6 TEST CHẶN TÁI PHÁT]** `VersionHistory.test.tsx` "NO-365: bấm đúp "Hoàn tác" chỉ một N19 ngược bay; N19 ngược hỏng → phiếu còn dùng…"; `versionHistoryGateway.test.ts` "NO-365: N19 ngược ném (503) → phiếu còn active…; 409 → phiếu hết dùng"; đỏ trên base EXIT 1 → xanh EXIT 0 (w1/V/tai-hien-NO-365.md; log đỏ chạy lại ở R1 `red-365-369-r1.log`, xem FIX-449)
+- **[7 NGHIỆM THU]** đỏ EXIT 1 → xanh EXIT 0; cổng đầy đủ ở việc gộp. Commit `8b11b1bf` (cùng FIX-392) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-391 cho F-08 — N18 (nội dung bản chụp) hỏng tạm thời có lối thử lại từng hàng (DEBT-03 NO-368)
+
+- **[1 TRIỆU CHỨNG]** N18 lỗi không phải PURGED (vd 503): hàng có ô tích tắt, không câu, không nút; `staleTime: Infinity` nên không tự nạp lại tới khi tải trang.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ 8b11b1bf + test: `pnpm vitest run src/screens/export/VersionHistory/VersionHistory.test.tsx -t "NO-368"` EXIT 1
+- **[3 BẰNG CHỨNG]** useVersionHistory.ts:95-98 (combine bỏ `isError`), :194-200; versionHistoryModel.ts:185,216,219
+- **[4 KHOANH VÙNG]** `useVersionHistory.ts`, `versionHistoryModel.ts`, `types.ts`, `VersionList.tsx`, `VersionHistory.tsx`, test; cấm `src/i18n/vi.json` (→ fragment), `versionHistoryFixtures.ts`
+- **[5 SỬA NHỎ NHẤT]** combine thêm `failed`; hàng `wanted` có N18 lỗi (không purged) → `snapshotError`; action `retrySnapshot` = `refetchQueries` đúng khoá (qua `limit()`, vẫn ≤ 2); `VersionList`: câu + nút "Thử lại", một vùng `role=status aria-live=polite`, tiêu điểm về hàng trước khi nút rời DOM; PURGED giữ "hết nội dung"
+- **[6 TEST CHẶN TÁI PHÁT]** `VersionHistory.test.tsx` "NO-368: N18 hỏng tạm thời → hàng nêu câu lỗi, nút "Thử lại" nạp lại đúng bản đó (vẫn ≤ 2), tiêu điểm về hàng, aria-live báo"; đỏ EXIT 1 → xanh EXIT 0 (w1/V/tai-hien-NO-368.md)
+- **[7 NGHIỆM THU]** đỏ EXIT 1 → xanh EXIT 0; khoá vi.json theo FIX-407. Commit `48482b14`, `1f158e8b` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-392 cho F-08 — kích thước tầng sau phục hồi (N19) nạp lại ngay, không đợi tải trang (DEBT-03 NO-369)
+
+- **[1 TRIỆU CHỨNG]** Sau phục hồi, `dimensions` của tầng trong kho vẫn là bản trước phục hồi tới khi tải lại trang.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ 8c28ef96: `pnpm vitest run src/screens/export/VersionHistory/VersionHistory.test.tsx -t "NO-36"` EXIT 1
+- **[3 BẰNG CHỨNG]** spatialLayer.ts:71-88; versionHistoryGateway.ts:336-340 (bỏ dimensions); commit.ts:264-267; replaceLevelEntities.ts:17; projectHydration.ts:136-142 (bỏ qua cùng revision)
+- **[4 KHOANH VÙNG]** `versionHistoryGateway.ts` (readFloorLayer), `types.ts`, `useVersionHistory.ts` (reloadFloor), test; gốc thật ở `commit.ts` → xử lý ở FIX-393
+- **[5 SỬA NHỎ NHẤT]** đường nạp có sẵn (`replaceFloorLayer` external): `readFloorLayer` mang `dimensions` N16, `reloadFloor` chuyển cho kho
+- **[6 TEST CHẶN TÁI PHÁT]** `VersionHistory.test.tsx` "NO-369: sau N19, kích thước của tầng trong kho là kích thước N16 trả, không phải bản cũ"; `versionHistoryGateway.test.ts` "readFloorLayer trả lớp, kích thước và revision của N16"; đỏ EXIT 1 → xanh EXIT 0
+- **[7 NGHIỆM THU]** đỏ EXIT 1 → xanh EXIT 0 (w1/V/tai-hien-NO-369.md). Commit `8b11b1bf` (cùng FIX-390) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-393 cho F-04x-2 (+ F-08) — đường nạp lại N16 mang kích thước của tầng (DEBT-03 NO-374, gốc của NO-369)
+
+- **[1 TRIỆU CHỨNG]** Sau khi nạp lại tầng từ N16 (thay ngoài, thêm tầng, autosave "Tải lại", phục hồi phiên bản), kích thước tầng vẫn cũ hoặc trống tới khi tải lại trang.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ 6744dfd4 + test: `pnpm vitest run src/hooks/useFloorLayer.test.ts src/hooks/useAutosave.scale.test.ts -t "NO-374"` EXIT 1, 3 failed
+- **[3 BẰNG CHỨNG]** src/store/commit.ts:217-267 (thiếu `dimensions`); useFloorLayer.ts:84,107; useAutosave.ts:555-562; spatialLayer.ts:71-88; projectHydration.ts:136-142
+- **[4 KHOANH VÙNG]** `src/store/commit.ts`, `src/hooks/useFloorLayer.ts`, `src/hooks/useAutosave.ts` + test (5f56ac6e, Prompt F-04x-2); VersionHistory bỏ cách nhét kích thước vào `layer` (f3a7d9fe, Prompt F-08); không đổi schema/hợp đồng
+- **[5 SỬA NHỎ NHẤT]** `FloorLayerReplacement.dimensions?` (tuỳ chọn), trải có điều kiện sau `...result.layer` trong cùng một `set`; mọi đường nạp lại N16 truyền `document.dimensions`; không chuyển `axes` (v1 luôn `[]`)
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorLayer.test.ts` "NO-374 — kích thước N16 vào kho cùng lớp" (thêm tầng; thay ngoài); `useAutosave.scale.test.ts` "NO-374: reloadFloor thay kích thước…"; `VersionHistory.test.tsx` "NO-369…" kèm assert hình tham số; đỏ EXIT 1 → xanh EXIT 0 (w1/V/tai-hien-NO-374.md)
+- **[7 NGHIỆM THU]** vitest + coverage (VersionHistory, src/hooks/useAutosave*, useFloorLayer, src/store) EXIT 0, 219 passed. Commit `5f56ac6e`, `f3a7d9fe` (AppFront nhánh `fix/debt-03-fe-master`). Review R1 P3-9 bổ sung ở FIX-448.
+
+## FIX-394 cho F-05a — tiêu điểm về nút vừa bấm sau lỗi ghi có đọc lại (DEBT-03 NO-360)
+
+- **[1 TRIỆU CHỨNG]** Cổng chất lượng: sau lỗi ghi có đọc lại, tiêu điểm nhảy về phần tử focus được đầu tiên (nút "Vùng ảnh có vấn đề").
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-q @ 8c28ef96 (nguồn trả về base, giữ test): `pnpm vitest run src/screens/upload/InputQualityGate/InputQualityGate.test.tsx -t "NO-36"` EXIT 1 (red.log)
+- **[3 BẰNG CHỨNG]** focusTrap.ts:138-163 (`sendFocusHome`); khối thay nút lúc ghi (ReportPanel.tsx:163-166 `isResolved`); Modal.tsx:65 chỉ truyền onEscape (không dùng `fallbackFocus`); w1/Q/quyet-dinh.md P-1…P-4
+- **[4 KHOANH VÙNG]** `useInputQualityGate.ts` (failedWrite, retryFocus), `InputQualityGate.tsx` (effect refocus, ref dải lỗi), `ReportPanel` (`data-quality-action`), `types.ts`
+- **[5 SỬA NHỎ NHẤT]** refocus bằng effect về nút vừa bấm khi lỗi ghi có đọc lại
+- **[6 TEST CHẶN TÁI PHÁT]** `InputQualityGate.test.tsx` "NO-360: lỗi ghi có đọc lại thì tiêu điểm về nút vừa bấm…"; đỏ EXIT 1 (red.log) → xanh EXIT 0, 3 passed (green.log)
+- **[7 NGHIỆM THU]** typecheck 0, lint 0, length 0; vòng b tiếp ở FIX-396. Commit `f57ea201` (cùng FIX-395) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-395 cho F-05a — nút "Tiếp tục xử lý" vô hiệu khi chưa có bản vẽ (DEBT-03 NO-361)
+
+- **[1 TRIỆU CHỨNG]** "Tiếp tục xử lý" bấm được khi chưa có bản vẽ.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-q @ 8c28ef96: `pnpm vitest run …/InputQualityGate.test.tsx -t "NO-36"` EXIT 1 (nút không disabled; red.log)
+- **[3 BẰNG CHỨNG]** Footer không đọc `hasNoDrawing` (useInputQualityGate.ts status/hasNoDrawing); `FloorUploadFooter.tsx` không chứa "Tiếp tục xử lý" nên không đổi (w1/Q/quyet-dinh.md P-8)
+- **[4 KHOANH VÙNG]** `useInputQualityGate.ts` (isContinueDisabled, guard onContinue), Footer (disabled + lý do), `types.ts`; mọi nơi dựng model (hook, stories, test; trường mới optional)
+- **[5 SỬA NHỎ NHẤT]** nút `disabled` kèm lý do khi `hasNoDrawing`; guard trong `onContinue`
+- **[6 TEST CHẶN TÁI PHÁT]** `InputQualityGate.test.tsx` "NO-361: …"; đỏ EXIT 1 (red.log) → xanh EXIT 0 (green.log)
+- **[7 NGHIỆM THU]** typecheck 0, lint 0, length 0; còn lại: loading/error vẫn cho bấm (xử lý ở FIX-396). Commit `f57ea201` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-396 cho F-05a — vòng b: giữ tiêu điểm người dùng, bốn góc, vô hiệu khi đang đọc/đọc hỏng (DEBT-03 NO-360, NO-361)
+
+- **[1 TRIỆU CHỨNG]** Sau f57ea201: refocus kéo cả tiêu điểm người dùng đã tự chuyển; selector `data-quality-action="corners"` không khớp kind `pickCorners` nên bốn góc không refocus; "Tiếp tục" vẫn bấm được khi đọc/đọc hỏng.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-q @ f57ea201: `pnpm vitest run …/InputQualityGate.test.tsx -t "NO-36"` EXIT 1, 4 test hỏng (red-b.log "RED-b exit 1")
+- **[3 BẰNG CHỨNG]** useInputQualityGate.ts:786; ReportPanel.tsx data attr; Footer.tsx chú thích "không chặn cứng"; w1/Q/quyet-dinh.md P-4…P-7
+- **[4 KHOANH VÙNG]** `useInputQualityGate.ts`, `InputQualityGate.tsx`, `ReportPanel`, Footer, test
+- **[5 SỬA NHỎ NHẤT]** không kéo tiêu điểm khi người dùng đã tác động (pointerdown/keydown từ lúc có lỗi); sửa selector bốn góc; `continueDisabledReason` (loading/error/no-drawing) thay `isContinueDisabled`; Footer nêu ngoại lệ
+- **[6 TEST CHẶN TÁI PHÁT]** `InputQualityGate.test.tsx`: NO-361 đang đọc, NO-361 đọc hỏng, NO-360 bốn góc, NO-360 người dùng tự chuyển tiêu điểm; đỏ EXIT 1 (red-b.log) → xanh EXIT 0, 7 passed (green-b.log)
+- **[7 NGHIỆM THU]** red-b.log EXIT 1 → green-b.log EXIT 0; hồ sơ w1/Q/tai-hien-NO-360.md, tai-hien-NO-361.md. Commit `0d5f324d` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-397 cho F-01b — cấu hình phiên hỏng không để phiên kẹt `unknown` mãi (DEBT-03 NO-357)
+
+- **[1 TRIỆU CHỨNG]** Lượt nạp `src/api` trong `configureAppSession` hỏng → `getSession()` = `{status:'unknown', serverUnreachable:false}` mãi; màn ngoài cổng (nhận lời mời) chờ vĩnh viễn; `retryAppSession()` ném "Auth is not configured…".
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ cbfdbaae: `pnpm vitest run src/routes/sessionSetup.test.ts` EXIT 1, `2 failed | 1 passed (3)`
+- **[3 BẰNG CHỨNG]** src/routes/sessionSetup.ts:103-106 (catch chỉ `starting = null`); src/lib/auth/state.ts:3-11; refresh.ts:416 → state.ts:70-71; InvitationAccept.container.tsx:29
+- **[4 KHOANH VÙNG]** `src/routes/sessionSetup.ts` (+ test mới; ngoại lệ khối [12] đã duyệt), chú thích refresh.ts:41, state.ts:114-124; cấm SessionBootstrap.tsx, router.tsx, schemas
+- **[5 SỬA NHỎ NHẤT]** `.catch` của `startAppSession`: phiên còn `unknown` → `setServerUnreachable(true)` rồi ném lại; `retryAppSession = isAuthConfigured() ? bootstrapSession() : startAppSession()`
+- **[6 TEST CHẶN TÁI PHÁT]** `sessionSetup.test.ts`: "đưa phiên sang trạng thái kết thúc có câu báo, không kẹt unknown im lặng", "thử lại sau lượt cấu hình hỏng thì cấu hình lại và mở được phiên", "thử lại khi phiên đã cấu hình thì chỉ gia hạn, không cấu hình lại"; hai ca đầu đỏ trên base (EXIT 1)
+- **[7 NGHIỆM THU]** `pnpm vitest run src/screens/auth/InvitationAccept src/routes` EXIT 0; `--coverage` (src/routes, InvitationAccept, src/lib/auth) EXIT 0, 207/207, sessionSetup.ts 96,82% dòng / 92,3% nhánh; typecheck/lint/length 0. Commit `0f99a132` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-398 cho F-09a — màn nhận lời mời không khoá nút vĩnh viễn khi mở phiên hỏng (DEBT-03 NO-357)
+
+- **[1 TRIỆU CHỨNG]** `/login/invitation#token=…` sau khi `startAppSession()` hỏng: "Nhận lời mời" `disabled` mãi, form `aria-busy`, không câu báo hay đường thử lại.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ cbfdbaae (gỡ 4 tệp nguồn, giữ test mới): `pnpm vitest run …/InvitationAccept.container.test.tsx …/InvitationAccept.test.tsx src/routes/sessionSetup.test.ts` EXIT 1, `4 failed | 29 passed (33)`
+- **[3 BẰNG CHỨNG]** InvitationAccept.container.tsx:29 (`isSessionPending`), useInvitationAccept.ts:171,296; view không có nhánh `unknown && serverUnreachable`
+- **[4 KHOANH VÙNG]** `src/screens/auth/InvitationAccept/**` — lệch whitelist (spec ghi `AuthScreen/**`; xem w2/S/hoi.md H1); cấm `src/components/**`, `vi.json` (dùng lại khoá có sẵn)
+- **[5 SỬA NHỎ NHẤT]** port `isSessionUnavailable` + `retrySession`; `InlineAlert` (`role="alert"`) ngoài `<form>` với nút "Thử lại"; bấm → `retrySession()` + tiêu điểm về ô họ tên
+- **[6 TEST CHẶN TÁI PHÁT]** `InvitationAccept.container.test.tsx` "không khoá nút mãi: nói vì sao, cho thử lại, và thử lại thì mở được phiên"; `InvitationAccept.test.tsx` "says why and offers a retry when the session could not be opened, focus staying on the form (NO-357)", "drops the retry strip once the invitation is accepted and the session needs a sign-in"; hai ca NO-357 đỏ trên base
+- **[7 NGHIỆM THU]** `pnpm vitest run src/screens/auth/InvitationAccept src/routes` EXIT 0 (30/30 thư mục màn); phủ container 90,32/100, view 97,54/100, hook 93,75/95,83; typecheck/lint/length 0. Commit `ab894231` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-399 cho F-01b — `setupFailed` cục bộ của SessionBootstrap tự xoá khi tầng phiên đã cấu hình (DEBT-03 NO-372)
+
+- **[1 TRIỆU CHỨNG]** Tải trang công khai (lời mời) khi dựng phiên hỏng → `setupFailed=true`; màn lời mời "Thử lại" cấu hình được nhưng máy chủ còn 503; sang route riêng tư, cổng vẫn "Chưa mở được ứng dụng, hãy tải lại trang" thay vì "Không kết nối được máy chủ / Thử lại".
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ 7fe9dc30 + ca test mới: `pnpm vitest run src/routes/SessionBootstrap.test.tsx` EXIT 1, `1 failed | 25 passed (26)` (red-399.log)
+- **[3 BẰNG CHỨNG]** src/routes/SessionBootstrap.tsx:232 (`useState(false)` chỉ xoá trong `onRetry` của cổng); `SessionGate` xét `setupFailed` trước `serverUnreachable` (:138, :149); w2/S/tai-hien-NO-372.md
+- **[4 KHOANH VÙNG]** `src/routes/SessionBootstrap.tsx` + test (ngoại lệ khối [12] người dùng duyệt 2026-10-07, duyet-nguoi-dung-2026-10-07.md câu 2); cấm router.tsx và `src/routes/**` khác
+- **[5 SỬA NHỎ NHẤT]** `setupFailed={setupFailed && getOptionalAuthConfig() === null}` truyền xuống `SessionGate`
+- **[6 TEST CHẶN TÁI PHÁT]** `SessionBootstrap.test.tsx` "lượt dựng hỏng rồi màn khác thử lại cấu hình được mà máy chủ còn lỗi tạm: route riêng tư cho "Thử lại", không bắt tải lại trang (NO-372)"; đỏ EXIT 1 (red-399.log) → xanh EXIT 0, 26/26 (green-399.log)
+- **[7 NGHIỆM THU]** vitest --coverage (src/routes, InvitationAccept, src/lib/auth) 208/208 EXIT 0; SessionBootstrap.tsx 96,21%/94,44%; kiểm đích I/no372-dich.log (sha 464c6c95) 208/208 EXIT 0. Commit `f1b3349d` (AppFront nhánh `fix/debt-03-fe-master`; vào qua merge 464c6c95).
+
+## FIX-400 cho F-05b — test giữ bất biến activeIndex bỏ qua tầng 404 (DEBT-03 NO-363)
+
+- **[1 TRIỆU CHỨNG]** Không test nào chặn hồi quy nếu `activeIndex` bỏ điều kiện `record.failure?.isTerminal !== true`: tầng có upload đã mất (404/403) giữ mãi chỗ "tầng đang xem".
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-p @ cbfdbaae: bất biến còn đúng; đột biến bỏ điều kiện ở :718 → `pnpm vitest run …/useProcessingScreen.test.ts -t "NO-363"` EXIT 1 (`no363-dot-bien.log`)
+- **[3 BẰNG CHỨNG]** src/screens/pipeline/ProcessingScreen/useProcessingScreen.ts:717-719; `no363-dot-bien.log`, `xanh-sau-sua.log`
+- **[4 KHOANH VÙNG]** chỉ `useProcessingScreen.test.ts`; không sửa mã sản phẩm
+- **[5 SỬA NHỎ NHẤT]** một test qua hook thật (renderHook + createProcessingGateway + createMockApiClient + MockEventSource): tầng đang xem nhận 404 ở lượt probe sau im lặng SSE → `isActive` chuyển sang tầng còn lại
+- **[6 TEST CHẶN TÁI PHÁT]** `useProcessingScreen.test.ts` "NO-363: tầng đang xem bỏ qua tầng có upload đã mất (404), nhường cho tầng còn chạy"; đột biến: đỏ EXIT 1 (`expected [ true, false ] to deeply equal [ false, true ]`) → hoàn nguyên xanh EXIT 0
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest 2 thư mục màn EXIT 0 (100 passed). Commit `79b91389` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-401 cho F-05b — toStageBreakdown: lượt pending là sáu bước chờ (DEBT-03 NO-364)
+
+- **[1 TRIỆU CHỨNG]** Lượt `pending` có `step` thật (vd `preprocess`, 0%) hiện tiến độ giả và chiếm "tầng đang xem" của tầng thật sự đang chạy; PipelineGraph thừa kế cùng giả định C3; mở lượt mới trên cùng upload (#31/#32 → start_run) giữ bước "xong" của lượt cũ.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-p @ cbfdbaae: `pnpm vitest run src/screens/pipeline/ProcessingScreen src/screens/pipeline/PipelineGraph -t "NO-36"` EXIT 1, 6 test NO-364 đỏ
+- **[3 BẰNG CHỨNG]** processingGateway.ts (base) :566-603, :572; useProcessingScreen.ts:397, :438, :717; pipelineGraphGateway.ts:312,:326; BE B2-04.md:106,:132, B2-05b.md:102; pipeline.ts:118-124; w2/P/quyet-dinh.md
+- **[4 KHOANH VÙNG]** `processingGateway.ts` (hàm chung) + test `processingGateway.test.ts`, `useProcessingScreen.test.ts`, `PipelineGraph.test.tsx`; cấm schemas, `src/api/**`, `src/lib/realtime/**`
+- **[5 SỬA NHỎ NHẤT]** trong `toStageBreakdown`, sau nhánh đã-xong và trước tra `step`: `status === 'pending'` → `supported: true`, sáu bước `{id, status:'queued'}`
+- **[6 TEST CHẶN TÁI PHÁT]** `processingGateway.test.ts` "toStageBreakdown — lượt pending (NO-364)" (2); `useProcessingScreen.test.ts` 3× "NO-364: …"; `PipelineGraph.test.tsx` "… giả định C3 dùng chung với màn Xử lý (NO-364)"; cả 6 đỏ trên base
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest hai thư mục màn EXIT 0 (100 passed). Commit `c75e31fb` (AppFront nhánh `fix/debt-03-fe-master`). Lệch chủ (chạm PipelineGraph): xem "Hồ sơ lệch". Bổ sung R1 ở FIX-451.
+
+## FIX-402 cho F-05b — bỏ `FloorProgressRecord.unmappedStep` chỉ ghi không đọc (DEBT-03 NO-378)
+
+- **[1 TRIỆU CHỨNG]** Trường `unmappedStep` (useProcessingScreen.ts:329) được ghi ở applySnapshot (:420), không nơi nào đọc; `...rest` (:409) giữ giá trị cũ.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-p @ c75e31fb: `git grep -n unmappedStep` → 2 dòng (khai báo + ghi)
+- **[3 BẰNG CHỨNG]** useProcessingScreen.ts:329, :409, :420; w2/P/tai-hien-unmappedStep.md
+- **[4 KHOANH VÙNG]** chỉ `useProcessingScreen.ts`
+- **[5 SỬA NHỎ NHẤT]** xoá khai báo (kèm chú thích) và dòng ghi; giữ `...rest` (cần cho `failure`)
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — mã chết; typecheck (trường không còn trong kiểu) + `git grep -n unmappedStep` rỗng
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest --coverage ProcessingScreen + PipelineGraph EXIT 0 (100 passed; useProcessingScreen.ts 87,56% dòng / 88,57% nhánh). Commit `21e1a6fb` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-403 cho F-07 — e2e notification-center: beforeAll hâm nóng, chặn lượt lạnh (DEBT-03 NO-371)
+
+- **[1 TRIỆU CHỨNG]** `e2e/v2v3/notification-center.spec.ts` hỏng ở bài đầu mỗi worker (cold-compile): 6/120.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-m @ 8c28ef96: lượt 2 base 6/120 hỏng, mã 1 (`openDirect` spec:48)
+- **[3 BẰNG CHỨNG]** e2e/v2v3/notification-center.spec.ts:48; w2/M/tai-hien-NO-371.md
+- **[4 KHOANH VÙNG]** chỉ `e2e/v2v3/notification-center.spec.ts`
+- **[5 SỬA NHỎ NHẤT]** `beforeAll` hâm nóng chờ heading "Thông báo" (`COLD_START_TIMEOUT_MS`)
+- **[6 TEST CHẶN TÁI PHÁT]** chính bài e2e + `beforeAll`; đỏ 6/120 (mã 1) → xanh 120/120 hai lượt (mã 0). Hạn chế: lượt xanh chạy khi cache Vite đã ấm; R1 P3-6 đo lại không `beforeAll`: lượt 1 120/120, lượt 2 1 hỏng/120 → giữ `beforeAll` (R1/S/tai-hien-P3-6.md; mã FIX-454 sau đó cấp cho R2-1 lượt Nit cuối)
+- **[7 NGHIỆM THU]** e2e notification-center 2×20 = 120/120 ×2; sau R1 I/no371-1.log, no371-2.log: 120/120 EXIT 0 cả hai. Commit `256f4134` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-404 cho F-06 — gỡ 7 bài e2e skip/fixme của chia sẻ liên kết (DEBT-03 NO-355)
+
+- **[1 TRIỆU CHỨNG]** 5 `test.skip` share-dialog.spec.ts, 1 skip tour-chip.spec.ts, 1 `test.fixme` export.spec.ts: bài chết, đếm vào số bỏ qua.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-m @ 8c28ef96 (xoá bài chết, không có lượt đỏ)
+- **[3 BẰNG CHỨNG]** e2e/…/share-dialog.spec.ts, tour-chip.spec.ts, export.spec.ts; `ExportPanel.container.tsx:160` còn dùng ShareDialog sau `SHARE_LINKS_SUPPORTED` (w2/M/fix-403-405.md)
+- **[4 KHOANH VÙNG]** chỉ các tệp e2e trên; giữ `src/screens/export/ShareDialog/**`
+- **[5 SỬA NHỎ NHẤT]** xoá 7 bài (người dùng đã quyết NO-355)
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — xoá bài chết; số bỏ qua e2e 16 → 5 (giảm 11 cùng FIX-405)
+- **[7 NGHIỆM THU]** typecheck/lint/length 0; vitest StateGallery + routes + export 297/297; e2e-2 (dac5e8ef) 0 hỏng, 5 bỏ qua. Commit `0f0e271c` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-405 cho F-09a — xoá màn Billing chết và e2e của nó (DEBT-03 NO-356)
+
+- **[1 TRIỆU CHỨNG]** `src/screens/billing/**` không còn route, `e2e/v12b/billing.spec.ts` 4 bài bị skip.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-m @ 8c28ef96 (xoá mã chết, không có lượt đỏ)
+- **[3 BẰNG CHỨNG]** route đã gỡ từ F-09a (`router.test.tsx:178-181`); `stateGalleryManifest.ts` dòng BillingScreen (ngoài whitelist, cần vì story đã xoá); w2/M/fix-403-405.md
+- **[4 KHOANH VÙNG]** `e2e/v12b/billing.spec.ts`, 12 tệp `src/screens/billing/**`, một dòng manifest StateGallery, khoá `billing` ở fragment vi.json (74 lá)
+- **[5 SỬA NHỎ NHẤT]** xoá màn, e2e và dòng manifest; khoá vi.json xoá theo FIX-407
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — xoá mã chết; `router.test.tsx:178-181` khẳng định không còn route /billing; `git grep -in billing -- src e2e` chỉ còn tệp ấy
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest 297/297, e2e-2 xanh. Commit `a6dbff75`, `657a19d6` (AppFront nhánh `fix/debt-03-fe-master`). Lệch chủ 657a19d6: xem "Hồ sơ lệch".
+
+## FIX-407 cho F-05a — gộp các mảnh vi.json của cụm V, M, X1 vào vi.json (DEBT-03 gộp I)
+
+- **[1 TRIỆU CHỨNG]** Các cụm không được sửa `src/i18n/vi.json` (thuộc Q) nên để khoá ở `vi.json.fragment`; việc gộp phải nhập chúng.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-fe-master (việc gộp I) @ 0b094516 → 0b7a2520
+- **[3 BẰNG CHỨNG]** src/i18n/vi.json: `versionHistory.list/restore` (N18/N19 cụm V); khối `billing` 74 lá (cụm M); `floorUpload.notices.awaitNetwork` (cụm X1, NO-389); D3/I/bao-cao.md mục 2
+- **[4 KHOANH VÙNG]** chỉ `src/i18n/vi.json` (+ xoá fragment cụm đã nhập)
+- **[5 SỬA NHỎ NHẤT]** ba commit: 9317f8ad khoá N18/N19; f8b93325 xoá khối `billing`; 0b7a2520 `awaitNetwork`; fragment cụm A không cần đổi vi.json
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — nhập khoá; `expectVietnamese` của các màn đọc từ điển
+- **[7 NGHIỆM THU]** verify-1.log (sha 0b7a2520, porcelain 0) 7/7 EXIT 0, 426/426 tệp; `git grep -c '' -- '*.fragment'` = 0 sau R1. Commit `9317f8ad`, `f8b93325`, `0b7a2520` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-408 cho F-08 (+ F-07) — HAI VIỆC dùng chung mã 408: chú thích VersionHistory và ảnh chuẩn dashboard (DEBT-03 gộp I)
+
+- **[1 TRIỆU CHỨNG]** Việc 1 (F-08, 7abe75bc): chú thích bộ mẫu VersionHistory lỗi thời sau FIX-387/FIX-410 (story Success nói v13 Hiện tại; `versionHistoryFixtures.ts:18` còn nhắc `listVersions`/`diff`). Việc 2 (F-07, dac5e8ef): e2e-1 hỏng `app.visual.spec.ts:24` (249 px) — ảnh chuẩn `dashboard-1440` còn dòng "…/132 tường đã duyệt" sau FIX-388.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-fe-master (việc gộp I): việc 2 đỏ ở `I/e2e-1.log` (sha 0b7a2520, EXIT 1); việc 1 chỉ chú thích
+- **[3 BẰNG CHỨNG]** VersionHistory.stories.tsx Success (dòng 66); versionHistoryFixtures.ts:18; e2e ảnh `dashboard-1440` — khác base 634 px trong khung ~96×11 px ở (347,613)–(442,623), ảnh mới trùng từng byte với `I/dashboard-1440-actual.png` (docs/reviews/2026-10-07-fix-debt-03-fe-master.md)
+- **[4 KHOANH VÙNG]** việc 1: chú thích `VersionHistory.stories.tsx`, `versionHistoryFixtures.ts`; việc 2: chỉ ảnh PNG chuẩn, không đổi ngưỡng
+- **[5 SỬA NHỎ NHẤT]** việc 1: viết lại chú thích (năm bản, v15 Hiện tại; cổng giả = cổng thật trên `createVersionsServerFake`); việc 2: thay ảnh chuẩn bằng ảnh chụp thật
+- **[6 TEST CHẶN TÁI PHÁT]** việc 1: không cần đỏ — chỉ chú thích; việc 2: chính bài `app.visual.spec.ts:24`, đỏ (e2e-1.log EXIT 1) → xanh e2e-2 (329 qua / 0 hỏng / 5 bỏ qua, EXIT 0)
+- **[7 NGHIỆM THU]** kiểm đích (R-33b); e2e-2 sha dac5e8ef EXIT 0. Commit `7abe75bc` (F-08, chú thích), `dac5e8ef` (F-07, ảnh chuẩn) (AppFront nhánh `fix/debt-03-fe-master`). Ghi chú: mã 408 được dùng cho hai việc, không viết lại lịch sử đã gộp — xem "Hồ sơ lệch".
+
+## FIX-409 cho GHEP-MASTER — spyOn thay vi.mock cả tệp trong khối NO-154 (DEBT-03 NO-383 | review merge-ghep-master lượt 2 Nit)
+
+- **[1 TRIỆU CHỨNG]** FIX-384 dùng `vi.mock('@/lib/auth')` cho cả tệp `useProcessingScreen.test.ts`, mock rò sang bài khác.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-fe-master (việc gộp I) @ 0b094516
+- **[3 BẰNG CHỨNG]** src/screens/pipeline/ProcessingScreen/useProcessingScreen.test.ts khối NO-154; docs/reviews/2026-10-06-merge-ghep-master-round-2.md (Nit)
+- **[4 KHOANH VÙNG]** chỉ `useProcessingScreen.test.ts`
+- **[5 SỬA NHỎ NHẤT]** `vi.spyOn(auth,'refreshSingleFlight')` trong khối NO-154, `mockRestore` sau mỗi bài
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — tái cấu trúc test; bài NO-154 vẫn là bài của FIX-384
+- **[7 NGHIỆM THU]** 31/31 xanh, tsc/eslint 0 (D3/I/bao-cao.md mục 2). Commit `a049430b` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-410 cho F-08 — gỡ `diff` của gateway phiên bản là mã chết (DEBT-03 NO-375)
+
+- **[1 TRIỆU CHỨNG]** `VersionHistoryGateway.diff` và `SNAPSHOT_MISSING_REASON` không nơi gọi nào ngoài test của chính nó; chú thích `versionHistoryCompare.ts:7,82` mô tả đường không còn chạy.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v: `git grep -n "gateway\.diff\|\.diff(" -- src e2e` trên 6744dfd4^ (w1/V/tai-hien-NO-375.md)
+- **[3 BẰNG CHỨNG]** versionHistoryGateway.ts:316-325, types.ts:424 (bản cũ); hook so cặp bằng `diffVersions` (useVersionHistory.ts:224)
+- **[4 KHOANH VÙNG]** `versionHistoryGateway.ts`, `types.ts`, `versionHistoryCompare.ts` (chú thích), `versionHistoryGateway.test.ts`; không sửa `versionHistoryFixtures.ts` (cụm A; chú thích đó ở FIX-408)
+- **[5 SỬA NHỎ NHẤT]** xoá `diff`, `SNAPSHOT_MISSING_REASON`, import `diffVersions` của gateway và test của `diff`; viết lại hai chú thích
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — mã chết; `git grep` rỗng sau xoá
+- **[7 NGHIỆM THU]** tsc EXIT 0; `versionHistoryGateway.test.ts` 23 passed. Commit `e5c480e3` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-411 cho F-08 — N18 đã huỷ nhả chỗ trong trần ≤ 2 (DEBT-03 NO-376)
+
+- **[1 TRIỆU CHỨNG]** Đổi tầng hoặc rời màn khi N18 chậm: truy vấn đã huỷ vẫn giữ chỗ trong giới hạn đồng thời, các bản xếp hàng sau đứng chờ.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ e5c480e3 + test: `pnpm vitest run src/screens/export/VersionHistory/VersionHistory.test.tsx -t "NO-376"` EXIT 1
+- **[3 BẰNG CHỨNG]** useVersionHistory.ts:186 (`queryFn` không đọc `signal`); versionHistoryModel.ts:519-546; client.ts:1478-1482 (`versions.snapshot` nhận `signal`)
+- **[4 KHOANH VÙNG]** `versionHistoryModel.ts` (createConcurrencyLimit), `useVersionHistory.ts`, `versionHistoryGateway.ts` (readSnapshot), `types.ts`, test; không đụng `src/api/**`
+- **[5 SỬA NHỎ NHẤT]** `limit(run, signal)`: huỷ khi xếp hàng → rời hàng rồi ném; huỷ khi chạy → nhả chỗ ngay (một lần); `readSnapshot(id, signal)`
+- **[6 TEST CHẶN TÁI PHÁT]** `VersionHistory.test.tsx` "NO-376: huỷ một N18 đang bay → nhả chỗ trong trần ≤ 2, lượt đang xếp hàng chạy tiếp"; đỏ EXIT 1 → xanh EXIT 0
+- **[7 NGHIỆM THU]** thư mục VersionHistory 61 passed. Commit `6744dfd4` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-412 cho F-01b, F-03, F-04c, F-04x-2, F-05a, F-06, F-10 (+ DEBT-03) — bỏ nhắc màn Billing đã xoá trong chú thích (DEBT-03 gộp I vòng b)
+
+- **[1 TRIỆU CHỨNG]** Sau FIX-405 chú thích còn nhắc màn/gateway/test Billing đã xoá (`expectSentenceCase.ts:194` ví dụ `<BillingScreen />`; `exportPanelGateway.ts:702`; `RuleReport.container.tsx:15`; `e2e/cross/viewer-role.spec.ts:19`…).
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-fe-master (việc gộp I vòng b) @ dac5e8ef; `git grep -in billing -- src e2e`
+- **[3 BẰNG CHỨNG]** các dòng trên; D3/I/bao-cao.md mục 7 "Nợ mới"
+- **[4 KHOANH VÙNG]** chỉ chú thích, mỗi commit một chủ (K27): 3b8bc774 (e2e viewer-role, ConnectionStates.test; F-01b), 490c109b (expectSentenceCase → `<WelcomeScreen />`; chủ không rõ, Prompt DEBT-03), 3e070b5f (exportPanelGateway, useExportPanel; F-06), 130be0d6 (wallLayerReviewGateway; F-04x-2), c18e3911 (RuleReport.container, ruleReportGateway; F-10), 0056fd75 (FloorUploadScreen.test; F-03), 6a6cf543 (InputQualityGate.test; F-05a), 868260e5 (useHistoryPanel.model, useShareLinks; F-04c)
+- **[5 SỬA NHỎ NHẤT]** viết lại chú thích bỏ nhắc Billing; ví dụ `expectSentenceCase` dùng màn sống
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — chỉ chú thích; `git grep -in billing -- src e2e` sau sửa chỉ còn `router.test.tsx:178-181` (đúng, bài khẳng định không còn route)
+- **[7 NGHIỆM THU]** typecheck/lint/length EXIT 0 (typecheck-b, lint-b, length-b ở sha 786c2810; no372-dich.log sha 464c6c95); đã soát ở review (docs/reviews/2026-10-07-fix-debt-03-fe-master.md). Commit `3b8bc774`, `490c109b`, `3e070b5f`, `130be0d6`, `c18e3911`, `0056fd75`, `6a6cf543`, `868260e5` (AppFront nhánh `fix/debt-03-fe-master`). Mã FIX-412 từng dành cho NO-377 nhưng không dùng ở đó.
+
+## FIX-413 cho DEBT-03 (chủ không rõ) — nút hành động của InlineAlert không gửi biểu mẫu bao quanh (DEBT-03 NO-373)
+
+- **[1 TRIỆU CHỨNG]** `InlineAlert` có `action` đặt trong `<form>`: bấm nút vừa gọi `onClick` vừa gửi form (ở màn lời mời: đốt token mời).
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ ab894231: `pnpm vitest run src/components/feedback/InlineAlert.test.tsx` EXIT 1
+- **[3 BẰNG CHỨNG]** src/components/feedback/InlineAlert.tsx:65 (`<Button>` không `type`); src/components/ui/Button.tsx không đặt mặc định; chủ: commit tạo 29477636 không trailer Prompt (w2/S/tai-hien-NO-373.md)
+- **[4 KHOANH VÙNG]** `InlineAlert.tsx`, thêm `InlineAlert.test.tsx`
+- **[5 SỬA NHỎ NHẤT]** `type="button"` cho nút hành động; không caller nào dựa vào submit
+- **[6 TEST CHẶN TÁI PHÁT]** `InlineAlert.test.tsx` "không gửi biểu mẫu bao quanh: nút là type="button", chỉ gọi onClick"; đỏ EXIT 1 → xanh EXIT 0
+- **[7 NGHIỆM THU]** vitest --coverage (src/components/feedback, src/routes, src/screens/auth) EXIT 0, 309/309; InlineAlert.tsx 100% dòng / 96,29% nhánh. Commit `7fe9dc30` (Prompt: DEBT-03) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-415 cho F-04x-1 — câu báo riêng khi lưu bị chặn vì phòng chưa đặt tên (DEBT-03 NO-380)
+
+- **[1 TRIỆU CHỨNG]** Phòng chưa đặt tên → lưu bị chặn nhưng người dùng chỉ thấy "Không lưu được thay đổi của tầng này."
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-a: `pnpm vitest run src/lib/autosave/__tests__/spatialLayerSave.test.ts` EXIT 1 (nhận câu chung, red-380.log); không PUT đã đúng sẵn
+- **[3 BẰNG CHỨNG]** src/lib/autosave/spatialLayerSave.ts:188 (`send` tạo lỗi 422 giả từ issues zod; `blockMessageOf` không đọc issues)
+- **[4 KHOANH VÙNG]** `spatialLayerSave.ts` + test; `src/hooks/useAutosave.ts` không đụng
+- **[5 SỬA NHỎ NHẤT]** `hasUnnamedRoomIssue` đọc issues zod (`rooms…name`) trong `blockMessageOf`; thêm `LAYER_SAVE_MESSAGES.unnamedRoom`; không PUT, không lọc phòng
+- **[6 TEST CHẶN TÁI PHÁT]** `spatialLayerSave.test.ts` "phòng chưa đặt tên → không PUT, câu khối nói rõ lý do thay vì câu chung" (đường thật `createFloorLayerSaver`, chỉ `writeLayer` là mock); đỏ EXIT 1 (red-380.log) → xanh `pnpm vitest run src/lib/autosave` EXIT 0, 86 passed (green-380.log)
+- **[7 NGHIỆM THU]** typecheck/lint/length/vitest xem w1/A/bao-cao.md vòng d; khoá vi.json cho câu mới: FIX-437. Commit `d94069ac` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-416 cho F-03 — màn tải bản vẽ không coi mình mất mạng trước lượt ping đầu (DEBT-03 NO-381)
+
+- **[1 TRIỆU CHỨNG]** e2e cây gộp: `e2e/v4v5/upload.spec.ts:44/:75/:93` "Received 1 / 4 tầng đã có bản vẽ" (GHEP-MASTER `e2e-1.log:1016`); tệp chọn sớm kẹt "Chờ xử lý"; `pnpm e2e` EXIT 1. Tái đo `e2e-base-x10.log` 4/60 hỏng.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ cbfdbaae: `pnpm vitest run …/FloorUploadScreen.test.tsx -t "NO-381"` EXIT 1; `E2E_PORT=5219 pnpm e2e --repeat-each=10 e2e/v4v5/upload.spec.ts` 4 failed / 56 passed, EXIT 1
+- **[3 BẰNG CHỨNG]** src/lib/offline/networkMonitor.ts:82,:88,:136; floorUploadGateway.ts:231; useFloorUploadScreen.ts:368-370, :510-521, :963; `git diff 8c28ef96 cbfdbaae -- src/screens/upload src/lib/offline …` rỗng → lỗi có sẵn, lộ ra do làm ấm dev server; w3/X1/tai-hien-NO-381.md
+- **[4 KHOANH VÙNG]** `floorUploadGateway.ts`, `FloorUploadScreen.test.tsx`; không sửa networkMonitor.ts (khác chủ), `src/api/**`, `e2e/**`
+- **[5 SỬA NHỎ NHẤT]** `watchNetwork` gieo `listener(monitor.getStatus().browserOnline)` thay `.online`; cách gieo này sau đó thành thừa và được trả về `.online` ở FIX-427
+- **[6 TEST CHẶN TÁI PHÁT]** `FloorUploadScreen.test.tsx` "FloorUploadScreen — tệp chọn trước lượt kiểm mạng đầu tiên vẫn được tải (NO-381) › bộ giám sát thật chưa ping xong thì màn không coi là mất mạng: tệp tải lên, bộ đếm lên 2 / 4"; đỏ trên cbfdbaae EXIT 1 → xanh EXIT 0
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest --coverage 44/44; e2e `--repeat-each=10` 60/60 hai lượt (`e2e-fix-x10-a.log`, `-b.log`); base 8c28ef96 có làm ấm 1/30 hỏng. Commit `cff9d260` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-419 cho F-02 — "đang đo" không ánh xạ thành `loading` của vỏ (DEBT-03 NO-382)
+
+- **[1 TRIỆU CHỨNG]** Giữa hai lần chấm, skeleton `absolute inset-0` (`ViewerViewport.tsx:127-131`) đè lên nút nổi của màn đo; e2e `measure.spec.ts:66,85` đua. Ngược lại khi cảnh nạp thật skeleton không hiện.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ cbfdbaae: `pnpm vitest run …/useMeasurementTool.test.tsx -t "NO-382"` EXIT 1, 2 hỏng (red.log)
+- **[3 BẰNG CHỨNG]** measurementToolViewModel.ts:320 `measuring: 'loading'`; useMeasurementTool.ts:986, :888-913; useViewerShell.ts:587; w3/X2/quyet-dinh.md P-1…P-10
+- **[4 KHOANH VÙNG]** `measurementToolViewModel.ts`, `useMeasurementTool.ts`, `useMeasurementTool.test.tsx`; không đụng ViewerViewport, ViewerShell.*, useViewerShell.ts
+- **[5 SỬA NHỎ NHẤT]** hàm thuần `viewerStateOf(measurement, shell)`: lỗi/cấm/thu gọn của màn thắng; vỏ `loading`/`partial` thắng; còn lại tra bảng, `measuring: 'success'`
+- **[6 TEST CHẶN TÁI PHÁT]** `useMeasurementTool.test.tsx` "giữa hai lần chấm, khung nhìn không có lớp chặn chuột (NO-382)" (2 bài), "viewerStateOf — bảy trạng thái của vỏ, chỉ nạp thật mới ra skeleton (NO-382)" (12 dòng); đỏ trên base → xanh
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest MeasurementTool 76/76; e2e `--repeat-each=10 e2e/v9/measure.spec.ts` hai lượt (w3/X2/bao-cao.md). Commit `4a9ae276` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-420 cho F-02 (+ F-01b) — cú chấm lúc hình học còn dựng không rơi mất; e2e measure chờ cảnh dựng xong (DEBT-03 NO-382)
+
+- **[1 TRIỆU CHỨNG]** Sau FIX-419, e2e measure vẫn hỏng 4/80 và 9/80 ở `measure.spec.ts:75` và `:93` (nút "Ghim phép đo (phím Enter)" không thấy).
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ 4a9ae276: e2e-commit1-1.log, e2e-commit1-2.log; vitest "hình học còn đang dựng thì khung nhìn nói 'đang dựng'; dựng xong thì skeleton đi" EXIT 1 (`expected null not to be null`, red2.log)
+- **[3 BẰNG CHỨNG]** measurementToolSceneBuild.ts:60-142; useMeasurementTool.ts:~593-598 (hit null → không thêm điểm); useMeasurementToolScene.ts không nghe `onStatusChange` (measurementToolSceneTypes.ts:134); e2e/v9/v9.ts:70-80; w3/X2/quyet-dinh.md P-11…P-18
+- **[4 KHOANH VÙNG]** `useMeasurementToolScene.ts`, `useMeasurementTool.ts`, `useMeasurementTool.test.tsx` (F-02); `e2e/v9/measure.spec.ts` (F-01b)
+- **[5 SỬA NHỎ NHẤT]** `useMeasurementToolScene` trả `{scene, building}`; hook đưa `building ? 'loading' : shell.state` vào `viewerStateOf`; e2e `clickSceneCentre` chờ skeleton về 0 trước khi bấm
+- **[6 TEST CHẶN TÁI PHÁT]** `useMeasurementTool.test.tsx` "hình học còn đang dựng thì khung nhìn nói 'đang dựng'; dựng xong thì skeleton đi" (đỏ red2.log EXIT 1 → xanh); e2e `measure.spec.ts:66`, `:85`, `:117` qua `clickSceneCentre`
+- **[7 NGHIỆM THU]** typecheck/eslint 0, vitest MeasurementTool 77/77; e2e hai lượt ×10 (w3/X2/bao-cao.md). Commit `448d8dfd` (F-02), `9f08d3a4` (F-01b) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-421 cho F-02 — lượt dựng hình ra `loading` cả với vai người xem (DEBT-03 NO-382)
+
+- **[1 TRIỆU CHỨNG]** Sau FIX-420, e2e `measure.spec.ts:126` (vai người xem) hỏng 2/80 ("Ghim phép đo (phím Enter)" not found, `:137`): vỏ `forbidden` thắng `loading`.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ 9f08d3a4: e2e-commit2-1.log EXIT 1; dòng bảng `đang dựng hình: màn forbidden trên vỏ forbidden → loading` không đạt được trên 9f08d3a4
+- **[3 BẰNG CHỨNG]** useViewerShell.ts:578-579 (forbidden trước loading); `viewerStateOf` cũ cho màn `forbidden` thắng mọi thứ
+- **[4 KHOANH VÙNG]** `measurementToolViewModel.ts`, `useMeasurementTool.ts`, `useMeasurementTool.test.tsx`
+- **[5 SỬA NHỎ NHẤT]** tham số thứ ba `building` của `viewerStateOf`: đang dựng → `loading` trừ màn `error`/`collapsed`
+- **[6 TEST CHẶN TÁI PHÁT]** `useMeasurementTool.test.tsx` "viewerStateOf — bảy trạng thái…" › "đang dựng hình: màn %s trên vỏ %s → %s" (5 dòng); e2e `measure.spec.ts:126`
+- **[7 NGHIỆM THU]** vitest useMeasurementTool.test.tsx 36/36, tsc/eslint EXIT 0; e2e hai lượt ×10. Commit `cfe3663d` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-422 cho F-02 — ghim phép đo chốt lượt đang bay, bấm đúp không lưu nhiều lần (DEBT-03 NO-384)
+
+- **[1 TRIỆU CHỨNG]** Bấm "Ghim phép đo" hai lần + Enter khi lượt lưu đầu chưa về → `saveMeasurement` gọi 3 lần.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ cfe3663d: `pnpm vitest run …/useMeasurementTool.test.tsx -t "NO-384"` EXIT 1 ("have a length of 1 but got 3", red-384.log)
+- **[3 BẰNG CHỨNG]** useMeasurementTool.ts:761-776 (cfe3663d): không cờ đang bay, `clearDraft` chỉ chạy sau khi lưu xong
+- **[4 KHOANH VÙNG]** `useMeasurementTool.ts`, `useMeasurementTool.test.tsx`
+- **[5 SỬA NHỎ NHẤT]** `pinInFlightRef`: vào thì chốt, `.finally` mở lại
+- **[6 TEST CHẶN TÁI PHÁT]** "useMeasurementTool — ghim đang bay thì bấm đúp không lưu hai lần (NO-384) › hai cú bấm khi lượt đầu chưa về: đúng MỘT lượt lưu; lượt ấy hỏng thì ghim lại được"; đỏ EXIT 1 (red-384.log) → xanh EXIT 0 (green-384.log)
+- **[7 NGHIỆM THU]** kiểm cuối ở w3/X2/bao-cao.md vòng b. Commit `02c4a507` (AppFront nhánh `fix/debt-03-fe-master`). Bổ sung R1 ở FIX-444.
+
+## FIX-423 cho F-02 — dựng hỏng có lối ra (câu báo + Thử lại); cú chấm trước khi module cảnh nạp xong không bị bỏ im (DEBT-03 NO-385)
+
+- **[1 TRIỆU CHỨNG]** Worker dựng hỏng hết (pha `failed`) → màn không nói gì, chấm không ăn; trước khi module cảnh nạp xong khung nhìn không báo "đang dựng".
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ 02c4a507: `pnpm vitest run …/useMeasurementTool.test.tsx -t "NO-385"` EXIT 1 (red-385.log); `measurementToolScene.test.ts` đỏ trên 26416c93 EXIT 1 "expected ready to be failed" (red-385b.log)
+- **[3 BẰNG CHỨNG]** useMeasurementToolScene.ts (cfe3663d) chỉ đặt building theo `phase==='building'`; measurementToolSceneBuild.ts:84-91; useMeasurementTool.ts:548-560; `BuildQueue` trả lời mọi job đúng một lần (buildQueue.ts:247-252,408,424)
+- **[4 KHOANH VÙNG]** `useMeasurementToolScene.ts`, `useMeasurementTool.ts`, `measurementToolSceneBuild.ts`, test
+- **[5 SỬA NHỎ NHẤT]** pha lắp `pending|building|ready|failed|unavailable`: building → khung `loading`; failed → trạng thái `error` với "Chưa dựng được mô hình để đo. Bấm thử lại để dựng lại." + "Thử lại" lắp lại cảnh; tầng hỏng hết không vào `readyLevelIds`; câu mới là hằng trong tệp (khoá vi.json thêm ở FIX-437)
+- **[6 TEST CHẶN TÁI PHÁT]** "useMeasurementTool — cảnh chưa sẵn sàng thì không bỏ cú chấm im lặng (NO-385) › mọi tầng dựng hỏng: ra trạng thái lỗi có câu báo, 'Thử lại' lắp lại cảnh" (đỏ → xanh); "› module cảnh còn đang nạp…" (không đỏ trên base — chỉ hồi quy); `measurementToolScene.test.ts` "mountMeasurementScene — worker sập thì pha là failed… › mọi job hỏng: phase failed, không tầng nào sẵn sàng" (red-385b.log EXIT 1 → green-385b.log EXIT 0)
+- **[7 NGHIỆM THU]** green-385.log EXIT 0. Commit `58d29763`, `c42c26b9` (AppFront nhánh `fix/debt-03-fe-master`). Bổ sung R1 ở FIX-443.
+
+## FIX-424 cho F-02 (+ F-01b) — khung nhìn mang aria-busy khi nạp; e2e chờ tín hiệu dương (DEBT-03 NO-386)
+
+- **[1 TRIỆU CHỨNG]** `<main aria-label="Khung nhìn mô hình">` không có `aria-busy`; e2e dựa vào lớp style `.animate-pulse`.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ a55d2eeb: `pnpm vitest run …/useMeasurementTool.test.tsx -t "NO-382"` (thêm assert aria-busy) EXIT 1, 2 hỏng (red-386.log)
+- **[3 BẰNG CHỨNG]** ViewerViewport.tsx:87-88; e2e/v9/measure.spec.ts:40 (9f08d3a4); chủ ViewerShell: commit gốc f117a573 không trailer, `useViewerShell.ts` thuộc so_huu F-02 (F-02.md:11)
+- **[4 KHOANH VÙNG]** `ViewerViewport.tsx`, `useMeasurementTool.test.tsx` (F-02); `e2e/v9/measure.spec.ts` (F-01b)
+- **[5 SỬA NHỎ NHẤT]** `aria-busy={state === 'loading'}` trên `<main>` (cùng điều kiện với skeleton); e2e `clickSceneCentre` chờ `aria-busy="false"`
+- **[6 TEST CHẶN TÁI PHÁT]** hai test NO-382 (assert aria-busy "false"/"true"); e2e measure.spec.ts:66,85,126; đỏ EXIT 1 → xanh EXIT 0 (green-386.log)
+- **[7 NGHIỆM THU]** green-386.log EXIT 0. Commit `0654f02a` (F-02), `f3335eda` (F-01b) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-425 cho F-02 — viewerStateOf: error/empty của khung thắng bảng của màn đo (DEBT-03 NO-387)
+
+- **[1 TRIỆU CHỨNG]** Vỏ `error` (dự án hỏng) hay `empty` (không tầng) bị đổi thành `success`/`partial` theo bảng đo.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ 58d29763: `pnpm vitest run …/useMeasurementTool.test.tsx -t "viewerStateOf"` EXIT 1, 4 dòng mới hỏng (red-387.log)
+- **[3 BẰNG CHỨNG]** measurementToolViewModel.ts `viewerStateOf` chỉ nhường `loading|partial`; useViewerShell.ts:580-591
+- **[4 KHOANH VÙNG]** `measurementToolViewModel.ts`, `useMeasurementTool.test.tsx`
+- **[5 SỬA NHỎ NHẤT]** thứ tự ưu tiên: dựng hình → loading (trừ error/collapsed của màn) > error/forbidden/collapsed của màn > mọi trạng thái khác `success` của vỏ > bảng đo
+- **[6 TEST CHẶN TÁI PHÁT]** bảng "viewerStateOf — bảy trạng thái của vỏ…" thêm 4 dòng (ready/measuring trên vỏ error, ready/partial trên vỏ empty); đỏ EXIT 1 → xanh EXIT 0 (green-387.log)
+- **[7 NGHIỆM THU]** green-387.log EXIT 0. Commit `a55d2eeb` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-426 cho F-02 — thanh trạng thái màn đo không nói "đã dựng xong" khi còn dựng (DEBT-03 NO-388)
+
+- **[1 TRIỆU CHỨNG]** Khung nhìn skeleton/aria-busy nhưng thanh trạng thái (aria-live) nói "Mô hình đã dựng xong.".
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ f3335eda: `pnpm vitest run …/useMeasurementTool.test.tsx -t "đang dựng"` (thêm assert câu) EXIT 1 (red-388.log)
+- **[3 BẰNG CHỨNG]** useViewerShell.ts:987 tính liveMessage từ state riêng của vỏ; màn đo ghi đè `state` nhưng không `status`
+- **[4 KHOANH VÙNG]** `useViewerShell.ts` (chỉ thêm `export` cho BUILDING_MESSAGE + chú thích), `useMeasurementTool.ts`, `useMeasurementTool.test.tsx` (cùng chủ F-02, F-02.md:11)
+- **[5 SỬA NHỎ NHẤT]** khung `loading` → `status.liveMessage = BUILDING_MESSAGE`; ngược lại giữ status của vỏ
+- **[6 TEST CHẶN TÁI PHÁT]** "hình học còn đang dựng thì khung nhìn nói 'đang dựng'; dựng xong thì skeleton đi" (assert "Đang dựng mô hình…" có, "Mô hình đã dựng xong." không); đỏ EXIT 1 → xanh (green-388.log)
+- **[7 NGHIỆM THU]** EXIT 0, 43/43. Commit `26416c93` (AppFront nhánh `fix/debt-03-fe-master`). Bổ sung R1 ở FIX-443.
+
+## FIX-427 cho F-03 (+ F-06) — bộ giám sát mạng tin trình duyệt cho tới lượt ping đầu (DEBT-03 NO-390)
+
+- **[1 TRIỆU CHỨNG]** Mọi nơi đọc `getStatus()` lúc gắn thấy mất mạng trên máy đang nối mạng: màn tải đẩy tệp vào hàng đợi (NO-381), ConnectionStates nháy `degraded`, MobileViewer báo `partial/weak-network`.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ cbfdbaae: `pnpm vitest run src/lib/offline/__tests__/networkMonitor.test.ts src/screens/system/MobileViewer/useMobileViewer.test.tsx -t "NO-390"` EXIT 1, 2 failed (`vitest-390-red.log`)
+- **[3 BẰNG CHỨNG]** src/lib/offline/networkMonitor.ts:82 (`let pingOnline = false`), :88; ConnectionStates container.tsx:86 → connectionStatesModel.ts:77; useMobileViewer.ts:372, mobileViewerGateway.ts:130; .notes/contract-data.md:371,382 không ghi giá trị ban đầu
+- **[4 KHOANH VÙNG]** `networkMonitor.ts` + test mới `networkMonitor.test.ts`; `floorUploadGateway.ts` trả về `getStatus().online`; `useMobileViewer.test.tsx` (F-06); không sửa ConnectionStates/MobileViewer/CollaborationLayer
+- **[5 SỬA NHỎ NHẤT]** `pingOnline` khởi tạo `true`: chưa ping thì `online = browserOnline` tới lượt kiểm đầu
+- **[6 TEST CHẶN TÁI PHÁT]** `networkMonitor.test.ts` "createNetworkMonitor — trạng thái trước lượt ping đầu (NO-390) › máy đang nối mạng chưa ping xong thì không báo mất mạng"; `useMobileViewer.test.tsx` "Bảy trạng thái › bộ giám sát thật chưa ping xong thì không báo mạng yếu lúc mở màn (NO-390)"; đỏ EXIT 1 → xanh `vitest-390-green.log` EXIT 0, 136/136; bài NO-381 vẫn xanh
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest --coverage EXIT 0, networkMonitor.ts ≥ ngưỡng `src/lib/**` 80. Commit `5059fc98` (F-03), `c6921867` (F-06), `92a32e44` (F-03, test vòng đời cho độ phủ) (AppFront nhánh `fix/debt-03-fe-master`). Câu ghi chú hợp đồng: FIX-436.
+
+## FIX-428 cho F-03 — tệp chọn/"Thử lại" lúc ngoại tuyến tự tải khi mạng về (DEBT-03 NO-389)
+
+- **[1 TRIỆU CHỨNG]** Chọn tệp hoặc "Thử lại" khi mất mạng: thẻ "Chờ xử lý", nút "Thử lại" biến mất; mạng về không có gì xảy ra; bộ đếm không lên.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ 5059fc98: `pnpm vitest run …/useFloorUploadScreen.test.ts -t "NO-389"` EXIT 1 (2 failed); `…/FloorUploadScreen.test.tsx -t "NO-389"` EXIT 1
+- **[3 BẰNG CHỨNG]** useFloorUploadScreen.ts (base) :510-521, :511-512, :367-372, :923; `createReplayer(` không ai gọi (replayer.ts:98)
+- **[4 KHOANH VÙNG]** `useFloorUploadScreen.ts`, `useFloorUploadScreen.test.ts`, `FloorUploadScreen.test.tsx`; chữ mới `floorUpload.notices.awaitNetwork` qua fragment → FIX-407
+- **[5 SỬA NHỎ NHẤT]** cờ `awaitingNetwork` trên tệp; nhánh offline bật cờ + báo; effect theo `isOnline` gọi `startUpload` cho tệp có cờ và có tầng; hoàn tác xoá cũng chạy lại; `offlineNotice` mới (giới hạn: `File` chỉ sống trong phiên)
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorUploadScreen.test.ts` "tệp chọn lúc ngoại tuyến tự tải khi mạng về, trong phiên đang mở (NO-389)", "\"Thử lại\" lúc ngoại tuyến không bỏ rơi tệp: mạng về thì tự tải lại (NO-389)"; `FloorUploadScreen.test.tsx` "tệp chọn lúc ngoại tuyến thật tự tải khi mạng về, bộ đếm lên 2 / 4 (NO-389)"; đỏ (`vitest-389-red.log`, `vitest-389-container-red.log`) → xanh `vitest-389-green-r1.log` EXIT 0 (sha 412bb92d; `vitest-389-green.log` là nhãn sai, EXIT 1 — đã sửa ở R1 P3-12)
+- **[7 NGHIỆM THU]** typecheck/lint/length 0; vitest --coverage 82/82; e2e upload ×10 xem w3/X1/bao-cao.md. Commit `78c1a93e` (AppFront nhánh `fix/debt-03-fe-master`). Khoá vi.json: FIX-407; cách sửa NO-392 trọn ở FIX-438.
+
+## FIX-430 cho F-02 — ExplodedView: thanh trạng thái không nói "đã dựng xong" khi còn dựng (DEBT-03 NO-391)
+
+- **[1 TRIỆU CHỨNG]** Màn tách tầng ra `loading` khi `sceneStatus.phase==='building'` nhưng thanh trạng thái (aria-live) vẫn "Mô hình đã dựng xong.".
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ c42c26b9: `pnpm vitest run src/screens/viewer/ExplodedView/useExplodedView.test.tsx` EXIT 1 ("Unable to find an element with the text: Đang dựng mô hình…", red-391.log)
+- **[3 BẰNG CHỨNG]** useExplodedView.ts:840 (loading khi building), :911 `return { ...shell, state }` không đổi `status`; useViewerShell.ts:~990; chủ: 00-SO-TRA.md:320 (F-02, F-04a), commit gốc không trailer → F-02
+- **[4 KHOANH VÙNG]** `useExplodedView.ts`, `useExplodedView.test.tsx` (mới)
+- **[5 SỬA NHỎ NHẤT]** đúng cách NO-388: `state === 'loading'` → `status.liveMessage = BUILDING_MESSAGE`
+- **[6 TEST CHẶN TÁI PHÁT]** `useExplodedView.test.tsx` "useExplodedView — thanh trạng thái không nói 'đã dựng xong' khi cảnh còn dựng (NO-391) › pha building: 'Đang dựng mô hình…'; pha ready: câu của vỏ trở lại"; đỏ EXIT 1 (red-391.log) → xanh EXIT 0 (green-391.log)
+- **[7 NGHIỆM THU]** sha d911e371 porcelain 0: typecheck/lint/length 0, vitest --coverage ExplodedView+MeasurementTool+ViewerShell 163/163; e2e không cần. Commit `d911e371` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-431 cho F-03 — chú thích useCollaborationLayer khớp mặc định mới của bộ giám sát mạng (DEBT-03 NO-390)
+
+- **[1 TRIỆU CHỨNG]** Chú thích `useCollaborationLayer.ts:335-339` nói `pingOnline` khởi tạo `false`, sai sau FIX-427.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1: đọc networkMonitor.ts sau 5059fc98
+- **[3 BẰNG CHỨNG]** src/lib/offline/networkMonitor.ts:85; useCollaborationLayer.ts:335-339 (chủ tạm F-03 — không có chủ trong sổ; xem "Hồ sơ lệch")
+- **[4 KHOANH VÙNG]** chỉ chú thích `useCollaborationLayer.ts`; không sửa `.notes/contract-data.md` (ngoài so_huu) — việc đó là FIX-436
+- **[5 SỬA NHỎ NHẤT]** viết lại lý do giữ `null`: trước ping đầu `online` chỉ là phỏng đoán của trình duyệt
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — chỉ chú thích
+- **[7 NGHIỆM THU]** typecheck/lint/length 0 theo cụm X1. Commit `09e6e478` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-432 cho F-03 — lệnh uploadDrawing trong hàng đợi ngoại tuyến không nằm lại/trùng (DEBT-03 NO-392)
+
+- **[1 TRIỆU CHỨNG]** ConnectionStates đếm "chờ đồng bộ" mãi; mỗi lần thử lại/gán lại/hoàn tác lúc offline cộng một lệnh.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1: w3/X1/tai-hien-NO-392-393.md (vitest-c-red)
+- **[3 BẰNG CHỨNG]** floorUploadGateway.ts `enqueueOffline` trả boolean; không ai gọi `deletePendingCommand`
+- **[4 KHOANH VÙNG]** `floorUploadGateway.ts`, `useFloorUploadScreen.ts`, `useFloorUploadScreen.test.ts`
+- **[5 SỬA NHỎ NHẤT]** `enqueueOffline` trả mã lệnh (`number | null`), thêm `dropOffline`; hook giữ tối đa một lệnh mỗi tệp (`queuedRef`); gỡ khi tải xong, xoá tệp, gán lại, trước khi ghi lại (nay thay bằng bỏ hẳn hàng đợi ở FIX-438)
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorUploadScreen.test.ts` "một tệp chỉ một lệnh trong hàng đợi, và tải xong thì lệnh được gỡ (NO-392)"; đỏ → xanh (vitest-c-red/green, 49/49)
+- **[7 NGHIỆM THU]** NO-392 mới sửa một phần, R1 P3-4 hoàn tất ở FIX-438. Commit `033e11fa` (cùng FIX-433) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-433 cho F-03 — luật một tầng một tệp áp cho gán tay (DEBT-03 NO-393)
+
+- **[1 TRIỆU CHỨNG]** Gán tệp B vào tầng đang có A: mạng về cả hai cùng tải; thẻ hiện A, máy chủ giữ tệp xong sau cùng.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1: w3/X1/tai-hien-NO-392-393.md
+- **[3 BẰNG CHỨNG]** `attachmentByFloor` lấy tệp đầu; `reassignOptions` cho chọn mọi tầng; ghép tự động đã giữ luật qua `claimed` (acceptFile)
+- **[4 KHOANH VÙNG]** `useFloorUploadScreen.ts`
+- **[5 SỬA NHỎ NHẤT]** tệp gán sau thay tệp đang ở tầng ấy; tệp cũ về khay, huỷ tải, thôi chờ mạng, gỡ lệnh hàng đợi; áp cả trực tuyến lẫn chờ mạng
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorUploadScreen.test.ts` "gán tệp thứ hai vào tầng đang có tệp chờ mạng: tệp cũ về khay, chỉ tệp mới được tải (NO-393)"; đỏ → xanh
+- **[7 NGHIỆM THU]** đường hoàn tác xoá còn sót, sửa ở FIX-439. Commit `033e11fa` (cùng FIX-432) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-434 cho F-02 — xoá `MeasurementTool/vi.json.fragment` đã nhập (DEBT-03 NO-396)
+
+- **[1 TRIỆU CHỨNG]** `src/screens/viewer/MeasurementTool/vi.json.fragment` (có từ trước DEBT-03, không trailer Prompt) còn trong repo dù nội dung đã ở `vi.json`.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-fe-master (việc gộp I vòng b) @ dac5e8ef; `I/no396-bang-chung.log`
+- **[3 BẰNG CHỨNG]** 33 lá, 0 thiếu trong vi.json, 20 khác chỉ do viết hoa A6; không script/cấu hình nào đọc `*.fragment` (docs/reviews/2026-10-07-fix-debt-03-fe-master.md)
+- **[4 KHOANH VÙNG]** chỉ xoá tệp fragment
+- **[5 SỬA NHỎ NHẤT]** xoá tệp
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — xoá tệp thừa; `git grep -c '' -- '*.fragment'` = 0
+- **[7 NGHIỆM THU]** typecheck-b/lint-b/length-b EXIT 0 (sha 786c2810). Commit `786c2810` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-435 cho DEBT-03 (hiến chương BE-BIND.md) — hiến chương nêu `toStageBreakdown` theo tên, không theo dòng (DEBT-03 NO-379)
+
+- **[1 TRIỆU CHỨNG]** `docs/charter/BE-BIND.md:135` trỏ `processingGateway.ts:522`, đã trôi (~:559).
+- **[2 TÁI HIỆN]** nhánh main (AppBack) — đọc BE-BIND.md:135 và processingGateway.ts
+- **[3 BẰNG CHỨNG]** docs/charter/BE-BIND.md:135 (và bản chép backend/prompts/_charter/BE-BIND.md:135); duyet-nguoi-dung-2026-10-07.md câu 3
+- **[4 KHOANH VÙNG]** một dòng của hiến chương, câu chữ do người dùng duyệt
+- **[5 SỬA NHỎ NHẤT]** `` (`…/processingGateway.ts:522`) `` → `` (`…/processingGateway.ts`, hàm `toStageBreakdown`, nhánh "đã xong") ``
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — chữ trong tài liệu
+- **[7 NGHIỆM THU]** 1 tệp, +1/−1; commit có trailer `Charter-Approved: backend/dieu-phoi/chay/DEBT-03/duyet-nguoi-dung-2026-10-07.md`. Commit `b21c4764` (AppBack nhánh `main`; không phải AppFront). Mã 435 cũng đã bị dùng nhầm cho `.notes` ở AppFront (2213a203, đã đổi thành FIX-436).
+
+## FIX-436 cho DEBT-03 (.notes/contract-data.md) — ghi chú hợp đồng: bộ giám sát mạng tin trình duyệt tới lượt ping đầu (DEBT-03 NO-395)
+
+- **[1 TRIỆU CHỨNG]** `.notes/contract-data.md:371,382` không ghi giá trị ban đầu của `online`; sau FIX-427 trước lượt ping đầu `online = browserOnline`.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-fe-master @ 464c6c95; đọc networkMonitor.ts:85 (`pingOnline = true`)
+- **[3 BẰNG CHỨNG]** .notes/contract-data.md sau dòng 382; duyet-nguoi-dung-2026-10-07.md câu 4; docs/reviews/2026-10-07-fix-debt-03-fe-master.md
+- **[4 KHOANH VÙNG]** thêm hai dòng vào `.notes/contract-data.md`
+- **[5 SỬA NHỎ NHẤT]** một câu ngữ nghĩa theo FIX-427
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — ghi chú tài liệu
+- **[7 NGHIỆM THU]** review: diff ròng `464c6c95..c2731a75` rỗng; câu ghi chú khớp mã thật (`networkMonitor.ts:85`). Commit `c2731a75` (AppFront nhánh `fix/debt-03-fe-master`) — áp lại sau khi `c1996c76` hoàn tác `2213a203` (cùng nội dung, từng mang mã trùng FIX-435 với NO-379).
+
+## FIX-437 cho F-05a — thêm khoá vi.json cho 6 chuỗi hiển thị mới (DEBT-03 review R1 P2-1)
+
+- **[1 TRIỆU CHỨNG]** 6 chuỗi hiển thị mới không có khoá `vi.json`, `expectVietnamese` không soát được (`grep -c` = 0): `continueWaitingReading`, `continueReadFailed`, `continueNoDrawing`, `floorLayerSave.unnamedRoom`, `roomLabel…nameField.emptyError`, `measurementTool.error.sceneFailed`.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ c2731a75
+- **[3 BẰNG CHỨNG]** useInputQualityGate.ts:149-151; spatialLayerSave.ts:84; RoomLabelNameField.tsx:37; useMeasurementTool.ts:194; docs/reviews/2026-10-07-fix-debt-03-fe-master.md finding 1
+- **[4 KHOANH VÙNG]** chỉ `src/i18n/vi.json`
+- **[5 SỬA NHỎ NHẤT]** một commit `fix(i18n)` thêm sáu khoá theo lệ "vi.json là từ điển kiểm" của từng màn
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — không đổi hành vi; `grep -cF` mỗi chuỗi 0 → 1; bộ `expectVietnamese` của InputQualityGate, RoomLabelReview, MeasurementTool, autosave xanh (R1/U/vitest.log)
+- **[7 NGHIỆM THU]** sha 10cd7f16 porcelain 0: typecheck/lint/length 0, vitest 352/352. Commit `51abd1b1` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-438 cho F-03 — NO-392 trọn: thôi ghi hàng đợi ngoại tuyến, màn giữ `File` (DEBT-03 review R1 P3-4, P3-5c)
+
+- **[1 TRIỆU CHỨNG]** `dropQueued` chỉ chạy khi `done`, retry, gán lại, xoá: lượt tải lại kết thúc `error` rồi bỏ đi, hoặc tải lại trang khi tệp chờ mạng, để lệnh nằm mãi trong IndexedDB, ConnectionStates đếm "chờ đồng bộ" mãi. Bài cũ ghim `dropQueued` (P3-5c).
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ c2731a75: `pnpm vitest run src/screens/upload/FloorUploadScreen/useFloorUploadScreen.test.ts` EXIT 1, 5 failed / 28 passed (`red-u.log`; gồm "…ghi hàng đợi ngoại tuyến: tệp chờ mạng trong màn (NO-392)" `expected 1 to be +0`, "…hàng đợi không còn lệnh nào (NO-392)" `expected 8 to be 7`)
+- **[3 BẰNG CHỨNG]** useFloorUploadScreen.ts:525; docs/reviews/2026-10-07-fix-debt-03-fe-master.md finding 4
+- **[4 KHOANH VÙNG]** `useFloorUploadScreen.ts`, `floorUploadGateway.ts`, test; xoá `queuedRef`/`dropQueued`, `enqueueOffline`/`dropOffline`, kiểu `EnqueueOfflineUploadInput` (không ai khác dùng)
+- **[5 SỬA NHỎ NHẤT]** theo hướng gọn review đề xuất: màn đã giữ `File` (NO-389) nên thôi ghi `uploadDrawing` vào hàng đợi ngoại tuyến; đổi hành vi F-03 (F-03.md:110 mô tả lệnh mang `pageIndex` nay lỗi thời)
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorUploadScreen.test.ts` "mất mạng thì không gọi mạng và không ghi hàng đợi ngoại tuyến: tệp chờ mạng trong màn (NO-392)", "chọn, thử lại, xoá, gán lại lúc ngoại tuyến rồi tải hỏng: hàng đợi không còn lệnh nào (NO-392)"; đột biến = mã c2731a75 → đỏ; xanh `pnpm vitest run src/screens/upload/FloorUploadScreen` EXIT 0, 52/52 (`vitest-u-try.log`)
+- **[7 NGHIỆM THU]** sha 10cd7f16 porcelain 0: typecheck/lint/length 0, vitest --coverage 352/352 (useFloorUploadScreen.ts 92,75/84,96). Commit `65fee34e` (cùng FIX-439, FIX-440; gồm Nit chú thích `FloorUploadScreen.test.tsx:614-615`) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-439 cho F-03 — hoàn tác xoá không đưa tệp về tầng đã có tệp khác (DEBT-03 review R1 P3-2)
+
+- **[1 TRIỆU CHỨNG]** Offline: tệp A khớp L3 → xoá A → gán B vào L3 → Hoàn tác trong 8 s → A và B cùng L3, cả hai tải khi mạng về (lỗi NO-393 trên đường còn sót).
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ c2731a75: `useFloorUploadScreen.test.ts` "hoàn tác xoá không đưa tệp về tầng đã nhận tệp khác…(NO-393)" đỏ — khay rỗng (`red-u.log`, EXIT 1)
+- **[3 BẰNG CHỨNG]** src/screens/upload/FloorUploadScreen/useFloorUploadScreen.ts:785-795 (`undo` trả `removed` kèm `floorId` và `startUpload`, không chạy luật một tầng một tệp, :717-733)
+- **[4 KHOANH VÙNG]** `useFloorUploadScreen.ts` + test
+- **[5 SỬA NHỎ NHẤT]** vé hoàn tác đọc danh sách tệp mới nhất qua `attachmentsRef`; tầng đã có tệp khác → tệp về khay (`toTray()`), không tải
+- **[6 TEST CHẶN TÁI PHÁT]** "hoàn tác xoá không đưa tệp về tầng đã nhận tệp khác: tệp về khay và chỉ tệp đang ở tầng được tải (NO-393)"; đỏ EXIT 1 → xanh 52/52 EXIT 0
+- **[7 NGHIỆM THU]** như FIX-438. Commit `65fee34e` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-440 cho F-03 — tệp bị thay về khay có câu báo; thông báo chờ mạng đọc một lần mỗi lượt (DEBT-03 review R1 P3-11, Nit)
+
+- **[1 TRIỆU CHỨNG]** Tệp bị thay ở một tầng về khay không có câu báo cho trình đọc màn hình; thông báo "chờ mạng" đọc một lần mỗi tệp.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ c2731a75: `useFloorUploadScreen.test.ts` "tệp bị thay ở một tầng về khay có câu báo cho trình đọc màn hình (NO-393)" (announce không được gọi), "câu \"chờ mạng\" đọc một lần cho cả lượt mất mạng, không một lần mỗi tệp" (`expected 3 to be 1`) — `red-u.log`, EXIT 1
+- **[3 BẰNG CHỨNG]** useFloorUploadScreen.ts (đường `reassign`/`toTray`)
+- **[4 KHOANH VÙNG]** `useFloorUploadScreen.ts` + test (khoá vi.json cho câu mới: FIX-442)
+- **[5 SỬA NHỎ NHẤT]** câu báo cùng dùng cho `reassign` đẩy tệp về khay và hoàn tác; thông báo chờ mạng gộp một lần mỗi lượt mất mạng
+- **[6 TEST CHẶN TÁI PHÁT]** hai bài trên; đỏ EXIT 1 → xanh EXIT 0
+- **[7 NGHIỆM THU]** như FIX-438. Commit `65fee34e` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-441 cho F-05a — nút "Tiếp tục" dùng aria-disabled, vòng tiêu điểm hiện (DEBT-03 review R1 P3-10 phần Q)
+
+- **[1 TRIỆU CHỨNG]** `outline-none` mất vòng tiêu điểm ở chỗ đỡ tiêu điểm dải lỗi ghi; nút `disabled` không Tab tới được nên lý do không đọc được bằng bàn phím.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ c2731a75: `pnpm vitest run src/screens/upload/InputQualityGate/InputQualityGate.test.tsx -t "đang đọc kết quả|lỗi ghi hiện thành dải"` EXIT 1, 2 failed (`red-q.log`: thiếu `aria-disabled`; `expectAccessible: … A12 yêu cầu focus ring 2px, offset 2px`)
+- **[3 BẰNG CHỨNG]** InputQualityGate (Footer, dải lỗi ghi); docs/reviews/2026-10-07-fix-debt-03-fe-master.md P3-10
+- **[4 KHOANH VÙNG]** `src/screens/upload/InputQualityGate/**`
+- **[5 SỬA NHỎ NHẤT]** `aria-disabled` + chặn bấm thay `disabled`; thêm vòng tiêu điểm cho chỗ đỡ tiêu điểm dải lỗi
+- **[6 TEST CHẶN TÁI PHÁT]** hai bài "đang đọc kết quả", "lỗi ghi hiện thành dải" (`InputQualityGate.test.tsx`); đỏ EXIT 1 (red-q.log) → xanh `pnpm vitest run src/screens/upload/InputQualityGate` EXIT 0, 63/63 (`vitest-q-try.log`)
+- **[7 NGHIỆM THU]** vitest --coverage 352/352 EXIT 0 (sha 10cd7f16). Commit `412bb92d` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-442 cho F-05a — khoá vi.json cho câu báo tệp về khay (DEBT-03 review R1 P2-1 theo sau)
+
+- **[1 TRIỆU CHỨNG]** Câu báo mới của FIX-440 (tệp bị thay về khay) cần khoá `vi.json` theo luật P2-1.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x1 @ 65fee34e
+- **[3 BẰNG CHỨNG]** `src/i18n/vi.json` `floorUpload` (câu về khay); R1/U/bao-cao.md mục "Lệch / ghi chú"
+- **[4 KHOANH VÙNG]** chỉ `src/i18n/vi.json`
+- **[5 SỬA NHỎ NHẤT]** thêm một khoá
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — không đổi hành vi (khoá từ điển)
+- **[7 NGHIỆM THU]** vitest 352/352 EXIT 0 (sha 10cd7f16). Commit `10cd7f16` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-443 cho F-02 — dựng hỏng không báo "Mô hình đã dựng xong." (DEBT-03 review R1 P3-3)
+
+- **[1 TRIỆU CHỨNG]** Khi `mountedScene.failed` màn ra `error` nhưng thanh trạng thái (live) vẫn đọc READY_MESSAGE của vỏ; cùng lớp lỗi NO-388/391, phát sinh từ 58d29763.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ c2731a75 (chỉ test): `pnpm vitest run src/screens/viewer/MeasurementTool/useMeasurementTool.test.tsx -t "mọi tầng dựng hỏng"` EXIT 1 ("expected […] to have a length of +0 but got 1", `red-P3-3.log`)
+- **[3 BẰNG CHỨNG]** src/screens/viewer/MeasurementTool/useMeasurementTool.ts:1005-1013 (`liveMessage` chỉ ghi đè khi `viewerState === 'loading'`)
+- **[4 KHOANH VÙNG]** `useMeasurementTool.ts` + test; không sửa vi.json (câu dùng lại `SCENE_FAILED_MESSAGE`, khoá do FIX-437)
+- **[5 SỬA NHỎ NHẤT]** `liveStatusOf(status, viewerState, sceneFailed)`: dựng hỏng → liveMessage = `SCENE_FAILED_MESSAGE`, đang dựng → BUILDING_MESSAGE
+- **[6 TEST CHẶN TÁI PHÁT]** `useMeasurementTool.test.tsx` NO-385 "mọi tầng dựng hỏng: ra trạng thái lỗi có câu báo, 'Thử lại' lắp lại cảnh" (thêm assert `queryAllByText('Mô hình đã dựng xong.')` = 0); đỏ EXIT 1 (red-P3-3.log) → xanh cả tệp EXIT 0, 44/44 (green-P3-3.log)
+- **[7 NGHIỆM THU]** sha 3a9ba155 porcelain 0: typecheck/lint/length 0, vitest --coverage MeasurementTool + RoomLabelReview 148/148 (useMeasurementTool.ts 90,86/86,92). Commit `c377b9e5` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-444 cho F-02 — chốt ghim không kẹt khi cổng ném đồng bộ (DEBT-03 review R1 Nit)
+
+- **[1 TRIỆU CHỨNG]** `saveMeasurement` ném đồng bộ → `pinInFlightRef` (FIX-422) không được mở, ghim kẹt.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ c377b9e5 (hook của HEAD~1 + test mới, `git show`): `pnpm vitest run …/useMeasurementTool.test.tsx -t "ném đồng bộ"` EXIT 1 ("expected [] to have a length of 1 but got +0", `red-nit-pin.log`)
+- **[3 BẰNG CHỨNG]** useMeasurementTool.ts (`onPin`, lời gọi `saveMeasurement`); R1/M/tai-hien-nit-pin.md
+- **[4 KHOANH VÙNG]** `useMeasurementTool.ts` + test
+- **[5 SỬA NHỎ NHẤT]** bọc lời gọi `saveMeasurement` trong executor của `new Promise` — lỗi ném đồng bộ thành lượt hỏng, `.finally` mở chốt
+- **[6 TEST CHẶN TÁI PHÁT]** "cổng ném đồng bộ không kẹt chốt ghim (review DEBT-03 Nit) › lượt đầu ném ngay: có câu báo, và bấm lại thì lưu được"; đỏ EXIT 1 → xanh EXIT 0 (a736ecd0)
+- **[7 NGHIỆM THU]** như FIX-443. Commit `a736ecd0` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-445 cho F-04x-1 — Enter rồi blur cam kết tên phòng một lần (DEBT-03 review R1 P3-5e)
+
+- **[1 TRIỆU CHỨNG]** Bài "Enter cam kết…" không có blur nên không ghim nhánh; thêm blur lộ lỗi thật do DEBT-03 (ô tên b1e64d17): Enter cam kết, lượt lưu còn bay, blur cam kết lần hai.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ c2731a75 (chỉ test): `pnpm vitest run src/screens/qc/RoomLabelReview/RoomLabelNameField.test.tsx` EXIT 1 ("expected "spy" to be called 1 times, but got 2 times", `red-P3-5e.log`)
+- **[3 BẰNG CHỨNG]** src/screens/qc/RoomLabelReview/RoomLabelNameField.test.tsx; RoomLabelNameField.tsx (`commit`); R1/M/tai-hien-P3-5e.md
+- **[4 KHOANH VÙNG]** `RoomLabelNameField.tsx` + test
+- **[5 SỬA NHỎ NHẤT]** state `committed` (tên vừa cam kết, xoá khi tên đang lưu đổi); `commit` bỏ qua nếu `draft === committed`
+- **[6 TEST CHẶN TÁI PHÁT]** "Enter cam kết tên mới một lần; blur sau đó không gọi lại" (thêm `fireEvent.blur`); đột biến bỏ điều kiện `draft === committed` = bản base → đỏ; xanh `pnpm vitest run src/screens/qc/RoomLabelReview` EXIT 0, 57/57 (green-P3-5e.log)
+- **[7 NGHIỆM THU]** RoomLabelNameField.tsx 100/100 phủ; typecheck/lint/length 0. Commit `b68d9ae1` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-446 cho F-04x-1 — chú thích bộ mẫu RoomLabel không nói ba tên rỗng (DEBT-03 review R1 Nit)
+
+- **[1 TRIỆU CHỨNG]** Chú thích `roomLabelFixture.ts:44-45` còn nói ba phòng mẫu rỗng tên, sai sau FIX-389.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w3-x2 @ b68d9ae1
+- **[3 BẰNG CHỨNG]** src/screens/qc/RoomLabelReview/roomLabelFixture.ts:44-45
+- **[4 KHOANH VÙNG]** chỉ chú thích
+- **[5 SỬA NHỎ NHẤT]** viết lại chú thích
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — chú thích
+- **[7 NGHIỆM THU]** typecheck/lint/length 0, vitest 148/148 (sha 3a9ba155). Commit `3a9ba155` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-447 cho F-08 — toast "thử lại" hoàn tác không sống quá hạn của phiếu (DEBT-03 review R1 P3-7)
+
+- **[1 TRIỆU CHỨNG]** Phiếu đã `expired`: lượt bấm trả về im lặng; toast "thử lại" mới sống thêm trọn thời hạn toast, bấm sau hạn không có phản hồi.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ c2731a75 + test: `pnpm vitest run src/screens/export/VersionHistory -t "P3-7|P3-9|NO-365|NO-368|NO-369|v15|restoreVersion bị vô hiệu"` EXIT 1 (`red-r1.log`)
+- **[3 BẰNG CHỨNG]** src/screens/export/VersionHistory/useVersionHistory.ts:387-390 (`attempt`)
+- **[4 KHOANH VÙNG]** `useVersionHistory.ts` + test
+- **[5 SỬA NHỎ NHẤT]** phiếu `expired` thì hiện dải `UNDO_EXPIRED_NOTICE` ("Đã hết thời gian hoàn tác"), không gửi N19
+- **[6 TEST CHẶN TÁI PHÁT]** `VersionHistory.test.tsx` "P3-7: toast "thử lại" bấm sau hạn của phiếu → dải "Đã hết thời gian hoàn tác", không N19"; đỏ EXIT 1 (red-r1.log) → xanh cả thư mục EXIT 0, 65 passed (green-r1-dir.log)
+- **[7 NGHIỆM THU]** sha ba7ef22e porcelain 0: typecheck/lint/length 0, vitest --coverage VersionHistory 65/65. Commit `f2ec2fb8` (cùng FIX-448, FIX-449) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-448 cho F-08 — nạp lại N16 trong VersionHistory mang cả level và scaleStatus (DEBT-03 review R1 P3-9)
+
+- **[1 TRIỆU CHỨNG]** `reloadFloor` của VersionHistory chỉ truyền `{dimensions, layer, revision}`; `reloadFloor` của autosave truyền đủ `level`/`scaleStatus` và gỡ tỉ lệ tạm khi N16 vắng khoá.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ c2731a75 + test: cùng lệnh FIX-447, EXIT 1 (`expected { … } to match object { scaleMillimetresPerPixel: 7 }`, `expected [ 'dimensions', 'layer', 'revision' ] to deeply equal [ Array(4) ]`)
+- **[3 BẰNG CHỨNG]** useVersionHistory.ts (`reloadFloor`); assert hình tham số `:399`
+- **[4 KHOANH VÙNG]** `versionHistoryGateway.ts` (`readFloorLayer`), `useVersionHistory.ts`, `types.ts`, test
+- **[5 SỬA NHỎ NHẤT]** `readFloorLayer` trả thêm `level`, `scaleStatus`; hook truyền cả hai qua `FloorLayerReplacement` (đường NO-374) và gỡ `scaleStatus` cũ khi N16 vắng khoá; assert hình tham số → `['dimensions','layer','level','revision']`
+- **[6 TEST CHẶN TÁI PHÁT]** `VersionHistory.test.tsx` "P3-9: nạp lại N16 sau N19 mang cả Level và scaleStatus của tầng"; đỏ EXIT 1 → xanh EXIT 0, 65 passed
+- **[7 NGHIỆM THU]** như FIX-447. Commit `f2ec2fb8` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-449 cho F-08 — bài NO-365 và NO-368 ghim đúng nhánh chúng tuyên bố (DEBT-03 review R1 P3-5 a, b)
+
+- **[1 TRIỆU CHỨNG]** (a) bài bấm đúp NO-365 vẫn xanh nếu xoá chốt `undoing` của hook (chốt `reverting` của gateway gánh thay); (b) bài "≤ 2 lượt N18 đang bay" (`peak ≤ 2`) không thể đỏ vì lượt giả chỉ sống một microtask và chỉ hai hàng có nội dung.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ c2731a75; `VersionHistory.test.tsx:655-661`, `:868-916`
+- **[3 BẰNG CHỨNG]** docs/reviews/2026-10-07-fix-debt-03-fe-master.md finding 5(a)(b); lượt đầu đột biến trước khi thêm hàng vẫn xanh với trần 3 (xác nhận phán quyết)
+- **[4 KHOANH VÙNG]** chỉ `VersionHistory.test.tsx`
+- **[5 SỬA NHỎ NHẤT]** (a) thêm assert dải lỗi không phải `UNDO_USED_NOTICE`; (b) thêm hai bản có nội dung (bốn N18 cùng lúc), lượt giả sống qua `setTimeout(5)`, assert `peak` bằng 2
+- **[6 TEST CHẶN TÁI PHÁT]** (a) đột biến bỏ `|| undoing.has(ticket)`: `pnpm vitest run …/VersionHistory.test.tsx -t "NO-365"` EXIT 1 (`dot-bien-365.log`); (b) đột biến `SNAPSHOT_CONCURRENCY = 3`: `-t "NO-368"` EXIT 1 `expected 3 to be 2` (`dot-bien-368.log`); không đột biến xanh (vitest.log)
+- **[7 NGHIỆM THU]** sha ba7ef22e: typecheck/lint/length 0, vitest 65/65. Commit `f2ec2fb8` (a), `ba7ef22e` (b) (AppFront nhánh `fix/debt-03-fe-master`). P3-12 (log đỏ chạy trên bản test cũ): chạy lại `red-365-369-r1.log` EXIT 1 (có `sha=`), sửa nhãn trong w1/V/tai-hien-NO-365.md, tai-hien-NO-369.md — không có commit.
+
+## FIX-450 cho F-08 — bộ mẫu v15 có snapshot riêng (DEBT-03 review R1 Nit)
+
+- **[1 TRIỆU CHỨNG]** Bản mẫu v15 (thêm ở FIX-387) dùng chung snapshot với v14.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w1-v @ f2ec2fb8: `versionHistoryFixtures.test.ts` đỏ trong `red-r1.log`
+- **[3 BẰNG CHỨNG]** src/screens/export/VersionHistory/versionHistoryFixtures.ts
+- **[4 KHOANH VÙNG]** `versionHistoryFixtures.ts` (đã thuộc nhánh gộp; chủ F-08) + test
+- **[5 SỬA NHỎ NHẤT]** v15 có snapshot riêng
+- **[6 TEST CHẶN TÁI PHÁT]** `versionHistoryFixtures.test.ts`; đỏ trong red-r1.log → xanh (vitest.log EXIT 0)
+- **[7 NGHIỆM THU]** như FIX-449. Commit `7ac76907` (AppFront nhánh `fix/debt-03-fe-master`). Có sẵn, không sửa: v13 dùng chung snapshot với v12 (xem R1/V/bao-cao.md).
+
+## FIX-451 cho F-05b — nhịp `pending` đến muộn không kéo thanh tiến độ về 0 (DEBT-03 review R1 P3-8)
+
+- **[1 TRIỆU CHỨNG]** Lượt dò #8 đi trong lúc SSE im, SSE báo bước mới trong lúc lượt dò còn bay, lượt dò về `pending` → màn Xử lý về sáu bước chờ, 0%.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ c2731a75 + test mới: `pnpm vitest run src/screens/pipeline/ProcessingScreen/processingGateway.test.ts` EXIT 1, `1 failed | 23 passed (24)` (`red-p3-8.log`, `sha=c2731a75`)
+- **[3 BẰNG CHỨNG]** processingGateway.ts:574 (nhánh `pending` bỏ qua `keepObservedDone`); `pending` không mang mã lượt (AppBack apps/api/drawings/progress.py `_pending`)
+- **[4 KHOANH VÙNG]** `processingGateway.ts` + test; không đổi `toStageBreakdown`, schema, hợp đồng
+- **[5 SỬA NHỎ NHẤT]** `createProgressReader`: mốc quan sát `observed`; lượt đọc trả `pending` mà mốc đã đổi từ lúc nó đi (và nhịp mới nhất không phải `pending`) bị bỏ. Lệch spec: không có `runId` trên dây nên phân bằng mốc quan sát
+- **[6 TEST CHẶN TÁI PHÁT]** "drops a late pending probe answer once SSE has shown the run running (P3-8)"; chốt "still takes a pending probe answer when nothing newer was seen meanwhile (new run, NO-364)"; đỏ EXIT 1 → xanh (ProcessingScreen, PipelineGraph, lib/realtime 177/177 EXIT 0, NO-364 + NO-154 xanh, `green-p3-8.log`)
+- **[7 NGHIỆM THU]** sha 85bf849c: vitest --coverage 15 tệp 333/333; processingGateway.ts 96,06/93,58. Commit `e7edf5dd` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-452 cho F-01b — bài "thử lại khi đã cấu hình" ghim đúng nhánh (DEBT-03 review R1 P3-5 d)
+
+- **[1 TRIỆU CHỨNG]** `src/routes/sessionSetup.test.ts:66` xanh cả khi `retryAppSession` trả lượt khởi động đã nhớ (không gia hạn) hay cấu hình lại.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ c2731a75: đột biến M1/M2 trên `sessionSetup.ts` (R1/S/tai-hien-P3-5d.md)
+- **[3 BẰNG CHỨNG]** bài cũ chỉ khẳng định `resolves.toBe(true)` và `status === 'authenticated'`
+- **[4 KHOANH VÙNG]** chỉ `src/routes/sessionSetup.test.ts` (ngoại lệ khối [12] đã duyệt cho tệp này)
+- **[5 SỬA NHỎ NHẤT]** bọc `vi.fn` quanh `configureAuth`/`bootstrapSession` thật; khẳng định 1→1 lượt cấu hình, 1→2 lượt gia hạn
+- **[6 TEST CHẶN TÁI PHÁT]** "thử lại khi phiên đã cấu hình thì chỉ gia hạn, không cấu hình lại"; M1 (luôn `return startAppSession()`) EXIT 1 `expected "bootstrapSession" to be called 2 times, but got 1 times`; M2 (`configureAuth(getAuthConfig())` rồi gia hạn) EXIT 1 `expected "configureAuth" to be called 1 times, but got 2 times`; mã thật EXIT 0 3/3 (`p3-5d-*.log`)
+- **[7 NGHIỆM THU]** vitest --coverage 333/333 (sessionSetup.ts 96,82/92,3). Commit `77d93031` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-453 cho F-09a — "Thử lại" ở màn lời mời: chờ một lượt, tiêu điểm hợp lệ, báo khi hỏng (DEBT-03 review R1 P3-10 a, Nit 15)
+
+- **[1 TRIỆU CHỨNG]** Bấm "Thử lại": tiêu điểm nhảy ngay về ô họ tên dù chưa biết kết quả; bấm nhiều lần gửi nhiều lượt; thử lại hỏng không có câu mới. Chú thích `InvitationAccept.tsx:81` ("nút không mang `type`") lỗi thời.
+- **[2 TÁI HIỆN]** nhánh fix/debt-03-w2-s @ c2731a75 + test mới: `pnpm vitest run src/screens/auth/InvitationAccept` EXIT 1, 3 hỏng/32 (`red-p3-10.log`; `toHaveFocus`, `expected "spy" to be called 1 times, but got 2 times`)
+- **[3 BẰNG CHỨNG]** InvitationAccept.tsx:42-45 (`handleRetry` focus ngay), useInvitationAccept.ts `retrySession` không cờ chờ
+- **[4 KHOANH VÙNG]** `src/screens/auth/InvitationAccept/**`; không `vi.json` (dùng `connectionStates.checking`, `errors.network.description`), không `InlineAlert`
+- **[5 SỬA NHỎ NHẤT]** cờ chờ một lượt (`retryInFlight`); vùng `role="status"` đọc "đang kiểm tra" rồi câu lỗi khi hỏng; tiêu điểm chỉ về ô họ tên khi dải biến mất và tiêu điểm rơi về `body`; sửa chú thích dòng 81
+- **[6 TEST CHẶN TÁI PHÁT]** `InvitationAccept.test.tsx` "retry: one attempt at a time, says it is checking, says again when it fails, focus stays put (P3-10)", "retry that opens the session: the strip goes and focus lands on the first field, not body (P3-10)"; `InvitationAccept.container.test.tsx` (NO-357 đã chỉnh); đỏ EXIT 1 (red-p3-10.log) → xanh EXIT 0, 32/32 (green-p3-10.log)
+- **[7 NGHIỆM THU]** sha 85bf849c porcelain 0: typecheck/lint/length 0, vitest --coverage 333/333 (InvitationAccept.tsx 97,61/100). Commit `85bf849c` (AppFront nhánh `fix/debt-03-fe-master`). P3-6 (bỏ `beforeAll` notification-center) không commit; mã FIX-454 sau đó cấp cho R2-1.
+
+## FIX-454 cho F-05a — nút bị chặn bằng aria-disabled phải trông bị chặn (review DEBT-03 R2-1)
+
+- **[1 TRIỆU CHỨNG]** "Tiếp tục xử lý" chặn bằng `aria-disabled` (FIX-441) vẫn trông như đang bật: `Button` chỉ tô `opacity-40 cursor-not-allowed` theo prop `disabled`.
+- **[2 TÁI HIỆN]** nhánh `fix/debt-03-fe-master` @ 3b7c4b97: bài NO-361 + bài mới `Button.test.tsx` → `I/r2-1-red.log` EXIT 1 (2 hỏng)
+- **[3 BẰNG CHỨNG]** `src/components/ui/buttonVariants.ts:47`; `src/screens/upload/InputQualityGate/InputQualityGateFooter.tsx:70-71`; `docs/reviews/2026-10-07-fix-debt-03-fe-master-round-2.md` R2-1
+- **[4 KHOANH VÙNG]** `buttonBaseStyles` (gốc chung); grep: chỉ `InputQualityGateFooter` dùng `Button` kèm `aria-disabled` → không màn nào khác đổi
+- **[5 SỬA NHỎ NHẤT]** thêm `aria-disabled:opacity-40 aria-disabled:cursor-not-allowed` vào `buttonBaseStyles`; assert class ở bài NO-361
+- **[6 TEST CHẶN TÁI PHÁT]** `Button.test.tsx` (aria-disabled tô như disabled); bài NO-361 `InputQualityGate.test.tsx` assert class — đỏ `r2-1-red.log` EXIT 1 → xanh `r2-1-green.log` EXIT 0
+- **[7 NGHIỆM THU]** `I/r2-dich.log` typecheck/lint/length 0, vitest 785/785; `I/verify-3.log` 7/7 @2d76371d. Commit `018459ed` (Prompt: DEBT-03 — Button không có chủ trong trailer), `2f4ed758` (F-05a) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-455 cho F-09a — bỏ trường chỉ ghi `isRetryingSession` (review DEBT-03 R2-3)
+
+- **[1 TRIỆU CHỨNG]** `isRetryingSession` chỉ được ghi, không ai đọc (`useInvitationAccept.ts:89,341`).
+- **[2 TÁI HIỆN]** nhánh `fix/debt-03-fe-master` @ 3b7c4b97: `git grep -n isRetryingSession` chỉ ra chỗ ghi
+- **[3 BẰNG CHỨNG]** `src/screens/auth/InvitationAccept/useInvitationAccept.ts:89,341`; lượt bấm lặp đã chốt trong `retrySession`
+- **[4 KHOANH VÙNG]** model, story, test của InvitationAccept
+- **[5 SỬA NHỎ NHẤT]** xoá trường khỏi model/story/test
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — mã chết; bài P3-10 (bấm lặp bị bỏ) vẫn xanh
+- **[7 NGHIỆM THU]** `I/r2-dich.log` EXIT 0; `I/verify-3.log` 7/7. Commit `3c798089` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-456 cho F-04x-1 — Enter cam kết lại sau khi đổi tên bị từ chối (review DEBT-03 R2-5)
+
+- **[1 TRIỆU CHỨNG]** Chốt `committed` (FIX-445) nuốt lượt Enter lại sau khi đổi tên bị từ chối — người dùng bấm Enter không có phản hồi.
+- **[2 TÁI HIỆN]** nhánh `fix/debt-03-fe-master` @ 3b7c4b97: `RoomLabelNameField.test.tsx` bài mới → `I/r2-5-red.log` EXIT 1
+- **[3 BẰNG CHỨNG]** `src/screens/qc/RoomLabelReview/RoomLabelNameField.tsx:78`
+- **[4 KHOANH VÙNG]** `RoomLabelNameField.tsx` + test
+- **[5 SỬA NHỎ NHẤT]** chốt chỉ chặn blur (`commit(isExplicit)`); Enter luôn cam kết. Hệ quả chấp nhận: Enter hai lần khi lượt lưu còn bay gửi cùng tên hai lần (đổi tên cùng giá trị — lặp được, vô hại)
+- **[6 TEST CHẶN TÁI PHÁT]** bài R2-5 (từ chối → Enter lại tới `onCommit`, câu từ chối hiện lại) + bài P3-5e (Enter rồi blur một lần) — đỏ `r2-5-red.log` EXIT 1 → xanh `r2-5-green.log` 58/58 EXIT 0
+- **[7 NGHIỆM THU]** `I/r2-dich.log` EXIT 0; `I/verify-3.log` 7/7. Commit `744292bb` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-457 cho F-03 — PDF nhiều trang lúc ngoại tuyến chờ chọn trang (review DEBT-03 R2-6)
+
+- **[1 TRIỆU CHỨNG]** Bài offline PDF nhiều trang mất vế "chưa chọn trang thì chưa tải" sau khi FIX-438 đổi tên bài.
+- **[2 TÁI HIỆN]** nhánh `fix/debt-03-fe-master` @ 3b7c4b97: `useFloorUploadScreen.test.ts:1258-1279` không có assert vế đó
+- **[3 BẰNG CHỨNG]** `src/screens/upload/FloorUploadScreen/useFloorUploadScreen.test.ts:1258-1279`
+- **[4 KHOANH VÙNG]** chỉ test
+- **[5 SỬA NHỎ NHẤT]** bài mới: chưa chọn trang thì mạng về cũng chưa tải; chọn trang xong tải với `pageIndex` 1
+- **[6 TEST CHẶN TÁI PHÁT]** hành vi đã đúng nên bài không đỏ trên mã; đột biến (chọn trang trước khi mạng về) làm assert "chưa tải" đỏ `r2-6-dot-bien.log` → bản cuối xanh `r2-6-green.log`
+- **[7 NGHIỆM THU]** `I/r2-dich.log` EXIT 0; `I/verify-3.log` 7/7. Commit `94d5d46c` (AppFront nhánh `fix/debt-03-fe-master`).
+
+## FIX-458 cho F-04x-1/F-08 — một bước nạp lại N16 dùng chung `applyFloorLayerRead` (review DEBT-03 R2-4)
+
+- **[1 TRIỆU CHỨNG]** VersionHistory chép lại thân `reloadFloor` của autosave (`useVersionHistory.ts:343-357` vs `useAutosave.ts:552-566`).
+- **[2 TÁI HIỆN]** nhánh `fix/debt-03-fe-master` @ 3b7c4b97: so hai đoạn mã
+- **[3 BẰNG CHỨNG]** hai đoạn trên; review lượt 2 R2-4
+- **[4 KHOANH VÙNG]** `src/store/commit.ts` (hàm mới), `src/hooks/useAutosave.ts`, `src/screens/export/VersionHistory/useVersionHistory.ts` + test
+- **[5 SỬA NHỎ NHẤT]** hàm kho thuần `applyFloorLayerRead(floorId, read)` (dimensions/level/scaleStatus + gỡ tỉ lệ tạm); autosave vẫn ghi `reloadErrors`, VersionHistory vẫn ném để có dải "Tải lại"; hai bài VersionHistory đổi spy từ `replaceFloorLayer` sang `applyFloorLayerRead` (vẫn kiểm đủ khoá + external)
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — tái cấu trúc giữ hành vi; bài NO-369/NO-374/P3-9 + autosave scale vẫn xanh `I/r2-4.log` 391/391 EXIT 0
+- **[7 NGHIỆM THU]** `I/verify-3.log` 7/7 @2d76371d. Commit `1b8ecf1e` (F-04x-1), `2d76371d` (F-08) (AppFront nhánh `fix/debt-03-fe-master`).
+
+## Hồ sơ lệch (review DEBT-03 lượt 1 P3-13, P3-14, Nit)
+
+Ghi nhận, không viết lại lịch sử đã gộp:
+
+- **P3-13 — dòng dữ liệu NO-370 (132→0)** (`wallsTotalCount: 132` → `0` ở `src/api/__mocks__/client.ts`) nằm trong commit `23d98fb7` (FIX-386, F-08, "remove dead spatial.listVersions client method"), không phải `af01f518` (FIX-388, F-07), commit này chỉ sửa chú thích bộ mẫu và thêm test. Kiểm bằng `git show 23d98fb7 -- src/api/__mocks__/client.ts`: dòng `-wallsTotalCount: 132` / `+wallsTotalCount: 0` có ở 23d98fb7.
+- **P3-14 — K27 lệch chủ** (một commit chạm tệp của nhiều Prompt, hoặc tệp không có chủ): `c75e31fb` (FIX-401, Prompt F-05b, chạm cả `PipelineGraph.test.tsx`), `657a19d6` (FIX-405, Prompt F-09a, sửa `stateGalleryManifest.ts`), `09e6e478` (FIX-431, Prompt F-03, sửa `useCollaborationLayer.ts` không có chủ trong sổ), `8cb184f5` (FIX-389, Prompt F-04x-1, chạm cả `e2e/v7/room-label-review.spec.ts`), `7fe9dc30` (FIX-413, `InlineAlert`, không chủ → đã mang `Prompt: DEBT-03`). Quy tắc: tệp không có chủ → `Prompt: DEBT-03`; điều phối quyết có đổi trailer các commit còn lại hay không.
+- **Nit — dòng đầu `6faf1e61` dài 74 ký tự** (`test(room-label): cover commit, Esc and suggestion paths of the name field`), vượt giới hạn 72.
+- **FIX-408 dùng cho hai việc**: chú thích VersionHistory (`7abe75bc`, F-08) và ảnh chuẩn dashboard (`dac5e8ef`, F-07). Mục FIX-408 ở trên ghi cả hai.
+- Ngoài danh sách trên, ghi thêm: mã FIX-435 từng bị dùng cho hai việc (NO-379 ở AppBack `b21c4764`, và `.notes` AppFront `2213a203`); `2213a203` được hoàn tác bằng `c1996c76` rồi áp lại y nguyên thành `c2731a75` mang FIX-436 (xem mục 435, 436). FIX-454 ban đầu dành cho P3-6 (không commit), sau cấp cho R2-1 lượt Nit cuối; FIX-412 từng dành cho NO-377 nhưng chỉ dùng cho chú thích Billing.
