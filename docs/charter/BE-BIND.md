@@ -132,7 +132,7 @@ N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 
 ## 4. Luật `Progress` (#5–#8, S1)
 
-`ProgressSchema` strict có 4 trạng thái (`src/api/schemas/index.ts:165-174`). FE coi `completed || endedAt !== undefined` là đã xong và vẽ **mọi** bước "xong" (`src/screens/pipeline/ProcessingScreen/processingGateway.ts:522`). Vì vậy:
+`ProgressSchema` strict có 4 trạng thái (`src/api/schemas/index.ts:165-174`). FE coi `completed || endedAt !== undefined` là đã xong và vẽ **mọi** bước "xong" (`src/screens/pipeline/ProcessingScreen/processingGateway.ts`, hàm `toStageBreakdown`, nhánh "đã xong"). Vì vậy:
 
 - `id` là **upload id**.
 - Từ init tới trước khi xếp hàng pipeline: `status:"pending"`, `step:"preprocess"`, `progressPercent: 0`.
