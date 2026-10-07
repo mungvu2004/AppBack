@@ -4292,3 +4292,127 @@ Ghi nhận, không viết lại lịch sử đã gộp:
 - **Nit — dòng đầu `6faf1e61` dài 74 ký tự** (`test(room-label): cover commit, Esc and suggestion paths of the name field`), vượt giới hạn 72.
 - **FIX-408 dùng cho hai việc**: chú thích VersionHistory (`7abe75bc`, F-08) và ảnh chuẩn dashboard (`dac5e8ef`, F-07). Mục FIX-408 ở trên ghi cả hai.
 - Ngoài danh sách trên, ghi thêm: mã FIX-435 từng bị dùng cho hai việc (NO-379 ở AppBack `b21c4764`, và `.notes` AppFront `2213a203`); `2213a203` được hoàn tác bằng `c1996c76` rồi áp lại y nguyên thành `c2731a75` mang FIX-436 (xem mục 435, 436). FIX-454 ban đầu dành cho P3-6 (không commit), sau cấp cho R2-1 lượt Nit cuối; FIX-412 từng dành cho NO-377 nhưng chỉ dùng cho chú thích Billing.
+
+## FIX-461 cho F-03 — dọn lệnh tải bản vẽ mồ côi chỉ của phiên đã đóng: mã phiên + Web Locks (DEBT-04 NO-400)
+
+- **[1 TRIỆU CHỨNG]** Hai tab cùng mở màn tải bản vẽ một dự án: tab mở sau gỡ lệnh `uploadDrawing` của tab đang chờ mạng → "chờ đồng bộ" đếm thiếu (tệp không mất).
+- **[2 TÁI HIỆN]** `useFloorUploadScreen.test.ts` nhóm NO-400: 2 bài đỏ trên `e0a9ec08` (`DEBT-04/O/red.log` EXIT 1; `tai-hien-NO-400.md`)
+- **[3 BẰNG CHỨNG]** base `floorUploadGateway.ts:254-266` (`clearOrphanUploads` gỡ mọi `uploadDrawing`), gọi lúc mở màn `useFloorUploadScreen.ts:391`; `DEBT-04/O/quyet-dinh.md` P-1, P-7…P-13, P-17
+- **[4 KHOANH VÙNG]** `src/lib/offline/markerCommands.ts` (mới), `floorUploadGateway.ts`, test cùng thư mục; hook màn không đổi
+- **[5 SỬA NHỎ NHẤT]** lệnh mang `sessionId` của tab; tab giữ khoá Web Locks chung `offline-tab-session:<mã>` (cấp trước khi ghi lệnh); mở màn chỉ gỡ lệnh không mã phiên (bản dựng trước) hoặc mang mã phiên không còn giữ khoá; không có Web Locks / `query()` hỏng → coi phiên khác là sống (không gỡ); `query()` một lần mỗi lượt dọn
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorUploadScreen.test.ts` › `hai tab cùng dự án: mở màn chỉ gỡ lệnh của phiên đã chết (NO-400)` (3 bài) + `src/lib/offline/__tests__/markerCommands.test.ts` (6 bài) — đỏ 2 EXIT 1 → xanh EXIT 0 (`green.log`)
+- **[7 NGHIỆM THU]** `DEBT-04/O/{typecheck,lint,length,vitest-coverage}.log`; commit `657fcd89` (AppFront nhánh `fix/debt-04-o`). Nợ sinh ra: xem "Nợ mới" của báo cáo (đường lùi không Web Locks).
+## FIX-462 cho F-03 — replayer bỏ qua lệnh dấu đếm `uploadDrawing` (DEBT-04 NO-402)
+
+- **[1 TRIỆU CHỨNG]** Nếu nối replayer, lệnh dấu đếm `uploadDrawing` (không mang `File`) bị gửi: 4xx → dead-letter, 408/429/5xx/mạng → chặn cả hàng.
+- **[2 TÁI HIỆN]** `replayer.test.ts` › `skips uploadDrawing marker commands…` đỏ trên `e0a9ec08` (`red.log` EXIT 1; `tai-hien-NO-402.md`)
+- **[3 BẰNG CHỨNG]** base `replayer.ts:219-262` (`sendPendingCommands` gửi mọi lệnh); vai trò dấu đếm ở FIX-459 (chú thích đầu `floorUploadGateway.ts`); `quyet-dinh.md` P-3, P-16
+- **[4 KHOANH VÙNG]** `src/lib/offline/replayer.ts`, `__tests__/replayer.test.ts`
+- **[5 SỬA NHỎ NHẤT]** `continue` trên lệnh `isUploadDrawingCommand`: không gửi, không dead-letter, không gỡ (màn giữ `File`, tự tải, tự gỡ — gỡ ở đây làm đếm thiếu như NO-400), vẫn đếm trong `pendingCommands`
+- **[6 TEST CHẶN TÁI PHÁT]** `replayer.test.ts` › `skips uploadDrawing marker commands: not sent, not dead-lettered, left in the queue (NO-402)` — đỏ EXIT 1 → xanh EXIT 0; thêm 3 bài phủ vòng đời/bầu chọn/lỗi hàng đợi (độ phủ `replayer.ts` 76→98% dòng, 62→93% nhánh)
+- **[7 NGHIỆM THU]** `vitest-coverage.log` EXIT 0; commit `5ea265c7`.
+## FIX-463 cho F-03 — hàng đợi ngoại tuyến báo "đã đổi" sau mỗi lượt ghi (DEBT-04 NO-401, phần lib)
+
+- **[1 TRIỆU CHỨNG]** Lớp đọc hàng đợi (ConnectionStates) không biết hàng đợi vừa đổi; IndexedDB không phát sự kiện.
+- **[2 TÁI HIỆN]** `ConnectionStates.container.test.tsx` đỏ trên `e0a9ec08` (`red.log` EXIT 1; `tai-hien-NO-401.md`)
+- **[3 BẰNG CHỨNG]** base `queueStore.ts` không có đường nghe; replayer dựng store riêng `replayer.ts:107` → báo phải ở mức module; `quyet-dinh.md` P-4…P-6, P-14
+- **[4 KHOANH VÙNG]** `src/lib/offline/queueStore.ts`, `__tests__/queueStore.test.ts`
+- **[5 SỬA NHỎ NHẤT]** `subscribeQueueChanges(listener)`; `createQueueStore` bọc add/delete/moveToDeadLetter một lần (`notifyingWrite`) — `ok` thì báo (microtask, mỗi người nghe một microtask); tab khác qua BroadcastChannel `offline-queue-changed` (kênh chung mở khi có người nghe, đóng khi hết; không ai nghe → kênh tạm gửi rồi đóng)
+- **[6 TEST CHẶN TÁI PHÁT]** `queueStore.test.ts` › 3 bài NO-401 (báo sau ghi thành công / không báo khi hỏng / huỷ; nghe tab khác; không có BroadcastChannel) + 1 bài IndexedDB gỡ/dead-letter (độ phủ `queueStore.ts` 78→90% dòng)
+- **[7 NGHIỆM THU]** `vitest-coverage.log` EXIT 0; commit `61d7f563`.
+## FIX-464 cho DEBT-04 (ConnectionStates không có chủ trong sổ) — số "chờ đồng bộ" đọc lại khi hàng đợi đổi (DEBT-04 NO-401)
+
+- **[1 TRIỆU CHỨNG]** ConnectionStates chỉ đọc lại hàng đợi khi mạng đổi trạng thái → số "chờ đồng bộ" cũ suốt lúc mạng đứng yên.
+- **[2 TÁI HIỆN]** `ConnectionStates.container.test.tsx` › `ghi thêm rồi gỡ bớt lệnh khi mạng không đổi…` đỏ trên `e0a9ec08` (`red.log` EXIT 1; `tai-hien-NO-401.md`)
+- **[3 BẰNG CHỨNG]** base `ConnectionStates.container.tsx:102-129` deps `[gateway, projectId, status.online]`; `quyet-dinh.md` P-2
+- **[4 KHOANH VÙNG]** `connectionStatesGateway.ts`, `ConnectionStates.container.tsx`, `ConnectionStates.container.test.tsx` (mới)
+- **[5 SỬA NHỎ NHẤT]** gateway thêm `watchPending` (mặc định `subscribeQueueChanges`, FIX-463); container giữ `queueRevision`, tăng khi hàng đợi báo đổi, thêm vào deps effect đọc (cờ `cancelled` bỏ kết quả đọc cũ)
+- **[6 TEST CHẶN TÁI PHÁT]** `ConnectionStates.container.test.tsx` — đỏ EXIT 1 → xanh EXIT 0 (`green.log`)
+- **[7 NGHIỆM THU]** `vitest-coverage.log` EXIT 0; commit `d86634f8`. Trailer `Prompt: DEBT-04` vì tệp không có chủ trong sổ (commit dựng S-45 `4fd3cf82` không có trailer — quy tắc P3-14).
+## FIX-465 cho F-03 — ghim hai bất biến thứ tự của NO-400 (review DEBT-04 FE #2)
+
+- **[1 TRIỆU CHỨNG]** Khoá giả cấp ngay lúc xin → bỏ `await holdTabSession` hay đảo đọc lệnh/đọc khoá trong `clearOrphanUploads` vẫn xanh.
+- **[2 TÁI HIỆN]** đột biến M1 (bỏ `await`, `floorUploadGateway.ts:243`) và M2 (đọc khoá trước khi đọc lệnh, `:269-277`) : với bộ test cũ cả hai vẫn xanh (review #2); với bài mới cả hai đỏ EXIT 1 (`O/mutant-1.log`, `O/mutant-2.log`)
+- **[3 BẰNG CHỨNG]** `docs/reviews/2026-10-07-fix-debt-04-fe-master.md` #2; `floorUploadGateway.ts:241-243, 263-277`
+- **[4 KHOANH VÙNG]** chỉ `useFloorUploadScreen.test.ts` (nhóm NO-400); mã sản phẩm không đổi
+- **[5 SỬA NHỎ NHẤT]** hai bài: (i) khoá cấp bằng deferred — chưa cấp thì hàng đợi rỗng, cấp rồi mới có lệnh; (ii) `query()` giả chụp danh sách khoá rồi cho tab A xin khoá + ghi lệnh ngay sau đó — đúng thứ tự (đọc lệnh trước) thì lệnh tab A còn nguyên
+- **[6 TEST CHẶN TÁI PHÁT]** `ghi lệnh chỉ sau khi khoá phiên đã được cấp`; `đọc khoá SAU khi đọc lệnh: lệnh ghi xen giữa hai lượt đọc không bị coi là mồ côi` — M1 EXIT 1, M2 EXIT 1, mã thật EXIT 0 (`O/mutant-0.log`)
+- **[7 NGHIỆM THU]** `O/r-{typecheck,lint,length,vitest-coverage}.log`; commit `abe821b4` (AppFront nhánh `fix/debt-04-o`).
+## FIX-466 cho F-03 — chú thích dọn mồ côi lúc mở màn theo luật phiên NO-400 (review DEBT-04 FE #4)
+
+- **[1 TRIỆU CHỨNG]** Chú thích `useFloorUploadScreen.ts:386-389` còn nói mọi lệnh `uploadDrawing` lúc mở màn là của phiên trước và bị gỡ.
+- **[2 TÁI HIỆN]** đọc mã: chú thích lệch `floorUploadGateway.ts:26-31` và hành vi sau FIX-461
+- **[3 BẰNG CHỨNG]** review #4; `floorUploadGateway.ts` `clearOrphanUploads` (chỉ gỡ phiên đã chết / không mã phiên)
+- **[4 KHOANH VÙNG]** chỉ chú thích trong `useFloorUploadScreen.ts`
+- **[5 SỬA NHỎ NHẤT]** viết lại 3 dòng → 4 dòng: gỡ lệnh của phiên đã đóng hay không mang mã phiên; lệnh của tab khác còn sống được giữ (NO-392, NO-400)
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — chỉ chú thích; hành vi đã ghim ở nhóm NO-400 (FIX-461, FIX-465)
+- **[7 NGHIỆM THU]** `O/r-{typecheck,lint}.log`; commit `0f33ec66`.
+## FIX-467 cho DEBT-04 (ConnectionStates không có chủ trong sổ) — phủ nhánh bỏ lượt đọc cũ (review DEBT-04 FE #5)
+
+- **[1 TRIỆU CHỨNG]** Nhánh `cancelled` (`ConnectionStates.container.tsx:114-116`) chưa phủ; từ FIX-464 nó là chốt khi nhiều lượt báo đổi dồn dập và lượt đọc về không theo thứ tự.
+- **[2 TÁI HIỆN]** độ phủ trước: container 88.29 dòng / 76.47 nhánh, thiếu 114-116; đột biến M3 (xoá `if (cancelled) return;`) → bài mới đỏ EXIT 1 (`O/mutant-3.log`)
+- **[3 BẰNG CHỨNG]** review #5; `ConnectionStates.container.tsx:108-129`
+- **[4 KHOANH VÙNG]** chỉ `ConnectionStates.container.test.tsx`
+- **[5 SỬA NHỎ NHẤT]** gateway giả: `listPending` trả deferred, `watchPending` giữ người nghe; báo đổi → hai lượt đọc; lượt 2 về trước (2 lệnh) rồi lượt 1 về muộn (1 lệnh) → dải vẫn nói "2 thay đổi"
+- **[6 TEST CHẶN TÁI PHÁT]** `lượt đọc cũ về muộn hơn lượt đọc mới thì bị bỏ: dải nói theo lượt mới` — M3 EXIT 1, mã thật EXIT 0; container 90.42 dòng / 83.33 nhánh
+- **[7 NGHIỆM THU]** `O/r-vitest-coverage.log`; commit `fb2e46f9`.
+
+## FIX-481 cho F-05a — đơn vị đo trong vi.json viết thường (DEBT-04 NO-397)
+
+- **[1 TRIỆU CHỨNG]** 9 khoá `vi.json` mang đơn vị viết hoa chữ đầu ("Mm", "Cm", "M", "M²"); sổ chỉ ghi 3 dòng.
+- **[2 TÁI HIỆN]** `npx vitest run src/i18n` trên `e0a9ec08` EXIT 1, 9 khoá lệch (`DEBT-04/D/tai-hien-NO-397.md`)
+- **[3 BẰNG CHỨNG]** `vi.json` 1678, 2160, 2698, 2737, 2739, 2741, 3013-3015; đợt A6 viết hoa máy móc cả ký hiệu đơn vị (`_charter/DINH-CHINH-A6.md`)
+- **[4 KHOANH VÙNG]** `src/i18n/vi.json` + test mới; khoá chưa có nơi tra (màn dùng hằng riêng) — giữ làm nguồn chữ cho lần nối sau
+- **[5 SỬA NHỎ NHẤT]** 9 giá trị về mm/cm/m/m², không đổi khoá
+- **[6 TEST CHẶN TÁI PHÁT]** `src/i18n/vi.units.test.ts` — đỏ EXIT 1 → xanh EXIT 0
+- **[7 NGHIỆM THU]** typecheck/lint/length 0 (`DEBT-04/D/*.log`); `I/verify-1.log` 7/7. Commit `63c3af4e` (AppFront nhánh `fix/debt-04-d`).
+
+## FIX-482 cho F-08 — số đếm hàng bộ mẫu phiên bản suy từ ảnh chụp (DEBT-04 NO-398)
+
+- **[1 TRIỆU CHỨNG]** hàng v12/v13 mang `SAMPLE_DIFF_COUNTS` [1,1,1]; đúng là v12 [2,0,0] (so v11 rỗng), v13 [0,0,0] (cùng ảnh chụp v12).
+- **[2 TÁI HIỆN]** `versionHistoryFixtures.test.ts` bài NO-398 đỏ trên `e0a9ec08` (EXIT 1, v13 [1,1,1]) (`DEBT-04/D/tai-hien-NO-398.md`)
+- **[3 BẰNG CHỨNG]** `buildVersionRow` gán đếm cố định cho mọi hàng trừ v11 (`versionHistoryFixtures.ts:282` base)
+- **[4 KHOANH VÙNG]** `versionHistoryFixtures.ts` + test
+- **[5 SỬA NHỎ NHẤT]** `countsAgainstPrevious` = `buildDiffCounts(diffVersions(ảnh trước, ảnh hàng))`; bản cũ nhất → rỗng
+- **[6 TEST CHẶN TÁI PHÁT]** `versionHistoryFixtures.test.ts` › "every row counts the real diff from the version before it (NO-398)" — EXIT 1 → 0
+- **[7 NGHIỆM THU]** vitest VersionHistory xanh; `I/verify-1.log` 7/7. Commit `8658f1eb`.
+
+## FIX-483 cho F-08 — một nguồn thứ tự lịch sử mẫu (review DEBT-04 FE Nit #3)
+
+- **[1 TRIỆU CHỨNG]** `countsAgainstPrevious` chép tay `[V15, V14, V13, V12, V11]` đã có ở `SAMPLE_HISTORY` (R-07).
+- **[2 TÁI HIỆN]** đọc mã — `docs/reviews/2026-10-07-fix-debt-04-fe-master.md` #3
+- **[3 BẰNG CHỨNG]** `versionHistoryFixtures.ts:270` (8658f1eb)
+- **[4 KHOANH VÙNG]** chỉ `versionHistoryFixtures.ts`
+- **[5 SỬA NHỎ NHẤT]** tìm mục bằng `SAMPLE_HISTORY.indexOf`, lấy ảnh chụp qua `snapshotOf`
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ (tái cấu trúc) — bài NO-398 giữ xanh
+- **[7 NGHIỆM THU]** typecheck/lint 0, vitest VersionHistory 66/66; `I/kiem-dich-2.log` EXIT 0 @3eebd3ca. Commit `d191c2bf`.
+
+## FIX-491 cho B5-01 — test khoá GPU thật hỏng khi luồng gia hạn bị đói CPU dưới `pytest -n 6` (NO-403)
+
+- **[1 TRIỆU CHỨNG]** Bước 5 (`verify --steps 5,7`, log `F:/App/AppBack/.cache/src-out/verify/20261007T035816Z-28cb8d03920d.log`): `apps/ml/runtime/tests/test_device_gpu.py:90 test_gpu_slot_m04_contention` — "Failed: DID NOT RAISE TransientError", log `WARNING apps.ml.runtime.lease:lease.py:146 lease_lost`; junit `time="0.728"`.
+- **[2 TÁI HIỆN]** Trên `2ee6e7e`: `bash tools/verify/run.sh shell < r-base.sh` (plugin `rep.py`: REP=20, ghim tiến trình pytest + 40 vòng bận lên một nhân) → contention 8/20 đỏ (7 "DID NOT RAISE" + `lease_lost renew_rejected`), PYTEST_EXIT=1. Chi tiết `backend/dieu-phoi/chay/DEBT-04/B/tai-hien-NO-403.md`.
+- **[3 BẰNG CHỨNG]** `test_device_gpu.py:27` TTL 600/RENEW 150 → biên chịu nghẽn `ttl - renew` 450 ms (`lease.py:134`); người chờ lấy được ngay lượt đầu (< 0,8 s, nhịp 1 s ± 20 % `lease.py:24-25,120-121`) ⇒ không PEXPIRE nào tới Redis trong ≥ 600 ms. Không tranh khoá giữa tiến trình (khối DB `services.py:292-299`). Anh em cùng gốc: `m04_renew` (`:74`), `test_lease.py:28-29,55` (600/200).
+- **[4 KHOANH VÙNG]** Sửa: `apps/ml/runtime/tests/{helpers.py,test_device_gpu.py,test_lease.py}`. Cấm: `lease.py`, `gpu.py`, `packages/**`, `apps/ml/training_runner/**` (B6-03b — nợ mới).
+- **[5 SỬA NHỎ NHẤT]** `LEASE_TTL_MS = 2400`, `LEASE_RENEW_MS = 600` một nguồn ở `helpers.py`, hai tệp test nhập; người giữ trong hai test tranh chấp dùng thời hạn mặc định của `gpu_slot` (`gpu_slot(wait_s=0)`, FIX-493; kiểm độc quyền, không kiểm gia hạn); tỉ lệ 4:1 của [8] giữ nguyên, biên 1,8 s (gấp 4 lần 450 ms). Không đổi assert, mã sản xuất, hợp đồng. Lệch B5-01 [8] (600/150) — ghi trong docstring, `hoi.md` câu 1. Duyệt: điều phối chấp nhận khuyến nghị A ở `hoi.md` câu 1; review BE `docs/reviews/2026-10-07-fix-debt-04-be-flaky.md` #6 đồng ý.
+- **[6 TEST CHẶN TÁI PHÁT]** `test_gpu_slot_m04_contention` (tái hiện dưới tải: đỏ 8/20 trên base → xanh 20/20 trên `372a0ba`); đột biến: `renewed = True` → m04_renew/lost/lost_when_redis_dies đỏ; `_acquire` lấy dù bận → contention + `test_held_lease__second_process_waits_for_first` đỏ (`mutation.md`).
+- **[7 NGHIỆM THU]** `bash tools/verify/run.sh verify` đầy đủ @420dc78 đạt (bảng trong `bao-cao.md`; log `C:/Users/mxuan/orca/workspaces/AppBack/debt04-b/.cache/src-out/verify/20261007T062034Z-420dc7893b87.log`, bản giữ lại `B/verify.log`); commit `55875c9` + `372a0ba` (người giữ dùng 60 000/20 000; FIX-493 thay bằng mặc định thật) + `1f88933` (docstring R-01) "fix(ml-runtime): widen GPU lease timing in tests to survive CPU stalls" + `Prompt: B5-01`, `Fix: FIX-491`.
+
+## FIX-492 cho B5-06c — test luật quét bù thấy hàng rỗng khi hai `LLEN` quá trần 1 s dưới `pytest -n` (NO-404)
+
+- **[1 TRIỆU CHỨNG]** Bước 5 (log `F:/App/AppBack/.cache/src-out/verify/20261007T041346Z-28cb8d03920d.log`): `apps/worker/pipeline_steps/tests/test_sweep_rules.py:119 test_sweep_resends_remaining_families_when_walls_used` — `assert set() == {'dimensionRe...ureDetection'}`; log 2x `sweep_queue_unreadable` (2x `after_commit_dropped` là có chủ ý: `arrange_run` bọc `drop_after_commit()`).
+- **[2 TÁI HIỆN]** Trên `2ee6e7e`, cùng lượt với FIX-491: 2/20 đỏ, log `sweep_queue_unreadable TimeoutError TimeoutError()` (TimeoutError trống = `asyncio.wait_for`, không phải redis-py). Chi tiết `tai-hien-NO-404.md`.
+- **[3 BẰNG CHỨNG]** `sweep.py:46,81` `asyncio.wait_for(broker.llen(key), LLEN_TIMEOUT_S=1.0)`; `helpers.sweep` dựng `broker_redis()` mới mỗi lượt (`helpers.py:308-314`) nên 1 s gồm cả nối nguội; quá hạn → `True` (còn việc) → `_CANDIDATES` loại lượt (`sweep.py:60`). Câu chữ dòng nợ ("socket_timeout=0.5") sai trần. Caller anh em: J01 qua `jobs.py:37`, J10 `test_step_done_cases.py:264` (rò client broker).
+- **[4 KHOANH VÙNG]** Sửa: `apps/worker/pipeline_steps/tests/{helpers.py,test_sweep_rules.py,test_step_done_cases.py}`. Cấm: `sweep.py` (trần 1 s chốt ở B5-06c [6]/[8]; chữ ký chốt `B5-06c.md:32`), `packages/**`.
+- **[5 SỬA NHỎ NHẤT]** Fixture `clean_queues` (mọi test quét đi qua) vá `sweep.LLEN_TIMEOUT_S` = trần thật x `LLEN_WAIT_FACTOR` (30) — hạn chờ chống treo; nhân chứ không thay. `_sweep_with_hanging_llen` ghim lại `REAL_LLEN_TIMEOUT_S` (chụp lúc nạp) để hai test hàng treo + perf vẫn kiểm trần 1 s thật. J10 đi `helpers.sweep` (đóng client).
+- **[6 TEST CHẶN TÁI PHÁT]** `test_sweep_resends_remaining_families_when_walls_used`. **Không có đỏ→xanh**: dưới HOGS=40 base 2/20 đỏ và nhánh **vẫn 2/20 đỏ** (`tai-hien-NO-404.md`). Khác nhau ở lý do: base hỏng vì trần `wait_for` 1 s (`TimeoutError()` trống); nhánh không còn lần nào như vậy, hai lượt đỏ là trần khác của chủ khác (nối redis-py 2 s, callback sau commit 2 s — Nợ mới 2); đột biến `> 0`→`>= 0` và `LLEN_TIMEOUT_S = 1e-6` đều đỏ; hai test hàng treo + perf `HANG_BUDGET_S` xanh với ghim (`mutation.md`).
+- **[7 NGHIỆM THU]** `bash tools/verify/run.sh verify` đầy đủ @420dc78 đạt (bảng trong `bao-cao.md`; log `C:/Users/mxuan/orca/workspaces/AppBack/debt04-b/.cache/src-out/verify/20261007T062034Z-420dc7893b87.log`, bản giữ lại `B/verify.log`); commit `9f9ebf5` + `420dc78` "fix(pipeline-steps): give sweep rule tests a load-proof LLEN wait" + `Prompt: B5-06c`, `Fix: FIX-492`.
+
+## FIX-493 cho B5-01 — người giữ khoá trong test tranh chấp chép tay mặc định của `gpu_slot` (review BE #4, #5)
+
+- **[1 TRIỆU CHỨNG]** Review `docs/reviews/2026-10-07-fix-debt-04-be-flaky.md` #4 (P3, R-07): `HOLD_TTL_MS = 60_000`, `HOLD_RENEW_MS = 20_000` (`apps/ml/runtime/tests/helpers.py:29-30`) chép mặc định `gpu_slot` (`gpu.py:102`); #5 (Nit): `test_held_lease__second_process_waits_for_first` không còn kiểm gia hạn qua nhiều TTL.
+- **[2 TÁI HIỆN]** Lỗi bảo trì (không chập chờn): đổi mặc định ở `gpu.py` thì hằng test lệch mà không ai hay.
+- **[3 BẰNG CHỨNG]** `helpers.py:29-30` @1f88933; `gpu.py:102` `ttl_ms=60_000, renew_every_ms=20_000`.
+- **[4 KHOANH VÙNG]** Sửa: `apps/ml/runtime/tests/{helpers.py,test_device_gpu.py,test_lease.py}`. Cấm: `gpu.py`, `lease.py`.
+- **[5 SỬA NHỎ NHẤT]** Bỏ hai hằng; người giữ ở `m04_contention` gọi `gpu_slot(wait_s=0)`; `_HOLDER` của `test_lease.py` bỏ `ttl_ms`/`renew_every_ms` (và `.format`). #5: không khôi phục — người giữ 2400/600 ở tiến trình khác lại chập chờn dưới `-n 6` (đúng gốc NO-403, đo `repro-pair-raw.log`); lý do ghi trong docstring test, gia hạn do `m04_renew`/`m04_lost` kiểm (cùng `held_lease`).
+- **[6 TEST CHẶN TÁI PHÁT]** Không test mới (sửa bảo trì). Đột biến `lease.py` "không trả khoá khi thoát khối" (`ops.release_quietly(token)` → `pass`): `test_gpu_slot_m04_contention` và `test_held_lease__second_process_waits_for_first` **đỏ**, MUT_EXIT=1 (`check-493.log`, script `r-493.sh`).
+- **[7 NGHIỆM THU]** R-33b đích (`run.sh shell < r-493.sh`, log `check-493.log`): ruff format --check 0, ruff check 0, mypy 0 (15 tệp), pytest `apps/ml/runtime/tests` 96 passed, mã thoát 0. Commit `89fdab5` "fix(ml-runtime): let contention holders use gpu_slot's real defaults" + `Prompt: B5-01`, `Fix: FIX-493`.
