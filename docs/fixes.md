@@ -4263,6 +4263,26 @@ packages/core/tests/test_pinned_images.py (100% dòng+nhánh).
 - **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — tái cấu trúc giữ hành vi; bài NO-369/NO-374/P3-9 + autosave scale vẫn xanh `I/r2-4.log` 391/391 EXIT 0
 - **[7 NGHIỆM THU]** `I/verify-3.log` 7/7 @2d76371d. Commit `1b8ecf1e` (F-04x-1), `2d76371d` (F-08) (AppFront nhánh `fix/debt-03-fe-master`).
 
+## FIX-459 cho F-03 — hàng đợi ngoại tuyến: một lệnh mỗi tệp chờ mạng, gỡ ở mọi lối ra (DEBT-03 NO-392 phương án B | review R2 P3-4)
+
+- **[1 TRIỆU CHỨNG]** FIX-438 bỏ hẳn ghi lệnh `uploadDrawing` vào hàng đợi ngoại tuyến → phần "chờ đồng bộ" của ConnectionStates luôn rỗng; người dùng chọn phương án B (giữ hàng đợi, vá mọi đường sót lệnh).
+- **[2 TÁI HIỆN]** nhánh `fix/debt-03-w3-x1` tua lên 2d76371d: 11 bài mới đỏ (`backend/dieu-phoi/chay/DEBT-03/R3/U/red.log` EXIT 1)
+- **[3 BẰNG CHỨNG]** `src/screens/upload/FloorUploadScreen/useFloorUploadScreen.ts` (`cancelTask`, lượt tải trực tuyến, unmount, mở màn), `floorUploadGateway.ts` (`clearOrphanUploads`); `ConnectionStates.container.tsx:106`; `R3/U/quyet-dinh.md` P-1…P-11
+- **[4 KHOANH VÙNG]** `useFloorUploadScreen.ts`, `floorUploadGateway.ts`, `index.ts`, `useFloorUploadScreen.test.ts`; không đổi `src/lib/offline`
+- **[5 SỬA NHỎ NHẤT]** tệp chờ mạng → đúng một lệnh (mang `label`, `pageIndex`); gỡ qua `cancelTask` (huỷ/xoá/gán lại/đổi trang/bị đẩy về khay), khi lượt tải trực tuyến bắt đầu, khi rời màn; mở màn dọn lệnh `uploadDrawing` mồ côi của dự án (lệnh loại khác giữ); lỗi ghi hàng đợi bị nuốt, tệp vẫn chờ trong màn
+- **[6 TEST CHẶN TÁI PHÁT]** `useFloorUploadScreen.test.ts` nhóm NO-392 phương án B (a) một lệnh mỗi tệp, (b) mỗi lối ra → 0, (c) mồ côi lúc mở màn, (d) lệnh mang `pageIndex` — đỏ 11/42 EXIT 1 → xanh 61/61 EXIT 0; e2e `upload.spec.ts` ×10 60/60
+- **[7 NGHIỆM THU]** `R3/U/*.log` typecheck/lint/length 0; `I/verify-4.log` 7/7 + `I/e2e-5.log` 329/0/5 @1133a931; review lượt 3 `docs/reviews/2026-10-07-fix-debt-03-fe-master-round-3.md`. Commit `5cf238c4` (AppFront nhánh `fix/debt-03-fe-master`). Nợ sinh ra: NO-400 (hai tab).
+
+## FIX-460 cho F-05a — khoá vi.json cho nhãn lệnh tải đang chờ (DEBT-03 R3)
+
+- **[1 TRIỆU CHỨNG]** Nhãn mới của dòng "chờ đồng bộ" (FIX-459) chưa có khoá `vi.json` (luật R2-1/P2-1).
+- **[2 TÁI HIỆN]** `grep -cF '<nhãn>' src/i18n/vi.json` = 0 trên 5cf238c4
+- **[3 BẰNG CHỨNG]** `src/i18n/vi.json`
+- **[4 KHOANH VÙNG]** chỉ `vi.json`
+- **[5 SỬA NHỎ NHẤT]** thêm một khoá
+- **[6 TEST CHẶN TÁI PHÁT]** không cần đỏ — từ điển kiểm; grep 0 → 1
+- **[7 NGHIỆM THU]** `I/verify-4.log` 7/7 @1133a931. Commit `6ee43ecf` (AppFront nhánh `fix/debt-03-fe-master`).
+
 ## Hồ sơ lệch (review DEBT-03 lượt 1 P3-13, P3-14, Nit)
 
 Ghi nhận, không viết lại lịch sử đã gộp:
