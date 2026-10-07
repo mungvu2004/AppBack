@@ -18,12 +18,23 @@ from packages.storage.port import CHUNK_SIZE, ObjectInfo, ObjectStorage
 
 OPSETS = [helper.make_opsetid("", 17)]
 
+LEASE_TTL_MS = 2400
+LEASE_RENEW_MS = 600
+"""TTL/nhịp gia hạn của mọi test giữ khoá GPU thật (`test_device_gpu.py`, `test_lease.py`) — một nguồn (NO-403).
+
+Lệch khỏi B5-01 [8] (600/150): dưới tải bước 5 (`pytest -n 6`, torch không giới hạn luồng) luồng gia hạn bị
+đói CPU ≥ 600 ms, khoá hết hạn giữa chừng (junit lượt hỏng: contention 0,728 s, người chờ lấy được ngay lượt đầu).
+Giữ tỉ lệ 4:1 của [8]; biên chịu nghẽn `ttl - renew` = 1,8 s, gấp 4 lần biên cũ 450 ms đã bị vượt.
+"""
+
 
 def some_id(prefix: IdPrefix) -> str:
+    """Id mới có tiền tố `prefix`, theo đồng hồ thật."""
     return new_id(prefix, SystemClock())
 
 
 def sha(data: bytes) -> str:
+    """SHA-256 dạng hex của `data`."""
     return hashlib.sha256(data).hexdigest()
 
 
@@ -170,6 +181,7 @@ def external_tensor(name: str, location: str = "../x") -> TensorProto:
 
 
 def upload_prefix() -> str:
+    """Tiền tố khoá kho của một lượt tải ngẫu nhiên (`projects/…/uploads/<id>/`)."""
     return f"projects/{some_id('prj')}/floors/L-ABCDEFGHIJ/uploads/{some_id('upl')}/"
 
 
@@ -203,16 +215,19 @@ class FailingReads(LocalDiskStorage):
     """
 
     def __init__(self, root: Path, error: AppError, *, pretend_size: int | None = None) -> None:
+        """Kho đĩa thật ở `root`; mọi lượt đọc ném `error`, `stat` báo cỡ `pretend_size` nếu có."""
         super().__init__(root, SystemClock(), "https://x.test")
         self.error = error
         self.pretend_size = pretend_size
 
     async def stat(self, key: str) -> ObjectInfo | None:
+        """`stat` thật, hay object giả cỡ `pretend_size` (cảnh bị xoá giữa `stat` và `open_read`)."""
         if self.pretend_size is None:
             return await super().stat(key)
         return ObjectInfo(key, self.pretend_size, "0" * 64, "application/octet-stream", "unknown", SystemClock().now())
 
     async def open_read(self, key: str, *, chunk_size: int = CHUNK_SIZE) -> AsyncIterator[bytes]:
+        """Ném `error` ngay lượt đọc đầu."""
         if chunk_size > 0:  # luôn đúng: lỗi nổi lên ở lượt đọc đầu, như kho thật
             raise self.error
         yield b""

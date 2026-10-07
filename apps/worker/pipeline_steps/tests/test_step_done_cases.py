@@ -24,7 +24,7 @@ from apps.worker.pipeline_steps import step_done as core
 from apps.worker.pipeline_steps import tasks
 from apps.worker.pipeline_steps.settings import get_steps_settings
 from apps.worker.pipeline_steps.step_done import BUILD_STEP, run_pipeline_step_done
-from apps.worker.pipeline_steps.sweep import _IDLE_MARK, CPU_QUEUE, run_stuck_pipeline_sweep
+from apps.worker.pipeline_steps.sweep import _IDLE_MARK, CPU_QUEUE
 from apps.worker.pipeline_steps.tests import helpers
 from apps.worker.pipeline_steps.tests.helpers import (
     deliver_ml,
@@ -32,13 +32,14 @@ from apps.worker.pipeline_steps.tests.helpers import (
     put_ml_artifacts,
     step_result,
     steps_seen,
+    sweep,
 )
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.core.settings import reset_settings_cache
 from packages.db.hooks import after_commit_idle
 from packages.db.settings import reset_database_settings_cache
-from packages.messaging.redis import SyncRedis, broker_redis
+from packages.messaging.redis import SyncRedis
 from packages.messaging.streams import EventBus, upload_stream
 from packages.ml_contracts.families import FAMILY_STEP, ModelFamily
 from packages.ml_contracts.payloads import StepResultPayload
@@ -261,7 +262,7 @@ async def test_orchestrate_pipeline_step_done__J10(
         mark = (await db.execute(_IDLE_MARK, {"run_id": arranged.run_id})).scalar_one()
     after_s = get_steps_settings().PIPELINE_STEP_REQUEUE_AFTER_S
     fake_clock.set(mark + timedelta(seconds=after_s + 1))
-    await run_stuck_pipeline_sweep(db_sessionmaker, broker_redis(), fake_clock, batch=10)
+    await sweep(db_sessionmaker, fake_clock, batch=10)
 
     assert [m["run_id"] for m in queued_payloads(clean_queues, CPU_QUEUE)] == [arranged.run_id]
     events = await event_bus.read_after(upload_stream(arranged.upload_id), "0-0")

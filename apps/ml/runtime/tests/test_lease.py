@@ -17,6 +17,7 @@ import pytest
 from apps.ml.runtime import gpu
 from apps.ml.runtime.gpu import GPU_LOCK_NAME, SafeLockOps, gpu_slot
 from apps.ml.runtime.lease import RenewThread
+from apps.ml.runtime.tests.helpers import LEASE_RENEW_MS, LEASE_TTL_MS
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, INTERNAL
 from packages.core.errors import AppError, ErrorCode
 from packages.messaging.locks import SafeLock
@@ -25,21 +26,20 @@ from packages.messaging.tasks import TransientError
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 KEY = f"lock:{GPU_LOCK_NAME}"
-TTL_MS = 600
-RENEW_MS = 200
+TTL_MS, RENEW_MS = LEASE_TTL_MS, LEASE_RENEW_MS
 
 _HOLDER = textwrap.dedent(
     """
     import sys
     from apps.ml.runtime.gpu import gpu_slot
-    with gpu_slot(wait_s=0, ttl_ms={ttl}, renew_every_ms={renew}) as slot:
+    with gpu_slot(wait_s=0) as slot:
         print("held", flush=True)
         sys.stdin.readline()
         slot.check()
     print("released", flush=True)
     """
 )
-"""Tiến trình thứ hai giữ khoá tới khi đọc được một dòng stdin (qua nhiều nhịp gia hạn); ngoặc nhọn là chỗ `format`."""
+"""Tiến trình thứ hai giữ khoá (thời hạn mặc định của `gpu_slot`) tới khi đọc được một dòng stdin."""
 
 
 @pytest.fixture
@@ -53,9 +53,14 @@ def safe(messaging_env: None) -> Iterator[SyncRedis]:
 
 
 def test_held_lease__second_process_waits_for_first(safe: SyncRedis) -> None:
-    """Tiến trình khác giữ khoá qua nhiều TTL: lượt chờ 1 s → `TransientError`; nó trả thì lượt chờ lấy được."""
+    """Tiến trình khác đang giữ khoá: lượt chờ 1 s → `TransientError`; nó trả thì lượt chờ lấy được.
+
+    Không kiểm gia hạn qua nhiều TTL ở tiến trình khác (NO-403): người giữ chạy 2400/600 thì nghẽn CPU dưới
+    `-n 6` vẫn làm khoá của nó hết hạn, nên người giữ dùng mặc định 60 s. Gia hạn là cùng `held_lease` trong
+    và ngoài tiến trình — `m04_renew`/`m04_lost` của `test_device_gpu.py` kiểm nó.
+    """
     holder = subprocess.Popen(  # noqa: S603 — trình thông dịch của chính venv, mã cố định
-        [sys.executable, "-c", _HOLDER.format(ttl=TTL_MS, renew=RENEW_MS)],
+        [sys.executable, "-c", _HOLDER],
         cwd=REPO_ROOT,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,

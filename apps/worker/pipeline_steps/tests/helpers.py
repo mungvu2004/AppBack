@@ -25,6 +25,7 @@ from apps.api.drawings.tests._helpers import make_scene
 from apps.worker.pipeline_build.artifacts import input_key
 from apps.worker.pipeline_orchestrate.keys import run_prefix
 from apps.worker.pipeline_orchestrate.start import run_pipeline_start
+from apps.worker.pipeline_steps import sweep as sweep_core
 from apps.worker.pipeline_steps.settings import reset_steps_settings_cache
 from apps.worker.pipeline_steps.step_done import run_pipeline_step_done
 from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE, run_stuck_pipeline_sweep
@@ -178,6 +179,10 @@ async def run_row(maker: Maker, run_id: str) -> PipelineRunRow:
 REQUEUE_AFTER_S: Final = 600
 """`PIPELINE_STEP_REQUEUE_AFTER_S` mặc định của `StepsSettings`; test đặt mốc im quanh số này."""
 BATCH: Final = 10
+REAL_LLEN_TIMEOUT_S: Final = sweep_core.LLEN_TIMEOUT_S
+"""Trần `LLEN` thật của lõi, chụp lúc nạp module (trước mọi vá) — hai test hàng treo ghim lại số này."""
+LLEN_WAIT_FACTOR: Final = 30
+"""Hệ số nới `sweep.LLEN_TIMEOUT_S` trong `clean_queues` (NO-404): hạn chờ chống treo, không phải trần hiệu năng."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,8 +320,15 @@ async def sweep(maker: Maker, clock: FakeClock, *, batch: int = BATCH) -> None:
 
 
 @pytest.fixture
-def clean_queues(messaging_env: None) -> Iterator[SyncRedis]:
-    """Hai hàng dùng chung cả phiên; `DEL` trước **và** sau mỗi test (BE-00 §12, test song song)."""
+def clean_queues(messaging_env: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[SyncRedis]:
+    """Hai hàng dùng chung cả phiên; `DEL` trước **và** sau mỗi test (BE-00 §12, test song song).
+
+    Trần `LLEN` của lõi nhân `LLEN_WAIT_FACTOR` (NO-404): dưới tải `pytest -n` hai `LLEN` trên client mới
+    (nối nguội) có lúc quá 1 s, lõi coi hai hàng "còn việc" và test luật thấy hàng rỗng. Test này kiểm
+    **luật**, không kiểm trần; trần thật do hai test hàng treo ở `test_sweep_rules.py` kiểm (ghim
+    `REAL_LLEN_TIMEOUT_S`). Nhân chứ không thay, để hằng lõi về 0 vẫn làm đỏ test luật.
+    """
+    monkeypatch.setattr(sweep_core, "LLEN_TIMEOUT_S", REAL_LLEN_TIMEOUT_S * LLEN_WAIT_FACTOR)
     client = broker_redis_sync()
     client.delete(ML_QUEUE, CPU_QUEUE)
     yield client

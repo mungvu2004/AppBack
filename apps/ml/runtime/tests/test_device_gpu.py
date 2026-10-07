@@ -1,7 +1,8 @@
 """Thiết bị và khoá GPU (M04): chọn CPU/CUDA, lấy khoá có TTL, gia hạn, tranh chấp, mất khoá.
 
-Khoá chạy trên Redis **thật** (K23). TTL 600 ms, gia hạn mỗi 150 ms theo [8] B5-01: gấp 4
-lần biên gia hạn, và test chờ "mất khoá" bằng vòng hỏi có hạn, không bằng một nhịp ngủ.
+Khoá chạy trên Redis **thật** (K23). TTL/nhịp gia hạn là `LEASE_TTL_MS`/`LEASE_RENEW_MS` của `helpers`
+(2400/600, tỉ lệ 4:1 của [8] B5-01; lệch số 600/150 của [8] vì NO-403 — lý do ở docstring hằng), và test
+chờ "mất khoá" bằng vòng hỏi có hạn, không bằng một nhịp ngủ.
 """
 
 import ast
@@ -18,13 +19,14 @@ from apps.ml.runtime import gpu
 from apps.ml.runtime.device import resolve_device
 from apps.ml.runtime.errors import GPU_LOCK_LOST, ML_DEVICE_UNAVAILABLE
 from apps.ml.runtime.gpu import GPU_LOCK_NAME, GpuSlot, gpu_slot
+from apps.ml.runtime.tests.helpers import LEASE_RENEW_MS, LEASE_TTL_MS
 from packages.core.errors import AppError
 from packages.messaging.redis import SyncRedis, safe_redis_sync, sync_result
 from packages.messaging.tasks import PermanentError, TransientError
 from packages.testing.fixtures.messaging import ephemeral_broker
 
 KEY = f"lock:{GPU_LOCK_NAME}"
-TTL_MS, RENEW_MS = 600, 150
+TTL_MS, RENEW_MS = LEASE_TTL_MS, LEASE_RENEW_MS
 
 
 @pytest.mark.parametrize(
@@ -83,8 +85,12 @@ def test_gpu_slot_m04_renew(safe: SyncRedis) -> None:
 
 
 def test_gpu_slot_m04_contention(safe: SyncRedis) -> None:
-    """Người thứ hai chờ tới `wait_s` rồi `TransientError`; người trước trả thì người sau lấy được."""
-    with gpu_slot(wait_s=0, ttl_ms=TTL_MS, renew_every_ms=RENEW_MS) as first:
+    """Người thứ hai chờ tới `wait_s` rồi `TransientError`; người trước trả thì người sau lấy được.
+
+    Người giữ dùng thời hạn **mặc định** của `gpu_slot` (NO-403): nghẽn CPU dưới tải vượt cả TTL 2400 ms, mà
+    test này kiểm độc quyền; gia hạn qua nhiều TTL thuộc `m04_renew`.
+    """
+    with gpu_slot(wait_s=0) as first:
         started = time.monotonic()
         with (
             pytest.raises(TransientError, match="khoá gpu:0 đang bận"),
@@ -98,7 +104,7 @@ def test_gpu_slot_m04_contention(safe: SyncRedis) -> None:
 
     def holder() -> None:
         """Luồng giữ khoá GPU tới khi test nhả `release`."""
-        with gpu_slot(wait_s=0, ttl_ms=TTL_MS, renew_every_ms=RENEW_MS):
+        with gpu_slot(wait_s=0):
             release.wait(5)
 
     thread = threading.Thread(target=holder)

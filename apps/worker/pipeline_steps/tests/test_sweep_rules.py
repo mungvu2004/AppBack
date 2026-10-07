@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import QueuePool
 
 from apps.worker.pipeline_orchestrate.pins import record_used
+from apps.worker.pipeline_steps import sweep as sweep_core
 from apps.worker.pipeline_steps.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_steps.settings import get_steps_settings
 from apps.worker.pipeline_steps.step_done import BUILD_STEP, BUILD_TASK, QUALITY_TASK
@@ -34,6 +35,7 @@ from apps.worker.pipeline_steps.sweep import CPU_QUEUE, ML_QUEUE, _requeue_one, 
 from apps.worker.pipeline_steps.tests import helpers
 from apps.worker.pipeline_steps.tests.helpers import (
     BATCH,
+    REAL_LLEN_TIMEOUT_S,
     REQUEUE_AFTER_S,
     Maker,
     arrange_run,
@@ -264,6 +266,7 @@ async def _sweep_with_hanging_llen(
     Pool một kết nối là phần chứng minh: nếu `_queue_busy` chạy trong một session thì `checkedout()`
     đo lúc hai `LLEN` còn treo là 1, và lượt `_candidates` sau đó cũng chết vì `db_pool_timeout_s=1`
     (khuôn `test_persist_k36.py`, K36). Số đo in bằng `logging`; khẳng định thuộc về test gọi.
+    Trần `LLEN` ghim lại số thật `REAL_LLEN_TIMEOUT_S` (fixture `clean_queues` đã nới nó cho test luật, NO-404).
     """
     arranged = await arrange_run(db_sessionmaker, local_storage, fake_clock)
     await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
@@ -274,10 +277,12 @@ async def _sweep_with_hanging_llen(
     broker.entered = asyncio.Event()
     started = time.monotonic()
     try:
-        _, checked_out = await asyncio.gather(
-            run_stuck_pipeline_sweep(create_sessionmaker(engine), broker, fake_clock, batch=BATCH),
-            _checkedout_while_blocked(cast("QueuePool", engine.pool), broker),
-        )
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(sweep_core, "LLEN_TIMEOUT_S", REAL_LLEN_TIMEOUT_S)
+            _, checked_out = await asyncio.gather(
+                run_stuck_pipeline_sweep(create_sessionmaker(engine), broker, fake_clock, batch=BATCH),
+                _checkedout_while_blocked(cast("QueuePool", engine.pool), broker),
+            )
     finally:
         await broker.aclose()
         await engine.dispose()
