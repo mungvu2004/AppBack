@@ -22,6 +22,11 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # NO-414: torch/torchvision/ultralytics khoá cùng SHA ONNX YOLO ghim và bánh CUDA của
+      # ml.Dockerfile — nâng chúng là việc ML có chủ (xuất lại + revision B6-01), không phải bump.
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
+      - dependency-name: "ultralytics"
     commit-message:
       prefix: "build"
       include: "scope"
