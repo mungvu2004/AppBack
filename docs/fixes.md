@@ -4416,3 +4416,13 @@ Ghi nhận, không viết lại lịch sử đã gộp:
 - **[5 SỬA NHỎ NHẤT]** Bỏ hai hằng; người giữ ở `m04_contention` gọi `gpu_slot(wait_s=0)`; `_HOLDER` của `test_lease.py` bỏ `ttl_ms`/`renew_every_ms` (và `.format`). #5: không khôi phục — người giữ 2400/600 ở tiến trình khác lại chập chờn dưới `-n 6` (đúng gốc NO-403, đo `repro-pair-raw.log`); lý do ghi trong docstring test, gia hạn do `m04_renew`/`m04_lost` kiểm (cùng `held_lease`).
 - **[6 TEST CHẶN TÁI PHÁT]** Không test mới (sửa bảo trì). Đột biến `lease.py` "không trả khoá khi thoát khối" (`ops.release_quietly(token)` → `pass`): `test_gpu_slot_m04_contention` và `test_held_lease__second_process_waits_for_first` **đỏ**, MUT_EXIT=1 (`check-493.log`, script `r-493.sh`).
 - **[7 NGHIỆM THU]** R-33b đích (`run.sh shell < r-493.sh`, log `check-493.log`): ruff format --check 0, ruff check 0, mypy 0 (15 tệp), pytest `apps/ml/runtime/tests` 96 passed, mã thoát 0. Commit `89fdab5` "fix(ml-runtime): let contention holders use gpu_slot's real defaults" + `Prompt: B5-01`, `Fix: FIX-493`.
+
+## FIX-723 cho DEPS-2026-10-09b — ép kiểu thừa ở H2 sau khi lên schemathesis 4.29.3 (dependabot #15)
+
+- **[1 TRIỆU CHỨNG]** Cổng đầy đủ @d0f66e93 hỏng bước 3: `tools/ci/h2.py:75: error: Redundant cast to "Callable[[CheckContext, Response, Case[Any]], bool | None]"  [redundant-cast]`.
+- **[2 TÁI HIỆN]** Mỗi lượt `mypy --strict` trên `uv.lock` của dependabot #15 (schemathesis 4.29.0 → 4.29.3).
+- **[3 BẰNG CHỨNG]** 4.29.3 gõ `response_schema_conformance` đúng `CheckFunction`; `not_a_server_error` vẫn là hợp kiểu đăng ký nên ép kiểu của nó vẫn cần (mypy chỉ báo một dòng).
+- **[4 KHOANH VÙNG]** Sửa: `tools/ci/h2.py`. Không đổi hành vi H2.
+- **[5 SỬA NHỎ NHẤT]** Bỏ `cast` cho `response_schema_conformance`, sửa docstring `_CHECKS`.
+- **[6 TEST CHẶN TÁI PHÁT]** Không test mới (chính `mypy --strict` của cổng là lớp chặn); `tools/ci/tests/test_h2.py` 22 passed.
+- **[7 NGHIỆM THU]** Cổng đầy đủ `bash tools/verify/run.sh verify` @77bda7d4 mã thoát 0, 8/8 + 5b đạt (log `.cache/src-out/verify/20261009T110337Z-77bda7d47455.log` của worktree `chore/dependabot-15`). Review `docs/reviews/2026-10-09-chore-dependabot-15.md` APPROVE.

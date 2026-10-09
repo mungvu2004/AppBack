@@ -72,11 +72,12 @@ S3_REGION: Final = "us-east-1"
 
 _CHECKS: Final[list[CheckFunction]] = [
     cast(CheckFunction, not_a_server_error),
-    cast(CheckFunction, response_schema_conformance),
+    response_schema_conformance,
 ]
 """`@schemathesis.check` gõ kiểu hàm đã đăng ký là hợp của `CheckFunction | type[ResponseCheck] |
-type[RunCheck]`; cả hai hàm này là `CheckFunction` thật (không phải lớp check), ép kiểu để khớp
-`Case.validate_response(checks=...)`."""
+type[RunCheck]`; `not_a_server_error` là `CheckFunction` thật (không phải lớp check) nên ép kiểu để khớp
+`Case.validate_response(checks=...)`. Từ schemathesis 4.29.3 `response_schema_conformance` đã gõ
+đúng `CheckFunction`, không cần ép."""
 
 
 @dataclass(frozen=True, slots=True)
