@@ -26,6 +26,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+from apps.api.auth.settings import reset_auth_settings_cache
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier, Principal, fake_token
 from packages.core.ids import new_id
@@ -156,16 +157,20 @@ def api_env(
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     # Cùng gốc với fixture `local_storage`: test ghi object bằng nó, app đọc lại được.
     monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "objects"))
+    # Hồ sơ argon2 nhanh (R1 BE-5): không đặt thì `make_user()` băm bằng `rfc9106_low_memory`
+    # (61,76 ms/lượt) thay vì `test` (1,61 ms/lượt) — 626/754 lượt gọi không qua `auth_env`.
+    monkeypatch.setenv("ARGON2_PROFILE", "test")
     _reset_settings()
     yield
     _reset_settings()
 
 
 def _reset_settings() -> None:
-    """Ba cache cấu hình (core, db, storage) đều đọc biến môi trường một lần mỗi tiến trình."""
+    """Bốn cache cấu hình (core, db, storage, auth) đều đọc biến môi trường một lần mỗi tiến trình."""
     reset_settings_cache()
     reset_database_settings_cache()
     reset_storage_settings_cache()
+    reset_auth_settings_cache()
 
 
 @pytest.fixture

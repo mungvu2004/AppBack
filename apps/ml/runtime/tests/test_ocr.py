@@ -7,9 +7,8 @@ trên seed 100-109: bật phân loại 67/122, tắt 114/122 (2026-09-21).
 
 import logging
 
-from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]  # wheel không có py.typed
-
 from packages.ml_contracts.synthetic import render_plan
+from packages.testing.fixtures.ml_ocr import wheel_engine
 from packages.testing.ocr_metrics import dimension_hits
 
 _log = logging.getLogger(__name__)
@@ -17,7 +16,7 @@ _log = logging.getLogger(__name__)
 
 def test_render_plan_ocr_readable() -> None:
     """≥ 80 % chữ kích thước trên seed 100-109 đọc ra đúng bằng đáp án, ở đúng chỗ."""
-    engine = RapidOCR()
+    engine = wheel_engine()
     hits = total = 0
     for seed in range(100, 110):
         plan = render_plan(seed)

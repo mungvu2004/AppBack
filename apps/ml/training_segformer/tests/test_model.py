@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 import pytest
-from transformers import SegformerForSemanticSegmentation
 
 from apps.ml.runtime.errors import MODEL_CHECKSUM_MISMATCH as RUNTIME_MODEL_CHECKSUM_MISMATCH
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED as RUNTIME_MODEL_FORMAT_UNSUPPORTED
@@ -28,6 +27,8 @@ _FORBIDDEN_IMPORTS: frozenset[str] = frozenset({"pickle", "joblib"})
 
 def test_train_m02_pinned_checksum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SHA tệp lệch bản ghim → `MODEL_CHECKSUM_MISMATCH`, không gọi `from_pretrained`."""
+    from transformers import SegformerForSemanticSegmentation
+
     sha = write_tiny_model(tmp_path, "mitB0")
     pinned = pinned_for("0" * 64, "mitB0")
     assert sha != pinned["mitB0"].source_sha256
@@ -142,6 +143,22 @@ def test_train_from_pretrained_error_is_format_unsupported(tmp_path: Path) -> No
     with pytest.raises(PermanentError) as excinfo:
         segformer_model.load_pretrained(tmp_path, "mitB0", pinned)
     assert excinfo.value.code == MODEL_FORMAT_UNSUPPORTED
+
+
+def test_import_model__does_not_load_torch_or_transformers() -> None:
+    """Nhập `apps.ml.training_segformer.model` không kéo `torch`/`transformers` (PERF-01 B7)."""
+    probe = "; ".join(
+        [
+            "import sys",
+            "import apps.ml.training_segformer.model",
+            "assert 'torch' not in sys.modules",
+            "assert 'transformers' not in sys.modules",
+        ]
+    )
+    completed = subprocess.run(  # noqa: S603 — argv cố định, không dữ liệu ngoài
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_errors_match_runtime_and_runner_strings() -> None:

@@ -26,9 +26,10 @@ from packages.ml_contracts.pinned import PinnedWeights, file_sha256
 
 _log: Final = logging.getLogger(__name__)
 _BASE: Final = "yolov8n"
-_IMGSZ: Final = 320
+_IMGSZ: Final = 800
+"""= cỡ ảnh vi mô (`support.MICRO_WIDTH_PX`): `tile_windows` cho đúng 1 lát/ảnh, không lát dư (PERF-01)."""
 _FAMILY: Final[TrainableFamily] = "openingAndFurnitureDetection"
-_MICRO_SAMPLES: Final = 6
+_MICRO_SAMPLES: Final = 2
 """Số mẫu của `write_micro_dataset`; `build_yolo_dataset` hỏi `cancelled()` một lần mỗi mẫu (khối [2])."""
 
 

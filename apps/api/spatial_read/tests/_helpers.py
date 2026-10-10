@@ -42,7 +42,10 @@ async def make_scene(db: AsyncSession, *, floors: int = 1, **overrides: Any) -> 
     """
     user = await make_user(db)
     project = await make_project(db, owner=user, **overrides)
-    rows = [await make_floor(db, project=project) for _ in range(floors)]
+    # `order=index` chứ không để `make_floor` tự đếm: dự án vừa dựng nên số tầng chưa xoá đúng
+    # bằng `index` ở mỗi lượt, mà lượt đếm ấy là một `SELECT count(*)` khứ hồi 1,2-4 ms mỗi tầng
+    # (PERF-01 BE-12). `floor_order` ra y nguyên 0…n-1 như docstring của `Scene` nói.
+    rows = [await make_floor(db, project=project, order=index) for index in range(floors)]
     await db.commit()
     return Scene(owner=user, project=project, floors=tuple(rows))
 

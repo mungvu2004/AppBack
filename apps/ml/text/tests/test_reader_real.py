@@ -28,6 +28,7 @@ from apps.ml.text.reader import (
 from apps.ml.text.tests.helpers import wheel_rec_session
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 from packages.ml_contracts.synthetic import render_plan
+from packages.testing.fixtures.ml_ocr import wheel_engine
 from packages.testing.ocr_metrics import dimension_hits
 
 _log = logging.getLogger(__name__)
@@ -109,10 +110,9 @@ def _wheel_items(engine: RapidOCR, pixels: np.ndarray) -> list[TextPx]:
     return items
 
 
-def test_reader_agrees_with_the_wheel_engine(pinned_models_dir: Path) -> None:
+def test_reader_agrees_with_the_wheel_engine(reader: RapidOcrReader) -> None:
     """≥ 95 % vùng của wheel có vùng trùng của `RapidOcrReader` mang đúng cùng chuỗi."""
-    reader = RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir), pinned_name="rapidocrRec")
-    engine = RapidOCR()
+    engine = wheel_engine()
     agreed = total = 0
     for seed in PARITY_SEEDS:
         plan = render_plan(seed)
@@ -128,13 +128,12 @@ def test_reader_agrees_with_the_wheel_engine(pinned_models_dir: Path) -> None:
     assert rate >= PARITY_RATE
 
 
-def test_reader_reads_dimension_texts(pinned_models_dir: Path) -> None:
+def test_reader_reads_dimension_texts(reader: RapidOcrReader) -> None:
     """≥ `DIMENSION_READ_RATE` chữ kích thước đáp án đọc ra đúng chuỗi, tâm hộp lệch < 25 px.
 
     Ghim tỉ lệ đọc của chính `RapidOcrReader.read` (NO-254) bằng thước chung `dimension_hits`
     (NO-349), cùng thước `test_ocr` của runtime dùng cho `RapidOCR()`.
     """
-    reader = RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir))
     hits = total = 0
     for seed in DIMENSION_SEEDS:
         plan = render_plan(seed)
@@ -150,7 +149,7 @@ def test_reader_reads_dimension_texts(pinned_models_dir: Path) -> None:
     assert hits >= DIMENSION_READ_RATE * total
 
 
-def test_width_rounding_keeps_most_strings(pinned_models_dir: Path) -> None:
+def test_width_rounding_keeps_most_strings(reader: RapidOcrReader) -> None:
     """Làm tròn `W` lên bội 80 giữ nguyên chuỗi của ≥ `WIDTH_ROUNDING_RATE` phần vùng **chữ thật**.
 
     So tensor thật với chính nó cắt còn rộng đã co: chỉ phần làm tròn bội 80 khác nhau. Vùng có rộng
@@ -162,7 +161,6 @@ def test_width_rounding_keeps_most_strings(pinned_models_dir: Path) -> None:
     vùng trùng hộp chữ đáp án: vùng nhiễu bộ dò bắt nhầm đọc ra rác ở cả hai bề rộng.
     Đo trên đủ `WIDTH_SEEDS` (NO-255) để một seed may mắn không gánh được ngưỡng.
     """
-    reader = RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir))
     same = checked = 0
     for seed in WIDTH_SEEDS:
         plan = render_plan(seed)
@@ -200,3 +198,10 @@ def pinned_models_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     target = tmp_path_factory.mktemp("models") / "rapidocrRec.onnx"
     shutil.copyfile(source, target)
     return target.parent
+
+
+@pytest.fixture(scope="module")
+def reader(pinned_models_dir: Path) -> RapidOcrReader:
+    """`RapidOcrReader` dựng một lần mỗi tiến trình (PERF-01 BE-3): ba test dưới đây dùng chung
+    thay vì mỗi test tự nạp lại phiên ONNX nhận dạng ghim."""
+    return RapidOcrReader.from_session(wheel_rec_session(pinned_models_dir))

@@ -319,7 +319,8 @@ def test_run_training_job_claim_lost(harness: Harness) -> None:
 def test_run_training_job_watchdog(harness: Harness) -> None:
     """Trainer lì: luồng canh nổ sau grace → `exit(1)`, đúng một `finished(cancelled)`, tạm mất."""
     before = set(_tmp_dirs())
-    harness.trainer = TinyTrainer(ignore_cancel=True, stall_s=3)
+    harness.settings = _settings(training_stop_grace_s=0.2, training_claim_ttl_ms=1_000)
+    harness.trainer = TinyTrainer(ignore_cancel=True, stall_s=0.3)
     harness.trainer.on_epoch.append(_canceller(harness))
     assert harness.run() == 1
     assert harness.exits == [1]
@@ -674,7 +675,8 @@ def test_run_training_job_claim_renew_refused(harness: Harness, monkeypatch: pyt
 
 def test_run_training_job_watchdog_timeout(harness: Harness) -> None:
     """Trainer lì + quá trần giờ → luồng canh gửi `finished(failed, TRAINING_TIMEOUT)` rồi `exit(1)`."""
-    harness.trainer = TinyTrainer(ignore_cancel=True, stall_s=3)
+    harness.settings = _settings(training_stop_grace_s=0.2, training_claim_ttl_ms=1_000)
+    harness.trainer = TinyTrainer(ignore_cancel=True, stall_s=0.3)
     harness.trainer.on_epoch.append(lambda: harness.clock.advance(timedelta(seconds=MAX_WALL_S + 1)))
     assert harness.run() == 1
     assert harness.exits == [1]

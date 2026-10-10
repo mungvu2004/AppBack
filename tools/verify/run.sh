@@ -55,6 +55,22 @@ export VERIFY_CHANGED
 CACHE_DIR="$REPO_ROOT/.cache"
 mkdir -p "$CACHE_DIR"
 
+# Nguồn cổng đi vào container bằng MỘT tệp tar, không `cp -r /src/. /tmp/w` qua mount Windows→WSL2
+# (đo trước: ~3.300 tệp, 169 s nguội — mỗi tệp ~50 ms qua mount). `git ls-files -co --exclude-standard`
+# cho đúng tập cổng cần (đã theo dõi + chưa theo dõi không bị ignore) và bỏ luôn `.cache` (1.552 tệp
+# không ai đọc trong container) cùng `backend/` bị ignore ở checkout chính (20.327 tệp / 341 MB).
+# Tệp tar chứ không phải stdin: `run.sh shell < script` còn cần stdin cho script của người dùng (NO-299).
+# Mỗi lượt một thư mục tar riêng (`mktemp -d`), xoá khi thoát: hai lượt song song của cùng worktree không
+# ghi chung tệp tạm, không lượt nào giải nén tar của lượt kia (review PERF-01 F3).
+# `--ignore-failed-read`: tệp đã theo dõi bị `rm` mà chưa stage vẫn có trong `git ls-files -c`; thiếu cờ này
+# tar trả mã 2 và `pipefail` làm hỏng cả lượt (review PERF-01 F2) — cổng phải chạy đúng cây đang có trên đĩa.
+# Dọn thư mục tar là việc phụ như dọn log cũ (NO-092): `rm` hỏng chỉ cảnh báo, không đổi mã thoát của cổng.
+mkdir -p "$CACHE_DIR/src-tar"
+SRC_TAR_DIR="$(mktemp -d "$CACHE_DIR/src-tar/run.XXXXXX")"
+trap 'rm -rf "$SRC_TAR_DIR" || echo "dọn tar nguồn $SRC_TAR_DIR hỏng — bỏ qua, cổng vẫn chạy" >&2' EXIT
+git ls-files -co --exclude-standard -z | tar --null --no-recursion --ignore-failed-read -T - -cf "$SRC_TAR_DIR/src.tar"
+VERIFY_SRC_TAR_DIR="$(win_path "$SRC_TAR_DIR")"
+
 # Số log cổng tối đa trong .cache/src-out/verify sau một lượt, tính cả log của lượt đó: 20 lượt ≈ 0,5 MB lượt
 # đạt, đủ so lượt đỏ với vài lượt trước nó; log cần giữ lâu hơn thì chép ra ngoài (NO-090).
 VERIFY_LOG_KEEP=20
@@ -96,7 +112,7 @@ docker volume create appback-work > /dev/null
 # của `shell` (NO-299); mọi việc đi qua đây nên không việc nào bị nuốt.
 run_container() {
   "${COMPOSE[@]}" build verify < /dev/null
-  "${COMPOSE[@]}" run --rm "$@"
+  "${COMPOSE[@]}" run --rm -v "$VERIFY_SRC_TAR_DIR:/src-tar:ro" "$@"
 }
 
 # ---------------------------------------------------------------------------

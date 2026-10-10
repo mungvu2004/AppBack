@@ -1,21 +1,24 @@
 """Nạp model SegFormer nhà cung cấp đã ghim, kiểm checksum trước khi giải (K12, BE-00 §9).
 
 `trainer.py` gọi qua thuộc tính module (`segformer_model.load_pretrained`) để test vá được
-(khối [6]). Module này nhập `torch`/`transformers` ở mức module — không đi qua `trainer`
-lúc `discover_trainers()`.
+(khối [6]). `transformers` nhập **trong** `load_pretrained`, không ở mức module: nhập module
+này (ví dụ lúc pytest collect test file) không còn kéo `torch`/`transformers` (PERF-01 B7).
 """
+
+from __future__ import annotations
 
 import hashlib
 import logging
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
-
-from transformers import SegformerForSemanticSegmentation
+from typing import TYPE_CHECKING, Final
 
 from apps.ml.training_segformer.errors import MODEL_CHECKSUM_MISMATCH, MODEL_FORMAT_UNSUPPORTED
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.pinned import PinnedWeights
+
+if TYPE_CHECKING:
+    from transformers import SegformerForSemanticSegmentation
 
 __all__ = ["load_pretrained"]
 
@@ -43,6 +46,8 @@ def load_pretrained(
     `transformers 5.17` `modeling_utils.py` quanh `use_safetensors`/`local_files_only`) →
     `MODEL_FORMAT_UNSUPPORTED`.
     """
+    from transformers import SegformerForSemanticSegmentation
+
     target = models_dir / base_model
     weights_path = target / _WEIGHTS_FILE
     if not weights_path.is_file():

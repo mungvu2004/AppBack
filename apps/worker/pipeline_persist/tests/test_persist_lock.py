@@ -37,10 +37,10 @@ from packages.testing.fixtures.clock import FakeClock
 
 WAIT_S: Final = 30.0
 """Trần **chờ** chống treo cho lõi và cho bên chờ khoá — không phải trần hiệu năng."""
-BLOCKED_PROBE_S: Final = 0.5
+BLOCKED_PROBE_S: Final = 0.15
 """Khoảng chờ để khẳng định bên kia **vẫn chưa** xong: đủ dài để một lượt `create_version` tự do xong."""
-RELEASE_AFTER_S: Final = 1.0
-"""Giữ khoá thêm bấy nhiêu trước khi thả, theo [8]: còn xa `DB_LOCK_TIMEOUT_MS` = 5 s."""
+RELEASE_AFTER_S: Final = 0.3
+"""Giữ khoá thêm bấy nhiêu trước khi thả, theo [8]: còn xa `DB_LOCK_TIMEOUT_MS` = 5 s (PERF-01: thu hẹp từ 1,0 s)."""
 SAMPLE_HOLD_CEILING_S: Final = 1.0
 """Trần của prompt cho thời gian giữ khoá `floors` trên lớp toà mẫu ([8] "Khoá")."""
 BIG_WALLS: Final = 20_000

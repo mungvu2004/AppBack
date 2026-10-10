@@ -205,9 +205,12 @@ def _remove_container(container_id: str) -> None:
     phiên, ngay lúc đang giữ `FileLock` (review F-2). 409 "removal … already in progress" cũng vậy: một
     người dọn khác (phiên verify khác cùng daemon đang `sweep_orphans`) đang xoá đúng container này, kết
     cục như nhau (review DEBT-02 #2). Mọi lỗi Docker khác vẫn nổi lên (R-16).
+
+    `v=True`: ảnh Postgres/Redis/MinIO khai `VOLUME` cho thư mục dữ liệu, Docker tạo một volume ẩn danh
+    mỗi container và `remove` không kèm `v` để nó lại — đo 2026-10-11: 298 volume mồ côi, 4,3 GB (PERF-01).
     """
     try:
-        DockerClient().client.containers.get(container_id).remove(force=True)
+        DockerClient().client.containers.get(container_id).remove(force=True, v=True)
     except NotFound:
         pass
     except APIError as exc:

@@ -35,7 +35,10 @@ async def make_scene(db: AsyncSession, *, level_id: str | None = None) -> Scene:
     """Một sân khấu mới; `level_id` cố định khi test cần dựng lại tầng cùng id."""
     user = await make_user(db)
     project = await make_project(db, owner=user)
-    floor = await make_floor(db, project=project, level_id=level_id)
+    # `order=0`: dự án vừa dựng chưa có tầng nào, nên bỏ được lượt `SELECT count(*)` mà
+    # `make_floor` dùng để tự đặt tầng ở cuối — một vòng khứ hồi 1,2-4 ms mỗi lượt dựng
+    # (PERF-01 BE-12); `floor_order` ra y nguyên 0.
+    floor = await make_floor(db, project=project, level_id=level_id, order=0)
     return Scene(user=user, project=project, floor=floor)
 
 

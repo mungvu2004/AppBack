@@ -64,7 +64,7 @@ def labelled() -> Iterator[dict[str, str]]:
         try:
             for container_id in ids.values():
                 with suppress(NotFound):
-                    client.containers.get(container_id).remove(force=True)
+                    client.containers.get(container_id).remove(force=True, v=True)
         finally:
             running.stop()
 
@@ -136,7 +136,7 @@ def test_remove_container__concurrent_removal_both_succeed() -> None:
     finally:
         for container_id in ids:
             with suppress(NotFound):
-                client.containers.get(container_id).remove(force=True)
+                client.containers.get(container_id).remove(force=True, v=True)
 
 
 def test_sweep_orphans__container_removed_while_listing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -153,7 +153,7 @@ def test_sweep_orphans__container_removed_while_listing(monkeypatch: pytest.Monk
     def vanishing_get(self: ContainerCollection, container_id: str) -> object:
         """Xoá container thật rồi mới đọc — như phiên khác dọn đúng lúc này."""
         with suppress(NotFound):
-            client.api.remove_container(container_id, force=True)
+            client.api.remove_container(container_id, force=True, v=True)
         return original_get(self, container_id)
 
     monkeypatch.setattr(ContainerCollection, "get", vanishing_get)
@@ -161,7 +161,7 @@ def test_sweep_orphans__container_removed_while_listing(monkeypatch: pytest.Monk
         assert created.id not in sweep_orphans()
     finally:
         with suppress(NotFound):
-            client.api.remove_container(created.id, force=True)
+            client.api.remove_container(created.id, force=True, v=True)
 
 
 def test_owner_alive__overflowing_pid_label_is_kept() -> None:
@@ -184,3 +184,17 @@ def test_sweep_once__one_sweep_per_session(tmp_path: Path) -> None:
         (tmp_path / "sweep.owner").write_text("other-host:1", encoding="utf-8")
         services._sweep_once.__wrapped__()
         assert sweep.call_count == 2
+
+
+def test_remove_container__drops_anonymous_volume() -> None:
+    """Xoá container dịch vụ thì xoá luôn volume ẩn danh của `VOLUME` trong ảnh (PERF-01: 298 volume mồ côi)."""
+    client = DockerClient().client
+    container = client.containers.create(REDIS_IMAGE)
+    volumes = [mount["Name"] for mount in container.attrs["Mounts"] if mount["Type"] == "volume"]
+    assert volumes  # REDIS_IMAGE khai `VOLUME /data`
+    try:
+        services._remove_container(container.id)
+        assert not client.volumes.list(filters={"name": volumes[0]})
+    finally:
+        with suppress(NotFound):
+            client.containers.get(container.id).remove(force=True, v=True)

@@ -105,3 +105,17 @@ Mock/fake đúng tầng (K23, luật lai): dịch vụ thật cho SQL, constrain
 đồng thời, after-commit, migration, hợp đồng; fake được cho logic phía trên;
 không SQLite; test chạy được song song; không tải mạng trong test; không dùng Python/uv/Node của máy Windows trong cổng; không viết
 mã nghiệp vụ của prompt khác.
+
+## Viết test nhanh (PERF-01, đo 2026-10-10)
+
+Mỗi dòng là một chỗ đã đo được làm bộ test chậm; viết test mới theo đúng cách nhanh, phép kiểm không đổi (K23 giữ nguyên).
+
+- Fixture/factory tạo người dùng phải chạy dưới hồ sơ argon2 `test` (`api_env`, `auth_env` đã đặt `ARGON2_PROFILE=test`): hồ sơ sản
+  phẩm 61,8 ms/lần băm so với 1,6 ms — từng là phần lớn của "call TB 211 ms" ở test api/db.
+- Huấn luyện/suy luận ML thật: dữ liệu và mô hình nhỏ nhất vẫn đi đúng nhánh, kết quả dùng chung bằng fixture `scope="module"`
+  (yolo 469 → 37 s); mô hình nạp một lần (`packages/testing/fixtures/ml_ocr.py`).
+- Không import torch/transformers ở cấp module của mã chỉ một nhánh cần — nạp trong hàm (`training_segformer/model.py` 4,7 → 0,5 s).
+- Chờ/hạn thời gian (watchdog, khoá, debounce): tiêm trần nhỏ qua tham số có sẵn, không ngủ thật dài.
+- Quét toàn repo/đọc cấu hình lặp: cache trong tệp test (`functools.cache`), không đọc lại mỗi test.
+- Tệp test mới chậm (> 5 s) → cập nhật `packages/testing/fixtures/test_durations.json` (lệnh sinh ở docstring `ordering.py`) để
+  xdist xếp nó chạy sớm.

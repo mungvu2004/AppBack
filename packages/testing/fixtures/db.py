@@ -218,17 +218,28 @@ END $$;
 # (database mới mỗi test) cho bộ đếm chạy lại từ đầu — thiếu bước này thì test khẳng định id tự tăng đỏ
 # theo thứ tự chạy. Đặt về `max(cột) + 1` chứ không về 1: dòng gốc nạp lại mang sẵn id, bộ đếm về 1 là
 # dòng thêm đầu tiên của test sau đụng khoá chính. Bảng rỗng → `max` là NULL → lại từ 1 như cũ.
+# Nguồn (bảng, cột, chuỗi) là **catalog**, không phải `information_schema.columns` +
+# `pg_get_serial_sequence` mỗi cột: view kia dựng lại toàn bộ danh sách cột kèm kiểm quyền từng dòng,
+# rồi còn một lượt gọi hàm cho mỗi cột. Đo trên database của test (n=20, PERF-01 BE-9):
+# **64,09 ms** trung vị một lượt, so với 16,07 ms của cả loạt `DELETE` — tức lượt dọn tốn 80 ms/test
+# mà 4/5 là đi tìm chuỗi. Một lượt nối `pg_depend` (chuỗi → cột sở hữu) cho đúng tập chuỗi ấy:
+# `deptype` `a` là `serial`, `i` là `GENERATED … AS IDENTITY` — hai thứ `pg_get_serial_sequence`
+# nhận ra, không hơn. Chuỗi không thuộc cột nào vẫn không được đặt lại, như trước.
 _RESEQUENCE_SQL = """
 DO $$
 DECLARE tbl text; col text; seq text;
 BEGIN
   FOR tbl, col, seq IN
-    SELECT table_name, column_name, pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name)
-    FROM information_schema.columns WHERE table_schema = 'public'
+    SELECT tab.relname, att.attname, seqcls.oid::regclass::text
+    FROM pg_class seqcls
+    JOIN pg_depend dep
+      ON dep.classid = 'pg_class'::regclass AND dep.objid = seqcls.oid AND dep.deptype IN ('a', 'i')
+    JOIN pg_class tab ON tab.oid = dep.refobjid
+    JOIN pg_attribute att ON att.attrelid = tab.oid AND att.attnum = dep.refobjsubid
+    JOIN pg_namespace ns ON ns.oid = tab.relnamespace
+    WHERE seqcls.relkind = 'S' AND ns.nspname = 'public'
   LOOP
-    IF seq IS NOT NULL THEN
-      EXECUTE format('SELECT setval(%L, COALESCE((SELECT max(%I) FROM public.%I), 0) + 1, false)', seq, col, tbl);
-    END IF;
+    EXECUTE format('SELECT setval(%L, COALESCE((SELECT max(%I) FROM public.%I), 0) + 1, false)', seq, col, tbl);
   END LOOP;
 END $$;
 """

@@ -7,16 +7,19 @@ Chạy bằng `exec uv run python -m tools.verify.steps <việc> [...]` từ
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
 import threading
+import tomllib
 import traceback
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -57,6 +60,16 @@ def _run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
     """In dòng lệnh rồi chạy `cmd` trong `REPO_ROOT`, trả `CompletedProcess`."""
     print(f"$ {' '.join(cmd)}")
     return subprocess.run(cmd, cwd=REPO_ROOT, text=True, **kw)
+
+
+def _popen(cmd: list[str], **kw: Any) -> subprocess.Popen[bytes]:
+    """In dòng lệnh rồi chạy `cmd` NỀN trong `REPO_ROOT`, trả `Popen` chưa chờ (cặp với `_run`).
+
+    Mọi tiến trình nền của cổng đi qua đây, như mọi tiến trình đồng bộ đi qua `_run`: test thay một
+    trong hai hàm này là không còn tiến trình thật nào chạy.
+    """
+    print(f"$ {' '.join(cmd)} &")
+    return subprocess.Popen(cmd, cwd=REPO_ROOT, **kw)
 
 
 def _touched_units() -> set[str]:
@@ -135,10 +148,133 @@ def step_ruff_check() -> StepOutcome:
     return StepOutcome("2", "ruff check", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
+MYPY_LOG = Path("/tmp/mypy.log")
+"""Nơi mypy nền ghi stdout+stderr; bước 3 in lại nguyên văn lúc chờ xong, để log cổng không xen với pytest."""
+
+MYPY_CACHE_PREFIX = "mypy-tree-"
+"""Tiền tố thư mục cache mypy khoá theo băm cây (`gc` nhận ra để giữ N cái gần nhất)."""
+
+MYPY_CACHE_KEEP = 3
+"""Số thư mục `mypy-tree-*` `gc` giữ lại (mới nhất theo mtime). Mỗi cái ~200 MB; 3 phủ HEAD + hai lượt trước."""
+
+
+def _hash_tree(files: list[Path], extra: list[Path]) -> str:
+    """sha256 của (đường dẫn, nội dung) từng file trong `files` rồi `extra`, cộng phiên bản mypy.
+
+    Mỗi phần vào băm kèm độ dài: hai cây khác nhau không thể ghép thành cùng một chuỗi byte
+    (file "ab" + "" khác file "a" + "b"), nên trúng băm thật sự là trùng đầu vào.
+    """
+    h = hashlib.sha256()
+    try:
+        h.update(version("mypy").encode())
+    except PackageNotFoundError:  # mypy chưa cài: băm vẫn xác định, bước 3 sẽ hỏng vì thiếu lệnh
+        h.update(b"mypy-missing")
+    for path in [*files, *extra]:
+        try:
+            data = path.read_bytes()
+        except OSError:  # file biến mất giữa lúc quét: băm theo "không đọc được", không ném giữa cổng
+            data = b"<unreadable>"
+        for part in (str(path).encode(), data):
+            h.update(str(len(part)).encode())
+            h.update(part)
+    return h.hexdigest()[:16]
+
+
+def mypy_source_hash() -> str:
+    """Băm MỌI đầu vào của mypy: `.py` dưới `[tool.mypy] files`, `pyproject.toml`, `uv.lock`, phiên bản mypy.
+
+    Lấy danh sách thư mục từ chính `pyproject.toml` (không chép lại `["packages", "apps", "tools"]`),
+    bỏ `__pycache__`. `pyproject.toml` phủ cấu hình mypy, `uv.lock` phủ mọi stub/thư viện mypy đọc
+    theo `mypy_path`, phiên bản mypy phủ chính trình kiểm — nên hai lượt cùng băm có đầu vào giống
+    hệt nhau từng byte.
+    """
+    pyproject = REPO_ROOT / "pyproject.toml"
+    try:
+        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        # Không đọc được cấu hình thì không suy ra được root: băm vẫn phủ pyproject + uv.lock ở
+        # `_hash_tree` (kể cả khi thiếu), nên nó vẫn xác định — và mypy cũng sẽ hỏng ngay vì cấu hình.
+        config = {}
+    roots = config.get("tool", {}).get("mypy", {}).get("files", [])
+    sources = sorted(
+        p
+        for root in roots
+        for pattern in ("*.py", "*.pyi")
+        for p in (REPO_ROOT / root).rglob(pattern)
+        if "__pycache__" not in p.parts
+    )
+    return _hash_tree(sources, [pyproject, REPO_ROOT / "uv.lock"])
+
+
+def mypy_cache_dir() -> str:
+    """`MYPY_CACHE_DIR` của lượt: `<thư mục cha>/mypy-tree-<băm>`, hoặc `os.devnull` nếu không có biến (NO-306).
+
+    NO-306: cache ấm cố định `/work/mypy-${VERIFY_NAME}` đổi KẾT QUẢ — mypy so băm nguồn từng module,
+    khớp thì phát lại lỗi (hay "Success") đã lưu dù đầu vào hiện tại không còn sinh ra nó; `main` @ 30b78ae
+    đỏ bước 3 giả. Cách chữa cũ là chạy nguội mọi cổng đầy đủ (212 s mỗi lượt).
+
+    Khoá thư mục bằng băm toàn bộ đầu vào làm cái đó thừa: trúng băm nghĩa là mọi file mypy đọc giống
+    hệt lượt đã ghi cache, nên kết quả phát lại ĐÚNG BẰNG kết quả một lượt nguội — không còn cache "lai"
+    giữa hai cây nguồn khác nhau. Lệch một byte → băm khác → thư mục mới, rỗng, tức là chạy nguội.
+    `gc` dọn thư mục cũ (`MYPY_CACHE_KEEP`). Hai lượt cùng băm chạy song song (ENV §4 cho tối đa 2)
+    ghi chung thư mục: mypy đọc không nổi một file cache dở thì coi module cũ và tính lại — chậm hơn,
+    không sai; không khoá file cho một trường hợp hiếm mà hậu quả chỉ là mất cache.
+    """
+    current = os.environ.get("MYPY_CACHE_DIR")
+    if not current:
+        return os.devnull
+    return str(Path(current).parent / f"{MYPY_CACHE_PREFIX}{mypy_source_hash()}")
+
+
+def _mypy_env() -> dict[str, str]:
+    """Môi trường cho tiến trình mypy: như lượt này, chỉ đổi `MYPY_CACHE_DIR` sang thư mục theo băm cây."""
+    return {**os.environ, "MYPY_CACHE_DIR": mypy_cache_dir()}
+
+
 def step_mypy() -> StepOutcome:
-    """Bước 3: `mypy` (strict)."""
-    r = _run(["mypy"])
+    """Bước 3: `mypy` (strict) chạy ngay tại chỗ, cache theo băm cây (`mypy_cache_dir`)."""
+    r = _run(["mypy"], env=_mypy_env())
     return StepOutcome("3", "mypy --strict", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
+
+
+def start_mypy() -> subprocess.Popen[bytes]:
+    """Chạy mypy nền, stdout+stderr vào `MYPY_LOG` — để nó chạy song song bước 5 (C1).
+
+    Bước 3 nguội ~219 s, bước 5 ~808 s: chạy chồng lên nhau thì 219 s đó biến mất khỏi tổng. Output
+    phải vào file chứ không ra stdout chung, nếu không dòng của mypy xen giữa dòng pytest trong log cổng.
+    """
+    handle = MYPY_LOG.open("wb")
+    try:
+        return _popen(["mypy"], stdout=handle, stderr=subprocess.STDOUT, env=_mypy_env())
+    finally:
+        handle.close()  # Popen đã giữ fd riêng của nó
+
+
+def join_mypy(proc: subprocess.Popen[bytes]) -> StepOutcome:
+    """Bước 3 của cổng đầy đủ: chờ mypy nền xong, in lại `MYPY_LOG`, trạng thái từ mã thoát THẬT."""
+    returncode = proc.wait()
+    print("--- mypy (nền) ---")
+    try:
+        print(MYPY_LOG.read_text(encoding="utf-8", errors="replace"), end="")
+    except OSError as exc:
+        print(f"đọc {MYPY_LOG} hỏng: {exc}", file=sys.stderr)
+    return StepOutcome("3", "mypy --strict", STATUS_OK if returncode == 0 else STATUS_FAIL)
+
+
+@contextmanager
+def background_mypy() -> Iterator[subprocess.Popen[bytes]]:
+    """Chạy mypy nền suốt khối; ra khối mà nó còn sống thì giết.
+
+    Bước 1/2 hỏng là cổng dừng sớm, bước 3 ghi "chưa chạy" — mypy nền phải chết theo, nếu không
+    container còn một tiến trình con giữ fd và `_stop_pumps` đợi hết `LOG_DRAIN_TIMEOUT_S`.
+    """
+    proc = start_mypy()
+    try:
+        yield proc
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 def step_lint_imports() -> StepOutcome:
@@ -341,40 +477,59 @@ def run_steps(steps: Sequence[tuple[str, Callable[[], StepOutcome]]], wanted: se
     return outcomes
 
 
-@contextmanager
-def _cold_mypy_cache() -> Iterator[None]:
-    """Trong khối, `MYPY_CACHE_DIR` là `os.devnull` (mypy chạy nguội); ra khối trả riêng biến đó như cũ (NO-306).
+def full_gate_steps(proc: subprocess.Popen[bytes]) -> list[tuple[str, Callable[[], StepOutcome]]]:
+    """Thứ tự chạy của cổng đầy đủ: bước 3 chỉ còn là lượt CHỜ mypy nền, đặt ngay sau bước 5 (C1).
 
-    Cache ấm `/work/mypy-${VERIFY_NAME}` đổi kết quả: băm nguồn khớp meta thì mypy coi module tươi và
-    phát lại lỗi (hay "Success") đã lưu, dù đầu vào hiện tại không còn sinh ra nó — `main` @ 30b78ae
-    đỏ bước 3 giả. Đo: cả repo nguội 212 s, ấm 5 s.
+    mypy nền khởi động trước bước 1 nên nó chạy chồng lên bước 1, 2, 4 và 5. Dừng sớm giữ nguyên theo
+    thứ tự chạy mới: bước 1/2/4/5 hỏng → bước 3 "chưa chạy" (và `background_mypy` giết tiến trình).
+    Khác một điểm, không tránh được khi song song: mypy hỏng không còn làm bước 4, 5 thành "chưa chạy"
+    — chúng đã chạy xong rồi, nên bảng in kết quả THẬT của chúng. Mã thoát vẫn 1.
     """
-    saved = os.environ.get("MYPY_CACHE_DIR")
-    os.environ["MYPY_CACHE_DIR"] = os.devnull
-    try:
-        yield
-    finally:
-        if saved is None:
-            del os.environ["MYPY_CACHE_DIR"]
-        else:
-            os.environ["MYPY_CACHE_DIR"] = saved
+    steps = [(number, fn) for number, fn in _ALL_STEPS if number != "3"]
+    after_5 = [number for number, _ in steps].index("5") + 1
+    steps.insert(after_5, ("3", lambda: join_mypy(proc)))
+    return steps
+
+
+def _mypy_runs_beside_pytest(wanted: set[str] | None) -> bool:
+    """Lượt này có chạy chồng mypy lên bước 5 không: cổng đầy đủ VÀ lượt thật sự có cả bước 3 và bước 5.
+
+    Thiếu một trong hai thì không có gì để chồng lên nhau — chạy tuần tự như `--steps` của worker, khỏi
+    dựng tiến trình nền rồi giết ngay.
+    """
+    numbers = {number for number, _ in _ALL_STEPS}
+    full_gate = wanted is None or wanted >= numbers
+    return full_gate and {"3", "5"} <= (numbers if wanted is None else wanted & numbers)
+
+
+_STEP_ORDER = {number: index for index, (number, _) in enumerate(_ALL_STEPS)}
+
+
+def _in_step_order(outcomes: list[StepOutcome]) -> list[StepOutcome]:
+    """Sắp bảng theo thứ tự bước của `_ALL_STEPS` (bước 3 chạy sau bước 5 vẫn in ở dòng của nó).
+
+    Dòng không phải bước (chép mẫu golden, số "—") xuống cuối, giữ thứ tự tương đối.
+    """
+    return sorted(outcomes, key=lambda o: _STEP_ORDER.get(o.number, len(_STEP_ORDER)))
 
 
 def _run_verify(args: argparse.Namespace) -> int:
     """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng".
 
-    Cổng đầy đủ (không `--steps`, hay `--steps` gồm mọi bước) chạy mypy nguội — kết quả của nó quyết định
-    gộp; `--steps` của worker giữ cache ấm cho nhanh (xem trước, cổng mới là kết luận — NO-306).
+    Cổng đầy đủ (không `--steps`, hay `--steps` gồm mọi bước) chạy mypy NỀN song song bước 5
+    (`full_gate_steps`); `--steps` của worker chạy tuần tự như cũ. Cả hai dùng cùng cache mypy khoá
+    theo băm cây (`mypy_cache_dir`), nên kết quả bước 3 của worker cũng bằng kết quả nguội (NO-306).
     """
     wanted = set(args.steps.split(",")) if args.steps else None
     # Không ai gõ bước "0": nó đi kèm khi lượt có bước cần runner Node.
     if wanted is not None and wanted & _RUNNER_STEPS:
         wanted.add("0")
-    # `--steps` gồm mọi bước cũng là cổng đầy đủ: cache ấm ở đó là đường "đạt" giả (NO-306).
-    full_gate = wanted is None or wanted >= {number for number, _ in _ALL_STEPS}
-    mypy_cache: AbstractContextManager[None] = _cold_mypy_cache() if full_gate else nullcontext()
-    with mypy_cache:
+    if _mypy_runs_beside_pytest(wanted):
+        with background_mypy() as proc:
+            outcomes = run_steps(full_gate_steps(proc), wanted)
+    else:
         outcomes = run_steps(_ALL_STEPS, wanted)
+    outcomes = _in_step_order(outcomes)
     # Chép cả khi có bước hỏng: lúc đỏ là lúc người điều phối cần xem mẫu nhất. Chép hỏng
     # là một dòng bảng "hỏng" (thoát 1), không phải traceback thay chỗ cả bảng (NO-075).
     try:
@@ -600,13 +755,22 @@ def cmd_shell(_args: argparse.Namespace) -> int:
 
 
 def cmd_gc(_args: argparse.Namespace) -> int:
-    """Xoá venv-*/mypy-* của worktree không còn tồn tại (run.sh truyền danh sách còn sống)."""
+    """Xoá venv-*/mypy-* của worktree không còn tồn tại, và cache mypy theo băm cây đã cũ.
+
+    `mypy-tree-<băm>` không thuộc worktree nào (khoá bằng nội dung cây nguồn — `mypy_cache_dir`): giữ
+    `MYPY_CACHE_KEEP` thư mục mới nhất theo mtime, xoá phần còn lại. `run.sh` truyền danh sách worktree
+    còn sống cho nhóm còn lại.
+    """
     valid = {n for n in os.environ.get("VERIFY_VALID_NAMES", "").split(",") if n}
+    all_dirs = sorted([*WORK_DIR.glob("venv-*"), *WORK_DIR.glob("mypy-*")])
+    hashed = [d for d in all_dirs if d.name.startswith(MYPY_CACHE_PREFIX)]
+    keep = {d for d in sorted(hashed, key=lambda d: d.stat().st_mtime, reverse=True)[:MYPY_CACHE_KEEP]}
     removed = []
-    for d in sorted([*WORK_DIR.glob("venv-*"), *WORK_DIR.glob("mypy-*")]):
-        if d.name.split("-", 1)[1] not in valid:
-            shutil.rmtree(d, ignore_errors=True)
-            removed.append(d.name)
+    for d in all_dirs:
+        if d in keep or (d not in hashed and d.name.split("-", 1)[1] in valid):
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        removed.append(d.name)
     print(f"gc: xoá {len(removed)} thư mục: {removed}")
     return 0
 

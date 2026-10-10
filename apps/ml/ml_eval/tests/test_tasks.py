@@ -6,6 +6,7 @@ hàng `default` mà không worker nào nghe, nên đọc lại được bằng `
 `version_id` riêng của từng test.
 """
 
+import functools
 import pickle
 import time
 from collections.abc import Callable, Iterator
@@ -48,6 +49,24 @@ from packages.testing.fixtures.messaging import WorkerFactory, queued_payloads
 TASK = "ml.infer.ml_eval.evaluate_version"
 LISTEN, OUTBOX = "ml.infer", "default"
 WAIT_S = 180.0
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _cached_render_plan() -> Iterator[None]:
+    """Cache `synthetic.render_plan` theo seed trong cả tệp: M01 (x3 họ) và M06 cùng dựng lại
+    đúng 40 ảnh của `EVAL_SET_SEEDS` — `render_plan` tất định theo seed (BE-00 §9), nên dựng
+    một lần là đủ; `evaluate_family` vẫn gọi `render_plan` thật cho mỗi seed (K23 giữ render
+    thật), chỉ bỏ phần vẽ lại ảnh giống hệt đã có. Trần bộ nhớ: 40 kế hoạch ~1600x1200 (~300 MB) trong
+    một worker, nhả khi hết tệp (fixture `scope="module"` trả lại hàm gốc, cache bị thu gom).
+    """
+    import packages.ml_contracts.synthetic as synthetic_module
+
+    original = synthetic_module.render_plan
+    synthetic_module.render_plan = functools.lru_cache(maxsize=None)(original)
+    try:
+        yield
+    finally:
+        synthetic_module.render_plan = original
 
 
 @pytest.fixture

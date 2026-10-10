@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -23,12 +24,17 @@ def _compose_path(env: str) -> Path:
     return require_path(f"deploy/compose/{env}.yml")
 
 
+@cache
 def _resolved_services(env: str) -> dict[str, dict[str, Any]]:
-    """Dịch vụ của `<env>.yml` sau khi giải `extends` từ `base.yml`."""
+    """Dịch vụ của `<env>.yml` sau khi giải `extends` từ `base.yml`.
+
+    File compose không đổi trong một lượt pytest; ~50 test gọi hàm này nên nhớ theo
+    `env` thay vì đọc + giải `extends` lại mỗi lần (đo trước/sau ở `do-truoc-sau.md`)."""
     require_path("deploy/compose/base.yml")
     return resolve_all_services(_compose_path(env))
 
 
+@cache
 def _raw_doc(env: str) -> dict[str, Any]:
     """Nội dung thô (chưa giải `extends`) của `<env>.yml` — dùng để đọc `networks`/
     `volumes` cấp cao, phần `extends` không mang theo."""

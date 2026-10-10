@@ -77,17 +77,24 @@ def test_run_h2_rejects_app_without_openapi_url() -> None:
         h2.run_h2(FastAPI(openapi_url=None), max_examples=5, auth_header={})
 
 
-def test_run_h2_passes_healthy_operation() -> None:
+@pytest.fixture(scope="module")
+def sample_app_outcomes() -> dict[str, h2.OperationOutcome]:
+    """Một lượt `run_h2` trên `_sample_app()` dùng chung cho 4 case dưới (mỗi case đọc một route khác
+    nhau của cùng app) — tránh dò lại schema + fuzz hypothesis 4 lần cho cùng một schema cố định."""
+    return {o.label: o for o in h2.run_h2(_sample_app(), max_examples=5, auth_header={})}
+
+
+def test_run_h2_passes_healthy_operation(sample_app_outcomes: dict[str, h2.OperationOutcome]) -> None:
     """Thao tác 2xx khớp schema, không 401 → không lỗi (case thường)."""
-    outcomes = {o.label: o for o in h2.run_h2(_sample_app(), max_examples=5, auth_header={})}
-    assert outcomes["GET /ok"].failure is None
-    assert outcomes["GET /ok"].examples == 1
+    assert sample_app_outcomes["GET /ok"].failure is None
+    assert sample_app_outcomes["GET /ok"].examples == 1
 
 
-def test_run_h2_reports_asgi_exception_and_keeps_first_failure() -> None:
+def test_run_h2_reports_asgi_exception_and_keeps_first_failure(
+    sample_app_outcomes: dict[str, h2.OperationOutcome],
+) -> None:
     """Ngoại lệ lọt ASGI (không `FinalErrorMiddleware`) → hỏng; nhiều ví dụ nhưng chỉ giữ lỗi đầu (case biên)."""
-    outcomes = {o.label: o for o in h2.run_h2(_sample_app(), max_examples=5, auth_header={})}
-    outcome = outcomes["GET /boom"]
+    outcome = sample_app_outcomes["GET /boom"]
     assert outcome.examples > 1, "cần nhiều ví dụ để chạm nhánh 'lỗi đã có, bỏ qua kiểm lại'"
     failure = outcome.failure
     assert failure is not None
@@ -96,10 +103,10 @@ def test_run_h2_reports_asgi_exception_and_keeps_first_failure() -> None:
     assert "RuntimeError" in failure.excerpt
 
 
-def test_run_h2_reports_explicit_server_error() -> None:
+def test_run_h2_reports_explicit_server_error(sample_app_outcomes: dict[str, h2.OperationOutcome]) -> None:
     """500 trả tường minh (không ném) → kiểm `not_a_server_error` của schemathesis hỏng; nhiều ví dụ
     nhưng chỉ giữ lỗi đầu (case biên: nhánh 'đã có lỗi, bỏ qua kiểm lại' sau khi `case.call()` thành công)."""
-    outcome = {o.label: o for o in h2.run_h2(_sample_app(), max_examples=5, auth_header={})}["GET /explicit500"]
+    outcome = sample_app_outcomes["GET /explicit500"]
     assert outcome.examples > 1, "cần nhiều ví dụ để chạm nhánh 'lỗi đã có, bỏ qua kiểm lại'"
     failure = outcome.failure
     assert failure is not None
@@ -107,10 +114,9 @@ def test_run_h2_reports_explicit_server_error() -> None:
     assert failure.status_code == 500
 
 
-def test_run_h2_reports_response_schema_mismatch() -> None:
+def test_run_h2_reports_response_schema_mismatch(sample_app_outcomes: dict[str, h2.OperationOutcome]) -> None:
     """2xx nhưng thân sai schema đã khai → kiểm `response_schema_conformance` hỏng."""
-    outcomes = {o.label: o for o in h2.run_h2(_sample_app(), max_examples=5, auth_header={})}
-    failure = outcomes["GET /wrongshape"].failure
+    failure = sample_app_outcomes["GET /wrongshape"].failure
     assert failure is not None
     assert failure.check == "Response violates schema"
     assert failure.status_code == 200

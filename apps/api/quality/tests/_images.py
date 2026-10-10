@@ -4,9 +4,24 @@ Chữ ký công khai: `png_bytes(pixels)`, `jpeg_bytes(pixels)`, `straight_drawi
 `tilted_drawing(angle_deg, w, h)`, `desk_shot(w, h) -> DeskShot(pixels, corners)`,
 `a1_pdf()`, `huge_png()`, `truncated_png()`. Dựa trên bộ dựng của B2-05a
 (`packages/vision/preprocess/tests/{drawing,synthetic}.py`), không sửa chúng.
+
+Mọi hàm ở đây là **hàm thuần của tham số** (không seed ngẫu nhiên trừ `noisy_scan_png`, mà
+nó cũng ghim seed), nên bản dựng được nhớ theo tham số cho cả tiến trình `pytest`. Số đo
+một lượt dựng, cỡ của test route (PERF-01 BE-12): `png_bytes` **16,15 ms**, `truncated_png`
+17,80 ms, `desk_shot()` 6,17 ms, `tilted_drawing` 1,49 ms, `desk_shot(600, 420)` 0,95 ms,
+`straight_drawing()` 0,42 ms, `a1_pdf()` 0,48 ms. Đắt nhất — và gọi nhiều nhất — là `png_bytes`:
+`_route_helpers.make_image_floor` gọi nó một lần **mỗi tầng mỗi test** trên cùng một ảnh mẫu.
+`noisy_scan_png` (≈40 MP) và `huge_png` (0,01 ms) **không** nhớ: cái đầu chỉ có một người gọi
+nên nhớ không mua được gì mà giữ chục MB, cái sau đã gần như không tốn gì.
+
+Hàm trả `bytes` thì nhớ thẳng (bất biến). Hàm trả mảng numpy trả **bản sao** của bản nhớ
+(`pixels.copy()` đo được 0,071 ms): người gọi sửa tại chỗ — như chính `desk_shot` vẽ thêm
+một vạch bằng `cv2.line` — không được làm bẩn bản nhớ của test sau.
 """
 
+import hashlib
 from dataclasses import dataclass
+from functools import cache
 from typing import Final
 
 import cv2
@@ -22,6 +37,9 @@ from packages.vision.preprocess.tests.synthetic import encode, make_pdf, png_dec
 A1_PT: Final = (1684.0, 2384.0)
 """Khổ A1 theo point (594 x 841 mm)."""
 
+_PNG_BY_CONTENT: Final[dict[tuple[tuple[int, ...], bytes], bytes]] = {}
+"""Byte PNG theo (cỡ mảng, vân tay nội dung) — sổ của `png_bytes`."""
+
 
 @dataclass(frozen=True)
 class DeskShot:
@@ -32,8 +50,19 @@ class DeskShot:
 
 
 def png_bytes(pixels: NDArray[np.uint8]) -> bytes:
-    """Mảng RGB → byte PNG."""
-    return encode_png(RgbImage(pixels))
+    """Mảng RGB → byte PNG, nhớ theo **nội dung** mảng.
+
+    Không nhớ được bằng `functools.cache` (mảng numpy không băm được), nên khoá là
+    `(shape, blake2b(bytes))`. Vân tay tốn 2,29 ms so với 16,15 ms của lượt mã hoá, nên lượt
+    thứ hai trên cùng ảnh rẻ đi ~14 ms. Giữ vân tay chứ không giữ chính 1,3 MB mảng byte:
+    sáu tiến trình `pytest -n` mỗi tiến trình một sổ, bộ nhớ là thứ khan nhất của máy chạy cổng.
+    `shape` nằm trong khoá vì hai mảng khác cỡ có thể cùng dãy byte mà PNG ra khác nhau.
+    """
+    key = (pixels.shape, hashlib.blake2b(pixels.tobytes(), digest_size=16).digest())
+    cached = _PNG_BY_CONTENT.get(key)
+    if cached is None:
+        cached = _PNG_BY_CONTENT[key] = encode_png(RgbImage(pixels))
+    return cached
 
 
 def jpeg_bytes(pixels: NDArray[np.uint8]) -> bytes:
@@ -41,22 +70,31 @@ def jpeg_bytes(pixels: NDArray[np.uint8]) -> bytes:
     return encode(Image.fromarray(pixels), "JPEG", quality=95)
 
 
+@cache
+def _straight_drawing(width_px: int, height_px: int) -> NDArray[np.uint8]:
+    """Bản dựng gốc của `straight_drawing` — người gọi công khai lấy bản sao."""
+    return make_drawing(width_px, height_px, frame=True)
+
+
 def straight_drawing(width_px: int = 1200, height_px: int = 850) -> NDArray[np.uint8]:
     """Bản vẽ có khung, thẳng."""
-    return make_drawing(width_px, height_px, frame=True)
+    return _straight_drawing(width_px, height_px).copy()
+
+
+@cache
+def _tilted_drawing(angle_deg: float, width_px: int, height_px: int) -> NDArray[np.uint8]:
+    """Bản dựng gốc của `tilted_drawing` — người gọi công khai lấy bản sao."""
+    return rotate(straight_drawing(width_px, height_px), angle_deg)
 
 
 def tilted_drawing(angle_deg: float, width_px: int = 1200, height_px: int = 850) -> NDArray[np.uint8]:
     """Bản vẽ có khung xoay `angle_deg`°."""
-    return rotate(straight_drawing(width_px, height_px), angle_deg)
+    return _tilted_drawing(angle_deg, width_px, height_px).copy()
 
 
-def desk_shot(width_px: int = 1200, height_px: int = 850) -> DeskShot:
-    """Bản vẽ có khung nắn phối cảnh lên mặt bàn xám lớn hơn tờ giấy 4/3 lần; góc thật là mép giấy.
-
-    Một vạch đen ngoài mép giấy (trên mặt bàn) làm nét nằm ngoài khung, nên ảnh gốc **không**
-    tìm được khung (`FRAME_NOT_FOUND`); nắn theo mép giấy loại vạch đó và khung hiện ra.
-    """
+@cache
+def _desk_shot(width_px: int, height_px: int) -> DeskShot:
+    """Bản dựng gốc của `desk_shot` — người gọi công khai lấy bản sao của `pixels`."""
     desk_w, desk_h = width_px * 4 // 3, height_px * 4 // 3
     pixels, _frame, paper = on_desk(straight_drawing(width_px, height_px), desk_px=(desk_w, desk_h))
     y = round(desk_h * 0.985)
@@ -65,6 +103,17 @@ def desk_shot(width_px: int = 1200, height_px: int = 850) -> DeskShot:
     return DeskShot(pixels, (r[0], r[1], r[2], r[3]))
 
 
+def desk_shot(width_px: int = 1200, height_px: int = 850) -> DeskShot:
+    """Bản vẽ có khung nắn phối cảnh lên mặt bàn xám lớn hơn tờ giấy 4/3 lần; góc thật là mép giấy.
+
+    Một vạch đen ngoài mép giấy (trên mặt bàn) làm nét nằm ngoài khung, nên ảnh gốc **không**
+    tìm được khung (`FRAME_NOT_FOUND`); nắn theo mép giấy loại vạch đó và khung hiện ra.
+    """
+    shot = _desk_shot(width_px, height_px)
+    return DeskShot(shot.pixels.copy(), shot.corners)
+
+
+@cache
 def a1_pdf() -> bytes:
     """PDF một trang A1 (200 DPI ≈ 31 triệu điểm ảnh) có nội dung bản vẽ chứ không phải trang trắng.
 
@@ -108,6 +157,7 @@ def huge_png() -> bytes:
     return png_declaring(20_000, 20_000)
 
 
+@cache
 def truncated_png() -> bytes:
     """PNG hợp lệ bị cắt còn nửa tệp (U07)."""
     data = png_bytes(straight_drawing())

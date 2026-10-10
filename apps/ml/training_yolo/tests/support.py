@@ -16,8 +16,8 @@ from packages.ml_contracts.synthetic import render_plan
 MICRO_WIDTH_PX: Final = 800
 MICRO_HEIGHT_PX: Final = 600
 """Khối [8] ghi 640x480 nhưng `render_plan` hỏng ở khổ đó (đo B6-04a, 2026-10-02); 800x600 vẽ được seed 0..5."""
-TRAIN_SEEDS: Final = range(4)
-VALIDATION_SEEDS: Final = range(4, 6)
+TRAIN_SEEDS: Final = range(1)
+VALIDATION_SEEDS: Final = range(1, 2)
 
 
 def write_objects_split(data_dir: Path, split: Split, seeds: Iterable[int]) -> tuple[Path, ...]:

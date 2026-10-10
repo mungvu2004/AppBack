@@ -16,7 +16,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 
 import pytest
 
@@ -46,6 +46,41 @@ class FakeRun:
         return any(needle in " ".join(c) for c in self.calls)
 
 
+@dataclass
+class FakeProc:
+    """Thay `subprocess.Popen` của mypy nền: `wait`/`poll`/`kill` ghi mốc vào `events`."""
+
+    returncode: int
+    events: list[str]
+    done: bool = False
+
+    def wait(self) -> int:
+        """Chờ xong: ghi mốc "wait", từ đó `poll` trả mã thoát."""
+        self.events.append("wait")
+        self.done = True
+        return self.returncode
+
+    def poll(self) -> int | None:
+        """None khi còn chạy (bước 5 kiểm điều này), mã thoát sau khi `wait`/`kill`."""
+        return self.returncode if self.done else None
+
+    def kill(self) -> None:
+        """Giết tiến trình nền khi lượt dừng sớm."""
+        self.events.append("kill")
+        self.done = True
+
+
+def _starter(events: list[str], proc: FakeProc) -> Callable[[], FakeProc]:
+    """Thay `steps.start_mypy`: ghi mốc "start" rồi trả `proc` (không dựng tiến trình thật)."""
+
+    def start() -> FakeProc:
+        """Ghi mốc rồi trả tiến trình giả."""
+        events.append("start")
+        return proc
+
+    return start
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Repo giả trong thư mục tạm: trỏ REPO_ROOT/OUT_DIR/WORK_DIR vào đó và xoá các biến môi trường của lượt thật."""
@@ -61,6 +96,12 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # coverage `patch = subprocess` đo mọi tiến trình con qua biến này; tiến trình
     # con ở đây chạy trong repo giả (module openapi giả…) — không được lẫn vào số đo
     monkeypatch.delenv("COVERAGE_PROCESS_CONFIG", raising=False)
+    # Mypy nền của cổng đầy đủ (C1) đi qua `_popen`: chặn ở đây để không test nào dựng mypy thật,
+    # đúng như `_fake` chặn `_run`. Test cần hành vi riêng thì thay `steps.start_mypy`.
+    monkeypatch.setattr(steps, "_popen", lambda cmd, **kw: FakeProc(0, []))
+    # `start_mypy` mở MYPY_LOG bằng "wb": trỏ thật (/tmp/mypy.log) thì test xoá rỗng log của mypy nền
+    # đang chạy trong chính lượt cổng (review PERF-01 F1)
+    monkeypatch.setattr(steps, "MYPY_LOG", tmp_path / "mypy.log")
     return root
 
 
@@ -336,43 +377,169 @@ def test_main_verify_in_bảng_và_mã_thoát(
     assert steps.main(["verify", "--steps", "1"]) == 0
 
 
-@pytest.mark.parametrize(
-    ("argv", "seen"),
-    [([], os.devnull), (["--steps", "3"], "/work/mypy-x"), (["--steps", "4,3"], os.devnull)],
-)
-def test_verify__full_gate_runs_mypy_cold(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str], seen: str
-) -> None:
-    """NO-306: cổng đầy đủ (không `--steps` hay `--steps` gồm mọi bước) chạy bước 3 với `MYPY_CACHE_DIR=os.devnull`.
+def _mypy_tree(root: Path) -> None:
+    """Dựng cây nguồn tối thiểu mypy đọc: `pyproject.toml` khai `files`, `uv.lock`, một module."""
+    (root / "pyproject.toml").write_text('[tool.mypy]\nfiles = ["packages"]\n', encoding="utf-8")
+    (root / "uv.lock").write_text("lock-v1", encoding="utf-8")
+    _touch(root, "packages/core/a.py")
 
-    `--steps` thiếu bước giữ cache ấm. Sau lượt chỉ `MYPY_CACHE_DIR` được trả; biến bước khác đặt vẫn còn.
-    """
+
+def test_mypy_source_hash__ổn_định_và_đổi_theo_từng_đầu_vào(repo: Path) -> None:
+    """Băm xác định; đổi bất kỳ đầu vào nào (nguồn, lock, cấu hình, thêm file .pyi) là băm khác."""
+    _mypy_tree(repo)
+    assert steps.mypy_source_hash() == steps.mypy_source_hash()
+    for rel, text in [
+        ("packages/core/a.py", "x = 1\n"),
+        ("uv.lock", "lock-v2"),
+        ("pyproject.toml", '[tool.mypy]\nfiles = ["packages"]\nstrict = true\n'),
+        ("packages/core/b.pyi", "y: int\n"),
+    ]:
+        before = steps.mypy_source_hash()
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(text, encoding="utf-8")
+        assert steps.mypy_source_hash() != before, rel
+
+
+def test_mypy_source_hash__bỏ_qua_pycache(repo: Path) -> None:
+    """`__pycache__` là bytecode sinh ra, mypy không đọc: thêm vào không được đổi băm (cache sẽ trượt mỗi lượt)."""
+    _mypy_tree(repo)
+    base = steps.mypy_source_hash()
+    _touch(repo, "packages/core/__pycache__/a.cpython-313.py")
+    assert steps.mypy_source_hash() == base
+
+
+def test_mypy_cache_dir__thư_mục_anh_em_theo_băm(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO-306: cache nằm cạnh `MYPY_CACHE_DIR` cũ, tên `mypy-tree-<băm>`; đổi nguồn → thư mục khác (nguội)."""
+    _mypy_tree(repo)
     monkeypatch.setenv("MYPY_CACHE_DIR", "/work/mypy-x")
-    monkeypatch.setenv("VERIFY_PROBE", "trước")
+    first = steps.mypy_cache_dir()
+    assert Path(first).parent == Path("/work")
+    assert Path(first).name == f"{steps.MYPY_CACHE_PREFIX}{steps.mypy_source_hash()}"
+    (repo / "packages" / "core" / "a.py").write_text("z = 2\n", encoding="utf-8")
+    assert steps.mypy_cache_dir() != first
+
+
+def test_mypy_cache_dir__không_có_biến_thì_nguội(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chạy ngoài container (không `MYPY_CACHE_DIR`) thì giữ hành vi nguội `os.devnull`, không ghi cache lạ."""
+    _mypy_tree(repo)
+    monkeypatch.delenv("MYPY_CACHE_DIR", raising=False)
+    assert steps.mypy_cache_dir() == os.devnull
+
+
+def test_step_mypy__truyền_cache_băm_qua_env_không_đổi_môi_trường_lượt(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bước 3 tuần tự: mypy nhận `MYPY_CACHE_DIR` theo băm qua `env`, môi trường của lượt giữ giá trị cũ."""
+    _mypy_tree(repo)
+    monkeypatch.setenv("MYPY_CACHE_DIR", "/work/mypy-x")
+    envs: list[str] = []
+
+    def fake_run(cmd: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
+        """Ghi `MYPY_CACHE_DIR` trong `env` truyền cho mypy."""
+        envs.append(kw["env"]["MYPY_CACHE_DIR"])
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(steps, "_run", fake_run)
+    assert steps.step_mypy().status == steps.STATUS_OK
+    assert envs == [steps.mypy_cache_dir()]
+    assert os.environ["MYPY_CACHE_DIR"] == "/work/mypy-x"
+
+
+def test_full_gate_steps__bước_3_chạy_sau_bước_5() -> None:
+    """C1: mypy đã chạy nền từ đầu nên bước 3 chỉ còn là lượt chờ, xếp ngay sau bước 5 — bước khác giữ thứ tự."""
+    order = [number for number, _ in steps.full_gate_steps(cast("subprocess.Popen[bytes]", None))]
+    assert order.index("3") == order.index("5") + 1
+    assert [n for n in order if n != "3"] == [n for n, _ in steps._ALL_STEPS if n != "3"]
+
+
+def test_in_step_order__bảng_vẫn_theo_số_bước() -> None:
+    """Bảng E.10 in theo thứ tự bước của `_ALL_STEPS` dù bước 3 chạy sau bước 5; dòng không phải bước xuống cuối."""
+    outcomes = [
+        steps.StepOutcome("5", "pytest", steps.STATUS_OK),
+        steps.StepOutcome("—", "chép mẫu golden", steps.STATUS_FAIL),
+        steps.StepOutcome("3", "mypy --strict", steps.STATUS_OK),
+        steps.StepOutcome("1", "ruff format", steps.STATUS_OK),
+    ]
+    assert [o.number for o in steps._in_step_order(outcomes)] == ["1", "3", "5", "—"]
+
+
+def test_verify__cổng_đầy_đủ_chạy_mypy_nền_song_song_bước_5(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C1: mypy khởi động TRƯỚC bước 5 và chỉ được chờ SAU khi bước 5 xong — đó là phần chạy chồng nhau."""
     monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
-    cache_dirs: list[str] = []
+    events: list[str] = []
+    proc = FakeProc(0, events)
+    monkeypatch.setattr(steps, "MYPY_LOG", repo / "mypy.log")
+    (repo / "mypy.log").write_text("Success: no issues found\n", encoding="utf-8")
+    monkeypatch.setattr(steps, "start_mypy", _starter(events, proc))
+
+    def fake_cov() -> steps.StepOutcome:
+        """Bước 5 giả: mypy nền phải còn đang chạy lúc nó chạy — đó là phần tiết kiệm."""
+        events.append("bước 5")
+        assert proc.poll() is None
+        return steps.StepOutcome("5", "pytest", steps.STATUS_OK)
+
+    monkeypatch.setattr(steps, "_ALL_STEPS", [("3", steps.step_mypy), ("5", fake_cov)])
+    assert steps.main(["verify"]) == 0
+    assert events == ["start", "bước 5", "wait"]
+    out = capsys.readouterr().out
+    assert "Success: no issues found" in out  # log của mypy nền vào log cổng, sau bước 5
+    assert out.index("  3 |") < out.index("  5 |")  # bảng vẫn in bước 3 trước bước 5
+
+
+def test_verify__cổng_đầy_đủ_mypy_nền_hỏng_làm_lượt_hỏng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trạng thái bước 3 lấy từ MÃ THOÁT thật của tiến trình nền (K25): mypy đỏ → bảng "hỏng", lượt thoát 1."""
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    events: list[str] = []
+    monkeypatch.setattr(steps, "MYPY_LOG", repo / "mypy.log")
+    monkeypatch.setattr(steps, "start_mypy", _starter(events, FakeProc(1, events)))
+    monkeypatch.setattr(
+        steps,
+        "_ALL_STEPS",
+        [("3", steps.step_mypy), ("5", lambda: steps.StepOutcome("5", "pytest", steps.STATUS_OK))],
+    )
+    assert steps.main(["verify"]) == 1
+
+
+def test_verify__bước_trước_hỏng_thì_bước_3_chưa_chạy_và_mypy_nền_bị_giết(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Dừng sớm giữ nguyên: bước 5 hỏng → bước 3 "chưa chạy" (K25), và tiến trình mypy nền không bị bỏ sống."""
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    events: list[str] = []
+    monkeypatch.setattr(steps, "MYPY_LOG", repo / "mypy.log")
+    monkeypatch.setattr(steps, "start_mypy", _starter(events, FakeProc(0, events)))
+    monkeypatch.setattr(
+        steps,
+        "_ALL_STEPS",
+        [("3", steps.step_mypy), ("5", lambda: steps.StepOutcome("5", "pytest", steps.STATUS_FAIL))],
+    )
+    assert steps.main(["verify"]) == 1
+    assert "kill" in events
+    assert steps.STATUS_SKIP in capsys.readouterr().out
+
+
+def test_verify__steps_lẻ_chạy_mypy_tuần_tự(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--steps` thiếu bước là lượt xem trước của worker: mypy chạy tại chỗ, không dựng tiến trình nền."""
+    monkeypatch.delenv("CONTRACT_SAMPLES_DIR", raising=False)
+    events: list[str] = []
+    monkeypatch.setattr(steps, "start_mypy", _starter(events, FakeProc(0, events)))
+    seen: list[str] = []
 
     def fake_mypy() -> steps.StepOutcome:
-        """Bước 3 giả: ghi lại `MYPY_CACHE_DIR` mà mypy sẽ thấy, và đổi một biến khác."""
-        cache_dirs.append(os.environ["MYPY_CACHE_DIR"])
-        os.environ["VERIFY_PROBE"] = "sau"
-        return steps.StepOutcome("3", "mypy --strict", steps.STATUS_OK)
+        """Bước 3 giả chạy tại chỗ: ghi mốc để kiểm nó được gọi tuần tự, không qua tiến trình nền."""
+        seen.append("mypy")
+        return steps.StepOutcome("3", "mypy", steps.STATUS_OK)
 
     monkeypatch.setattr(
-        steps, "_ALL_STEPS", [("3", fake_mypy), ("4", lambda: steps.StepOutcome("4", "lint", steps.STATUS_OK))]
+        steps,
+        "_ALL_STEPS",
+        [("3", fake_mypy), ("4", lambda: steps.StepOutcome("4", "lint", steps.STATUS_OK))],
     )
-    assert steps.main(["verify", *argv]) == 0
-    assert cache_dirs == [seen]
-    assert os.environ["MYPY_CACHE_DIR"] == "/work/mypy-x"
-    assert os.environ["VERIFY_PROBE"] == "sau"
-
-
-def test_cold_mypy_cache__unset_variable_stays_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    """NO-306: không có `MYPY_CACHE_DIR` trước khối thì ra khối cũng không có (không để lại `os.devnull`)."""
-    monkeypatch.delenv("MYPY_CACHE_DIR", raising=False)
-    with steps._cold_mypy_cache():
-        assert os.environ["MYPY_CACHE_DIR"] == os.devnull
-    assert "MYPY_CACHE_DIR" not in os.environ
+    assert steps.main(["verify", "--steps", "3"]) == 0
+    assert events == []
+    assert seen == ["mypy"]
 
 
 # --- lock / openapi -----------------------------------------------------------------
@@ -555,6 +722,21 @@ def test_gc_xoá_thư_mục_của_worktree_đã_mất(repo: Path, monkeypatch: p
     monkeypatch.setenv("VERIFY_VALID_NAMES", "a")
     assert steps.main(["gc"]) == 0
     assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == ["mypy-a", "uv-cache", "venv-a"]
+
+
+def test_gc_giữ_n_cache_mypy_theo_băm_mới_nhất(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`mypy-tree-<băm>` không thuộc worktree nào: giữ `MYPY_CACHE_KEEP` cái mtime mới nhất, xoá phần còn lại."""
+    monkeypatch.setattr(steps, "MYPY_CACHE_KEEP", 2)
+    for index in range(4):
+        d = steps.WORK_DIR / f"{steps.MYPY_CACHE_PREFIX}{index:016x}"
+        d.mkdir(parents=True)
+        os.utime(d, (1_700_000_000 + index, 1_700_000_000 + index))
+    monkeypatch.setenv("VERIFY_VALID_NAMES", "")
+    assert steps.main(["gc"]) == 0
+    assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == [
+        f"{steps.MYPY_CACHE_PREFIX}{2:016x}",
+        f"{steps.MYPY_CACHE_PREFIX}{3:016x}",
+    ]
 
 
 def test_shell_exec_bash(monkeypatch: pytest.MonkeyPatch) -> None:

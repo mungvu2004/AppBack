@@ -19,6 +19,13 @@ concurrency:
 permissions:
   contents: read
 
+# PERF-01 B-pyc: `uv sync` biên dịch .pyc ngay lúc cài, một lần cho mọi job.
+# Không có nó, mỗi tiến trình Python của job tự biên dịch lúc import lần đầu và
+# venv của runner bị bỏ sau job, nên khoản đó trả lại mỗi lần — đo ở container
+# cổng: collection của pytest 211 s khi venv chưa có bytecode, 25 s khi đã có.
+env:
+  UV_COMPILE_BYTECODE: "1"
+
 jobs:
   # Chỉ `coverage` có `needs:`. Bảy job kia (lint, typecheck, unit, integration,
   # ml, contract, build) đọc cùng một commit và không job nào ăn đầu ra
