@@ -30,6 +30,18 @@ def test_pdf_page_count_u04_zero_pages() -> None:
     assert str(excinfo.value) == "PDF_UNREADABLE"
 
 
+def test_pdf_page_count_u04_zero_pages_after_corrupt_pdf() -> None:
+    """BUG-256: `/Count 0` vẫn là `PDF_UNREADABLE` sau một PDF hỏng trong cùng tiến trình.
+
+    PDFium giữ mã lỗi của lần mở hỏng trước; tệp 0 trang không được phân loại theo mã cũ đó.
+    """
+    with pytest.raises(VisionError, match="FILE_CORRUPT"):
+        pdf_page_count(b"%PDF-1.4\n" + b"\x01\x02\x03garbage" * 40)
+    with pytest.raises(VisionError) as excinfo:
+        pdf_page_count(synthetic.make_pdf(0))
+    assert str(excinfo.value) == "PDF_UNREADABLE"
+
+
 def test_pdf_page_count_u04_owner_password_only() -> None:
     """Chỉ đặt mật khẩu chủ: PDFium mở được bằng mật khẩu người dùng rỗng → xử lý bình thường."""
     data = synthetic.make_pdf(2, encrypt="owner_only", rects=_RED_SQUARE)

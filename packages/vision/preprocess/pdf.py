@@ -27,27 +27,32 @@ PDF_LOCK: Final = threading.Lock()
 
 POINTS_PER_INCH: Final = 72.0
 
-# `_open_pdf` của pypdfium2 5.13 ném `PdfiumError` kèm `err_code` = `FPDF_GetLastError()`
-# khi số trang < 1. Chỉ mật khẩu/bảo mật — và `SUCCESS`, tức tệp đọc được nhưng 0 trang —
-# là "không đọc nổi"; FILE/FORMAT/UNKNOWN là tệp hỏng (U04, U07).
-_UNREADABLE_ERR_CODES: Final = frozenset(
-    (pdfium_c.FPDF_ERR_SUCCESS, pdfium_c.FPDF_ERR_PASSWORD, pdfium_c.FPDF_ERR_SECURITY)
-)
+# Mở tệp hỏng: chỉ mật khẩu/bảo mật là "không đọc nổi"; FILE/FORMAT/UNKNOWN là tệp hỏng (U04, U07).
+_UNREADABLE_ERR_CODES: Final = frozenset((pdfium_c.FPDF_ERR_PASSWORD, pdfium_c.FPDF_ERR_SECURITY))
 
 
 def _open_document(data: bytes) -> pdfium.PdfDocument:
     """Mở tài liệu bằng mật khẩu người dùng rỗng; **phải** gọi khi đang giữ `PDF_LOCK`.
 
-    Không phải PDF theo `sniff_kind` → `FILE_TYPE_MISMATCH`. PDF có `/Encrypt` mà
-    PDFium mở được bằng mật khẩu rỗng (chỉ đặt mật khẩu chủ) đi tiếp bình thường.
+    Không phải PDF theo `sniff_kind` → `FILE_TYPE_MISMATCH`; mở thất bại → phân loại theo
+    `FPDF_GetLastError()`; mở được mà 0 trang (`/Count 0`) → `PDF_UNREADABLE`. PDF có
+    `/Encrypt` mà mở được bằng mật khẩu rỗng (chỉ đặt mật khẩu chủ) đi tiếp bình thường.
+    Mở bằng API thô thay cho `pdfium.PdfDocument(data)` vì `_open_pdf` của pypdfium2 5.14 đọc
+    `FPDF_GetLastError()` cả khi mở **thành công** mà 0 trang — PDFium không xoá mã đó, nên
+    nó là mã cũ của lần mở hỏng trước trong tiến trình (BUG-256) — và bỏ rơi tài liệu đã mở.
+    Tài liệu trả về không giữ `data`: người gọi phải đóng nó khi `data` còn sống.
     """
     if sniff_kind(data) != "pdf":
         raise VisionError("FILE_TYPE_MISMATCH")
-    try:
-        return pdfium.PdfDocument(data)
-    except pdfium.PdfiumError as exc:
-        unreadable = exc.err_code in _UNREADABLE_ERR_CODES
-        raise VisionError("PDF_UNREADABLE" if unreadable else "FILE_CORRUPT") from exc
+    raw = pdfium_c.FPDF_LoadMemDocument64(data, len(data), None)
+    if not raw:
+        err_code = pdfium_c.FPDF_GetLastError()
+        cause = pdfium.PdfiumError(f"Failed to load document (PDFium: {err_code}).", err_code=err_code)
+        raise VisionError("PDF_UNREADABLE" if err_code in _UNREADABLE_ERR_CODES else "FILE_CORRUPT") from cause
+    if pdfium_c.FPDF_GetPageCount(raw) < 1:
+        pdfium_c.FPDF_CloseDocument(raw)
+        raise VisionError("PDF_UNREADABLE")
+    return pdfium.PdfDocument(raw)
 
 
 def pdf_page_count(data: bytes) -> int:
