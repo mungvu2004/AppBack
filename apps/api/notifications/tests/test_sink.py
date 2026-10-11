@@ -171,7 +171,7 @@ async def test_sink__direct_call_rules(
     await db_session.commit()
     await after_commit_idle(db_session)
     rows = await rows_of(db_session, target.id)
-    assert [row.message for row in rows] == ["bạn vừa được thêm vào dự án"], "khoá cùng giờ: lượt hai bị gộp"
+    assert [row.message for row in rows] == ["Bạn vừa được thêm vào dự án"], "khoá cùng giờ: lượt hai bị gộp"
 
     fake_clock.advance(timedelta(hours=1))
     await added(admin.id)

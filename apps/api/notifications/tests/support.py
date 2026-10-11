@@ -56,7 +56,7 @@ async def commit_notify(db: AsyncSession, clock: Clock, **kwargs: Any) -> Notifi
         "place": "walls",
         "floor_level_id": FLOOR,
         "object_label": "Tường ngoài",
-        "message": "hệ thống AI đã xử lý xong bản vẽ",
+        "message": "Hệ thống AI đã xử lý xong bản vẽ",
         "dedupe_key": f"test:{secrets.token_hex(8)}",
         "clock": clock,
     }

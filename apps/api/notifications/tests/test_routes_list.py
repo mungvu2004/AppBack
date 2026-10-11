@@ -52,7 +52,7 @@ async def _seed_all_kinds(db: AsyncSession, clock: FakeClock, user_id: str, proj
         floor_level_id=None,
         place="rules",
         object_label="tầng 2",
-        message="phát hiện 3 vi phạm luật ở",
+        message="Phát hiện 3 vi phạm luật ở",
     )
 
 
@@ -141,7 +141,7 @@ async def test_notifications_list__C17(
         place="projectSettings",
         floor_level_id=None,
         object_label="Dự án",
-        message="bạn vừa được thêm vào dự án",
+        message="Bạn vừa được thêm vào dự án",
     )
     fake_clock.advance(timedelta(seconds=1))
     await commit_notify(

@@ -16,9 +16,9 @@ from packages.db.models.notifications import NotificationRow
 from packages.db.models.projects import Project
 
 _MESSAGES = {
-    "aiCompleted": "hệ thống AI đã xử lý xong bản vẽ",
-    "violationFound": "phát hiện 2 vi phạm luật ở",
-    "projectInvite": "bạn vừa được thêm vào dự án",
+    "aiCompleted": "Hệ thống AI đã xử lý xong bản vẽ",
+    "violationFound": "Phát hiện 2 vi phạm luật ở",
+    "projectInvite": "Bạn vừa được thêm vào dự án",
 }
 
 

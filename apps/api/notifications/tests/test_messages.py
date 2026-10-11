@@ -22,9 +22,9 @@ LABELS: Final = ("Chung cư Sông Hàn", "tầng trệt", "tầng 2", "Tường 
 def test_messages__table() -> None:
     """Đúng bảng [6]."""
     assert messages.project_invite("Lê Minh") == "Lê Minh đã thêm bạn vào dự án"
-    assert messages.project_invite(None) == "bạn vừa được thêm vào dự án"
-    assert messages.ai_completed() == "hệ thống AI đã xử lý xong bản vẽ"
-    assert messages.violation_found(3) == "phát hiện 3 vi phạm luật ở"
+    assert messages.project_invite(None) == "Bạn vừa được thêm vào dự án"
+    assert messages.ai_completed() == "Hệ thống AI đã xử lý xong bản vẽ"
+    assert messages.violation_found(3) == "Phát hiện 3 vi phạm luật ở"
 
 
 @pytest.mark.parametrize(
@@ -32,7 +32,7 @@ def test_messages__table() -> None:
 )
 def test_messages__violation_found_groups_thousands_with_dots(count: int, text: str) -> None:
     """Từ 1 000 nhóm nghìn bằng dấu chấm."""
-    assert messages.violation_found(count) == f"phát hiện {text} vi phạm luật ở"
+    assert messages.violation_found(count) == f"Phát hiện {text} vi phạm luật ở"
 
 
 @pytest.mark.parametrize("count", [0, -1])
@@ -45,7 +45,7 @@ def test_messages__violation_found_rejects_non_positive(count: int) -> None:
 @pytest.mark.parametrize("actor", ["", "   ", ZWSP, RLO + BEL])
 def test_messages__project_invite_blank_name_falls_back(actor: str) -> None:
     """Tên rỗng sau làm sạch → nhánh `None`."""
-    assert messages.project_invite(actor) == "bạn vừa được thêm vào dự án"
+    assert messages.project_invite(actor) == "Bạn vừa được thêm vào dự án"
 
 
 def test_messages__project_invite_cleans_and_nfc_the_name() -> None:
@@ -61,6 +61,12 @@ def test_messages__no_sentence_ends_with_a_label() -> None:
     assert not any(
         sentence.endswith(label) for sentence in sentences for label in ("Chung cư Sông Hàn", "tầng trệt", "tầng 2")
     )
+
+
+def test_messages__fixed_sentences_start_uppercase() -> None:
+    """Luật chữ A6 của FE: câu cố định (không mở bằng tên người) viết hoa chữ đầu."""
+    for sentence in (messages.project_invite(None), messages.ai_completed(), messages.violation_found(1)):
+        assert sentence[0].isupper(), sentence
 
 
 def test_messages__all_sentences_are_nfc() -> None:
@@ -102,7 +108,7 @@ def _row(**overrides: object) -> NotificationRow:
         "project_name": "Dự án",
         "floor_level_id": "L-0000000001",
         "object_label": "Tường",
-        "message": "hệ thống AI đã xử lý xong bản vẽ",
+        "message": "Hệ thống AI đã xử lý xong bản vẽ",
         "excerpt": None,
         "is_read": False,
         "dedupe_key": "secret-key",

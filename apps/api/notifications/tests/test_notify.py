@@ -74,7 +74,7 @@ async def test_notify__invalid_input_raises(
         "project_name": "Dự án",
         "floor_level_id": FLOOR,
         "object_label": "Tường",
-        "message": "hệ thống AI đã xử lý xong bản vẽ",
+        "message": "Hệ thống AI đã xử lý xong bản vẽ",
         "dedupe_key": KEY,
         "clock": fake_clock,
     }
@@ -157,7 +157,7 @@ async def test_notify__J09(db_session: AsyncSession, fake_clock: FakeClock, stre
         project_name="A",
         floor_level_id=FLOOR,
         object_label="Tường",
-        message="hệ thống AI đã xử lý xong bản vẽ",
+        message="Hệ thống AI đã xử lý xong bản vẽ",
         dedupe_key=KEY,
         clock=fake_clock,
     )

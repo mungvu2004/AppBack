@@ -54,7 +54,7 @@ async def test_notifications_accept_invite__C01(api_client: httpx.AsyncClient, d
         "projectId": project.id,
         "projectName": project.name,
         "objectLabel": project.name,
-        "message": "bạn vừa được thêm vào dự án",
+        "message": "Bạn vừa được thêm vào dự án",
         "isRead": True,
         "createdAt": body["createdAt"],
     }
