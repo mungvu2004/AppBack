@@ -16,7 +16,7 @@
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
 > `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 37 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
-> **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin`.
+> **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
 
@@ -48,7 +48,7 @@
 | 24 | projects | `GET /api/projects/{project_id}` | `projects_read_project` | `Project` | Đ | thành viên | — | B2-01 | |
 | 25 | projects | `POST /api/projects` | `projects_create_project` | `Project` | G\* | `project.create` | có | B2-01 | người tạo là thành viên |
 | 26 | projects | `PATCH /api/projects/{project_id}` | `projects_update_project` | `Project` | G | `project.settings.edit` | có | B2-01 | last-write-wins |
-| 27 | projects | `DELETE /api/projects/{project_id}` | `projects_delete_project` | `Project` | G | `project.settings.edit` | có | B2-01 | xoá mềm |
+| 27 | projects | `DELETE /api/projects/{project_id}` | `projects_delete_project` | `Project` | G | `admin` | có | B2-01 | xoá mềm; thành viên **và** vai admin (`require_project("admin")`, BUG-513) |
 | 28 | propertyTemplates | `GET /api/projects/{project_id}/property-templates` | `templates_list_templates` | F-00a `PropertyTemplateSchema[]` | Đ | thành viên | — | B2-07 | trần 500 |
 | 29 | propertyTemplates | `POST /api/projects/{project_id}/property-templates` | `templates_create_template` | F-00a `PropertyTemplateSchema` | G | `layer.edit` | — | B2-07 | |
 | 30 | quality | `GET /api/projects/{project_id}/floors/{floor_id}/quality` | `quality_read_assessment` | `ImageQualityAssessment` | Đ | thành viên | — | B2-05b | 5 mã theo F-00a |
