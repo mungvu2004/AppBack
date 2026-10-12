@@ -196,3 +196,16 @@ async def test_me_update_profile_phone_too_long_is_422(api_client: httpx.AsyncCl
     response = await _patch(api_client, user, {"phone": "0" * 33})
     assert response.status_code == 422
     assert response.json()["field"] == "phone"
+
+
+@pytest.mark.parametrize("phone", ["12\x0034", "12\x0734", "09\N{RIGHT-TO-LEFT OVERRIDE}00"])
+async def test_me_update_profile_phone_forbidden_char_is_422(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, phone: str
+) -> None:
+    """NUL/BEL (Cc) hay U+202E trong `phone` → 422 `field:"phone"`, không 500 ở cột TEXT (QA-07)."""
+    user = await make_user(db_session)
+    response = await _patch(api_client, user, {"phone": phone})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION"
+    assert body["field"] == "phone"

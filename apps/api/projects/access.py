@@ -8,6 +8,7 @@ hệ thống không phải thành viên).
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,11 +16,18 @@ from starlette.requests import Request
 
 from apps.api.core.auth import Principal
 from apps.api.core.deps import CurrentPrincipal, DbSession
-from apps.api.core.permissions import ANY_MEMBER, permission_dependency
+from apps.api.core.permissions import ADMIN, ANY_MEMBER, permission_dependency
 from packages.core.error_codes import FORBIDDEN, NOT_FOUND
 from packages.core.ids import is_id
 from packages.db.models.projects import Project, ProjectMembership
 from packages.domain.permissions import PERMISSION_KEYS, SYSTEM_SCOPED_KEYS, PermissionKey, can
+
+type ProjectGate = PermissionKey | Literal["admin"]
+"""Khoá của `require_project`: khoá quyền theo dự án, hoặc `admin` = thành viên **và** vai admin.
+
+Chưa có vai theo dự án: thành viên hành động bằng vai hệ thống. `admin` khoá thao tác mà FE
+chỉ mở cho admin (vùng nguy hiểm, BUG-513) — không thêm khoá vào ma trận gương FE (H3).
+"""
 
 ProjectResolver = Callable[[Request, Principal, AsyncSession], Awaitable[str]]
 """Hàm suy ra `project_id` từ request; lỗi của nó thắng — chạy trước kiểm thành viên."""
@@ -43,16 +51,17 @@ class ProjectAccess:
 
 
 def require_project(
-    permission: PermissionKey | None = None, *, resolver: ProjectResolver = project_from_path
+    permission: ProjectGate | None = None, *, resolver: ProjectResolver = project_from_path
 ) -> Callable[[Request, Principal, AsyncSession], Awaitable[ProjectAccess]]:
     """Cổng dependency: dự án chưa xoá **và** người gọi là thành viên, rồi kiểm `permission`.
 
+    `permission="admin"` đòi thêm vai hệ thống `admin` sau khi qua 404 (BUG-513).
     `permission` thuộc `SYSTEM_SCOPED_KEYS` (chỉ kiểm cấp hệ thống, K08) hay không phải
     khoá quyền hợp lệ → `ValueError` ngay lúc gọi (khai route), không đợi tới request.
     Một truy vấn duy nhất kiểm cả "dự án tồn tại, chưa xoá" lẫn "là thành viên": tách hai
     câu sẽ vừa N+1 vừa hé cho người ngoài biết dự án có tồn tại hay không (K08).
     """
-    if permission is not None and (permission in SYSTEM_SCOPED_KEYS or permission not in PERMISSION_KEYS):
+    if permission not in (None, ADMIN) and (permission in SYSTEM_SCOPED_KEYS or permission not in PERMISSION_KEYS):
         raise ValueError(f"không phải khoá quyền theo dự án: {permission!r}")
 
     @permission_dependency(permission if permission is not None else ANY_MEMBER)
@@ -76,11 +85,17 @@ def require_project(
 
 
 def _checked_access(
-    project_id: str, name: str | None, permission: PermissionKey | None, principal: Principal
+    project_id: str, name: str | None, permission: ProjectGate | None, principal: Principal
 ) -> ProjectAccess:
     """404 nếu không có dòng (không phải thành viên hoặc dự án đã xoá), rồi 403 nếu thiếu `permission`."""
     if name is None:
         raise NOT_FOUND.error(resource="project")
-    if permission is not None and not can(principal.role, permission):
+    if permission is None:
+        allowed = True
+    elif permission == ADMIN:
+        allowed = principal.role == ADMIN
+    else:
+        allowed = can(principal.role, permission)
+    if not allowed:
         raise FORBIDDEN.error()
     return ProjectAccess(project_id=project_id, project_name=name, principal=principal)

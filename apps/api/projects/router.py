@@ -4,8 +4,9 @@ Router **mỏng**: mỗi hàm chỉ đọc dependency rồi gọi đúng một h
 khai ở đây mà không ở chỗ khác được:
 
 - **cổng quyền** (BE-BIND cột "Khoá"): #23 và N1 chỉ đòi đăng nhập (`—`), #24 đòi là thành
-  viên, #25 đòi khoá hệ thống `project.create`, #26/#27 đòi `project.settings.edit` **trong
-  dự án**. Cổng đặt ở `dependencies=` chứ không ở tham số handler: giá trị trả về của chúng
+  viên, #25 đòi khoá hệ thống `project.create`, #26 đòi `project.settings.edit` **trong
+  dự án**, #27 đòi là thành viên **và** vai `admin` (BUG-513: FE chỉ mở vùng nguy hiểm cho
+  admin). Cổng đặt ở `dependencies=` chứ không ở tham số handler: giá trị trả về của chúng
   không cần cho nghiệp vụ (id dự án đã có trên đường), và test case chung C10/C22 của B0-06
   ghi đè mọi cổng quyền bằng `lambda: None` — handler nào đọc kết quả cổng sẽ vỡ ở đó;
 - **trần của N1 là hằng** `page_params(500)`, không phải setting: zod của FE ghim 500
@@ -76,7 +77,7 @@ async def projects_update_project(
     return await service.update_project(db, project_id, body, principal, clock, app=request.app)
 
 
-@router.delete("/projects/{project_id}", dependencies=[Depends(require_project("project.settings.edit"))])
+@router.delete("/projects/{project_id}", dependencies=[Depends(require_project("admin"))])
 async def projects_delete_project(
     project_id: str, request: Request, db: DbSession, principal: CurrentPrincipal, clock: ClockDep
 ) -> ProjectOut:

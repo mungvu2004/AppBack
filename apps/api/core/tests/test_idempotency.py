@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from apps.api.core.auth import Principal
 from apps.api.core.idempotency import (
@@ -288,6 +288,38 @@ async def test_server_error_allows_retry(
 
     second = await sample_client.post("/api/sample/boom", json={"name": "khac"}, headers=headers)
     assert second.status_code == 500, "thân khác vẫn phải chạy lại, không phải 422 REUSED"
+
+
+@pytest.mark.parametrize("status", [*sorted(NO_STORE_STATUSES), 500, 503])
+async def test_idempotency__401_408_429_5xx_not_stored_retry_runs(
+    sample_client: httpx.AsyncClient,
+    sample_app: FastAPI,
+    fake_principal: Principal,
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+) -> None:
+    """QA-03d BE1-G-009: handler **trả** 401/408/429/5xx dưới một khoá → không lưu, lượt lặp chạy lại thật.
+
+    Lượt lặp gửi **đúng** thân cũ: dòng đã lưu sẽ trả replay mà không gọi handler, nên chỉ
+    số lần handler chạy (2) chứng minh lượt lặp là lượt thật. Status được ép qua `JSONResponse`
+    mà `/throttled` gọi, để mọi status không lưu cùng đi một route.
+    """
+    calls: list[int] = []
+
+    def answer(content: dict[str, str], status_code: int) -> JSONResponse:
+        """`JSONResponse` của `/throttled`, đổi status sang status của tham số."""
+        calls.append(status_code)
+        return JSONResponse(content, status_code=status)
+
+    monkeypatch.setattr("apps.api.core.tests.sample.JSONResponse", answer)
+    headers = _headers(fake_principal)
+    first = await sample_client.post("/api/sample/throttled", json={"name": "a"}, headers=headers)
+    assert await _count(sample_app.state.sessionmaker) == 0
+    second = await sample_client.post("/api/sample/throttled", json={"name": "a"}, headers=headers)
+
+    assert (first.status_code, second.status_code) == (status, status)
+    assert len(calls) == 2, "lượt lặp phải chạy lại handler, không replay"
+    assert await _count(sample_app.state.sessionmaker) == 0
 
 
 async def test_public_route_ignores_idempotency_header(sample_client: httpx.AsyncClient, sample_app: FastAPI) -> None:

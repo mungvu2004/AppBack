@@ -7,6 +7,7 @@ có một nguồn.
 """
 
 import httpx
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import record_step, start_run
@@ -177,3 +178,27 @@ async def test_progress_of_rejected_upload_reports_code(
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "failed"
     assert response.json()["error"] == "FILE_TYPE_MISMATCH"
+
+
+@pytest.mark.parametrize("rejected_code", ["DEPENDENCY_UNAVAILABLE", "NOT_FOUND", None])
+async def test_drawings_read_progress__unclassified_rejected_code_reaches_error(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, sync_bus_reset: None, rejected_code: str | None
+) -> None:
+    """QA-03d BE2-G-234: mã ngoài bảng 28 mã của FE (từ #7 khi kho hỏng, BE2-G-083) vẫn tới `Progress.error`
+    nguyên văn, và `rejected_code` rỗng thành `""` — FE tự rơi về câu "chưa phân loại" (vitest phía FE)."""
+    stage = await make_stage(db_session)
+    upload = await make_upload(
+        db_session, project=stage.scene.project, floor=stage.scene.floor, status="rejected", rejected_code=rejected_code
+    )
+    await db_session.commit()
+
+    response = await api_client.get(progress_path(stage.project_id, upload.id), headers=stage.headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "id": upload.id,
+        "status": "failed",
+        "step": FIRST_STEP,
+        "progressPercent": 0,
+        "error": rejected_code or "",
+    }

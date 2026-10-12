@@ -7,8 +7,8 @@ thông điệp `pipeline.cpu` trên Redis thật — lặp có khoá và lặp k
 
 import asyncio
 import logging
-from collections.abc import Iterator
-from typing import Any, Final
+from collections.abc import AsyncIterable, Iterator
+from typing import Any, Final, cast
 
 import httpx
 import pytest
@@ -38,12 +38,13 @@ from apps.api.drawings.tests._upload_helpers import (
     upload_png,
     upload_through,
 )
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.db.models.drawings import PipelineRunRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.messaging import broker_redis_sync
 from packages.messaging.settings import get_messaging_settings
 from packages.storage.keys import upload_prefix
-from packages.storage.port import ObjectStorage
+from packages.storage.port import ObjectInfo, ObjectStorage
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows
 from packages.testing.fixtures.api import make_api_client
@@ -463,3 +464,44 @@ async def test_reject_survives_upload_deleted_midway(
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "FILE_CORRUPT"
+
+
+async def test_complete__storage_error_503_keeps_upload_receiving(
+    api_app: FastAPI,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    sync_bus_reset: None,
+) -> None:
+    """QA-03d BE2-G-083: kho chập chờn đúng lúc #7 ghi `original.*` → 503, lượt tải **vẫn** `receiving`.
+
+    Lỗi kho là tạm thời (503 `DEPENDENCY_UNAVAILABLE` của `packages/storage/s3.py` `_s3_errors`),
+    không phải tệp hỏng: không được thành dòng `rejected` vĩnh viễn, và #7 gửi lại sau khi kho
+    hồi phải xong 200 `pending`. Chỉ lượt ghi `original.*` đầu tiên hỏng; mọi lượt khác ghi thật.
+    """
+    stage = await make_stage(db_session)
+    async with make_api_client(api_app) as client:
+        upload_id = await _ready_upload(client, stage, upload_png(900))
+        storage = cast("ObjectStorage", api_app.state.storage)
+        real_put = storage.put
+        blips = [DEPENDENCY_UNAVAILABLE.error(retry_after=1)]
+
+        async def blip_once(
+            key: str, data: bytes | AsyncIterable[bytes], *, content_type: str, max_bytes: int
+        ) -> ObjectInfo:
+            """Lượt ghi `original.*` đầu tiên gặp kho mất kết nối; còn lại đi thẳng xuống kho thật."""
+            if "original" in key and blips:
+                raise blips.pop()
+            return await real_put(key, data, content_type=content_type, max_bytes=max_bytes)
+
+        monkeypatch.setattr(storage, "put", blip_once)
+        path = complete_path(stage.project_id, upload_id)
+        first = await client.post(path, json={"uploadId": upload_id}, headers=stage.headers)
+        row = await _upload_row(db_sessionmaker, upload_id)
+        retry = await client.post(path, json={"uploadId": upload_id}, headers=stage.headers)
+
+    assert first.status_code == 503, first.text
+    assert first.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert (row.status, row.rejected_code) == ("receiving", None)
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["status"] == "pending"

@@ -9,13 +9,17 @@ dòng đó bằng **session khác** trước khi gọi — mô phỏng #27 xen v
 from types import SimpleNamespace
 from typing import cast
 
+import httpx
 import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.access.kinds import ActivityKind
 from apps.api.core.auth import Principal
+from apps.api.projects import service
 from apps.api.projects.schemas import ProjectUpdateIn
 from apps.api.projects.service import _project_outs, _storage_of, _write_changes
+from apps.api.projects.tests.test_routes_common import headers_of, project_path, seed_project
 from apps.api.projects.tests.test_wire import _project, _rollup, _user
 from packages.core.errors import AppError
 from packages.db.models.projects import Project
@@ -23,6 +27,7 @@ from packages.storage.keys import avatar
 from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.projects import make_project
+from packages.testing.fixtures.access import activity_rows
 from packages.testing.fixtures.clock import FakeClock
 
 
@@ -51,6 +56,42 @@ async def test_write_changes_raises_not_found_when_deleted_between_gate_and_upda
             await _write_changes(setup, stale, changes, principal, fake_clock)
         assert excinfo.value.code.code == "NOT_FOUND"
         assert excinfo.value.wire_params() == {"resource": "project"}
+
+
+async def test_projects_update_project__deleted_between_gate_and_update_404(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """QA-03d BE1-G-042: cùng đường đua NO-136 nhưng đi trọn #26 qua HTTP.
+
+    Request đã qua `require_project` và `_live_project` thì một giao dịch khác xoá mềm dự án →
+    404 `resource:"project"`, tên không đổi, không dòng nhật ký `PROJECT_UPDATE`.
+    """
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner, name="Trước")
+    live_project = service._live_project
+
+    async def read_then_lose(db: AsyncSession, project_id: str) -> Project:
+        """Đọc dự án như thường, rồi để #27 (session khác) xoá mềm nó và commit."""
+        found = await live_project(db, project_id)
+        async with db_sessionmaker() as concurrent:
+            await concurrent.execute(
+                update(Project).where(Project.id == project_id).values(deleted_at=fake_clock.now())
+            )
+            await concurrent.commit()
+        return found
+
+    monkeypatch.setattr(service, "_live_project", read_then_lose)
+    response = await api_client.patch(project_path(project.id), json={"name": "Sau"}, headers=headers_of(owner))
+
+    assert response.status_code == 404, response.text
+    assert (response.json()["code"], response.json()["resource"]) == ("NOT_FOUND", "project")
+    async with db_sessionmaker() as check:
+        assert cast("Project", await check.get(Project, project.id)).name == "Trước"
+    assert await activity_rows(db_sessionmaker, actor_id=owner.id, kind=ActivityKind.PROJECT_UPDATE) == []
 
 
 async def test_storage_of__raises_when_app_has_no_storage() -> None:

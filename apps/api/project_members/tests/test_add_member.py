@@ -5,10 +5,12 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
 from apps.api.core import extensions
+from apps.api.core.ratelimit import install
 from apps.api.project_members.settings import reset_project_members_settings_cache
 from apps.api.project_members.tests.support import (
     SINKS_SUBMODULE,
@@ -22,6 +24,7 @@ from apps.api.project_members.tests.support import (
 )
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
+from packages.testing.fixtures.services import refused_url
 
 
 async def test_members_add_member__C01(
@@ -259,3 +262,31 @@ async def test_members_add_member__C11_permission_before_limit(
         monkeypatch.delenv("MEMBER_ADD_RATE_LIMIT")
         reset_project_members_settings_cache()
     assert (viewer_codes, outsider_codes) == ({403}, {404})
+
+
+async def test_members_add_member__redis_down_fails_closed_503(
+    api_app: FastAPI,
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    """QA-03d BE1-G-099: Redis `safe` chết sau khi app đã lên → hạn mức `members_add` (`on_error="closed"`)
+    chặn 503 `DEPENDENCY_UNAVAILABLE`, không thêm thành viên, không nhật ký.
+
+    Redis chết dựng bằng client `redis-py` thật trỏ vào cổng không ai nghe (K23), như C13 của lõi.
+    """
+    actor, target = await make_user(db_session, role="admin"), await make_user(db_session)
+    project = await seed_project(db_session, owner=actor)
+    dead = refused_url("redis")
+    install(
+        api_app,
+        cache=Redis.from_url(dead, socket_connect_timeout=1),
+        safe=Redis.from_url(dead, socket_connect_timeout=1),
+    )
+
+    response = await add(api_client, actor, project, target.email)
+
+    assert response.status_code == 503, response.text
+    assert response.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert await member_ids(db_session, project.id) == [actor.id]
+    assert await activity_rows(db_sessionmaker, kind=ActivityKind.MEMBER_ADD) == []

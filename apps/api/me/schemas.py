@@ -1,6 +1,6 @@
 """Schema dây của `/api/me` (B1-04 [2], HOP-DONG-MOI §3, BE-00 §3.1).
 
-`fullName`/`jobTitle` cấm ký tự điều khiển (Cc) và ký tự đảo chiều song hướng
+`fullName`/`jobTitle`/`phone` cấm ký tự điều khiển (Cc) và ký tự đảo chiều song hướng
 (K01, W2) — luật nằm ở `packages.core.text.clean_text`, dùng chung với mọi module (NO-169).
 """
 
@@ -11,7 +11,7 @@ from pydantic import Field, field_validator, model_validator
 from apps.api.auth.passwords import MIN_PASSWORD_LENGTH
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.me.avatar import MAX_BASE64_LEN
-from packages.core.text import clean_text, nfc
+from packages.core.text import clean_text
 
 FULL_NAME_MAX: Final = 120
 PHONE_MAX: Final = 32
@@ -67,10 +67,14 @@ class UpdateMeBody(WireRequest):
     @field_validator("phone")
     @classmethod
     def _validate_phone(cls, value: str | None) -> str | None:
-        """NFC + trim; toàn khoảng trắng coi như `''` (xoá cột); > 32 ký tự → 422."""
+        """NFC + trim; toàn khoảng trắng coi như `''` (xoá cột); > 32 ký tự hay ký tự cấm → 422.
+
+        Cùng luật Cc/bidi với `fullName`/`jobTitle` (`clean_text`): NUL lọt tới cột TEXT của
+        Postgres thành 500, BEL/U+202E lưu được là rác hiển thị (QA-07).
+        """
         if value is None:
             return None
-        normalized = nfc(value).strip()
+        normalized = clean_text(value)
         if len(normalized) > PHONE_MAX:
             raise ValueError("phone quá dài")
         return normalized

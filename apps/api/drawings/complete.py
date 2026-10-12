@@ -14,6 +14,7 @@ handler ném, mà dòng `rejected` phải được giữ lại (BE-00 §7, [6] #
 import logging
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Final
 
 from sqlalchemy import select
@@ -198,8 +199,9 @@ async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Se
     """Bước 3-5: nhận diện, ghi `original.*`, đếm trang; trả loại đã nhận diện.
 
     `max_bytes` = kích thước khai, nên khúc bị đánh tráo bằng nội dung dài hơn cũng không
-    ghi được quá một tệp (`PAYLOAD_TOO_LARGE` từ chính kho). Mọi lỗi ở đây là `AppError`
-    422 và người gọi biến nó thành một dòng `rejected`.
+    ghi được quá một tệp (`PAYLOAD_TOO_LARGE` từ chính kho). Lỗi 4xx ở đây là lỗi tệp và
+    người gọi biến nó thành một dòng `rejected`; lỗi 5xx của kho (503 `DEPENDENCY_UNAVAILABLE`)
+    người gọi ném tiếp, lượt tải giữ `receiving`.
     """
     sniffed = sniff_kind(await _read_head(storage, chunks[0].object_key))
     _check_kind(sniffed, facts)
@@ -297,7 +299,8 @@ async def complete_upload(
     Lượt tải đã `complete`/`rejected` → 200 `Progress` hiện tại, không tác dụng (bước 1),
     nên FE thử lại bao nhiêu lần cũng an toàn. Tệp hỏng → `Response` 422 và dòng
     `rejected` (bước 6). Các lỗi còn lại ném như thường: 404, `UPLOAD_INCOMPLETE`,
-    `UPLOAD_SIZE_MISMATCH`, 409 `UPLOAD_CHUNKS_CHANGED`.
+    `UPLOAD_SIZE_MISMATCH`, 409 `UPLOAD_CHUNKS_CHANGED`, và 5xx của kho khi dựng `original.*`
+    (lượt tải giữ `receiving`, `original.*` dở bị lượt sau ghi đè hoặc job dọn lượt bỏ dở xoá).
     """
     facts = await load_upload(db, project_id=project_id, upload_id=upload_id)
     if facts.status != "receiving":
@@ -308,5 +311,7 @@ async def complete_upload(
     try:
         sniffed = await _build_original(storage, facts, chunks)
     except AppError as exc:
+        if exc.code.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
+            raise  # kho/phụ thuộc hỏng tạm thời: giữ `receiving` để #7 gửi lại được (NO-419)
         return await _reject(db, storage, facts, exc)
     return await _finish(db, facts=facts, chunks=chunks, sniffed=sniffed, principal=principal, clock=clock)
