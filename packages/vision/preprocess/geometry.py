@@ -182,11 +182,12 @@ def _edge_lengths(points: Sequence[Point]) -> list[float]:
     return [math.dist(points[i], points[(i + 1) % 4]) for i in range(4)]
 
 
-def _is_convex(points: Sequence[Point]) -> bool:
-    """Lồi và không tự cắt: 4 tích có hướng liên tiếp cùng dấu và khác 0.
+def _is_convex_clockwise(points: Sequence[Point]) -> bool:
+    """Lồi, không tự cắt và đi chiều kim đồng hồ (y hướng xuống): 4 tích có hướng đều > 0.
 
-    Tứ giác tự cắt (hình nơ) luôn có hai tích trái dấu nên một phép kiểm phủ cả
-    hai luật của khối [6]; ba điểm thẳng hàng cho tích 0 và cũng bị loại.
+    Tứ giác tự cắt (hình nơ) luôn có hai tích trái dấu, ba điểm thẳng hàng cho tích 0,
+    ngược chiều kim đồng hồ (sẽ nắn ra ảnh lật gương) cho cả 4 tích âm — một phép kiểm
+    phủ cả ba luật của khối [6].
     """
     crosses = []
     for i in range(4):
@@ -194,7 +195,7 @@ def _is_convex(points: Sequence[Point]) -> bool:
         bx, by = points[(i + 1) % 4]
         cx, cy = points[(i + 2) % 4]
         crosses.append((bx - ax) * (cy - by) - (by - ay) * (cx - bx))
-    return all(c > 0 for c in crosses) or all(c < 0 for c in crosses)
+    return all(c > 0 for c in crosses)
 
 
 def _polygon_area(points: Sequence[Point]) -> float:
@@ -206,15 +207,17 @@ def _polygon_area(points: Sequence[Point]) -> float:
 def validate_quad(quad: Quad, width_px: int, height_px: int) -> None:
     """Luật góc người chọn → `VisionError("VALIDATION", field="corners")`.
 
-    Loại: góc ngoài `[0, w] x [0, h]`, không lồi hoặc tự cắt, sai thứ tự (khác
-    `order_corners`), cạnh < 16 px, diện tích < 1 % ảnh. Một mã lỗi duy nhất vì
-    FE chỉ tô lại vùng chọn, không phân biệt lý do (`quality.ts:139-159`).
+    Loại: góc ngoài `[0, w] x [0, h]`, không lồi hoặc tự cắt, ngược chiều kim đồng
+    hồ, cạnh < 16 px, diện tích < 1 % ảnh. Một mã lỗi duy nhất vì FE chỉ tô lại vùng
+    chọn, không phân biệt lý do (`quality.ts:139-159`). Điểm đầu **không** bị ép về
+    `order_corners`: nó là TL của ảnh nắn, do người gọi chọn (#31 kiểm luật TL trên
+    tỉ lệ trang đang hiển thị, NO-227) — so `x + y` pixel ở đây sai hệ toạ độ (ảnh
+    không vuông, trang đã nắn) và loại nhầm hình thoi bắt đầu ở đỉnh trên (BUG-576).
     """
     points = quad.points
     valid = (
         all(0.0 <= x <= width_px and 0.0 <= y <= height_px for x, y in points)
-        and _is_convex(points)
-        and order_corners(points).points == points
+        and _is_convex_clockwise(points)
         and min(_edge_lengths(points)) >= _MIN_EDGE_PX
         and _polygon_area(points) >= _MIN_AREA_RATIO * width_px * height_px
     )

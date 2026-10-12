@@ -87,6 +87,24 @@ async def test_quality_set_corners__C01(
     assert floor_view(response, stage.level())["isMeasured"] is True
 
 
+@pytest.mark.parametrize("start", [0, 3], ids=["top_first", "left_first"])
+async def test_quality_set_corners__rhombus_either_start(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    local_storage: LocalDiskStorage,
+    fake_clock: Clock,
+    start: int,
+) -> None:
+    """BUG-576: hình thoi 45° trên ảnh 600x420 → 200 cho cả đỉnh trên lẫn đỉnh trái làm TL (NO-227)."""
+    stage = await make_stage(db_session, local_storage)
+    await measure_real(db_session, fake_clock, stage.floors[0], desk_shot(SHOT_W, SHOT_H).pixels)
+    diamond = [(0.5, 0.0), (1.0, 0.5), (0.5, 1.0), (0.0, 0.5)]
+
+    response = await _post(api_client, stage, diamond[start:] + diamond[:start])
+
+    assert response.status_code == 200, response.text
+
+
 async def test_quality_set_corners__four_corners_applied(
     api_client: httpx.AsyncClient,
     db_session: AsyncSession,

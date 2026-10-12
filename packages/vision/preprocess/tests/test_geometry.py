@@ -123,6 +123,21 @@ def test_validate_quad_rejects_each_rule(factory: object) -> None:
     assert (caught.value.code, caught.value.field) == ("VALIDATION", "corners")
 
 
+@pytest.mark.parametrize("start", [0, 3], ids=["top_first", "left_first"])
+def test_rectify_accepts_rhombus_from_either_top_left_start(start: int) -> None:
+    """BUG-576: hình thoi trên ảnh không vuông nhận cả hai điểm đầu #31 nhận (NO-227).
+
+    Pixel `x + y` của đỉnh trên (200) lớn hơn đỉnh trái (150) nên luật `order_corners`
+    cũ loại đỉnh trên; điểm đầu người gọi chọn vẫn là TL của ảnh nắn, không sắp lại.
+    """
+    diamond = [(200.0, 0.0), (400.0, 150.0), (200.0, 300.0), (0.0, 150.0)]
+    rolled = diamond[start:] + diamond[:start]
+    quad = Quad((rolled[0], rolled[1], rolled[2], rolled[3]))
+    result = rectify(RgbImage(make_drawing(_IMAGE_W, _IMAGE_H)), quad)
+    origin = cv2.perspectiveTransform(np.array([[rolled[0]]], dtype=np.float32), result.homography.as_array())
+    assert math.dist(tuple(origin[0][0]), (0.0, 0.0)) <= 1.0
+
+
 def test_quad_ratios_round_trip() -> None:
     """Pixel → tỉ lệ → pixel giữ nguyên toạ độ (dạng FE lưu độc lập độ phân giải)."""
     quad = _valid_quad()
