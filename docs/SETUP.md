@@ -220,7 +220,7 @@ bash …/chuoi.sh down                                                      # do
 | `BE` | `C:/Users/mxuan/orca/workspaces/AppBack/fix378-x` | `chuoi.sh:6` |
 | `FE` | `C:/Users/mxuan/orca/workspaces/AppFront/f14-w` | `chuoi.sh:7` |
 | `WEB_SHA` | `efbda6bd` | `chuoi.sh:21-22` |
-| cố định | `POSTGRES_HOST_PORT=15432 WEB_HTTP_PORT=18080 PUBLIC_BASE_URL=http://localhost:18080 IMAGE_TAG=f14 ML_BACKEND=fake FEATURE_FLAGS='{"scene.pascal-viewer": true}'`; compose `-p f14 -f deploy/compose/ci.yml --env-file deploy/compose/env.example --profile ml` | `chuoi.sh:8-9` |
+| cố định | `POSTGRES_HOST_PORT=15432 WEB_HTTP_PORT=18080 PUBLIC_BASE_URL=http://localhost:18080 IMAGE_TAG=f14 ML_BACKEND=fake`; compose `-p f14 -f deploy/compose/ci.yml --env-file deploy/compose/env.example --profile ml` | `chuoi.sh:8-9` |
 
 Mặc định của `BE`/`FE`/`WEB_SHA` trỏ worktree và SHA cũ, có thể đã bị xoá — luôn đặt cả ba tường minh.
 
