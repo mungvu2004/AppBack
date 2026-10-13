@@ -106,7 +106,10 @@ async def test_floors_list_floors__C15(api_client: httpx.AsyncClient, db_session
 
 
 async def test_floors_list_floors__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`areaM2` vắng khi bảng đếm chưa có diện tích, không `null`."""
+    """`areaM2` vắng khi bảng đếm chưa có diện tích, không `null`.
+
+    Hàng catalog: [BE5-G-006].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     await make_floor(db_session, project=project, order=0)

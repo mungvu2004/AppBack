@@ -110,7 +110,10 @@ async def test_different_body_from_same_writer_conflicts(db_session: AsyncSessio
 
 
 async def test_same_body_from_other_writer_conflicts(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Thân giống hệt nhưng người khác gửi: không phải lượt lặp của transport, phải là 409."""
+    """Thân giống hệt nhưng người khác gửi: không phải lượt lặp của transport, phải là 409.
+
+    Hàng catalog: [BE4-G-051].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     other = await make_user(db_session, name="Người thứ hai")
@@ -289,6 +292,8 @@ async def test_merge_never_conflicts_with_concurrent_writes(
 
     `merge` khoá dòng tài liệu nên nó không bao giờ thua đua; ngược lại nó chỉ đổi thứ tự
     danh sách nên không để lại dòng nhật ký nào làm 20 lượt kia thành cũ.
+
+    Hàng catalog: [BE4-G-102].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]

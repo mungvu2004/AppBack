@@ -146,7 +146,10 @@ def _app_with(verifier: TokenVerifier, clock: FakeClock) -> FastAPI:
 @pytest.mark.case("C04")
 @pytest.mark.parametrize("operation", _protected(), ids=lambda item: item.op)
 async def test_common__C04(operation: Operation, api_client: httpx.AsyncClient) -> None:
-    """Không có token → 401 `UNAUTHENTICATED`."""
+    """Không có token → 401 `UNAUTHENTICATED`.
+
+    Hàng catalog: [BE5-G-007].
+    """
     response = await _send(api_client, operation)
     assert response.status_code == 401
     assert response.json()["code"] == "UNAUTHENTICATED"
@@ -160,6 +163,8 @@ async def test_common__C05(operation: Operation, api_client: httpx.AsyncClient) 
     `BAD_TOKENS` lặp trong thân thay vì tham số hoá riêng (NO-129): tham số hoá hai
     chiều đổi id thành `test_common__C05[<token>-<op>]`, và `_TEST_COMMON_RE`
     (`packages/core/case_names.py`) chỉ tách đúng op khi id là `test_common__C05[<op>]`.
+
+    Hàng catalog: [BE4-G-002].
     """
     for token in BAD_TOKENS:
         response = await _send(api_client, operation, headers={"Authorization": f"Bearer {token}"})
@@ -185,7 +190,10 @@ async def test_common__C12(operation: Operation, api_client: httpx.AsyncClient, 
 async def test_common__C13(
     operation: Operation, api_env: None, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Phụ thuộc hỏng → 503 kèm `Retry-After`, thân không lộ stack."""
+    """Phụ thuộc hỏng → 503 kèm `Retry-After`, thân không lộ stack.
+
+    Hàng catalog: [BE4-G-012].
+    """
     async with make_api_client(_app_with(_BrokenVerifier(), fake_clock)) as client:
         response = await _send(client, operation, headers=auth_headers(fake_principal))
     assert response.status_code == 503
@@ -199,7 +207,10 @@ async def test_common__C13(
 async def test_common__C25(
     operation: Operation, api_env: None, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Phiên đã thu hồi → 401 `SESSION_REVOKED`."""
+    """Phiên đã thu hồi → 401 `SESSION_REVOKED`.
+
+    Hàng catalog: [BE4-G-003].
+    """
     async with make_api_client(_app_with(_RevokedVerifier(), fake_clock)) as client:
         response = await _send(client, operation, headers=auth_headers(fake_principal))
     assert response.status_code == 401

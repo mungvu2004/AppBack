@@ -94,7 +94,10 @@ async def _all_bases(
 async def test_compact_change_log__J01(
     db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock
 ) -> None:
-    """Năm dòng cũ có dòng mới hơn bị xoá; dòng cũ duy nhất và dòng trong cửa sổ còn nguyên."""
+    """Năm dòng cũ có dòng mới hơn bị xoá; dòng cũ duy nhất và dòng trong cửa sổ còn nguyên.
+
+    Hàng catalog: [BE4-G-101].
+    """
     now = datetime.now(UTC)
     old, recent = now - timedelta(days=31), now
     floor_pk, revision = await _seed_history(db_session, fake_clock, old=old, recent=recent)

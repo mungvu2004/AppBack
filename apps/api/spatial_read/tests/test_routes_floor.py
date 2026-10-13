@@ -18,7 +18,10 @@ from packages.testing.fixtures.clock import FakeClock
 
 
 async def test_spatial_read_floor__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Đúng: thành viên đọc siêu dữ liệu một tầng của dự án mình."""
+    """Đúng: thành viên đọc siêu dữ liệu một tầng của dự án mình.
+
+    Hàng catalog: [BE4-G-207] [BE4-G-307].
+    """
     scene = await make_scene(db_session, floors=2)
     floor = scene.floors[1]
     response = await api_client.get(floor_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))

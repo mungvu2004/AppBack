@@ -101,7 +101,10 @@ async def test_read_view__no_drawing_anywhere_is_404_upload(
 
 
 async def test_read_view__deleted_floor_is_left_out(db_session: AsyncSession, local_storage: LocalDiskStorage) -> None:
-    """Tầng đã xoá mềm không có trong `floors` dù còn bản vẽ."""
+    """Tầng đã xoá mềm không có trong `floors` dù còn bản vẽ.
+
+    Hàng catalog: [BE5-G-020].
+    """
     project = await _project(db_session)
     kept = await make_drawn_floor(db_session, local_storage, project=project)
     gone = await make_drawn_floor(db_session, local_storage, project=project)

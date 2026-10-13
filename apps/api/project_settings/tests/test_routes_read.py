@@ -16,7 +16,10 @@ from packages.testing.fixtures.clock import FakeClock
 
 
 async def test_settings_read_settings__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Chưa có dòng → mặc định `revision 0`; viewer (thành viên) đọc được; sau khi ghi thì trả đúng giá trị đã lưu."""
+    """Chưa có dòng → mặc định `revision 0`; viewer (thành viên) đọc được; sau khi ghi thì trả đúng giá trị đã lưu.
+
+    Hàng catalog: [BE4-G-220].
+    """
     owner, project = await seed_engineer_project(db_session)
     viewer = await make_user(db_session, role="viewer")
     shared = await seed_project(db_session, owner=owner, members=[viewer])

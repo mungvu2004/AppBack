@@ -66,7 +66,10 @@ def _bad_bodies(level_id: str) -> dict[str, tuple[dict[str, Any], str]]:
 
 
 async def test_spatial_write_layer__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tầng chưa có tài liệu, `baseVersion 0`, lớp toà mẫu → 200 `revision 1`; N16 trả đúng lớp ấy."""
+    """Tầng chưa có tài liệu, `baseVersion 0`, lớp toà mẫu → 200 `revision 1`; N16 trả đúng lớp ấy.
+
+    Hàng catalog: [BE4-G-208] [BE4-G-308].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     layer = sample_floor_layer(0, level_id=floor.level_id)
@@ -85,7 +88,10 @@ async def test_spatial_write_layer__C01(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_spatial_write_layer__C01_scale(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thân chỉ mang tỉ lệ (F-04c "áp cho mọi tầng") → 200 và N16 hết `scaleStatus`."""
+    """Thân chỉ mang tỉ lệ (F-04c "áp cho mọi tầng") → 200 và N16 hết `scaleStatus`.
+
+    Hàng catalog: [BE4-G-209].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
 
@@ -100,7 +106,10 @@ async def test_spatial_write_layer__C01_scale(api_client: httpx.AsyncClient, db_
 
 @pytest.mark.parametrize("case", list(_bad_bodies("L-DUMMYLEVEL")))
 async def test_spatial_write_layer__C02(api_client: httpx.AsyncClient, db_session: AsyncSession, case: str) -> None:
-    """mm không nguyên, `baseVersion` âm, tỉ lệ 0 hay quá lớn, `body` rỗng, tên phòng U+202E → 422 kèm `field`."""
+    """mm không nguyên, `baseVersion` âm, tỉ lệ 0 hay quá lớn, `body` rỗng, tên phòng U+202E → 422 kèm `field`.
+
+    Hàng catalog: [BE4-G-210] [BE4-G-309].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     payload, field = _bad_bodies(floor.level_id)[case]
@@ -115,7 +124,10 @@ async def test_spatial_write_layer__C02(api_client: httpx.AsyncClient, db_sessio
 
 @pytest.mark.parametrize("where", ["wall", "body", "envelope"])
 async def test_spatial_write_layer__C03(api_client: httpx.AsyncClient, db_session: AsyncSession, where: str) -> None:
-    """Khoá lạ trong một bức tường, trong `body`, hay ở vỏ ngoài → 422 `VALIDATION`."""
+    """Khoá lạ trong một bức tường, trong `body`, hay ở vỏ ngoài → 422 `VALIDATION`.
+
+    Hàng catalog: [BE4-G-310].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     payload = write_body(0, layer=simple_layer(floor.level_id))
@@ -133,7 +145,10 @@ async def test_spatial_write_layer__C03(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_spatial_write_layer__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403 (BE-00 §4)."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403 (BE-00 §4).
+
+    Hàng catalog: [BE4-G-212] [BE4-G-311].
+    """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
@@ -147,7 +162,10 @@ async def test_spatial_write_layer__C06(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_spatial_write_layer__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Viewer là thành viên nhưng ma trận `layer.edit` cho `False` → 403 `FORBIDDEN`."""
+    """Viewer là thành viên nhưng ma trận `layer.edit` cho `False` → 403 `FORBIDDEN`.
+
+    Hàng catalog: [BE4-G-211] [BE4-G-312].
+    """
     viewer = await make_user(db_session, role="viewer")
     scene = await make_scene(db_session, members=[viewer])
 
@@ -163,7 +181,10 @@ async def test_spatial_write_layer__C07(api_client: httpx.AsyncClient, db_sessio
 async def test_spatial_write_layer__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, missing: str
 ) -> None:
-    """Tầng không có, tầng xoá mềm, tầng của dự án khác → 404 `resource:"floor"`."""
+    """Tầng không có, tầng xoá mềm, tầng của dự án khác → 404 `resource:"floor"`.
+
+    Hàng catalog: [BE4-G-313].
+    """
     scene = await make_scene(db_session)
     other = await make_scene(db_session)
     floor_id = MISSING_FLOOR
@@ -183,7 +204,10 @@ async def test_spatial_write_layer__C08(
 
 
 async def test_spatial_write_layer__C09_stale(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """A đổi `thicknessMm` và xoá đồ đạc ở bản ghi 1-2; B gửi `baseVersion 0` → 409 đúng thân W20."""
+    """A đổi `thicknessMm` và xoá đồ đạc ở bản ghi 1-2; B gửi `baseVersion 0` → 409 đúng thân W20.
+
+    Hàng catalog: [BE4-G-213] [BE4-G-314].
+    """
     second = await make_user(db_session, name="Người thứ hai")
     scene = await make_scene(db_session, members=[second])
     floor = scene.floors[0]
@@ -215,7 +239,10 @@ async def test_spatial_write_layer__C09_stale(api_client: httpx.AsyncClient, db_
 
 
 async def test_spatial_write_layer__C09_missing(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thân không có khoá `baseVersion` → 428 `PRECONDITION_REQUIRED`, trước cả Pydantic."""
+    """Thân không có khoá `baseVersion` → 428 `PRECONDITION_REQUIRED`, trước cả Pydantic.
+
+    Hàng catalog: [BE4-G-214] [BE4-G-315].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
 
@@ -228,7 +255,10 @@ async def test_spatial_write_layer__C09_missing(api_client: httpx.AsyncClient, d
 
 
 async def test_spatial_write_layer__C09b(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Cùng người gửi lại **đúng** thân với base đã lưu → 200 `revision 1`, nhật ký không thêm dòng."""
+    """Cùng người gửi lại **đúng** thân với base đã lưu → 200 `revision 1`, nhật ký không thêm dòng.
+
+    Hàng catalog: [BE4-G-215] [BE4-G-316].
+    """
     second = await make_user(db_session, name="Người thứ hai")
     scene = await make_scene(db_session, members=[second])
     floor = scene.floors[0]
@@ -252,7 +282,10 @@ async def test_spatial_write_layer__C09b(api_client: httpx.AsyncClient, db_sessi
 
 
 async def test_spatial_write_layer__C16(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tên phòng NFD → response, `document` và `value` của nhật ký đều NFC."""
+    """Tên phòng NFD → response, `document` và `value` của nhật ký đều NFC.
+
+    Hàng catalog: [BE4-G-318].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     nfd = unicodedata.normalize("NFD", "Bếp Nhỏ")
@@ -294,6 +327,8 @@ async def test_spatial_write_layer__C14(api_client: httpx.AsyncClient, db_sessio
 
     Mỗi request của `api_client` mở session riêng qua `AppRoute`, nên đây là hai giao dịch
     Postgres thật chạy song song — không phải hai lượt gọi hàm trong cùng một session.
+
+    Hàng catalog: [BE4-G-317].
     """
     second = await make_user(db_session, name="Người thứ hai")
     scene = await make_scene(db_session, members=[second])

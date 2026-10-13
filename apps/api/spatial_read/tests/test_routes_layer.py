@@ -30,7 +30,10 @@ SCALE = Decimal("12.700000")
 async def test_spatial_read_layer__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đúng: tầng có tài liệu toà mẫu và kích thước; `level.id` là `Floor.id` (H1 `n16`)."""
+    """Đúng: tầng có tài liệu toà mẫu và kích thước; `level.id` là `Floor.id` (H1 `n16`).
+
+    Hàng catalog: [BE4-G-201] [BE4-G-301].
+    """
     scene = await make_scene(db_session, floors=2)
     floor = scene.floors[0]
     layer = sample_floor_layer(0, level_id=floor.level_id)
@@ -61,7 +64,10 @@ async def test_spatial_read_layer__C01(
 async def test_spatial_read_layer__C01_unresolved(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Tỉ lệ do pipeline suy → `scaleStatus: 'unresolved'`, và tầng **chưa** duyệt."""
+    """Tỉ lệ do pipeline suy → `scaleStatus: 'unresolved'`, và tầng **chưa** duyệt.
+
+    Hàng catalog: [BE4-G-202].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     await make_floor_document(
@@ -79,7 +85,10 @@ async def test_spatial_read_layer__C01_unresolved(
 
 
 async def test_spatial_read_layer__C01_empty(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tầng chưa có tài liệu → `revision 0`, bốn danh sách rỗng, không tỉ lệ (`empty_document`)."""
+    """Tầng chưa có tài liệu → `revision 0`, bốn danh sách rỗng, không tỉ lệ (`empty_document`).
+
+    Hàng catalog: [BE4-G-203].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
@@ -111,7 +120,10 @@ async def test_spatial_read_layer__C01_reviewed(
 
 
 async def test_spatial_read_layer__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống ngoài dự án → 404 `resource:"project"` (K08)."""
+    """Admin hệ thống ngoài dự án → 404 `resource:"project"` (K08).
+
+    Hàng catalog: [BE4-G-204] [BE4-G-302].
+    """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
@@ -126,7 +138,10 @@ async def test_spatial_read_layer__C06(api_client: httpx.AsyncClient, db_session
 async def test_spatial_read_layer__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, case: str
 ) -> None:
-    """Tầng không có, đã xoá mềm, hay của dự án khác → 404 `resource:"floor"`."""
+    """Tầng không có, đã xoá mềm, hay của dự án khác → 404 `resource:"floor"`.
+
+    Hàng catalog: [BE4-G-205] [BE4-G-303].
+    """
     scene = await make_scene(db_session)
     other = await make_scene(db_session)
     floor_id = "L-NOSUCHFLOOR"
@@ -144,7 +159,10 @@ async def test_spatial_read_layer__C08(
 
 
 async def test_spatial_read_layer__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tầng chưa có gì: vắng `areaM2`, `scaleMillimetresPerPixel`, `scaleStatus` (W2, K02)."""
+    """Tầng chưa có gì: vắng `areaM2`, `scaleMillimetresPerPixel`, `scaleStatus` (W2, K02).
+
+    Hàng catalog: [BE4-G-013] [BE4-G-304].
+    """
     scene = await make_scene(db_session)
     body = (
         await api_client.get(layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(scene.owner))
@@ -160,7 +178,10 @@ async def test_spatial_read_layer_when_floor_vanishes_mid_request(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Tầng xoá mềm giữa `get_floor` và lần đọc sau → 404, không `IndexError` ([6] N16)."""
+    """Tầng xoá mềm giữa `get_floor` và lần đọc sau → 404, không `IndexError` ([6] N16).
+
+    Hàng catalog: [BE4-G-017].
+    """
     scene = await make_scene(db_session)
     with delete_floor_mid_request(db_sessionmaker, scene.floors[0].pk, fake_clock):
         response = await api_client.get(
@@ -171,7 +192,10 @@ async def test_spatial_read_layer_when_floor_vanishes_mid_request(
 
 
 async def test_spatial_read_layer_never_writes(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Đọc tầng chưa có tài liệu **không** sinh dòng `floor_documents` ([6]: đọc không ghi)."""
+    """Đọc tầng chưa có tài liệu **không** sinh dòng `floor_documents` ([6]: đọc không ghi).
+
+    Hàng catalog: [BE4-G-306].
+    """
     scene = await make_scene(db_session)
     before = (await db_session.execute(select(func.count()).select_from(FloorDocumentRow))).scalar_one()
     await api_client.get(layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(scene.owner))
@@ -233,7 +257,10 @@ async def test_spatial_read_layer_keeps_scale_on_same_or_unknown_page(
 async def test_spatial_read_layer_without_page_gate(
     api_client: httpx.AsyncClient, db_session: AsyncSession, api_app: FastAPI, fake_clock: FakeClock
 ) -> None:
-    """Không ai cài cổng trang, hay `scale_page_key` NULL → hạng tỉ lệ như đã lưu."""
+    """Không ai cài cổng trang, hay `scale_page_key` NULL → hạng tỉ lệ như đã lưu.
+
+    Hàng catalog: [BE4-G-033].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     await make_floor_document(
@@ -262,6 +289,8 @@ async def test_spatial_read_layer_corrupt_document_is_500(
     Chốt bất biến "mọi `DocumentCorruptError` log `floor_pk`, handler cuối trả 500": đổi nó
     thành `AppError` (ra 4xx) hay nuốt lỗi đi sẽ làm đỏ đúng ở đây. Ghi `schema_version` bằng
     SQL trần vì factory không dựng nổi một dòng mà chính đường đọc từ chối.
+
+    Hàng catalog: [BE4-G-206] [BE4-G-305].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]

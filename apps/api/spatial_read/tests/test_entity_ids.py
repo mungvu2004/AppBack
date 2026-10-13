@@ -178,7 +178,10 @@ async def test_soft_deleted_owner_inside_window_conflicts(db_session: AsyncSessi
 
 
 async def test_soft_deleted_owner_past_window_is_reclaimed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Chủ xoá mềm 11 phút trước (quá cửa sổ 10 phút) → nhận lại được."""
+    """Chủ xoá mềm 11 phút trước (quá cửa sổ 10 phút) → nhận lại được.
+
+    Hàng catalog: [BE4-G-081].
+    """
     scene = await make_scene(db_session, floors=2)
     mine, other = scene.floors
     await claim_entity_ids(

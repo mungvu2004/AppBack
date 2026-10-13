@@ -47,7 +47,10 @@ def _opening(wall_id: str) -> Opening:
 async def test_spatial_write_layer_rejects_base_version_above_current(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`baseVersion` lớn hơn bản ghi hiện tại → 422 `field:"baseVersion"`, không phải 409 (W20)."""
+    """`baseVersion` lớn hơn bản ghi hiện tại → 422 `field:"baseVersion"`, không phải 409 (W20).
+
+    Hàng catalog: [BE4-G-216].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
 
@@ -61,7 +64,10 @@ async def test_spatial_write_layer_rejects_base_version_above_current(
 async def test_spatial_write_layer_rejects_ai_reviewed_entity(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """A5 (W5): `source="ai"` kèm `reviewed=True` → 422 `REVIEW_BY_AI_FORBIDDEN` trỏ đúng mục."""
+    """A5 (W5): `source="ai"` kèm `reviewed=True` → 422 `REVIEW_BY_AI_FORBIDDEN` trỏ đúng mục.
+
+    Hàng catalog: [BE4-G-217].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     payload = write_body(0, layer=simple_layer(floor.level_id))
@@ -97,7 +103,10 @@ async def test_spatial_write_layer_rejects_wall_of_other_level(
 async def test_spatial_write_layer_rejects_broken_integrity(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Ô mở trỏ tường không có → 422 `LAYER_INTEGRITY_BROKEN` kèm `count` số lỗi `critical`."""
+    """Ô mở trỏ tường không có → 422 `LAYER_INTEGRITY_BROKEN` kèm `count` số lỗi `critical`.
+
+    Hàng catalog: [BE4-G-219].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     payload = write_body(0, layer=simple_layer(floor.level_id))
@@ -143,7 +152,10 @@ async def test_spatial_write_layer_logs_a_touch_mark_for_a_review(
 async def test_spatial_write_layer_logs_the_token_subject(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`changedBy` = `sub` của token, `changedByName` = tên **lúc ghi**; đổi tên sau không đổi dòng cũ (K05)."""
+    """`changedBy` = `sub` của token, `changedByName` = tên **lúc ghi**; đổi tên sau không đổi dòng cũ (K05).
+
+    Hàng catalog: [BE4-G-098].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     floor_pk, level_id, project_id = floor.pk, floor.level_id, scene.project.id
@@ -196,6 +208,8 @@ async def test_spatial_write_layer_returns_503_after_losing_every_race(
 
     Bên chen vào (`slipping_load`) chỉ đổi thứ tự danh sách nên không sinh dòng nhật ký: lượt
     của route vì thế luôn qua được bước 5 rồi mới chết ở `UPDATE`, đúng cảnh 503 mô tả.
+
+    Hàng catalog: [BE4-G-056] [BE4-G-218].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]

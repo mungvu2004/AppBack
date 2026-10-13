@@ -199,7 +199,10 @@ async def test_spatial_read_graph_building_reviewed_when_every_level_is(
 async def test_spatial_read_graph_level_reviewed_follows_page_gate(
     api_client: httpx.AsyncClient, db_session: AsyncSession, api_app: FastAPI, fake_clock: FakeClock
 ) -> None:
-    """Cổng trang trả trang khác → tỉ lệ tụt hạng, `Level.reviewed` sai ở N15 y như N16 (#35)."""
+    """Cổng trang trả trang khác → tỉ lệ tụt hạng, `Level.reviewed` sai ở N15 y như N16 (#35).
+
+    Hàng catalog: [BE4-G-112].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     await make_floor_document(

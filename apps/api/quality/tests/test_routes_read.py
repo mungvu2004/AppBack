@@ -68,7 +68,10 @@ async def test_quality_read_assessment__C01_unmeasured(
 async def test_quality_read_assessment__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """Người ngoài dự án, kể cả admin hệ thống → 404 `project`."""
+    """Người ngoài dự án, kể cả admin hệ thống → 404 `project`.
+
+    Hàng catalog: [BE5-G-014].
+    """
     stage = await make_stage(db_session, local_storage)
     admin = await make_user(db_session, role="admin")
     await db_session.commit()
