@@ -85,7 +85,10 @@ async def test_process_avatar_downsizes_large_image() -> None:
 
 
 async def test_process_avatar_exif_orientation_applied_and_stripped() -> None:
-    """JPEG có EXIF `Orientation=6` → ảnh lưu đã xoay 90°, không còn EXIF ("Không giữ EXIF")."""
+    """JPEG có EXIF `Orientation=6` → ảnh lưu đã xoay 90°, không còn EXIF ("Không giữ EXIF").
+
+    Catalog: B07-G-056.
+    """
     raw = jpeg_with_exif_orientation((40, 20))
     result = await process_avatar(b64(raw), "image/jpeg")
     with Image.open(io.BytesIO(result.data)) as out:
@@ -94,7 +97,10 @@ async def test_process_avatar_exif_orientation_applied_and_stripped() -> None:
 
 
 async def test_process_avatar_png_strips_icc_profile() -> None:
-    """PNG có `icc_profile` → ảnh lưu không còn `icc_profile` trong `info` (NO-166)."""
+    """PNG có `icc_profile` → ảnh lưu không còn `icc_profile` trong `info` (NO-166).
+
+    Catalog: B07-G-057.
+    """
     raw = png_with_icc_bytes((64, 64))
     with Image.open(io.BytesIO(raw)) as src:
         assert "icc_profile" in src.info  # ảnh vào thật sự có ICC, không phải test giả
@@ -134,7 +140,10 @@ async def test_process_avatar_gif_webp_bmp_is_unsupported(head: bytes) -> None:
 
 
 async def test_process_avatar_pdf_is_type_mismatch_not_unsupported() -> None:
-    """`sniff()` nhận ra `pdf` (không phải ảnh) → `FILE_TYPE_MISMATCH`, không phải `AVATAR_TYPE_UNSUPPORTED`."""
+    """`sniff()` nhận ra `pdf` (không phải ảnh) → `FILE_TYPE_MISMATCH`, không phải `AVATAR_TYPE_UNSUPPORTED`.
+
+    Catalog: B07-G-067.
+    """
     with pytest.raises(AppError) as excinfo:
         await process_avatar(b64(b"%PDF-1.4\n" + b"\x00" * 50), "image/png")
     assert excinfo.value.code.code == "FILE_TYPE_MISMATCH"
@@ -156,7 +165,10 @@ async def test_process_avatar_malformed_base64_is_validation() -> None:
 
 
 async def test_process_avatar_decoded_too_large_is_image_too_large() -> None:
-    """Giải mã > 512 KiB → `IMAGE_TOO_LARGE`, trước cả khi sniff."""
+    """Giải mã > 512 KiB → `IMAGE_TOO_LARGE`, trước cả khi sniff.
+
+    Catalog: B07-G-065.
+    """
     raw = PNG_SIG + b"\x00" * (MAX_DECODED_BYTES + 1)
     with pytest.raises(AppError) as excinfo:
         await process_avatar(b64(raw), "image/png")
@@ -171,7 +183,10 @@ async def test_process_avatar_wide_dimensions_exceeded() -> None:
 
 
 async def test_process_avatar_pixel_count_exceeded_without_pillow_bomb() -> None:
-    """6500x6500 (42,25 Mpx > 40 Mpx của ta, dưới trần bom nén mặc định của Pillow) → `IMAGE_TOO_LARGE`."""
+    """6500x6500 (42,25 Mpx > 40 Mpx của ta, dưới trần bom nén mặc định của Pillow) → `IMAGE_TOO_LARGE`.
+
+    Catalog: B07-G-072.
+    """
     with pytest.raises(AppError) as excinfo:
         await process_avatar(b64(png_bytes((6500, 6500))), "image/png")
     assert excinfo.value.code.code == "IMAGE_TOO_LARGE"
@@ -180,7 +195,10 @@ async def test_process_avatar_pixel_count_exceeded_without_pillow_bomb() -> None
 async def test_process_avatar_huge_declared_dims_is_too_large_and_decoder_never_called(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PNG đầu tệp khai 20000x20000 → `IMAGE_TOO_LARGE`; bộ giải mã (`ImageFile.load`) không được gọi."""
+    """PNG đầu tệp khai 20000x20000 → `IMAGE_TOO_LARGE`; bộ giải mã (`ImageFile.load`) không được gọi.
+
+    Catalog: B07-G-073.
+    """
     calls = 0
     original_load = ImageFile.ImageFile.load
 
@@ -199,7 +217,10 @@ async def test_process_avatar_huge_declared_dims_is_too_large_and_decoder_never_
 
 
 async def test_process_avatar_cmyk_downgrades_to_8bit_rgb() -> None:
-    """Ảnh CMYK → chuẩn hoá RGB 8-bit (U02)."""
+    """Ảnh CMYK → chuẩn hoá RGB 8-bit (U02).
+
+    Catalog: B07-G-059.
+    """
     cmyk = Image.new("CMYK", (32, 32), (10, 20, 30, 0))
     buffer = io.BytesIO()
     cmyk.save(buffer, format="JPEG")
@@ -225,7 +246,10 @@ async def test_process_avatar_truncated_after_header_is_file_corrupt() -> None:
 
 
 async def test_process_avatar_concurrency_gate_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`AVATAR_DECODE_CONCURRENCY=1` + một luồng giữ chỗ quá hạn chờ → lượt thứ hai 503."""
+    """`AVATAR_DECODE_CONCURRENCY=1` + một luồng giữ chỗ quá hạn chờ → lượt thứ hai 503.
+
+    Catalog: B07-G-085.
+    """
     monkeypatch.setenv("AVATAR_DECODE_CONCURRENCY", "1")
     reset_avatar_settings_cache()
     monkeypatch.setattr(avatar, "_DECODE_WAIT_S", 0.05)
@@ -244,7 +268,10 @@ async def test_process_avatar_concurrency_gate_returns_503(monkeypatch: pytest.M
 
 
 def test_avatar_decode_concurrency_env_invalid_rejects() -> None:
-    """`AVATAR_DECODE_CONCURRENCY` < 1 → `ValueError` ngay lúc đọc cấu hình (fail-closed)."""
+    """`AVATAR_DECODE_CONCURRENCY` < 1 → `ValueError` ngay lúc đọc cấu hình (fail-closed).
+
+    Catalog: B07-G-086.
+    """
     old = os.environ.get("AVATAR_DECODE_CONCURRENCY")
     os.environ["AVATAR_DECODE_CONCURRENCY"] = "0"
     reset_avatar_settings_cache()
@@ -267,7 +294,10 @@ async def test_avatar_url_none_when_no_key(local_storage: LocalDiskStorage) -> N
 async def test_avatar_url_absolute_and_no_stat_call(
     local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Backend `local` ra URL tuyệt đối `/api/files/…`; không gọi `stat` (B0-04, K15)."""
+    """Backend `local` ra URL tuyệt đối `/api/files/…`; không gọi `stat` (B0-04, K15).
+
+    Catalog: B07-G-128.
+    """
     key = "users/usr_00000000000000000000000000/avatar/00000000000000000000000000.png"
     await local_storage.put(key, png_bytes(), content_type="image/png", max_bytes=2 * 1024 * 1024)
 
@@ -303,7 +333,10 @@ async def test_avatar_urls__keeps_order_and_none_slots(local_storage: LocalDiskS
 async def test_avatar_urls__one_signed_urls_call_for_the_whole_batch(
     local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """NO-207: 50 khoá chỉ gọi `signed_urls` đúng một lần (kho S3 ký cả lô trong một luồng)."""
+    """NO-207: 50 khoá chỉ gọi `signed_urls` đúng một lần (kho S3 ký cả lô trong một luồng).
+
+    Catalog: B07-G-087.
+    """
     key = "users/usr_00000000000000000000000000/avatar/00000000000000000000000000.png"
     calls: list[int] = []
     original = local_storage.signed_urls
@@ -321,7 +354,10 @@ async def test_avatar_urls__one_signed_urls_call_for_the_whole_batch(
 
 
 def test_decode_and_reencode__does_not_write_truncated_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """NO-170: pipeline không gán `ImageFile.LOAD_TRUNCATED_IMAGES` (biến toàn cục, BE-00 §11)."""
+    """NO-170: pipeline không gán `ImageFile.LOAD_TRUNCATED_IMAGES` (biến toàn cục, BE-00 §11).
+
+    Catalog: B07-G-129.
+    """
     monkeypatch.setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
     avatar._decode_and_reencode(png_bytes(), "png")
     assert ImageFile.LOAD_TRUNCATED_IMAGES is True

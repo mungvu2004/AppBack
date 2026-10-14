@@ -39,7 +39,10 @@ async def _put(client: httpx.AsyncClient, user: User, body: dict[str, object]) -
 
 
 async def test_me_replace_avatar__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """PNG 64x64 hợp lệ → 200, `avatarUrl` tuyệt đối, object mới ghi bền vững."""
+    """PNG 64x64 hợp lệ → 200, `avatarUrl` tuyệt đối, object mới ghi bền vững.
+
+    Catalog: B07-G-050.
+    """
     user = await make_user(db_session)
     response = await _put(api_client, user, {"mimeType": "image/png", "contentBase64": b64(png_bytes((64, 64)))})
     assert response.status_code == 200
@@ -51,7 +54,10 @@ async def test_me_replace_avatar__C01(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_me_replace_avatar_jpeg_ok(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """JPEG 64x64 hợp lệ → 200."""
+    """JPEG 64x64 hợp lệ → 200.
+
+    Catalog: B07-G-053.
+    """
     user = await make_user(db_session)
     response = await _put(api_client, user, {"mimeType": "image/jpeg", "contentBase64": b64(jpeg_bytes((64, 64)))})
     assert response.status_code == 200
@@ -60,7 +66,10 @@ async def test_me_replace_avatar_jpeg_ok(api_client: httpx.AsyncClient, db_sessi
 async def test_me_replace_avatar_replaces_key_each_time(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Thay ảnh hai lần → hai `avatarUrl` khác nhau (khoá mới mỗi lần, không ghi đè tại chỗ)."""
+    """Thay ảnh hai lần → hai `avatarUrl` khác nhau (khoá mới mỗi lần, không ghi đè tại chỗ).
+
+    Catalog: B07-G-054.
+    """
     user = await make_user(db_session)
     first = await _put(api_client, user, {"mimeType": "image/png", "contentBase64": b64(png_bytes((64, 64)))})
     second = await _put(api_client, user, {"mimeType": "image/png", "contentBase64": b64(png_bytes((32, 32)))})
@@ -82,7 +91,10 @@ async def test_me_replace_avatar__C02(
 
 
 async def test_me_replace_avatar__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`."""
+    """Khoá lạ trong thân → 422 `VALIDATION`.
+
+    Catalog: B07-G-075.
+    """
     user = await make_user(db_session)
     body = {"mimeType": "image/png", "contentBase64": b64(png_bytes()), "extra": 1}
     response = await _put(api_client, user, body)
@@ -91,7 +103,10 @@ async def test_me_replace_avatar__C03(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_me_replace_avatar__U03_dimensions_bomb(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Ảnh quá nhiều điểm ảnh/kích thước → 422 `AVATAR_DIMENSIONS_EXCEEDED`, không cạn bộ nhớ."""
+    """Ảnh quá nhiều điểm ảnh/kích thước → 422 `AVATAR_DIMENSIONS_EXCEEDED`, không cạn bộ nhớ.
+
+    Catalog: B07-G-070.
+    """
     user = await make_user(db_session)
     response = await _put(api_client, user, {"mimeType": "image/png", "contentBase64": b64(png_bytes((5000, 10)))})
     assert response.status_code == 422
@@ -99,7 +114,10 @@ async def test_me_replace_avatar__U03_dimensions_bomb(api_client: httpx.AsyncCli
 
 
 async def test_me_replace_avatar__U07_truncated_file(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tệp cụt → 422 `FILE_CORRUPT`."""
+    """Tệp cụt → 422 `FILE_CORRUPT`.
+
+    Catalog: B07-G-074.
+    """
     user = await make_user(db_session)
     truncated = jpeg_bytes((64, 64))[:16]
     response = await _put(api_client, user, {"mimeType": "image/jpeg", "contentBase64": b64(truncated)})
@@ -110,7 +128,10 @@ async def test_me_replace_avatar__U07_truncated_file(api_client: httpx.AsyncClie
 async def test_me_replace_avatar__U08_magic_bytes_mismatch(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """PNG thật khai `mimeType: image/jpeg` → 422 `FILE_TYPE_MISMATCH` (không tin đuôi/`mimeType`)."""
+    """PNG thật khai `mimeType: image/jpeg` → 422 `FILE_TYPE_MISMATCH` (không tin đuôi/`mimeType`).
+
+    Catalog: B07-G-066.
+    """
     user = await make_user(db_session)
     response = await _put(api_client, user, {"mimeType": "image/jpeg", "contentBase64": b64(png_bytes())})
     assert response.status_code == 422
@@ -120,7 +141,10 @@ async def test_me_replace_avatar__U08_magic_bytes_mismatch(
 async def test_me_replace_avatar_gif_is_avatar_type_unsupported(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """GIF → 422 `AVATAR_TYPE_UNSUPPORTED`."""
+    """GIF → 422 `AVATAR_TYPE_UNSUPPORTED`.
+
+    Catalog: B07-G-068.
+    """
     user = await make_user(db_session)
     gif = b"GIF89a" + b"\x00" * 58
     response = await _put(api_client, user, {"mimeType": "image/png", "contentBase64": b64(gif)})
@@ -129,7 +153,10 @@ async def test_me_replace_avatar_gif_is_avatar_type_unsupported(
 
 
 async def test_me_replace_avatar__C11(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """C11: 11 lượt trong 15 phút → 429 `RATE_LIMITED` (`AVATAR_RATE_LIMIT` = 10; CASE §2.2 "Case thêm cố định")."""
+    """C11: 11 lượt trong 15 phút → 429 `RATE_LIMITED` (`AVATAR_RATE_LIMIT` = 10; CASE §2.2 "Case thêm cố định").
+
+    Catalog: B07-G-079.
+    """
     user = await make_user(db_session)
     body: dict[str, object] = {"mimeType": "image/png", "contentBase64": b64(png_bytes((8, 8)))}
     for _ in range(AVATAR_RATE_LIMIT):
@@ -143,7 +170,10 @@ async def test_me_replace_avatar__C11(api_client: httpx.AsyncClient, db_session:
 async def test_me_replace_avatar_session_revoked_when_user_deleted(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Người của `Principal` đã xoá mềm → 401 (object đã `put` thành mồ côi, lịch dọn xử lý — bước 7)."""
+    """Người của `Principal` đã xoá mềm → 401 (object đã `put` thành mồ côi, lịch dọn xử lý — bước 7).
+
+    Catalog: B07-G-042.
+    """
     user = await make_user(db_session)
     user.deleted_at = user.created_at
     await db_session.commit()
@@ -158,7 +188,10 @@ async def test_me_replace_avatar_png_4096_16bit_downsizes_to_8bit(
     db_session: AsyncSession,
     png_16bit_4096_b64: str,
 ) -> None:
-    """PNG 4096x4096 16-bit → 200, ảnh lưu ≤ 512x512, 8-bit `RGB`/`RGBA` (NO-167)."""
+    """PNG 4096x4096 16-bit → 200, ảnh lưu ≤ 512x512, 8-bit `RGB`/`RGBA` (NO-167).
+
+    Catalog: B07-G-058.
+    """
     user = await make_user(db_session)
     response = await _put(api_client, user, {"mimeType": "image/png", "contentBase64": png_16bit_4096_b64})
     assert response.status_code == 200
@@ -175,7 +208,10 @@ async def test_me_replace_avatar_png_4096_16bit_downsizes_to_8bit(
 async def test_me_replace_avatar_idempotency_key_repeat_creates_one_object(
     api_client: httpx.AsyncClient, api_app: FastAPI, db_session: AsyncSession
 ) -> None:
-    """Lặp cùng `Idempotency-Key` → response giống hệt, **một** object mới dưới `users/{u}/avatar/` (NO-167, CON-02)."""
+    """Lặp cùng `Idempotency-Key` → response giống hệt, **một** object mới dưới `users/{u}/avatar/` (NO-167, CON-02).
+
+    Catalog: B07-G-076.
+    """
     user = await make_user(db_session)
     headers = {**headers_of(principal_of(user)), "Idempotency-Key": "test-avatar-idem-key-001"}
     body = {"mimeType": "image/png", "contentBase64": b64(png_bytes((16, 16)))}
@@ -195,7 +231,10 @@ async def test_me_replace_avatar_idempotency_key_repeat_creates_one_object(
 async def test_me_replace_avatar_storage_down_is_503_avatar_key_unchanged(
     fake_clock: FakeClock, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`ephemeral_minio` (backend S3) dừng trước khi dùng → 503, `avatar_key` không đổi (NO-167, K23)."""
+    """`ephemeral_minio` (backend S3) dừng trước khi dùng → 503, `avatar_key` không đổi (NO-167, K23).
+
+    Catalog: B07-G-084.
+    """
     user = await make_user(db_session)
     container = ephemeral_minio()
     config = container.get_config()
