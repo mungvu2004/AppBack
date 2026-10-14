@@ -363,16 +363,42 @@ def test_nginx_map_request_id_regex() -> None:
     )
 
 
-def test_nginx_draco_and_assets_return_404_when_missing() -> None:
-    """`/draco/` và `/assets/`: `try_files … =404` (thiếu `.wasm`/asset không trả HTML 200)."""
-    files = _all_nginx_files()
-    for suffix in ("/draco/", "/assets/"):
+def _assert_static_prefixes_404(files: dict[Path, list[Node]], suffixes: tuple[str, ...]) -> dict[str, list[Node]]:
+    """Mỗi tiền tố tĩnh có location riêng với `try_files … =404` và `security_headers.conf`.
+
+    Không có location riêng thì `location /` (`try_files $uri /index.html`) trả `index.html`
+    200 `text/html` cho tệp thiếu — trình nạp `.wasm`/`.ktx2` vỡ vì phân tích HTML thay vì
+    thấy 404. Trả location theo tiền tố để test gọi kiểm thêm header riêng.
+    """
+    found: dict[str, list[Node]] = {}
+    for suffix in suffixes:
         matches = _locations_matching(files, lambda loc, s=suffix: bool(loc.args) and loc.args[-1] == s)
         assert matches, f"không tìm thấy location {suffix}"
         for path, loc in matches:
             try_files = [n.args for n in loc.children if n.directive == "try_files"]
             assert try_files, f"{path}: {suffix} thiếu try_files … =404"
             assert try_files[0][-1] == "=404", f"{path}: {suffix} thiếu try_files … =404"
+            assert "security_headers.conf" in direct_includes(loc), f"{path}: {suffix} thiếu security_headers.conf"
+        found[suffix] = [loc for _, loc in matches]
+    return found
+
+
+def test_nginx_draco_and_assets_return_404_when_missing() -> None:
+    """`/draco/` và `/assets/`: `try_files … =404` (thiếu `.wasm`/asset không trả HTML 200)."""
+    _assert_static_prefixes_404(_all_nginx_files(), ("/draco/", "/assets/"))
+
+
+def test_nginx_pascal_static_prefixes_return_404_when_missing() -> None:
+    """F-15: `/basis/` (bộ giải KTX2, `ktx2-loader.ts` `setTranscoderPath('/basis/')`) và `/pascal/`
+    (vật liệu `.ktx2`, `NEXT_PUBLIC_ASSETS_CDN_URL="/pascal"`) — thiếu tệp → 404, không trả
+    `index.html` 200. `/pascal/` tên không băm nên cache có hạn, không `immutable` như `/assets/`.
+
+    Hàng catalog: [B05-G-145], [B05-G-146].
+    """
+    found = _assert_static_prefixes_404(_all_nginx_files(), ("/basis/", "/pascal/"))
+    for loc in found["/pascal/"]:
+        headers = [n.args for n in loc.children if n.directive == "add_header"]
+        assert ["Cache-Control", "public, max-age=86400", "always"] in headers, "/pascal/ thiếu Cache-Control có hạn"
 
 
 def test_nginx_security_headers_csp_required_sources() -> None:
