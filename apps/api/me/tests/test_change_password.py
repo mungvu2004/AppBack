@@ -2,6 +2,7 @@
 C11 cố định qua `row_id="N13"` của `tools/case_gate.py`)."""
 
 import asyncio
+from contextlib import AsyncExitStack
 from uuid import UUID
 
 import httpx
@@ -11,7 +12,9 @@ from redis.asyncio import Redis
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.auth.passwords import hash_password, verify_password
+from apps.api.auth import passwords
+from apps.api.auth.passwords import hash_password, hash_slot, verify_password
+from apps.api.auth.settings import get_auth_settings
 from apps.api.auth.tests.support import user_row
 from apps.api.auth_recovery.tests.support import seed_token
 from apps.api.core.ratelimit import install
@@ -246,3 +249,29 @@ async def test_me_change_password_safe_redis_down_is_503(
     response = await _change(api_client, headers_of(principal_of(user)))
     assert response.status_code == 503
     assert response.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+
+
+async def test_me_change_password_hash_executor_busy_is_503(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mọi chỗ của executor băm đang bận quá `HASH_WAIT_S` → 503 `DEPENDENCY_UNAVAILABLE` + `Retry-After`.
+
+    Giữ hết chỗ băm bằng `hash_slot()` như `auth/tests/test_units.py`; hạ `HASH_WAIT_S` để không ngủ thật.
+    Mật khẩu không đổi.
+    Catalog: B07-G-112.
+    """
+    user = await make_user(db_session)
+    principal = await seed_session(db_session, user, fake_clock)
+    monkeypatch.setattr(passwords, "HASH_WAIT_S", 0.05)
+    async with AsyncExitStack() as held:
+        for _ in range(get_auth_settings().password_hash_concurrency):
+            await held.enter_async_context(hash_slot())
+        response = await _change(api_client, headers_of(principal))
+    assert response.status_code == 503
+    assert response.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert response.headers["Retry-After"] == str(passwords.HASH_RETRY_AFTER_S)
+    row = await user_row(db_session, user.id)
+    assert await verify_password(row.password_hash, TEST_PASSWORD) is True
