@@ -30,7 +30,9 @@ from packages.testing.fixtures.access import assert_one_activity
 async def test_floors_delete_floor__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đúng: 200, thân là `Floor` dựng **trước** khi xoá; dòng `floors` được xoá mềm (K22)."""
+    """Đúng: 200, thân là `Floor` dựng **trước** khi xoá; dòng `floors` được xoá mềm (K22).
+    Catalog: B11-flr-001.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, name="Sắp xoá", order=0)
@@ -46,7 +48,7 @@ async def test_floors_delete_floor__C01(
 
 async def test_floors_delete_floor__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Admin hệ thống không phải thành viên, id tầng có thật → 404 `resource:"floor"` (K08).
-    Catalog: B09-flr-009.
+    Catalog: B09-flr-009, B11-flr-004., B11-flr-004.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
@@ -61,7 +63,7 @@ async def test_floors_delete_floor__C06(api_client: httpx.AsyncClient, db_sessio
 
 async def test_floors_delete_floor__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Vai mạnh nhất thiếu `layer.edit` (`viewer`) → 403.
-    Catalog: B09-flr-008.
+    Catalog: B09-flr-008, B11-flr-003., B11-flr-003.
     """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
@@ -74,7 +76,9 @@ async def test_floors_delete_floor__C07(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_floors_delete_floor__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tầng đã xoá mềm từ trước → 404."""
+    """Tầng đã xoá mềm từ trước → 404.
+    Catalog: B11-flr-002.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, order=0)
@@ -102,7 +106,9 @@ async def test_floors_delete_floor__C17(api_client: httpx.AsyncClient, db_sessio
 async def test_floors_delete_floor__C18(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đúng một dòng `activity_log`, `kind=FLOOR_DELETE`, `object_code` = id tầng."""
+    """Đúng một dòng `activity_log`, `kind=FLOOR_DELETE`, `object_code` = id tầng.
+    Catalog: B11-flr-006.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, name="Ghi rồi xoá", order=0)
@@ -123,7 +129,9 @@ async def test_floors_delete_floor__C18(
 async def test_floors_delete_floor__path_id_wrong_pattern(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`{floor_id}` sai mẫu (không có `L-`) → 404 `resource:"floor"`, không truy vấn DB."""
+    """`{floor_id}` sai mẫu (không có `L-`) → 404 `resource:"floor"`, không truy vấn DB.
+    Catalog: B11-flr-008.
+    """
     owner = await make_user(db_session, role="engineer")
     await seed_project(db_session, owner=owner)
     response = await api_client.delete(floor_path("khong-phai-id"), headers=headers_of(owner))
@@ -181,7 +189,9 @@ async def test_floors_delete_floor__same_id_other_project_not_a_member_deletes_c
 async def test_floors_delete_floor__unregisters_but_keeps_summary_counts(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Xoá ẩn dòng đếm (`hidden=True`), **giữ số** để #10 khôi phục trả lại đúng (B2-03 [6])."""
+    """Xoá ẩn dòng đếm (`hidden=True`), **giữ số** để #10 khôi phục trả lại đúng (B2-03 [6]).
+    Catalog: B11-flr-007.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, order=0)

@@ -85,7 +85,9 @@ async def test_versions_restore_version__C01(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Tầng đã đổi từ bản mới nhất → 201, `sequence` tăng **2** (trước + sau); N16 đọc lại đúng lớp của ảnh chụp."""
+    """Tầng đã đổi từ bản mới nhất → 201, `sequence` tăng **2** (trước + sau); N16 đọc lại đúng lớp của ảnh chụp.
+    Catalog: B11-ver-001.
+    """
     stage = await make_stage(db_session)
     first, *_ = await _history(db_session, stage, fake_clock, (200,))
     await put_layer(db_session, stage, fake_clock, _layer(stage, 250), base=1)
@@ -207,7 +209,7 @@ async def test_versions_restore_version__C06(
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08).
 
     Hàng catalog: [B06-G-182].
-    Catalog: B09-ver-012.
+    Catalog: B09-ver-012, B11-ver-008., B11-ver-008.
     """
     stage = await make_stage(db_session)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
@@ -223,7 +225,7 @@ async def test_versions_restore_version__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
     """Viewer là thành viên nhưng thiếu `layer.edit` → 403 `FORBIDDEN`.
-    Catalog: B09-ver-011.
+    Catalog: B09-ver-011, B11-ver-007., B11-ver-007.
     """
     viewer = await make_user(db_session, role="viewer")
     stage = await make_stage(db_session, members=[viewer])
@@ -241,6 +243,7 @@ async def test_versions_restore_version__C08(
     """Phiên bản không có, sai mẫu, của dự án khác, hay của tầng xoá mềm → 404 `resource:"version"`.
 
     Hàng catalog: [B06-G-159, B06-G-184].
+    Catalog: B11-ver-009.
     """
     stage = await make_stage(db_session)
     other = await make_stage(db_session)
@@ -264,7 +267,9 @@ async def test_versions_restore_version__C09_stale(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Người khác ghi thêm sau khi mình đọc → 409 W20 có `remoteChanges` ≥ 1; bản "trước" rollback theo."""
+    """Người khác ghi thêm sau khi mình đọc → 409 W20 có `remoteChanges` ≥ 1; bản "trước" rollback theo.
+    Catalog: B11-ver-004.
+    """
     stage = await make_stage(db_session)
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
     await put_layer(db_session, stage, fake_clock, _layer(stage, 300), base=2)
@@ -282,7 +287,9 @@ async def test_versions_restore_version__C09_stale(
 async def test_versions_restore_version__C09_missing(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Thân không có `baseVersion` → 428 `PRECONDITION_REQUIRED`, trước cả Pydantic."""
+    """Thân không có `baseVersion` → 428 `PRECONDITION_REQUIRED`, trước cả Pydantic.
+    Catalog: B11-ver-005.
+    """
     stage = await make_stage(db_session)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
 
@@ -303,7 +310,9 @@ async def test_versions_restore_version__C09b(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Gửi lại lượt vừa thành công → 200 cùng `id`, `sequence` không tăng; người khác cùng thân không được phát lại."""
+    """Gửi lại lượt vừa thành công → 200 cùng `id`, `sequence` không tăng; người khác cùng thân không được phát lại.
+    Catalog: B11-ver-006.
+    """
     second = await make_user(db_session, name="Người thứ hai")
     stage = await make_stage(db_session, members=[second])
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
@@ -451,6 +460,7 @@ async def test_versions_restore_version__floor_mismatch(
     """`floorId` của tầng khác → 422 `VERSION_FLOOR_MISMATCH` `field:"body.floorId"`, chưa ghi gì.
 
     Hàng catalog: [B06-G-158].
+    Catalog: B11-ver-010.
     """
     stage = await make_stage(db_session, floors=2)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
@@ -534,6 +544,7 @@ async def test_versions_restore_version__rescale_that_breaks_the_model_is_422(
     """Đổi tỉ lệ làm tường dài 4 mm co về 0 (x0,1) → 422 `VALIDATION`, giao dịch rollback, chưa ghi gì.
 
     Hàng catalog: [B06-G-173].
+    Catalog: B11-ver-011.
     """
     stage = await make_stage(db_session)
     tiny = simple_layer(stage.level_id, walls=(make_wall(stage.level_id, length=4, thickness=50),))
@@ -566,6 +577,7 @@ async def test_versions_restore_version__undo_brings_back_the_lost_wall(
     """Phục hồi làm mất tường W, rồi phục hồi bản "trước" vừa sinh → `layer`, `dimensions` về như cũ (có lại W).
 
     Hàng catalog: [B06-G-174].
+    Catalog: B11-ver-002, B11-ver-003.
     """
     stage = await make_stage(db_session)
     kept, lost = _wall_at(stage.level_id, "W-KEPTWALL01", 0), _wall_at(stage.level_id, "W-LOSTWALL01", 2000)

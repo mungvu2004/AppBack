@@ -219,7 +219,9 @@ async def test_unknown_session_is_401(auth_client: httpx.AsyncClient) -> None:
 async def test_revocation_is_checked_before_grace(
     auth_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đăng xuất rồi gửi cookie `previous` trong ân hạn → 401: thu hồi được kiểm trước mọi nhánh."""
+    """Đăng xuất rồi gửi cookie `previous` trong ân hạn → 401: thu hồi được kiểm trước mọi nhánh.
+    Catalog: B11-out-005.
+    """
     user = await make_user(db_session)
     t0 = await _logged_in(auth_client, user)
     t1 = refresh_cookie(await refresh_with(auth_client, t0))

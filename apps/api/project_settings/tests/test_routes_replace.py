@@ -158,7 +158,9 @@ async def test_settings_replace_settings__C08(
 
 
 async def test_settings_replace_settings__C09(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Base cũ và base 0 khi đã có dòng → 409 đúng W20; thiếu `baseVersion` → 428."""
+    """Base cũ và base 0 khi đã có dòng → 409 đúng W20; thiếu `baseVersion` → 428.
+    Catalog: B11-set-003.
+    """
     owner = await make_user(db_session, role="engineer")
     other = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner, members=[other])

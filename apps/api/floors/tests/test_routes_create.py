@@ -280,7 +280,9 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Xoá rồi POST cùng `id` sau 9 phút → 201, cùng `pk`, `walls_total` giữ, hết ẩn, `floor.drawings` quay lại."""
+    """Xoá rồi POST cùng `id` sau 9 phút → 201, cùng `pk`, `walls_total` giữ, hết ẩn, `floor.drawings` quay lại.
+    Catalog: B11-flr-013.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     level_id = new_level_id()
@@ -334,7 +336,9 @@ async def test_floors_create_floor__restore_outside_window_gets_new_pk(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Xoá rồi POST cùng `id` sau 11 phút (quá cửa sổ 600 s) → 201, `pk` **mới**."""
+    """Xoá rồi POST cùng `id` sau 11 phút (quá cửa sổ 600 s) → 201, `pk` **mới**.
+    Catalog: B11-flr-014.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     level_id = new_level_id()
@@ -355,7 +359,9 @@ async def test_floors_create_floor__restore_outside_window_gets_new_pk(
 async def test_floors_create_floor__restore_blocked_by_limit(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Khôi phục khi dự án đã đủ `FLOORS_MAX` tầng sống → 422 `FLOOR_LIMIT_REACHED` (không khôi phục)."""
+    """Khôi phục khi dự án đã đủ `FLOORS_MAX` tầng sống → 422 `FLOOR_LIMIT_REACHED` (không khôi phục).
+    Catalog: B11-flr-016.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     deleted_level_id = new_level_id()
@@ -381,7 +387,9 @@ async def test_floors_create_floor__restore_exactly_at_window_gets_new_pk(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Biên: đúng `FLOOR_RESTORE_WINDOW_S` giây sau khi xoá là hết cửa sổ (cùng luật `restore_window_elapsed`)."""
+    """Biên: đúng `FLOOR_RESTORE_WINDOW_S` giây sau khi xoá là hết cửa sổ (cùng luật `restore_window_elapsed`).
+    Catalog: B11-flr-015.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     level_id = new_level_id()

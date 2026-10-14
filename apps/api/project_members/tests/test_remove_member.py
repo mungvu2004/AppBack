@@ -16,7 +16,9 @@ from packages.testing.fixtures.access import activity_rows, assert_one_activity
 async def test_members_remove_member__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Gỡ viewer: 200 `UserOut` của người đó, hết membership, một dòng nhật ký, `updatedAt` đổi."""
+    """Gỡ viewer: 200 `UserOut` của người đó, hết membership, một dòng nhật ký, `updatedAt` đổi.
+    Catalog: B11-mem-001.
+    """
     actor, target = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
     project = await seed_project(db_session, owner=actor, members=[target])
     before = await updated_at(db_session, project.id)
@@ -32,7 +34,7 @@ async def test_members_remove_member__C01(
 
 async def test_members_remove_member__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Admin hệ thống không là thành viên → 404 `project`.
-    Catalog: B09-mem-006.
+    Catalog: B09-mem-006, B11-mem-002., B11-mem-002.
     """
     owner, outsider = await make_user(db_session, role="engineer"), await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner)
@@ -42,7 +44,7 @@ async def test_members_remove_member__C06(api_client: httpx.AsyncClient, db_sess
 
 async def test_members_remove_member__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Viewer là thành viên → 403.
-    Catalog: B09-mem-005.
+    Catalog: B09-mem-005, B11-mem-003., B11-mem-003.
     """
     owner, viewer = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
     project = await seed_project(db_session, owner=owner, members=[viewer])
@@ -53,7 +55,10 @@ async def test_members_remove_member__C07(api_client: httpx.AsyncClient, db_sess
 async def test_members_remove_member__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: Any
 ) -> None:
-    """Dự án xoá mềm → 404 `project`; người không là thành viên của dự án còn sống → 404 `member`."""
+    """Dự án xoá mềm → 404 `project`; người không là thành viên của dự án còn sống → 404 `member`.
+    Catalog: B11-mem-004.
+    Catalog: B11-prj-016.
+    """
     owner, stranger = await make_user(db_session, role="admin"), await make_user(db_session)
     dead = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
     live = await seed_project(db_session, owner=owner)
@@ -84,7 +89,9 @@ async def test_members_remove_member__C18(
 
 
 async def test_members_remove_member__bad_user_id(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`{user_id}` sai mẫu → 404 `member`."""
+    """`{user_id}` sai mẫu → 404 `member`.
+    Catalog: B11-mem-005.
+    """
     actor = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=actor)
     response = await remove(api_client, actor, project.id, "khong-phai-id")
@@ -94,7 +101,9 @@ async def test_members_remove_member__bad_user_id(api_client: httpx.AsyncClient,
 async def test_members_remove_member__takes_effect_immediately(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Sau khi bị gỡ, người đó gọi #24 → 404 ngay (`require_project` không cache)."""
+    """Sau khi bị gỡ, người đó gọi #24 → 404 ngay (`require_project` không cache).
+    Catalog: B11-mem-006.
+    """
     actor, target = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
     project = await seed_project(db_session, owner=actor, members=[target])
     path = f"/api/projects/{project.id}"
@@ -106,7 +115,9 @@ async def test_members_remove_member__takes_effect_immediately(
 async def test_members_remove_member__self_removal_with_other_editor(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Tự gỡ mình khi còn người sửa khác → 200."""
+    """Tự gỡ mình khi còn người sửa khác → 200.
+    Catalog: B11-mem-007.
+    """
     actor, other = await make_user(db_session, role="engineer"), await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=actor, members=[other])
     assert (await remove(api_client, actor, project.id, actor.id)).status_code == 200
@@ -116,7 +127,9 @@ async def test_members_remove_member__self_removal_with_other_editor(
 async def test_members_remove_member__engineer_removes_admin(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Kỹ sư gỡ được admin (M2) khi còn người sửa khác."""
+    """Kỹ sư gỡ được admin (M2) khi còn người sửa khác.
+    Catalog: B11-mem-014.
+    """
     engineer, admin = await make_user(db_session, role="engineer"), await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=engineer, members=[admin])
     assert (await remove(api_client, engineer, project.id, admin.id)).status_code == 200
@@ -125,7 +138,9 @@ async def test_members_remove_member__engineer_removes_admin(
 async def test_members_remove_member__last_editor_with_viewer_left(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Người sửa cuối, dù còn viewer khác → 422 `MEMBER_LAST_EDITOR`, không đổi gì."""
+    """Người sửa cuối, dù còn viewer khác → 422 `MEMBER_LAST_EDITOR`, không đổi gì.
+    Catalog: B11-mem-008.
+    """
     actor, viewer = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
     project = await seed_project(db_session, owner=actor, members=[viewer])
     response = await remove(api_client, actor, project.id, actor.id)

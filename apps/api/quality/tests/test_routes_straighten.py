@@ -59,7 +59,9 @@ async def _view(client: httpx.AsyncClient, stage: Stage, index: int = 0) -> dict
 async def test_quality_straighten__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: Clock
 ) -> None:
-    """Trang nghiêng 4° → 200 `ImageQualityAssessment` (golden H1) của trang đã nắn."""
+    """Trang nghiêng 4° → 200 `ImageQualityAssessment` (golden H1) của trang đã nắn.
+    Catalog: B11-qlt-001.
+    """
     stage = await make_stage(db_session, local_storage, pixels=TILTED)
     await measure_real(db_session, fake_clock, stage.floors[0], TILTED)
 
@@ -76,7 +78,9 @@ async def test_quality_straighten__deskews_and_renews_finding_ids(
     local_storage: LocalDiskStorage,
     fake_clock: Clock,
 ) -> None:
-    """Ảnh nghiêng 4° → `skewDeg` mới < 0,5, `finding.id` đều khác id trước, đúng một lượt mới."""
+    """Ảnh nghiêng 4° → `skewDeg` mới < 0,5, `finding.id` đều khác id trước, đúng một lượt mới.
+    Catalog: B11-qlt-002.
+    """
     stage = await make_stage(db_session, local_storage, pixels=TILTED)
     await measure_real(db_session, fake_clock, stage.floors[0], TILTED)
     before = await _view(api_client, stage)
@@ -98,7 +102,9 @@ async def test_quality_straighten__already_straight_is_a_noop(
     local_storage: LocalDiskStorage,
     fake_clock: Clock,
 ) -> None:
-    """Ảnh thẳng, đã đo, không `SKEW_DETECTED` → 200 hiện trạng, không lượt mới, không đổi trang."""
+    """Ảnh thẳng, đã đo, không `SKEW_DETECTED` → 200 hiện trạng, không lượt mới, không đổi trang.
+    Catalog: B11-qlt-003.
+    """
     stage = await make_stage(db_session, local_storage, pixels=STRAIGHT)
     await measure_real(db_session, fake_clock, stage.floors[0], STRAIGHT)
     before = await _view(api_client, stage)
@@ -133,7 +139,9 @@ async def test_quality_straighten__stored_homography_mismatch_is_409(
     local_storage: LocalDiskStorage,
     fake_clock: Clock,
 ) -> None:
-    """Homography đã lưu lệch kích thước trang → 409 `QUALITY_DRAWING_CHANGED`, không lượt mới."""
+    """Homography đã lưu lệch kích thước trang → 409 `QUALITY_DRAWING_CHANGED`, không lượt mới.
+    Catalog: B11-qlt-010.
+    """
     stage = await make_stage(db_session, local_storage, pixels=TILTED)
     height, width = TILTED.shape[:2]
     stale = Homography.identity(width + 10, height).to_json()
@@ -150,7 +158,9 @@ async def test_quality_straighten__stored_homography_mismatch_is_409(
 async def test_quality_straighten__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, body: Any
 ) -> None:
-    """Thân khác object → 422 `VALIDATION`."""
+    """Thân khác object → 422 `VALIDATION`.
+    Catalog: B11-qlt-004.
+    """
     stage = await make_stage(db_session, local_storage)
 
     response = await _post(api_client, stage, body=body)
@@ -175,7 +185,7 @@ async def test_quality_straighten__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
     """Người ngoài dự án, kể cả admin hệ thống → 404 `project`.
-    Catalog: B09-qlt-009.
+    Catalog: B09-qlt-009, B11-qlt-005., B11-qlt-005.
     """
     stage = await make_stage(db_session, local_storage)
     admin = await make_user(db_session, role="admin")
@@ -191,7 +201,7 @@ async def test_quality_straighten__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
     """Viewer → 403 `FORBIDDEN`.
-    Catalog: B09-qlt-008.
+    Catalog: B09-qlt-008, B11-qlt-006., B11-qlt-006.
     """
     stage = await make_stage(db_session, local_storage)
 
@@ -204,7 +214,10 @@ async def test_quality_straighten__C07(
 async def test_quality_straighten__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """Tầng không có, tầng đã xoá → 404 `floor`; tầng chưa có bản vẽ → 404 `upload`."""
+    """Tầng không có, tầng đã xoá → 404 `floor`; tầng chưa có bản vẽ → 404 `upload`.
+    Catalog: B11-flr-012.
+    Catalog: B11-qlt-007.
+    """
     stage = await make_stage(db_session, local_storage, floors=2)
     bare = await make_floor(db_session, project=stage.project)
     await db_session.execute(
@@ -246,7 +259,9 @@ async def test_quality_straighten__C10_queue_once(
     fake_clock: Clock,
     broker: SyncRedis,
 ) -> None:
-    """Lặp `Idempotency-Key` → cùng response, **một** lượt mới và **một** thông điệp `pipeline.cpu`."""
+    """Lặp `Idempotency-Key` → cùng response, **một** lượt mới và **một** thông điệp `pipeline.cpu`.
+    Catalog: B11-qlt-008.
+    """
     stage = await make_stage(db_session, local_storage, pixels=TILTED)
     await measure_real(db_session, fake_clock, stage.floors[0], TILTED)
     broker.delete(CPU_QUEUE)
@@ -269,7 +284,9 @@ async def test_quality_straighten__C10_no_key_replay(
     fake_clock: Clock,
     broker: SyncRedis,
 ) -> None:
-    """Không khoá: lượt lặp trên trang đã thẳng không làm gì; mỗi lượt có xử lý tạo đúng một lượt và một thông điệp."""
+    """Không khoá: lượt lặp trên trang đã thẳng không làm gì; mỗi lượt có xử lý tạo đúng một lượt và một thông điệp.
+    Catalog: B11-qlt-009.
+    """
     stage = await make_stage(db_session, local_storage, floors=2, pixels=TILTED)
     for drawn in stage.floors:
         await measure_real(db_session, fake_clock, drawn, TILTED)
