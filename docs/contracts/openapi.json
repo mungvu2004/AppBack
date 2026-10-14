@@ -916,6 +916,91 @@
         "title": "DeleteUserBody",
         "type": "object"
       },
+      "Dimension": {
+        "additionalProperties": false,
+        "description": "Chuỗi kích thước; `referenceIds` được rỗng (kích thước người tự vẽ chưa gắn thực thể).",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "linear",
+              "chain",
+              "radial",
+              "angular",
+              "elevation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "line": {
+            "$ref": "#/components/schemas/Segment"
+          },
+          "overrideValueMm": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overridevaluemm"
+          },
+          "referenceIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Referenceids",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "valueMm": {
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Valuemm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "kind",
+          "referenceIds",
+          "line",
+          "valueMm"
+        ],
+        "title": "Dimension",
+        "type": "object"
+      },
       "DimensionOut": {
         "additionalProperties": false,
         "description": "`DimensionSchema` — chuỗi kích thước; `referenceIds` **được rỗng**.",
@@ -1300,6 +1385,20 @@
         "additionalProperties": false,
         "description": "`body` của #35: lớp, tỉ lệ, hay cả hai — nhưng không được rỗng (FE `refine` ≥ 1 khoá).",
         "properties": {
+          "dimensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Dimension"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions"
+          },
           "layer": {
             "anyOf": [
               {

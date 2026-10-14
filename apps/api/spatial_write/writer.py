@@ -46,6 +46,7 @@ from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorChangeLogRow, FloorDocumentRow
 from packages.domain.scale import RescaleError, rescale_dimensions, rescale_unreviewed
 from packages.domain.spatial import (
+    DELETED,
     ChangeEntityType,
     Dimension,
     FieldChange,
@@ -76,6 +77,7 @@ _TOUCH_FIELD: Final[Mapping[ChangeEntityType, str]] = {
     "window": "width_mm",
     "room": "name",
     "furniture": "kind",
+    "dimension": "value_mm",
 }
 """Trường đại diện của dấu chạm (HOP-DONG-MOI §1.3): một dòng cho thay đổi ngoài bảng diff."""
 
@@ -115,7 +117,7 @@ class MergeOutcome(Protocol):
 
 @dataclass(frozen=True)
 class LayerWrite:
-    """Thân một lượt ghi. `dimensions` chỉ hàm Python truyền (B5-06b, N19), `schemas.py` không có."""
+    """Thân một lượt ghi. `dimensions`: thay nguyên danh sách (người gửi qua #35, hay N19/pipeline)."""
 
     layer: SpatialLayer | None
     scale_mm_per_px: Decimal | None
@@ -217,6 +219,8 @@ async def write_layer(
     _check_arguments(body, merge=merge, actor_id=actor_id, level_id=floor.level_id)
     if body.layer is not None:
         _check_candidate(body.layer, level_id=floor.level_id)
+    if body.dimensions is not None and actor_id != SYSTEM_PIPELINE:
+        _check_human_dimensions(body.dimensions, level_id=floor.level_id)
     request = _Request(
         floor_pk=floor_pk,
         base_revision=base_revision,
@@ -265,9 +269,26 @@ def _check_arguments(
         raise ValueError("merge và body.layer loại trừ nhau: nền của merge là lớp đang có")
     if merge is None and body.layer is not None and actor_id == SYSTEM_PIPELINE:
         raise ValueError("ghi lớp của pipeline phải đi qua merge, không đè thẳng (K21)")
+    if actor_id != SYSTEM_PIPELINE:
+        return
     for dimension in body.dimensions or ():
         if dimension.source != "ai" or dimension.reviewed or dimension.level_id != level_id:
             raise ValueError(f"kích thước {dimension.id} phải là mục AI chưa duyệt của tầng đang ghi")
+
+
+def _check_human_dimensions(dimensions: Sequence[Dimension], *, level_id: str) -> None:
+    """Kích thước do người gửi qua #35: `id` trùng, A5, rồi `levelId` (mã lỗi như `layer`)."""
+    seen: set[str] = set()
+    for index, item in enumerate(dimensions):
+        if item.id in seen:
+            raise VALIDATION.error(field=f"body.dimensions.{index}.id")
+        seen.add(item.id)
+    for index, item in enumerate(dimensions):
+        if item.source == "ai" and item.reviewed:
+            raise REVIEW_BY_AI_FORBIDDEN.error(field=f"body.dimensions.{index}.reviewed")
+    for index, item in enumerate(dimensions):
+        if item.level_id != level_id:
+            raise LAYER_LEVEL_MISMATCH.error(field=f"body.dimensions.{index}.levelId")
 
 
 def _positions(layer: SpatialLayer) -> Iterator[tuple[str, int, object]]:
@@ -335,12 +356,12 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
         return settled
     scale = await _target_scale(db, request, current)
     nxt = _next_layer(request, current, scale)
-    dimensions, touched = _next_dimensions(request, current, scale, nxt)
+    dimensions = _next_dimensions(request, current, scale, nxt)
     document = document_to_json(nxt.layer, (), dimensions)
     if _unchanged(current, document, scale):
         return WriteResult(current.revision, current.layer, applied=False)
     return await _commit(
-        db, request, current, expected=settled, nxt=nxt, document=document, scale=scale, touched=touched
+        db, request, current, expected=settled, nxt=nxt, document=document, scale=scale, dimensions=dimensions
     )
 
 
@@ -440,10 +461,8 @@ def _next_layer(request: _Request, current: FloorDocument, scale: _Scale) -> _Ne
     return _Next(_with_areas(base), {})
 
 
-def _next_dimensions(
-    request: _Request, current: FloorDocument, scale: _Scale, nxt: _Next
-) -> tuple[tuple[Dimension, ...], tuple[Dimension, ...]]:
-    """Bước 9: kích thước mới, và những mục vừa bị gỡ id (chúng sinh dòng nhật ký ở bước 13)."""
+def _next_dimensions(request: _Request, current: FloorDocument, scale: _Scale, nxt: _Next) -> tuple[Dimension, ...]:
+    """Bước 9: danh sách kích thước mới (khác `current.dimensions` thì bước 13 ghi nhật ký theo id)."""
     sent = request.body.dimensions
     if sent is not None:
         dimensions = _sent_dimensions(sent, request.body.scale_mm_per_px, scale.value)
@@ -472,21 +491,14 @@ def _remap_refs(dimensions: tuple[Dimension, ...], id_map: Mapping[str, str]) ->
     )
 
 
-def _drop_missing_refs(
-    dimensions: tuple[Dimension, ...], live: frozenset[str]
-) -> tuple[tuple[Dimension, ...], tuple[Dimension, ...]]:
-    """Gỡ khỏi `referenceIds` mọi id không còn trong lớp; trả `(kích thước mới, mục đã đổi)`."""
-    kept: list[Dimension] = []
-    touched: list[Dimension] = []
-    for item in dimensions:
-        refs = tuple(ref for ref in item.reference_ids if ref in live)
-        if refs == item.reference_ids:
-            kept.append(item)
-            continue
-        changed = item.model_copy(update={"reference_ids": refs})
-        kept.append(changed)
-        touched.append(changed)
-    return tuple(kept), tuple(touched)
+def _drop_missing_refs(dimensions: tuple[Dimension, ...], live: frozenset[str]) -> tuple[Dimension, ...]:
+    """Gỡ khỏi `referenceIds` mọi id không còn trong lớp."""
+    return tuple(
+        item
+        if all(ref in live for ref in item.reference_ids)
+        else item.model_copy(update={"reference_ids": tuple(ref for ref in item.reference_ids if ref in live)})
+        for item in dimensions
+    )
 
 
 def _unchanged(current: FloorDocument, document: Mapping[str, object], scale: _Scale) -> bool:
@@ -508,7 +520,7 @@ async def _commit(
     nxt: _Next,
     document: Mapping[str, object],
     scale: _Scale,
-    touched: tuple[Dimension, ...],
+    dimensions: tuple[Dimension, ...],
 ) -> WriteResult | None:
     """Bước 11-15 trong một SAVEPOINT; `None` = `UPDATE` ăn 0 dòng, lượt này thua đua."""
     async with db.begin_nested() as savepoint:
@@ -516,7 +528,7 @@ async def _commit(
             await savepoint.rollback()
             return None
         await _claim(db, request, current=current, layer=nxt.layer)
-        await _write_log(db, request, revision=expected + 1, old=current.layer, new=nxt.layer, touched=touched)
+        await _write_log(db, request, revision=expected + 1, current=current, after=(nxt.layer, dimensions))
         counts = layer_counts(nxt.layer)
         await set_layer_counts(
             db,
@@ -590,14 +602,48 @@ def _touch_marks(old: SpatialLayer, new: SpatialLayer) -> list[FieldChange]:
     return marks
 
 
+def _dimension_values(item: Dimension) -> dict[str, object]:
+    """Ba trường theo dõi của kích thước (HOP-DONG-MOI §1.3); `override` vắng thì bỏ."""
+    values: dict[str, object] = {"value_mm": item.value_mm, "reference_ids": list(item.reference_ids)}
+    if item.override_value_mm is not None:
+        values["override_value_mm"] = item.override_value_mm
+    return values
+
+
+def _diff_dimensions(old: Sequence[Dimension], new: Sequence[Dimension]) -> list[FieldChange]:
+    """Cùng luật `diff_layers` cho kích thước: mới = mỗi trường một dòng, đổi = trường khác, mất = `__deleted__`."""
+    before = {item.id: _dimension_values(item) for item in old}
+    changes: list[FieldChange] = []
+    for item in new:
+        previous = before.get(item.id, {})
+        changes += [
+            FieldChange(item.id, "dimension", field, value)
+            for field, value in _dimension_values(item).items()
+            if value != previous.get(field, MISSING)
+        ]
+        if item.id in before and "override_value_mm" in previous and item.override_value_mm is None:
+            changes.append(FieldChange(item.id, "dimension", "override_value_mm", MISSING))
+    live = {item.id for item in new}
+    return changes + [FieldChange(item.id, "dimension", DELETED, MISSING) for item in old if item.id not in live]
+
+
+def _dimension_marks(old: Sequence[Dimension], new: Sequence[Dimension]) -> list[FieldChange]:
+    """Dấu chạm cho kích thước chỉ đổi `reviewed`/`confidence`: một dòng ở `value_mm`."""
+    before = {item.id: item for item in old}
+    return [
+        FieldChange(item.id, "dimension", _TOUCH_FIELD["dimension"], item.value_mm)
+        for item in new
+        if item.id in before and before[item.id] != item
+    ]
+
+
 async def _write_log(
     db: AsyncSession,
     request: _Request,
     *,
     revision: int,
-    old: SpatialLayer,
-    new: SpatialLayer,
-    touched: tuple[Dimension, ...],
+    current: FloorDocument,
+    after: tuple[SpatialLayer, tuple[Dimension, ...]],
 ) -> None:
     """Bước 13: nhật ký theo trường vào `floor_change_log`; không có gì đổi thì không câu nào.
 
@@ -605,10 +651,12 @@ async def _write_log(
     `executemany` cũ tốn ~80 µs/dòng, 12 s cho 140.000 dòng của lớp 20.000 tường dưới khoá tầng
     (NO-296). Chia khúc để mỗi câu xa `statement_timeout`; `id` vẫn tăng theo thứ tự `changes`.
     """
+    old, (new, dimensions) = current.layer, after
     changes = diff_layers(old, new)
     if not changes and has_untracked_changes(old, new):
         changes = _touch_marks(old, new)
-    changes += [FieldChange(item.id, "dimension", "reference_ids", list(item.reference_ids)) for item in touched]
+    dimension_changes = _diff_dimensions(current.dimensions, dimensions)
+    changes += dimension_changes or _dimension_marks(current.dimensions, dimensions)
     now = request.clock.now()
     for start in range(0, len(changes), _LOG_CHUNK_ROWS):
         await db.execute(_log_insert(request, revision, now, changes[start : start + _LOG_CHUNK_ROWS]))
