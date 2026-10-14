@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # pyproject.toml gốc: venv nằm ở /opt/venv/lib/python3.12 với C extension
 # cp312, tầng chạy lệch minor thì mọi gói biến mất dù build vẫn thoát 0
 # (NO-177, FIX-104). Nâng minor là việc có chủ đích, kèm `run.sh lock`.
-FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS runtime
+FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258 AS runtime
 WORKDIR /app
 ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
