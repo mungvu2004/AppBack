@@ -39,7 +39,10 @@ ABSENT_VERSION: Final = "ver_01J00000000000000000000000"
 async def test_versions_read_version__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Có `note` → đúng sáu trường cũ, `createdAt` `.sssZ`, `creatorId` là người tạo."""
+    """Có `note` → đúng sáu trường cũ, `createdAt` `.sssZ`, `creatorId` là người tạo.
+
+    Hàng catalog: [B06-G-112].
+    """
     stage = await make_stage(db_session)
     await put_layer(db_session, stage, fake_clock, simple_layer(stage.level_id), base=0)
     version = await commit_snap(db_session, stage, fake_clock, note="trạng thái mẫu")
@@ -60,7 +63,10 @@ async def test_versions_read_version__C01(
 async def test_versions_read_version__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08)."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08).
+
+    Hàng catalog: [B06-G-117].
+    """
     stage = await make_stage(db_session)
     version = await commit_snap(db_session, stage, fake_clock)
     outsider = await make_user(db_session, role="admin")
@@ -76,7 +82,10 @@ async def test_versions_read_version__C06(
 async def test_versions_read_version__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, missing: str
 ) -> None:
-    """Id không có, sai mẫu, của dự án khác, hay của tầng đã xoá mềm → 404 `resource:"version"`."""
+    """Id không có, sai mẫu, của dự án khác, hay của tầng đã xoá mềm → 404 `resource:"version"`.
+
+    Hàng catalog: [B06-G-116].
+    """
     stage = await make_stage(db_session)
     other = await make_stage(db_session)
     version_id = {"absent": ABSENT_VERSION, "malformed": "ver_nope"}.get(missing, "")
@@ -97,7 +106,10 @@ async def test_versions_read_version__C08(
 async def test_versions_read_version__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Không `note` → vắng khoá `note`, không phải `null` (W2)."""
+    """Không `note` → vắng khoá `note`, không phải `null` (W2).
+
+    Hàng catalog: [B06-G-113].
+    """
     stage = await make_stage(db_session)
     version = await commit_snap(db_session, stage, fake_clock)
 
@@ -110,7 +122,10 @@ async def test_versions_read_version__C17(
 async def test_versions_read_snapshot__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """200 `{versionId, layer, dimensions}`: đúng lớp và kích thước lúc chụp, không phải hiện trạng."""
+    """200 `{versionId, layer, dimensions}`: đúng lớp và kích thước lúc chụp, không phải hiện trạng.
+
+    Hàng catalog: [B06-G-132].
+    """
     stage = await make_stage(db_session)
     wall = make_wall(stage.level_id)
     dimension = make_dimension(stage.level_id, refs=[wall.id])
@@ -134,7 +149,10 @@ async def test_versions_read_snapshot__C01(
 async def test_versions_read_snapshot__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, floor_id: str | None
 ) -> None:
-    """Thiếu hay rỗng `floorId` → 422 `VALIDATION` `field:"floorId"` (kiểm trước cả 404 của phiên bản)."""
+    """Thiếu hay rỗng `floorId` → 422 `VALIDATION` `field:"floorId"` (kiểm trước cả 404 của phiên bản).
+
+    Hàng catalog: [B06-G-134].
+    """
     stage = await make_stage(db_session)
     version = await commit_snap(db_session, stage, fake_clock)
 
@@ -152,7 +170,10 @@ async def test_versions_read_snapshot__C02(
 async def test_versions_read_snapshot__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Người ngoài dự án → 404 `resource:"project"`."""
+    """Người ngoài dự án → 404 `resource:"project"`.
+
+    Hàng catalog: [B06-G-141].
+    """
     stage = await make_stage(db_session)
     version = await commit_snap(db_session, stage, fake_clock)
     outsider = await make_user(db_session, role="admin")
@@ -167,7 +188,10 @@ async def test_versions_read_snapshot__C06(
 async def test_versions_read_snapshot__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, missing: str
 ) -> None:
-    """Phiên bản không có, hoặc thuộc tầng đã xoá mềm → 404 `resource:"version"`."""
+    """Phiên bản không có, hoặc thuộc tầng đã xoá mềm → 404 `resource:"version"`.
+
+    Hàng catalog: [B06-G-138].
+    """
     stage = await make_stage(db_session)
     version_id = ABSENT_VERSION
     if missing == "soft_deleted_floor":
@@ -184,7 +208,10 @@ async def test_versions_read_snapshot__C08(
 async def test_versions_read_snapshot__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đồ đạc chưa gắn phòng → ảnh chụp **vắng** khoá `roomId`, không phải `null`."""
+    """Đồ đạc chưa gắn phòng → ảnh chụp **vắng** khoá `roomId`, không phải `null`.
+
+    Hàng catalog: [B06-G-140].
+    """
     stage = await make_stage(db_session)
     layer = simple_layer(stage.level_id, furniture=(make_furniture(stage.level_id),))
     await put_layer(db_session, stage, fake_clock, layer, base=0)
@@ -198,7 +225,10 @@ async def test_versions_read_snapshot__C17(
 async def test_versions_read_snapshot__floor_mismatch(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """`floorId` của tầng khác trong cùng dự án → 422 `VERSION_FLOOR_MISMATCH` `field:"floorId"`."""
+    """`floorId` của tầng khác trong cùng dự án → 422 `VERSION_FLOOR_MISMATCH` `field:"floorId"`.
+
+    Hàng catalog: [B06-G-136].
+    """
     stage = await make_stage(db_session, floors=2)
     version = await commit_snap(db_session, stage, fake_clock)
 
@@ -220,6 +250,8 @@ async def test_versions_read_snapshot__purged(
     """Mất ảnh chụp, `schemaVersion: 2` hay khoá lạ trong `document` → 422 `VERSION_SNAPSHOT_PURGED` (không 500).
 
     Hai dạng hỏng có log `snapshot_schema_mismatch`; "mất ảnh chụp" là chuyện bình thường nên không log.
+
+    Hàng catalog: [B06-G-139].
     """
     stage = await make_stage(db_session)
     await put_layer(db_session, stage, fake_clock, simple_layer(stage.level_id), base=0)
@@ -240,7 +272,10 @@ async def test_versions_read_version__hard_deleting_the_floor_cascades(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Xoá cứng tầng (SQL) → `versions` của tầng mất theo CASCADE, #36 trả 404 (không dòng mồ côi)."""
+    """Xoá cứng tầng (SQL) → `versions` của tầng mất theo CASCADE, #36 trả 404 (không dòng mồ côi).
+
+    Hàng catalog: [B06-G-119].
+    """
     stage = await make_stage(db_session)
     await put_layer(db_session, stage, fake_clock, simple_layer(stage.level_id), base=0)
     version = await commit_snap(db_session, stage, fake_clock)

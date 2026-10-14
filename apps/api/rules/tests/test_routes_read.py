@@ -20,7 +20,7 @@ _SAVED = {"DOOR-WIDTH": {"enabled": False, "severity": "critical", "thresholds":
 async def test_rules_read_config__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Hai mẫu golden: chưa lưu → `{revision: 0, overrides: {}}` (không tạo dòng); đã lưu → đúng giá trị đã ghi.
 
-    Hàng catalog: [B05-G-030].
+    Hàng catalog: [B05-G-030, B06-G-002].
     """
     owner, project = await seed_admin_project(db_session)
     viewer = await make_user(db_session, role="viewer")
@@ -40,7 +40,7 @@ async def test_rules_read_config__C01(api_client: httpx.AsyncClient, db_session:
 async def test_rules_read_config__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403.
 
-    Hàng catalog: [B05-G-031].
+    Hàng catalog: [B05-G-031, B06-G-005].
     """
     _, project = await seed_admin_project(db_session)
     outsider = await make_user(db_session, role="admin")
@@ -52,14 +52,20 @@ async def test_rules_read_config__C06(api_client: httpx.AsyncClient, db_session:
 async def test_rules_read_config__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Dự án đã xoá mềm (người gọi vẫn là thành viên) → 404."""
+    """Dự án đã xoá mềm (người gọi vẫn là thành viên) → 404.
+
+    Hàng catalog: [B06-G-007].
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
     assert (await get_config(api_client, project.id, owner)).status_code == 404
 
 
 async def test_rules_read_config__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`RuleOverride` chỉ có `thresholds` → vắng `enabled`, `severity` (không `null`)."""
+    """`RuleOverride` chỉ có `thresholds` → vắng `enabled`, `severity` (không `null`).
+
+    Hàng catalog: [B06-G-010].
+    """
     owner, project = await seed_admin_project(db_session)
     payload = {"WALL-LENGTH": {"thresholds": {"wall.minLengthMm": 100}}}
     await put_config(api_client, project.id, owner, replace_body(0, payload))
@@ -72,7 +78,7 @@ async def test_rules_read_config__stale_entries_filtered(
 ) -> None:
     """Dòng ghi bằng SQL có mã/khoá cũ: N21 chỉ trả phần còn trong danh mục; PUT lại đúng thứ đó → 200.
 
-    Hàng catalog: [B05-G-033].
+    Hàng catalog: [B05-G-033, B06-G-008].
     """
     owner, project = await seed_admin_project(db_session)
     stored = (
@@ -96,7 +102,10 @@ async def test_rules_read_config__stale_entries_filtered(
 async def test_rules_read_config__unknown_override_field_filtered(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Dòng SQL có trường ngoài lược đồ (`note`) trong override: N21 trả 200 với phần hợp lệ, không 500 (NO-250)."""
+    """Dòng SQL có trường ngoài lược đồ (`note`) trong override: N21 trả 200 với phần hợp lệ, không 500 (NO-250).
+
+    Hàng catalog: [B06-G-009].
+    """
     owner, project = await seed_admin_project(db_session)
     stored = '{"DOOR-WIDTH": {"severity": "warning", "note": "x", "thresholds": {"door.minWidthMm": 700}}}'
     await db_session.execute(

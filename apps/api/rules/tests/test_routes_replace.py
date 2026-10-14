@@ -44,7 +44,10 @@ async def _stored(db_sessionmaker: async_sessionmaker[AsyncSession], project_id:
 async def test_rules_replace_config__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Ghi đầu `baseVersion: 0` → `revision: 1`; bền qua session mới (K22); người ghi là `sub` (K05)."""
+    """Ghi đầu `baseVersion: 0` → `revision: 1`; bền qua session mới (K22); người ghi là `sub` (K05).
+
+    Hàng catalog: [B06-G-015].
+    """
     owner, project = await seed_admin_project(db_session)
     first = await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     assert first.status_code == 200
@@ -59,7 +62,10 @@ async def test_rules_replace_config__C01(
 async def test_rules_replace_config__C01_same_config_still_writes(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Gửi lại đúng cấu hình đang có với `baseVersion = revision` vẫn là một lần ghi (tăng `revision`)."""
+    """Gửi lại đúng cấu hình đang có với `baseVersion = revision` vẫn là một lần ghi (tăng `revision`).
+
+    Hàng catalog: [B06-G-025].
+    """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     again = await put_config(api_client, project.id, owner, replace_body(1, _CONFIG))
@@ -92,7 +98,10 @@ async def test_rules_replace_config__C02(
 
 
 async def test_rules_replace_config__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong `body` và trong `RuleOverride` → 422 (W1)."""
+    """Khoá lạ trong `body` và trong `RuleOverride` → 422 (W1).
+
+    Hàng catalog: [B06-G-041, B06-G-042, B06-G-050].
+    """
     owner, project = await seed_admin_project(db_session)
     in_body = {"baseVersion": 0, "body": {"overrides": {}, "extra": 1}}
     in_override = replace_body(0, {"WALL-LENGTH": {"enabled": True, "note": "x"}})
@@ -103,7 +112,10 @@ async def test_rules_replace_config__C03(api_client: httpx.AsyncClient, db_sessi
 
 
 async def test_rules_replace_config__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Người ngoài dự án, kể cả admin hệ thống → 404, không ghi gì."""
+    """Người ngoài dự án, kể cả admin hệ thống → 404, không ghi gì.
+
+    Hàng catalog: [B06-G-068].
+    """
     _, project = await seed_admin_project(db_session)
     outsider = await make_user(db_session, role="admin")
     response = await put_config(api_client, project.id, outsider, replace_body(0))
@@ -113,7 +125,10 @@ async def test_rules_replace_config__C06(api_client: httpx.AsyncClient, db_sessi
 
 
 async def test_rules_replace_config__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`engineer` (vai mạnh nhất không có `ruleset.edit`) → 403 `FORBIDDEN`, không ghi gì; quyền kiểm trước 428."""
+    """`engineer` (vai mạnh nhất không có `ruleset.edit`) → 403 `FORBIDDEN`, không ghi gì; quyền kiểm trước 428.
+
+    Hàng catalog: [B06-G-067].
+    """
     owner = await make_user(db_session, role="admin")
     engineer = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner, members=[engineer])
@@ -130,7 +145,10 @@ async def test_rules_replace_config__C07(api_client: httpx.AsyncClient, db_sessi
 async def test_rules_replace_config__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Dự án đã xoá mềm → 404."""
+    """Dự án đã xoá mềm → 404.
+
+    Hàng catalog: [B06-G-069].
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
     assert (await put_config(api_client, project.id, owner, replace_body(0))).status_code == 404
@@ -155,7 +173,10 @@ async def test_rules_replace_config__C09(api_client: httpx.AsyncClient, db_sessi
 
 
 async def test_rules_replace_config__C09_no_row(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Base > 0 khi chưa có dòng → 409 với `currentVersion` 0."""
+    """Base > 0 khi chưa có dòng → 409 với `currentVersion` 0.
+
+    Hàng catalog: [B06-G-028].
+    """
     owner, project = await seed_admin_project(db_session)
     response = await put_config(api_client, project.id, owner, replace_body(3, _CONFIG))
     assert response.status_code == 409
@@ -165,7 +186,10 @@ async def test_rules_replace_config__C09_no_row(api_client: httpx.AsyncClient, d
 async def test_rules_replace_config__C09b(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Cùng người, cùng thân, `baseVersion = revision - 1` → 200, `revision` giữ nguyên, đúng một dòng nhật ký."""
+    """Cùng người, cùng thân, `baseVersion = revision - 1` → 200, `revision` giữ nguyên, đúng một dòng nhật ký.
+
+    Hàng catalog: [B06-G-021].
+    """
     owner, project = await seed_admin_project(db_session)
     first = await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     repeat = await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
@@ -177,7 +201,10 @@ async def test_rules_replace_config__C09b(
 
 
 async def test_rules_replace_config__C09b_other_user(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Cùng thân, `baseVersion = revision - 1`, người khác (cũng admin) → 409; cùng người khác thân → 409."""
+    """Cùng thân, `baseVersion = revision - 1`, người khác (cũng admin) → 409; cùng người khác thân → 409.
+
+    Hàng catalog: [B06-G-022].
+    """
     owner = await make_user(db_session, role="admin")
     other = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, members=[other])
@@ -189,7 +216,10 @@ async def test_rules_replace_config__C09b_other_user(api_client: httpx.AsyncClie
 async def test_rules_replace_config__C09b_hash_ignores_number_spelling(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """1200 và 1200.0 cùng một băm: gửi lặp bằng cách viết khác vẫn là C09b."""
+    """1200 và 1200.0 cùng một băm: gửi lặp bằng cách viết khác vẫn là C09b.
+
+    Hàng catalog: [B06-G-023].
+    """
     owner, project = await seed_admin_project(db_session)
     as_int = {"DOOR-WIDTH": {"thresholds": {"door.minWidthMm": 1200}}}
     as_float = {"DOOR-WIDTH": {"thresholds": {"door.minWidthMm": 1200.0}}}
@@ -202,7 +232,10 @@ async def test_rules_replace_config__C09b_hash_ignores_number_spelling(
 async def test_rules_replace_config__C09b_stale_entry_filtered(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """PUT hợp lệ, chèn `OLD-RULE` bằng SQL rồi gửi lặp cùng thân (C09b) → 200 không có `OLD-RULE`."""
+    """PUT hợp lệ, chèn `OLD-RULE` bằng SQL rồi gửi lặp cùng thân (C09b) → 200 không có `OLD-RULE`.
+
+    Hàng catalog: [B06-G-024].
+    """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     await db_session.execute(
@@ -219,7 +252,10 @@ async def test_rules_replace_config__C09b_stale_entry_filtered(
 async def test_rules_replace_config__C18(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Ghi thắng → đúng một dòng `rules.config_update` (actor = `sub`, nhãn = tên dự án); 409 không ghi thêm."""
+    """Ghi thắng → đúng một dòng `rules.config_update` (actor = `sub`, nhãn = tên dự án); 409 không ghi thêm.
+
+    Hàng catalog: [B06-G-019].
+    """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     row = await assert_one_activity(
@@ -236,7 +272,10 @@ async def test_rules_replace_config__C18(
 async def test_rules_replace_config__wire_keeps_false_zero_and_case(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Dây: ngưỡng `0` và `enabled: false` có mặt; khoá `WALL-THICKNESS` giữ nguyên, không camelCase."""
+    """Dây: ngưỡng `0` và `enabled: false` có mặt; khoá `WALL-THICKNESS` giữ nguyên, không camelCase.
+
+    Hàng catalog: [B06-G-016].
+    """
     owner, project = await seed_admin_project(db_session)
     overrides = {
         "ESCAPE-DISTANCE": {"thresholds": {"escape.openingOnOutlineToleranceMm": 0}},
@@ -251,7 +290,10 @@ async def test_rules_replace_config__wire_keeps_false_zero_and_case(
 async def test_rules_replace_config__cascade_on_project_delete(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Xoá cứng dự án (SQL trực tiếp) → dòng `rule_configs` mất (FK `ON DELETE CASCADE`)."""
+    """Xoá cứng dự án (SQL trực tiếp) → dòng `rule_configs` mất (FK `ON DELETE CASCADE`).
+
+    Hàng catalog: [B06-G-070].
+    """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     count = "SELECT count(*) FROM rule_configs"
@@ -262,7 +304,10 @@ async def test_rules_replace_config__cascade_on_project_delete(
 
 
 async def test_rules_replace_config__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`RuleOverride` chỉ có `thresholds` → response vắng `enabled`, `severity` (không `null`)."""
+    """`RuleOverride` chỉ có `thresholds` → response vắng `enabled`, `severity` (không `null`).
+
+    Hàng catalog: [B06-G-017].
+    """
     owner, project = await seed_admin_project(db_session)
     overrides = {"WALL-LENGTH": {"thresholds": {"wall.minLengthMm": 100}}}
     response = await put_config(api_client, project.id, owner, replace_body(0, overrides))

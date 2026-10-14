@@ -47,7 +47,10 @@ def _forged(cursor: str) -> str:
 
 
 def test_forged__mac_ending_in_padding_bits(storage_env: None) -> None:
-    """Cursor có MAC tận cùng `x[w-z]` (đuôi cũ `"xx"` trùng MAC thật) vẫn bị `_forged` làm hỏng (NO-258)."""
+    """Cursor có MAC tận cùng `x[w-z]` (đuôi cũ `"xx"` trùng MAC thật) vẫn bị `_forged` làm hỏng (NO-258).
+
+    Hàng catalog: [B06-G-092].
+    """
     cursor = next(
         signed
         for index in count()
@@ -70,7 +73,10 @@ async def _seed(db: AsyncSession, stage: Stage, clock: Clock, count: int, *, fir
 async def test_versions_list_versions__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Ba bản → `sequence` 3,2,1; mỗi mục có đủ trường, `floorRevision` là `revision` lúc chụp."""
+    """Ba bản → `sequence` 3,2,1; mỗi mục có đủ trường, `floorRevision` là `revision` lúc chụp.
+
+    Hàng catalog: [B06-G-082].
+    """
     stage = await make_stage(db_session)
     ids = await _seed(db_session, stage, fake_clock, 3)
 
@@ -109,7 +115,10 @@ async def test_versions_list_versions__C02(
     params: dict[str, Any],
     field: str | None,
 ) -> None:
-    """Thiếu/rỗng `floorId`, `limit=0`, `limit=201` → 422 `VALIDATION` kèm `field` đúng tham số."""
+    """Thiếu/rỗng `floorId`, `limit=0`, `limit=201` → 422 `VALIDATION` kèm `field` đúng tham số.
+
+    Hàng catalog: [B06-G-088].
+    """
     stage = await make_stage(db_session)
 
     if floor_id is None:
@@ -124,7 +133,10 @@ async def test_versions_list_versions__C02(
 
 
 async def test_versions_list_versions__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`.
+
+    Hàng catalog: [B06-G-096].
+    """
     stage = await make_stage(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
@@ -138,7 +150,10 @@ async def test_versions_list_versions__C06(api_client: httpx.AsyncClient, db_ses
 async def test_versions_list_versions__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, missing: str
 ) -> None:
-    """`floorId` không có, của dự án khác, hay tầng xoá mềm → 404 `resource:"floor"`."""
+    """`floorId` không có, của dự án khác, hay tầng xoá mềm → 404 `resource:"floor"`.
+
+    Hàng catalog: [B06-G-090].
+    """
     stage = await make_stage(db_session)
     other = await make_stage(db_session)
     floor_id = "L-NOSUCHFLOOR"
@@ -160,7 +175,10 @@ async def test_versions_list_versions__C08(
 async def test_versions_list_versions__C15_small(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, count: int
 ) -> None:
-    """0 bản → `items: []`; 1 bản → một mục; cả hai không có `nextCursor`."""
+    """0 bản → `items: []`; 1 bản → một mục; cả hai không có `nextCursor`.
+
+    Hàng catalog: [B06-G-084].
+    """
     stage = await make_stage(db_session)
     await _seed(db_session, stage, fake_clock, count)
 
@@ -173,7 +191,10 @@ async def test_versions_list_versions__C15_small(
 async def test_versions_list_versions__C15_pages(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """7 bản, `limit=3` → trang 3/3/1, trang cuối vắng `nextCursor`; bản mới chen giữa hai trang không trùng."""
+    """7 bản, `limit=3` → trang 3/3/1, trang cuối vắng `nextCursor`; bản mới chen giữa hai trang không trùng.
+
+    Hàng catalog: [B06-G-085].
+    """
     stage = await make_stage(db_session)
     await _seed(db_session, stage, fake_clock, 7)
 
@@ -197,7 +218,10 @@ async def _seed_more(db: AsyncSession, stage: Stage, clock: Clock, *, base: int)
 async def test_versions_list_versions__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Không `note`, không `label`, hết trang → ba khoá cùng vắng (W2); có nhãn thì khoá `label` hiện."""
+    """Không `note`, không `label`, hết trang → ba khoá cùng vắng (W2); có nhãn thì khoá `label` hiện.
+
+    Hàng catalog: [B06-G-083].
+    """
     stage = await make_stage(db_session)
     bare = await commit_snap(db_session, stage, fake_clock)
 
@@ -234,7 +258,10 @@ def _without(statement: str, allowed: tuple[str, ...]) -> str:
 async def test_versions_list_versions__never_selects_the_snapshot(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Mọi câu SQL chạm `versions` trong một lượt N17 không nhắc cột `snapshot` ngoài `snapshot IS NOT NULL`."""
+    """Mọi câu SQL chạm `versions` trong một lượt N17 không nhắc cột `snapshot` ngoài `snapshot IS NOT NULL`.
+
+    Hàng catalog: [B06-G-093].
+    """
     stage = await make_stage(db_session)
     await _seed(db_session, stage, fake_clock, 2)
 
@@ -251,7 +278,10 @@ async def test_versions_list_versions__never_selects_the_snapshot(
 async def test_versions_list_versions__creator_name_is_the_name_at_write_time(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đổi `users.name` sau khi tạo bản → N17 vẫn trả tên **lúc ghi** (chuẩn hoá NFC)."""
+    """Đổi `users.name` sau khi tạo bản → N17 vẫn trả tên **lúc ghi** (chuẩn hoá NFC).
+
+    Hàng catalog: [B06-G-094].
+    """
     stage = await make_stage(db_session)
     await commit_snap(db_session, stage, fake_clock)
     old_name = stage.owner.name
@@ -272,7 +302,10 @@ async def test_versions_list_versions__retention(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Trần 3, tạo 5 bản → hai bản cũ `hasSnapshot: false`, siêu dữ liệu còn đủ năm dòng."""
+    """Trần 3, tạo 5 bản → hai bản cũ `hasSnapshot: false`, siêu dữ liệu còn đủ năm dòng.
+
+    Hàng catalog: [B06-G-095].
+    """
     keep_snapshots(monkeypatch, 3)
     stage = await make_stage(db_session)
     await _seed(db_session, stage, fake_clock, 5)
