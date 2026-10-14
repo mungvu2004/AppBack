@@ -384,7 +384,10 @@ def _assert_static_prefixes_404(files: dict[Path, list[Node]], suffixes: tuple[s
 
 
 def test_nginx_draco_and_assets_return_404_when_missing() -> None:
-    """`/draco/` và `/assets/`: `try_files … =404` (thiếu `.wasm`/asset không trả HTML 200)."""
+    """`/draco/` và `/assets/`: `try_files … =404` (thiếu `.wasm`/asset không trả HTML 200).
+
+    Hàng catalog: [B05-G-143].
+    """
     _assert_static_prefixes_404(_all_nginx_files(), ("/draco/", "/assets/"))
 
 

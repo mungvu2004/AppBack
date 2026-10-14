@@ -90,7 +90,10 @@ async def test_templates_list_templates__C15(
     fake_clock: FakeClock,
     count: int,
 ) -> None:
-    """Trần = 3: 0, 1, 3 mục trả trọn; khuôn thứ 4 → 422 `TEMPLATE_LIMIT_REACHED`, danh sách vẫn 3."""
+    """Trần = 3: 0, 1, 3 mục trả trọn; khuôn thứ 4 → 422 `TEMPLATE_LIMIT_REACHED`, danh sách vẫn 3.
+
+    Hàng catalog: [B05-G-125].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -243,7 +246,10 @@ async def test_templates_create_template_project_id_in_body(
 
 
 async def test_templates_create_template__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên → 404 `resource:"project"` (K08)."""
+    """Admin hệ thống không là thành viên → 404 `resource:"project"` (K08).
+
+    Hàng catalog: [B05-G-124].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -252,7 +258,10 @@ async def test_templates_create_template__C06(api_client: httpx.AsyncClient, db_
 
 
 async def test_templates_create_template__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`viewer` → 403."""
+    """`viewer` → 403.
+
+    Hàng catalog: [B05-G-123].
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])
@@ -300,7 +309,10 @@ async def test_templates_create_template__C17(api_client: httpx.AsyncClient, db_
 async def test_templates_create_template__no_dedupe(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Hai lượt bấm cùng thân là hai khuôn khác id (không khử trùng)."""
+    """Hai lượt bấm cùng thân là hai khuôn khác id (không khử trùng).
+
+    Hàng catalog: [B05-G-122].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -349,7 +361,10 @@ async def test_templates_create_template__touch_project(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`touch_project` chạy khi tạo (201), không chạy khi 422 (đo bằng `projects.updated_at`)."""
+    """`touch_project` chạy khi tạo (201), không chạy khi 422 (đo bằng `projects.updated_at`).
+
+    Hàng catalog: [B05-G-126].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)

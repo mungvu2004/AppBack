@@ -109,6 +109,8 @@ async def test_spatial_write_layer__C02(api_client: httpx.AsyncClient, db_sessio
     """mm không nguyên, `baseVersion` âm, tỉ lệ 0 hay quá lớn, `body` rỗng, tên phòng U+202E → 422 kèm `field`.
 
     Hàng catalog: [BE4-G-210] [BE4-G-309].
+
+    Hàng catalog: [B05-G-054].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
@@ -148,6 +150,8 @@ async def test_spatial_write_layer__C06(api_client: httpx.AsyncClient, db_sessio
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403 (BE-00 §4).
 
     Hàng catalog: [BE4-G-212] [BE4-G-311].
+
+    Hàng catalog: [B05-G-049].
     """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
@@ -165,6 +169,8 @@ async def test_spatial_write_layer__C07(api_client: httpx.AsyncClient, db_sessio
     """Viewer là thành viên nhưng ma trận `layer.edit` cho `False` → 403 `FORBIDDEN`.
 
     Hàng catalog: [BE4-G-211] [BE4-G-312].
+
+    Hàng catalog: [B05-G-048].
     """
     viewer = await make_user(db_session, role="viewer")
     scene = await make_scene(db_session, members=[viewer])
@@ -184,6 +190,8 @@ async def test_spatial_write_layer__C08(
     """Tầng không có, tầng xoá mềm, tầng của dự án khác → 404 `resource:"floor"`.
 
     Hàng catalog: [BE4-G-313].
+
+    Hàng catalog: [B05-G-050].
     """
     scene = await make_scene(db_session)
     other = await make_scene(db_session)
@@ -242,6 +250,8 @@ async def test_spatial_write_layer__C09_missing(api_client: httpx.AsyncClient, d
     """Thân không có khoá `baseVersion` → 428 `PRECONDITION_REQUIRED`, trước cả Pydantic.
 
     Hàng catalog: [BE4-G-214] [BE4-G-315].
+
+    Hàng catalog: [B05-G-047].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
@@ -258,6 +268,8 @@ async def test_spatial_write_layer__C09b(api_client: httpx.AsyncClient, db_sessi
     """Cùng người gửi lại **đúng** thân với base đã lưu → 200 `revision 1`, nhật ký không thêm dòng.
 
     Hàng catalog: [BE4-G-215] [BE4-G-316].
+
+    Hàng catalog: [B05-G-046].
     """
     second = await make_user(db_session, name="Người thứ hai")
     scene = await make_scene(db_session, members=[second])
@@ -329,6 +341,8 @@ async def test_spatial_write_layer__C14(api_client: httpx.AsyncClient, db_sessio
     Postgres thật chạy song song — không phải hai lượt gọi hàm trong cùng một session.
 
     Hàng catalog: [BE4-G-317].
+
+    Hàng catalog: [B05-G-059].
     """
     second = await make_user(db_session, name="Người thứ hai")
     scene = await make_scene(db_session, members=[second])

@@ -33,6 +33,8 @@ async def test_spatial_read_layer__C01(
     """Đúng: tầng có tài liệu toà mẫu và kích thước; `level.id` là `Floor.id` (H1 `n16`).
 
     Hàng catalog: [BE4-G-201] [BE4-G-301].
+
+    Hàng catalog: [B05-G-061].
     """
     scene = await make_scene(db_session, floors=2)
     floor = scene.floors[0]

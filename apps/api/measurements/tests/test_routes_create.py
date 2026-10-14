@@ -222,7 +222,10 @@ async def test_measurements_create_record__undo_cycle(api_client: httpx.AsyncCli
 async def test_measurements_create_record__id_reuse_after_delete(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Có `MS-0001`, `MS-0002`; xoá `MS-0002`; POST `MS-0002` thân khác → 201 (id lớn nhất được tái dùng)."""
+    """Có `MS-0001`, `MS-0002`; xoá `MS-0002`; POST `MS-0002` thân khác → 201 (id lớn nhất được tái dùng).
+
+    Hàng catalog: [25-G-028], [B05-G-115].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -253,7 +256,10 @@ async def test_measurements_create_record__same_id_different_body_never_overwrit
 async def test_measurements_create_record__negative_zero_equals_zero(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`-0.0` chuẩn hoá thành `0.0`: gửi lại với `0` cho cùng dấu vân tay → 200, không phải 409."""
+    """`-0.0` chuẩn hoá thành `0.0`: gửi lại với `0` cho cùng dấu vân tay → 200, không phải 409.
+
+    Hàng catalog: [25-G-026].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -410,7 +416,10 @@ async def test_measurements_create_record__total_points_limit(
 async def test_measurements_create_record__points_max_setting(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`MEASUREMENT_POINTS_MAX` đọc lười lúc chạy: đặt = 2 thì 3 điểm → 422 `field:"points"`."""
+    """`MEASUREMENT_POINTS_MAX` đọc lười lúc chạy: đặt = 2 thì 3 điểm → 422 `field:"points"`.
+
+    Hàng catalog: [25-G-024].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     with with_env(monkeypatch, reset_measurements_settings_cache, MEASUREMENT_POINTS_MAX=2):
@@ -427,7 +436,10 @@ async def test_measurements_create_record__touch_project(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`touch_project` chạy khi tạo (201) và **không** chạy khi 200, 409 hay 422 (đo bằng `projects.updated_at`)."""
+    """`touch_project` chạy khi tạo (201) và **không** chạy khi 200, 409 hay 422 (đo bằng `projects.updated_at`).
+
+    Hàng catalog: [25-G-022].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -451,7 +463,10 @@ async def test_measurements_create_record__touch_project(
 async def test_measurements_create_record__second_session_and_project_cascade(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đọc lại qua session mới thấy dòng (K22); xoá cứng dòng `projects` → phép đo đi theo (CASCADE)."""
+    """Đọc lại qua session mới thấy dòng (K22); xoá cứng dòng `projects` → phép đo đi theo (CASCADE).
+
+    Hàng catalog: [B05-G-117].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     await api_client.post(measurements_path(project.id), json=record_body(), headers=headers_of(owner))

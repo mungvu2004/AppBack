@@ -51,7 +51,10 @@ def _principal(fake_clock: FakeClock, role: Role) -> Principal:
 async def test_telemetry_read_feature_flags__C01(
     api_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, fake_clock: FakeClock
 ) -> None:
-    """C01: 5 khoá cấu hình đủ, một khoá theo vai — `admin` → true, `viewer` → false."""
+    """C01: 5 khoá cấu hình đủ, một khoá theo vai — `admin` → true, `viewer` → false.
+
+    Hàng catalog: [B05-G-130].
+    """
     monkeypatch.setenv("FEATURE_FLAGS", FIVE_KEYS_ONE_ROLE)
     reset_telemetry_settings_cache()
 
@@ -93,7 +96,10 @@ async def test_telemetry_read_feature_flags__C17_two_keys(
 
 
 async def test_missing_authorization_is_401(api_client: httpx.AsyncClient) -> None:
-    """Thiếu header `Authorization` → 401."""
+    """Thiếu header `Authorization` → 401.
+
+    Hàng catalog: [B05-G-131].
+    """
     response = await api_client.get(PATH)
     assert response.status_code == 401
 

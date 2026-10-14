@@ -156,7 +156,10 @@ async def test_spatial_write_layer_accepts_a_large_floor(
 async def test_spatial_write_layer_rejects_a_body_over_eight_mebibytes(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Thân > 8 MiB → 413 từ `BodyLimitMiddleware`, trước cả xác thực thân (C12 của route này)."""
+    """Thân > 8 MiB → 413 từ `BodyLimitMiddleware`, trước cả xác thực thân (C12 của route này).
+
+    Hàng catalog: [B05-G-004].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     raw = json.dumps(write_body(0, layer=simple_layer(floor.level_id))).encode()

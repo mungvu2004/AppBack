@@ -157,7 +157,10 @@ def test_boundary_value_is_accepted(model: type[BaseModel], key: str, value: obj
 
 @pytest.mark.parametrize(("model", "key", "value"), REJECTED)
 def test_broken_constraint_is_rejected(model: type[BaseModel], key: str, value: object) -> None:
-    """Mỗi ràng buộc của [6] hỏng thành `ValidationError` (B3-03 đổi thành 422 `VALIDATION`)."""
+    """Mỗi ràng buộc của [6] hỏng thành `ValidationError` (B3-03 đổi thành 422 `VALIDATION`).
+
+    Hàng catalog: [B05-G-055].
+    """
     with pytest.raises(ValidationError):
         model.model_validate(_with(model, key, value))
 

@@ -15,7 +15,10 @@ from apps.api.measurements.text import clean_label
     [("  Tường  ", "Tường"), (unicodedata.normalize("NFD", "Cửa"), "Cửa"), ("a" * 120, "a" * 120)],
 )
 def test_clean_label__trims_and_composes(raw: str, expected: str) -> None:
-    """`nfc(strip)`: cắt khoảng trắng hai đầu, đưa về NFC, giữ đúng 120 ký tự."""
+    """`nfc(strip)`: cắt khoảng trắng hai đầu, đưa về NFC, giữ đúng 120 ký tự.
+
+    Hàng catalog: [25-G-025].
+    """
     assert clean_label(raw) == expected
 
 

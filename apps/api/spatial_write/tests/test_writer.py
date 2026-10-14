@@ -266,7 +266,10 @@ async def test_spatial_write_layer_accepts_warning_only_issues(db_session: Async
 
 
 async def test_spatial_write_layer_recomputes_room_area(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """`areaM2` client gửi lên bị bỏ: diện tích luôn tính lại từ đường bao (W18)."""
+    """`areaM2` client gửi lên bị bỏ: diện tích luôn tính lại từ đường bao (W18).
+
+    Hàng catalog: [B05-G-057].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     layer = simple_layer(floor.level_id, rooms=(make_room(floor.level_id, area_m2=999.123),))

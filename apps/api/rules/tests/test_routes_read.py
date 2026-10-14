@@ -18,7 +18,10 @@ _SAVED = {"DOOR-WIDTH": {"enabled": False, "severity": "critical", "thresholds":
 
 
 async def test_rules_read_config__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Hai mẫu golden: chưa lưu → `{revision: 0, overrides: {}}` (không tạo dòng); đã lưu → đúng giá trị đã ghi."""
+    """Hai mẫu golden: chưa lưu → `{revision: 0, overrides: {}}` (không tạo dòng); đã lưu → đúng giá trị đã ghi.
+
+    Hàng catalog: [B05-G-030].
+    """
     owner, project = await seed_admin_project(db_session)
     viewer = await make_user(db_session, role="viewer")
     shared = await seed_project(db_session, owner=owner, members=[viewer])
@@ -35,7 +38,10 @@ async def test_rules_read_config__C01(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_rules_read_config__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403.
+
+    Hàng catalog: [B05-G-031].
+    """
     _, project = await seed_admin_project(db_session)
     outsider = await make_user(db_session, role="admin")
     response = await get_config(api_client, project.id, outsider)
@@ -64,7 +70,10 @@ async def test_rules_read_config__C17(api_client: httpx.AsyncClient, db_session:
 async def test_rules_read_config__stale_entries_filtered(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Dòng ghi bằng SQL có mã/khoá cũ: N21 chỉ trả phần còn trong danh mục; PUT lại đúng thứ đó → 200."""
+    """Dòng ghi bằng SQL có mã/khoá cũ: N21 chỉ trả phần còn trong danh mục; PUT lại đúng thứ đó → 200.
+
+    Hàng catalog: [B05-G-033].
+    """
     owner, project = await seed_admin_project(db_session)
     stored = (
         '{"OLD-RULE": {"enabled": false},'

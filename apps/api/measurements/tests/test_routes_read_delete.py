@@ -105,7 +105,10 @@ async def test_measurements_list_records__C17(api_client: httpx.AsyncClient, db_
 async def test_measurements_list_records__numeric_id_order(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Thứ tự số của id: `MS-10000` đứng sau `MS-9999` (sắp chữ sẽ đặt nó trước)."""
+    """Thứ tự số của id: `MS-10000` đứng sau `MS-9999` (sắp chữ sẽ đặt nó trước).
+
+    Hàng catalog: [25-G-023].
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -225,7 +228,10 @@ async def test_measurements_delete_record__C08_deleted_project(
 async def test_measurements_delete_record__other_project_id_not_deletable(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """`MS-0001` của dự án A không xoá được qua đường của dự án B (404), dòng còn nguyên."""
+    """`MS-0001` của dự án A không xoá được qua đường của dự án B (404), dòng còn nguyên.
+
+    Hàng catalog: [25-G-027].
+    """
     owner = await make_user(db_session, role="engineer")
     project_a = await seed_project(db_session, owner=owner)
     project_b = await seed_project(db_session, owner=owner)

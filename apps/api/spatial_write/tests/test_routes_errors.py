@@ -50,6 +50,8 @@ async def test_spatial_write_layer_rejects_base_version_above_current(
     """`baseVersion` lớn hơn bản ghi hiện tại → 422 `field:"baseVersion"`, không phải 409 (W20).
 
     Hàng catalog: [BE4-G-216].
+
+    Hàng catalog: [B05-G-045].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
@@ -67,6 +69,8 @@ async def test_spatial_write_layer_rejects_ai_reviewed_entity(
     """A5 (W5): `source="ai"` kèm `reviewed=True` → 422 `REVIEW_BY_AI_FORBIDDEN` trỏ đúng mục.
 
     Hàng catalog: [BE4-G-217].
+
+    Hàng catalog: [B05-G-056].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
@@ -83,7 +87,10 @@ async def test_spatial_write_layer_rejects_ai_reviewed_entity(
 async def test_spatial_write_layer_rejects_wall_of_other_level(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Tường mang `levelId` của tầng khác → 422 `LAYER_LEVEL_MISMATCH`."""
+    """Tường mang `levelId` của tầng khác → 422 `LAYER_LEVEL_MISMATCH`.
+
+    Hàng catalog: [B05-G-051].
+    """
     scene = await make_scene(db_session, floors=2)
     floor, elsewhere = scene.floors
 
@@ -106,6 +113,8 @@ async def test_spatial_write_layer_rejects_broken_integrity(
     """Ô mở trỏ tường không có → 422 `LAYER_INTEGRITY_BROKEN` kèm `count` số lỗi `critical`.
 
     Hàng catalog: [BE4-G-219].
+
+    Hàng catalog: [B05-G-053].
     """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
@@ -181,7 +190,10 @@ async def test_spatial_write_layer_logs_the_token_subject(
 async def test_spatial_write_layer_ignores_the_idempotency_key(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Route GV khai `idempotency="off"`: lượt lặp cùng khoá đi qua C09b, bảng nhận việc vẫn rỗng."""
+    """Route GV khai `idempotency="off"`: lượt lặp cùng khoá đi qua C09b, bảng nhận việc vẫn rỗng.
+
+    Hàng catalog: [B05-G-058].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     payload = write_body(0, layer=simple_layer(floor.level_id))

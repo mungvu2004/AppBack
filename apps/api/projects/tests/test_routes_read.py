@@ -106,7 +106,10 @@ async def test_projects_list_projects__C17(api_client: httpx.AsyncClient, db_ses
 
 
 async def test_projects_read_project__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Đúng: thành viên đọc được dự án của mình."""
+    """Đúng: thành viên đọc được dự án của mình.
+
+    Hàng catalog: [B05-G-010].
+    """
     owner = await make_user(db_session)
     project = await seed_project(db_session, owner=owner, name="Nhà chính")
     response = await api_client.get(project_path(project.id), headers=headers_of(owner))

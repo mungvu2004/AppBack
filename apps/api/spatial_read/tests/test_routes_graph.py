@@ -66,7 +66,10 @@ async def test_spatial_read_graph__C01(
 
 
 async def test_spatial_read_graph__C01_empty_project(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Dự án chưa có tầng → `levels: []`, `floorRevisions: []`, `building.reviewed: false` ([6])."""
+    """Dự án chưa có tầng → `levels: []`, `floorRevisions: []`, `building.reviewed: false` ([6]).
+
+    Hàng catalog: [B05-G-022].
+    """
     scene = await make_scene(db_session, floors=0)
     body = (await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))).json()
     assert body["graph"]["levels"] == []
@@ -121,7 +124,10 @@ async def test_spatial_read_graph_orders_equal_order_by_pk(
 async def test_spatial_read_graph_skips_soft_deleted_floor(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Tầng xoá mềm vắng khỏi `levels` **và** `floorRevisions` (song ánh vẫn đúng)."""
+    """Tầng xoá mềm vắng khỏi `levels` **và** `floorRevisions` (song ánh vẫn đúng).
+
+    Hàng catalog: [B05-G-023].
+    """
     scene = await make_scene(db_session, floors=2)
     await db_session.execute(
         update(FloorRow).where(FloorRow.pk == scene.floors[0].pk).values(deleted_at=fake_clock.now())
@@ -135,7 +141,10 @@ async def test_spatial_read_graph_skips_soft_deleted_floor(
 async def test_spatial_read_graph_query_count_is_flat(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Số câu SQL của dự án 1 tầng và dự án 8 tầng bằng nhau — không N+1 ([6] N15)."""
+    """Số câu SQL của dự án 1 tầng và dự án 8 tầng bằng nhau — không N+1 ([6] N15).
+
+    Hàng catalog: [B05-G-025].
+    """
     small = await make_scene(db_session, floors=1)
     large = await make_scene(db_session, floors=8)
     await _fill(db_session, small.floors[0], 0, fake_clock)
@@ -166,7 +175,10 @@ async def test_spatial_read_graph__reads_floors_table_once(
 async def test_spatial_read_graph_level_matches_floors_list(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """`Level.id` = `Floor.id`, và `areaM2` là **số** JSON bằng đúng #12/#33 (cùng bảng đếm)."""
+    """`Level.id` = `Floor.id`, và `areaM2` là **số** JSON bằng đúng #12/#33 (cùng bảng đếm).
+
+    Hàng catalog: [B05-G-012].
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     await _fill(db_session, floor, 0, fake_clock)
@@ -186,7 +198,10 @@ async def test_spatial_read_graph_level_matches_floors_list(
 async def test_spatial_read_graph_building_reviewed_when_every_level_is(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """`building.reviewed` đúng khi có ≥ 1 tầng và **mọi** tầng đã duyệt (HOP-DONG-MOI §4.1)."""
+    """`building.reviewed` đúng khi có ≥ 1 tầng và **mọi** tầng đã duyệt (HOP-DONG-MOI §4.1).
+
+    Hàng catalog: [B05-G-024].
+    """
     scene = await make_scene(db_session, floors=2)
     for index, floor in enumerate(scene.floors):
         await _fill(db_session, floor, index, fake_clock, reviewed=True)
@@ -231,6 +246,8 @@ async def test_spatial_read_graph_when_floor_vanishes_mid_request(
 
     `pk` đi cùng `FloorOut` từ một snapshot, nên không còn khe giữa hai câu đọc để lệch độ dài
     hai danh sách (`zip(strict=True)`) hay `KeyError`. #33 và N16 có `_floor_out_or_404` riêng.
+
+    Hàng catalog: [B05-G-026].
     """
     scene = await make_scene(db_session, floors=2)
     gone, kept = scene.floors
