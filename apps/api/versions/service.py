@@ -10,7 +10,6 @@ chưa xoá; id sai mẫu hay của dự án khác đều là 404 `resource:"vers
 nào xoá dòng `versions`.
 """
 
-import unicodedata
 from dataclasses import dataclass, replace
 from typing import Final
 
@@ -41,7 +40,7 @@ from apps.api.versions.snapshots import (
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND, VALIDATION
 from packages.core.ids import is_id
-from packages.core.text import nfc
+from packages.core.text import first_forbidden_char, nfc
 from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.versions import VersionRecord
@@ -53,14 +52,6 @@ LIST_OP: Final = "versions_list_versions"
 
 LABEL_MAX_UNITS: Final = 60
 """Độ dài nhãn tối đa tính bằng **đơn vị UTF-16**, như `z.string().max(60)` của FE."""
-
-_BIDI_CONTROLS: Final = frozenset("\u200e\u200f\u061c\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
-"""Ký tự đảo chiều (LRM, RLM, ALM, U+202A-U+202E, U+2066-U+2069): nhãn không được chứa."""
-
-
-def _forbidden_label_char(ch: str) -> bool:
-    """Ký tự điều khiển (Cc) hay đảo chiều; ZWJ và ký tự định dạng khác của emoji vẫn hợp lệ."""
-    return unicodedata.category(ch) == "Cc" or ch in _BIDI_CONTROLS
 
 
 @dataclass(frozen=True)
@@ -311,7 +302,7 @@ def normalize_label(raw: str) -> str | None:
     """
     text = nfc(raw).strip()
     units = len(text.encode("utf-16-le")) // 2
-    if units > LABEL_MAX_UNITS or any(_forbidden_label_char(ch) for ch in text):
+    if units > LABEL_MAX_UNITS or first_forbidden_char(text, bidi_marks=True) is not None:
         raise VALIDATION.error(field="label")
     return text or None
 
