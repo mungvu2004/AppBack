@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from apps.api.access.kinds import ActivityKind
 from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_write.tests._helpers import simple_layer
+from apps.api.versions.service import normalize_label
 from apps.api.versions.tests._helpers import versions_of
 from apps.api.versions.tests._route_helpers import (
     Stage,
@@ -26,6 +27,7 @@ from apps.api.versions.tests._route_helpers import (
     relabel,
     versions_path,
 )
+from packages.core.errors import AppError
 from packages.db.models.floors import FloorRow
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
@@ -83,6 +85,19 @@ async def test_versions_label_version__C02(
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION"
     assert response.json()["field"] == "label"
+
+
+@pytest.mark.parametrize(
+    ("raw", "ok"),
+    [("\U0001f468‍\U0001f469‍\U0001f467", True), ("x‏y", False), ("x⁦y", False), ("x\ny", False)],
+)
+def test_normalize_label__zwj_allowed_bidi_and_control_rejected(raw: str, ok: bool) -> None:
+    """BUG-721 [B06-G-228]: ZWJ của emoji ghép hợp lệ; ký tự đảo chiều/điều khiển bị từ chối."""
+    if ok:
+        assert normalize_label(raw) == raw
+    else:
+        with pytest.raises(AppError):
+            normalize_label(raw)
 
 
 async def test_versions_label_version__C03(

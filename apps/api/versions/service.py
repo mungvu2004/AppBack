@@ -54,8 +54,13 @@ LIST_OP: Final = "versions_list_versions"
 LABEL_MAX_UNITS: Final = 60
 """Độ dài nhãn tối đa tính bằng **đơn vị UTF-16**, như `z.string().max(60)` của FE."""
 
-_FORBIDDEN_LABEL_CATEGORIES: Final = frozenset({"Cc", "Cf"})
-"""Ký tự điều khiển và định dạng (gồm U+202A-U+202E, U+2066-U+2069): nhãn không được chứa."""
+_BIDI_CONTROLS: Final = frozenset("\u200e\u200f\u061c\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+"""Ký tự đảo chiều (LRM, RLM, ALM, U+202A-U+202E, U+2066-U+2069): nhãn không được chứa."""
+
+
+def _forbidden_label_char(ch: str) -> bool:
+    """Ký tự điều khiển (Cc) hay đảo chiều; ZWJ và ký tự định dạng khác của emoji vẫn hợp lệ."""
+    return unicodedata.category(ch) == "Cc" or ch in _BIDI_CONTROLS
 
 
 @dataclass(frozen=True)
@@ -306,7 +311,7 @@ def normalize_label(raw: str) -> str | None:
     """
     text = nfc(raw).strip()
     units = len(text.encode("utf-16-le")) // 2
-    if units > LABEL_MAX_UNITS or any(unicodedata.category(ch) in _FORBIDDEN_LABEL_CATEGORIES for ch in text):
+    if units > LABEL_MAX_UNITS or any(_forbidden_label_char(ch) for ch in text):
         raise VALIDATION.error(field="label")
     return text or None
 
