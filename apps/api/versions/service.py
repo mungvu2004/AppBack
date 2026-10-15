@@ -297,8 +297,9 @@ async def _apply_restore(
 def normalize_label(raw: str) -> str | None:
     """Nhãn chuẩn: `nfc` rồi `strip`; rỗng → `None` (gỡ nhãn).
 
-    Đo độ dài bằng đơn vị UTF-16 như zod của FE (ký tự ngoài BMP = 2), và cấm ký tự `Cc`/`Cf`
-    (điều khiển, đảo chiều U+202E…). Sai → 422 `VALIDATION` `field:"label"`.
+    Đo độ dài bằng đơn vị UTF-16 như zod của FE (ký tự ngoài BMP = 2), và cấm ký tự điều khiển
+    (`Cc`) và đảo chiều theo `first_forbidden_char(bidi_marks=True)` (NO-169); ZWJ (U+200D) và
+    U+200B hợp lệ. Sai → 422 `VALIDATION` `field:"label"`.
     """
     text = nfc(raw).strip()
     units = len(text.encode("utf-16-le")) // 2

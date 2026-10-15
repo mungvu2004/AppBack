@@ -116,7 +116,7 @@ def test_label_body_is_strict(payload: dict[str, Any]) -> None:
         ("ệ" * 60, "ệ" * 60),
         ("😀" * 30, "😀" * 30),
         (unicodedata.normalize("NFD", "Bản đẹp"), "Bản đẹp"),
-        ("x​y", "x​y"),
+        ("x\u200by", "x\u200by"),
     ],
 )
 def test_normalize_label_accepts(raw: str, expected: str | None) -> None:
