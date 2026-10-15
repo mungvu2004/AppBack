@@ -190,7 +190,7 @@ def field_of(loc: Iterable[object], body: object = None, model: object = None) -
         parts = parts[1:]
     if root == _BODY_ROOT and isinstance(body, dict | list):
         parts = _body_path(parts, body)
-    if model is not None:
+    if model is not None and root == _BODY_ROOT:
         cut = _user_key_index(model, parts)
         if cut is not None:
             parts = parts[:cut]
