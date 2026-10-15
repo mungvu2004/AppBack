@@ -38,3 +38,13 @@ def test_first_forbidden_char__reports_first_or_none() -> None:
     assert first_forbidden_char("a\x00b\u202ec") == "\x00"
     assert first_forbidden_char("a\u200eb") is None
     assert first_forbidden_char("a\u200eb", bidi_marks=True) == "\u200e"
+
+
+@pytest.mark.parametrize("char", ["\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"])
+def test_clean_text__zero_width_only_when_asked(char: str) -> None:
+    """Ký tự vô hình (B07-C-071) lọt mặc định; `zero_width=True` chặn, thông báo nêu điểm mã."""
+    assert clean_text(f"a{char}b") == f"a{char}b"
+    assert first_forbidden_char(f"a{char}b") is None
+    assert first_forbidden_char(f"a{char}b", zero_width=True) == char
+    with pytest.raises(ValueError, match=r"U\+"):
+        clean_text(f"a{char}b", zero_width=True)

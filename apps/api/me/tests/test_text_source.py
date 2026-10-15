@@ -14,14 +14,20 @@ from packages.testing.factories.auth import make_user
 
 
 def test_me_schemas__reuses_core_text() -> None:
-    """`schemas.py` không tự khai tập ký tự đảo chiều (U+202A…) — gọi `packages.core.text`."""
+    """`schemas.py` không tự khai tập ký tự đảo chiều (U+202A…) — gọi `packages.core.text`.
+
+    Catalog: B07-G-126.
+    """
     source = inspect.getsource(schemas)
     assert "0x202A" not in source
     assert "\u202a" not in source
 
 
 def test_me_router__reuses_core_new_ulid() -> None:
-    """Tên object ảnh đại diện lấy ULID từ `new_ulid`, không cắt tiền tố của `new_id`."""
+    """Tên object ảnh đại diện lấy ULID từ `new_ulid`, không cắt tiền tố của `new_id`.
+
+    Catalog: B07-G-127.
+    """
     assert '.split("_", 1)' not in inspect.getsource(router)
 
 
@@ -29,7 +35,10 @@ def test_me_router__reuses_core_new_ulid() -> None:
 async def test_me_replace_avatar__stored_key_name_is_a_bare_ulid(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Hành vi, không chỉ chuỗi nguồn: khoá lưu sau `PUT /api/me/avatar` có tên là ULID trần hợp lệ."""
+    """Hành vi, không chỉ chuỗi nguồn: khoá lưu sau `PUT /api/me/avatar` có tên là ULID trần hợp lệ.
+
+    Catalog: B07-G-055.
+    """
     user = await make_user(db_session)
     response = await api_client.put(
         "/api/me/avatar",

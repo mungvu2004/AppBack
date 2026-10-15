@@ -13,7 +13,10 @@ PATH = "/api/me"
 
 
 async def test_me_read_profile__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Đúng: 200, `MeSchema` đủ trường khi hồ sơ đủ khoá (K01/K02)."""
+    """Đúng: 200, `MeSchema` đủ trường khi hồ sơ đủ khoá (K01/K02).
+
+    Catalog: B07-G-037.
+    """
     user = await make_user(db_session, name="Nguyễn Văn A")
     response = await api_client.get(PATH, headers=headers_of(principal_of(user)))
     assert response.status_code == 200
@@ -25,7 +28,10 @@ async def test_me_read_profile__C01(api_client: httpx.AsyncClient, db_session: A
 
 
 async def test_me_read_profile__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Trường tuỳ chọn `NULL` → vắng khoá, không `null` (K02)."""
+    """Trường tuỳ chọn `NULL` → vắng khoá, không `null` (K02).
+
+    Catalog: B07-G-036.
+    """
     user = await make_user(db_session)
     response = await api_client.get(PATH, headers=headers_of(principal_of(user)))
     body = response.json()
@@ -36,7 +42,10 @@ async def test_me_read_profile__C17(api_client: httpx.AsyncClient, db_session: A
 async def test_me_read_profile_session_revoked_when_user_deleted(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Người dùng của `Principal` không còn (xoá mềm) → 401 `SESSION_REVOKED`, không 500 (K30)."""
+    """Người dùng của `Principal` không còn (xoá mềm) → 401 `SESSION_REVOKED`, không 500 (K30).
+
+    Catalog: B07-G-040.
+    """
     user = await make_user(db_session)
     user.deleted_at = user.created_at
     await db_session.commit()

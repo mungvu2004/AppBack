@@ -26,7 +26,10 @@ async def _patch(client: httpx.AsyncClient, user: User, body: dict[str, object])
 
 
 async def test_me_update_profile__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Đúng: ghi các cột có mặt, đọc lại sau ghi (K22); khoá vắng giữ nguyên."""
+    """Đúng: ghi các cột có mặt, đọc lại sau ghi (K22); khoá vắng giữ nguyên.
+
+    Catalog: B07-G-020.
+    """
     user = await make_user(db_session, name="Cũ", role="engineer")
     response = await _patch(api_client, user, {"jobTitle": "Kỹ sư", "phone": "0900000000"})
     assert response.status_code == 200
@@ -39,7 +42,10 @@ async def test_me_update_profile__C01(api_client: httpx.AsyncClient, db_session:
 async def test_me_update_profile_language_valid_value_is_saved(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`language: "en"` hợp lệ → 200, lưu đúng giá trị (nhánh thành công của validator, đối lập NO-165)."""
+    """`language: "en"` hợp lệ → 200, lưu đúng giá trị (nhánh thành công của validator, đối lập NO-165).
+
+    Catalog: B07-G-030.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"language": "en"})
     assert response.status_code == 200
@@ -50,7 +56,10 @@ async def test_me_update_profile_language_valid_value_is_saved(
 async def test_me_update_profile__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, bad_body: dict[str, object]
 ) -> None:
-    """Sai kiểu/giá trị → 422 `VALIDATION` có `field`."""
+    """Sai kiểu/giá trị → 422 `VALIDATION` có `field`.
+
+    Catalog: B07-C-009.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, bad_body)
     assert response.status_code == 422
@@ -59,7 +68,10 @@ async def test_me_update_profile__C02(
 
 
 async def test_me_update_profile__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION` (thân `.strict()`, W1)."""
+    """Khoá lạ trong thân → 422 `VALIDATION` (thân `.strict()`, W1).
+
+    Catalog: B07-G-026.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"jobTitle": "A", "extra": 1})
     assert response.status_code == 422
@@ -67,7 +79,10 @@ async def test_me_update_profile__C03(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_me_update_profile__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Sau khi xoá `jobTitle` (gửi `''`), trường vắng khoá ở response (K02)."""
+    """Sau khi xoá `jobTitle` (gửi `''`), trường vắng khoá ở response (K02).
+
+    Catalog: B07-C-024, B07-G-035.
+    """
     user = await make_user(db_session, name="X")
     seeded = await _patch(api_client, user, {"jobTitle": "Có giá trị"})
     assert seeded.json()["jobTitle"] == "Có giá trị"
@@ -77,7 +92,10 @@ async def test_me_update_profile__C17(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_me_update_profile__C16(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`fullName` NFD → lưu và trả NFC (cases.toml extra)."""
+    """`fullName` NFD → lưu và trả NFC (cases.toml extra).
+
+    Catalog: B07-C-001.
+    """
     user = await make_user(db_session)
     nfd_name = unicodedata.normalize("NFD", "Nguyễn Thị Hà")
     response = await _patch(api_client, user, {"fullName": nfd_name})
@@ -89,7 +107,10 @@ async def test_me_update_profile__C16(api_client: httpx.AsyncClient, db_session:
 async def test_me_update_profile_no_keys_is_422_without_field(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Thân không khoá nào → 422 `VALIDATION` **không** kèm `field`."""
+    """Thân không khoá nào → 422 `VALIDATION` **không** kèm `field`.
+
+    Catalog: B07-G-023.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {})
     assert response.status_code == 422
@@ -101,7 +122,10 @@ async def test_me_update_profile_no_keys_is_422_without_field(
 async def test_me_update_profile_full_name_whitespace_only_is_422(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`fullName` toàn khoảng trắng → 422 `field:"fullName"`."""
+    """`fullName` toàn khoảng trắng → 422 `field:"fullName"`.
+
+    Catalog: B07-C-006.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"fullName": "   "})
     assert response.status_code == 422
@@ -111,7 +135,10 @@ async def test_me_update_profile_full_name_whitespace_only_is_422(
 async def test_me_update_profile_job_title_whitespace_only_clears(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`jobTitle`/`phone` toàn khoảng trắng coi như `''` (xoá), không 422."""
+    """`jobTitle`/`phone` toàn khoảng trắng coi như `''` (xoá), không 422.
+
+    Catalog: B07-C-025.
+    """
     user = await make_user(db_session)
     await _patch(api_client, user, {"jobTitle": "Có giá trị", "phone": "0900000000"})
     response = await _patch(api_client, user, {"jobTitle": "   ", "phone": "  "})
@@ -124,7 +151,10 @@ async def test_me_update_profile_job_title_whitespace_only_clears(
 async def test_me_update_profile_forbidden_control_char_is_422(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Ký tự điều khiển (Cc) trong `fullName` → 422 `field:"fullName"`."""
+    """Ký tự điều khiển (Cc) trong `fullName` → 422 `field:"fullName"`.
+
+    Catalog: B07-C-010.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"fullName": "Tên\x00lạ"})
     assert response.status_code == 422
@@ -132,7 +162,10 @@ async def test_me_update_profile_forbidden_control_char_is_422(
 
 
 async def test_me_update_profile_bidi_override_is_422(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Ký tự đảo chiều song hướng U+202E trong `jobTitle` → 422 `field:"jobTitle"`."""
+    """Ký tự đảo chiều song hướng U+202E trong `jobTitle` → 422 `field:"jobTitle"`.
+
+    Catalog: B07-C-022.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"jobTitle": "A‮B"})
     assert response.status_code == 422
@@ -153,7 +186,10 @@ async def test_me_update_profile_server_owned_field_is_rejected(
 async def test_me_update_profile_session_revoked_when_user_deleted(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Người của `Principal` đã xoá mềm → 401 `SESSION_REVOKED`."""
+    """Người của `Principal` đã xoá mềm → 401 `SESSION_REVOKED`.
+
+    Catalog: B07-G-041.
+    """
     user = await make_user(db_session)
     user.deleted_at = user.created_at
     await db_session.commit()
@@ -166,7 +202,10 @@ async def test_me_update_profile_session_revoked_when_user_deleted(
 async def test_me_update_profile_not_nullable_field_explicit_null_is_422(
     api_client: httpx.AsyncClient, db_session: AsyncSession, field: str
 ) -> None:
-    """`null` tường minh trên khoá ánh xạ cột `NOT NULL` → 422, cột không đổi (NO-165; quét cả `_COLUMN_OF`)."""
+    """`null` tường minh trên khoá ánh xạ cột `NOT NULL` → 422, cột không đổi (NO-165; quét cả `_COLUMN_OF`).
+
+    Catalog: B07-C-008, B07-C-054.
+    """
     user = await make_user(db_session)
     alias = to_camel(field)
     response = await _patch(api_client, user, {alias: None})
@@ -180,7 +219,10 @@ async def test_me_update_profile_not_nullable_field_explicit_null_is_422(
 async def test_me_update_profile_job_title_and_phone_explicit_null_clears(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`jobTitle`/`phone: null` tường minh → xoá cột, như gửi `''`."""
+    """`jobTitle`/`phone: null` tường minh → xoá cột, như gửi `''`.
+
+    Catalog: B07-C-026, B07-C-036.
+    """
     user = await make_user(db_session)
     await _patch(api_client, user, {"jobTitle": "Có giá trị", "phone": "0900000000"})
     response = await _patch(api_client, user, {"jobTitle": None, "phone": None})
@@ -191,7 +233,10 @@ async def test_me_update_profile_job_title_and_phone_explicit_null_clears(
 
 
 async def test_me_update_profile_phone_too_long_is_422(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`phone` > 32 ký tự → 422 `field:"phone"`."""
+    """`phone` > 32 ký tự → 422 `field:"phone"`.
+
+    Catalog: B07-C-031.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"phone": "0" * 33})
     assert response.status_code == 422
@@ -202,10 +247,32 @@ async def test_me_update_profile_phone_too_long_is_422(api_client: httpx.AsyncCl
 async def test_me_update_profile_phone_forbidden_char_is_422(
     api_client: httpx.AsyncClient, db_session: AsyncSession, phone: str
 ) -> None:
-    """NUL/BEL (Cc) hay U+202E trong `phone` → 422 `field:"phone"`, không 500 ở cột TEXT (QA-07)."""
+    """NUL/BEL (Cc) hay U+202E trong `phone` → 422 `field:"phone"`, không 500 ở cột TEXT (QA-07).
+
+    Catalog: B07-C-033.
+    """
     user = await make_user(db_session)
     response = await _patch(api_client, user, {"phone": phone})
     assert response.status_code == 422
     body = response.json()
     assert body["code"] == "VALIDATION"
     assert body["field"] == "phone"
+
+
+@pytest.mark.parametrize("char", ["\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"])
+async def test_me_update_profile_full_name_zero_width_char_is_422(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, char: str
+) -> None:
+    """Ký tự vô hình (U+200B/200C/200D/2060/FEFF) giữa `fullName` → 422 `field:"fullName"`, không ghi gì (Q4).
+
+    Catalog: B07-C-071.
+    """
+    user = await make_user(db_session)
+    before = user.name
+    response = await _patch(api_client, user, {"fullName": f"Nguyễn{char}Văn"})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION"
+    assert body["field"] == "fullName"
+    await db_session.refresh(user)
+    assert user.name == before

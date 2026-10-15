@@ -7,6 +7,8 @@ _BIDI_OVERRIDE: Final = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *rang
 """LRE/RLE/PDF/LRO/RLO và LRI/RLI/FSI/PDI: đảo chiều hiển thị, dùng để giả mạo tên."""
 _BIDI_MARKS: Final = frozenset("‎‏")
 """LRM/RLM: không phải Cc; chỉ chặn khi người gọi đòi `bidi_marks=True`."""
+_ZERO_WIDTH: Final = frozenset("\u200b\u200c\u200d\u2060\ufeff")
+"""ZWSP/ZWNJ/ZWJ/WJ/BOM: vô hình, không phải Cc; chỉ chặn khi người gọi đòi `zero_width=True`."""
 
 
 def nfc(s: str) -> str:
@@ -19,28 +21,35 @@ def normalize_email(s: str) -> str:
     return nfc(s).strip().casefold()
 
 
-def first_forbidden_char(text: str, *, bidi_marks: bool = False, allow_controls: str = "") -> str | None:
+def first_forbidden_char(
+    text: str, *, bidi_marks: bool = False, allow_controls: str = "", zero_width: bool = False
+) -> str | None:
     """Ký tự cấm đầu tiên của `text` (Cc không nằm trong `allow_controls`, hay đảo chiều), không có → `None`.
 
     Một nguồn dữ liệu của luật Cc/bidi: `clean_text` ném lỗi qua đây, còn `packages.domain`
     (hợp đồng từ chối, không trim) dùng thẳng vị từ này (NO-169).
     """
-    blocked = _BIDI_OVERRIDE | _BIDI_MARKS if bidi_marks else _BIDI_OVERRIDE
+    blocked = _BIDI_OVERRIDE
+    if bidi_marks:
+        blocked |= _BIDI_MARKS
+    if zero_width:
+        blocked |= _ZERO_WIDTH
     return next(
         (ch for ch in text if ch in blocked or (unicodedata.category(ch) == "Cc" and ch not in allow_controls)), None
     )
 
 
-def clean_text(value: str, *, bidi_marks: bool = False, allow_controls: str = "") -> str:
+def clean_text(value: str, *, bidi_marks: bool = False, allow_controls: str = "", zero_width: bool = False) -> str:
     """`nfc(value.strip())`; ký tự điều khiển (Cc) hay đảo chiều → `ValueError` nêu điểm mã.
 
     Nguồn duy nhất của luật Cc/bidi cho chuỗi người nhập (NO-169, NO-213). Độ dài và rỗng do
     người gọi kiểm (mỗi trường một trần). Khác biệt giữa các trường là tham số tường minh:
     `bidi_marks` chặn thêm LRM/RLM (tên dự án, ghi chú — giữ đúng luật cũ của chúng) và
-    `allow_controls` miễn một số ký tự Cc (ghi chú cho xuống dòng/tab).
+    `allow_controls` miễn một số ký tự Cc (ghi chú cho xuống dòng/tab), `zero_width` chặn thêm
+    ký tự vô hình U+200B/200C/200D/2060/FEFF (tên người dùng, B07-C-071; mặc định lọt như cũ).
     """
     text = nfc(value.strip())
-    bad = first_forbidden_char(text, bidi_marks=bidi_marks, allow_controls=allow_controls)
+    bad = first_forbidden_char(text, bidi_marks=bidi_marks, allow_controls=allow_controls, zero_width=zero_width)
     if bad is not None:
         raise ValueError(f"chuỗi chứa ký tự cấm U+{ord(bad):04X}")
     return text

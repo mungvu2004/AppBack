@@ -11,7 +11,7 @@ from pydantic import Field, field_validator, model_validator
 from apps.api.auth.passwords import MIN_PASSWORD_LENGTH
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.me.avatar import MAX_BASE64_LEN
-from packages.core.text import clean_text
+from packages.core.text import clean_text, nfc
 
 FULL_NAME_MAX: Final = 120
 PHONE_MAX: Final = 32
@@ -42,13 +42,14 @@ class UpdateMeBody(WireRequest):
     def _validate_full_name(cls, value: str | None) -> str:
         """NFC + trim; `null` tường minh, rỗng (kể cả toàn khoảng trắng), > 120 ký tự, hay ký tự cấm → 422.
 
+        Ký tự cấm gồm Cc, đảo chiều và ký tự vô hình U+200B/200C/200D/2060/FEFF (`zero_width`, B07-C-071).
         Không như `jobTitle`/`phone`, `fullName` ánh xạ cột `NOT NULL` (1-120 ký tự) — `null`
         tường minh bị từ chối chứ không lặng lẽ coi như vắng khoá (`language` cũng vậy, cùng lý
         do gốc: NO-165, R-19 — mọi khoá của `_COLUMN_OF` ánh xạ cột `NOT NULL` đều chặn `null`).
         """
         if value is None:
             raise ValueError("fullName không được null")
-        normalized = clean_text(value)
+        normalized = clean_text(value, zero_width=True)
         if not 1 <= len(normalized) <= FULL_NAME_MAX:
             raise ValueError("fullName sai định dạng")
         return normalized
@@ -100,6 +101,12 @@ class ChangePasswordBody(WireRequest):
 
     current_password: Annotated[str, Field(min_length=1)]
     new_password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH)]
+
+    @field_validator("new_password", mode="before")
+    @classmethod
+    def _nfc_before_length(cls, value: object) -> object:
+        """Mật khẩu lưu/so ở dạng NFC (`passwords.py`) → đếm độ dài sau NFC, không phải trên chuỗi thô."""
+        return nfc(value) if isinstance(value, str) else value
 
 
 class ReplaceAvatarBody(WireRequest):

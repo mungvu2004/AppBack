@@ -2,6 +2,7 @@
 C11 cố định qua `row_id="N13"` của `tools/case_gate.py`)."""
 
 import asyncio
+from contextlib import AsyncExitStack
 from uuid import UUID
 
 import httpx
@@ -11,7 +12,9 @@ from redis.asyncio import Redis
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.auth.passwords import hash_password, verify_password
+from apps.api.auth import passwords
+from apps.api.auth.passwords import hash_password, hash_slot, verify_password
+from apps.api.auth.settings import get_auth_settings
 from apps.api.auth.tests.support import user_row
 from apps.api.auth_recovery.tests.support import seed_token
 from apps.api.core.ratelimit import install
@@ -48,7 +51,10 @@ async def _session_row(db: AsyncSession, session_id: str) -> RefreshSession:
 async def test_me_change_password__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đúng: 204 rỗng, thu hồi phiên **khác**, phiên hiện tại vẫn sống."""
+    """Đúng: 204 rỗng, thu hồi phiên **khác**, phiên hiện tại vẫn sống.
+
+    Catalog: B07-G-090.
+    """
     user = await make_user(db_session)
     current = await seed_session(db_session, user, fake_clock)
     other = await seed_session(db_session, user, fake_clock)
@@ -75,7 +81,10 @@ async def test_me_change_password__C02(
 
 
 async def test_me_change_password__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ → 422 `VALIDATION`."""
+    """Khoá lạ → 422 `VALIDATION`.
+
+    Catalog: B07-G-103.
+    """
     user = await make_user(db_session)
     payload = {"currentPassword": TEST_PASSWORD, "newPassword": NEW_PASSWORD, "extra": 1}
     response = await api_client.post(PATH, json=payload, headers=headers_of(principal_of(user)))
@@ -84,7 +93,10 @@ async def test_me_change_password__C03(api_client: httpx.AsyncClient, db_session
 
 
 async def test_me_change_password__C11(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Vượt `me_password` (5/15 phút) → 429."""
+    """Vượt `me_password` (5/15 phút) → 429.
+
+    Catalog: B07-G-104.
+    """
     user = await make_user(db_session)
     headers = headers_of(principal_of(user))
     for _ in range(PASSWORD_RATE_LIMIT):
@@ -98,7 +110,10 @@ async def test_me_change_password__C11(api_client: httpx.AsyncClient, db_session
 async def test_me_change_password_wrong_current_is_422_not_401(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Sai mật khẩu hiện tại → 422 `CURRENT_PASSWORD_INCORRECT`, không bao giờ 401 (K30)."""
+    """Sai mật khẩu hiện tại → 422 `CURRENT_PASSWORD_INCORRECT`, không bao giờ 401 (K30).
+
+    Catalog: B07-G-098.
+    """
     user = await make_user(db_session)
     principal = await seed_session(db_session, user, fake_clock)
     response = await _change(api_client, headers_of(principal), current="sai-hoan-toan")
@@ -126,7 +141,10 @@ async def test_me_change_password_current_session_revoked_in_db_is_401(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Phiên hiện tại đã bị thu hồi trong DB → 401, mật khẩu không đổi."""
+    """Phiên hiện tại đã bị thu hồi trong DB → 401, mật khẩu không đổi.
+
+    Catalog: B07-G-109.
+    """
     user = await make_user(db_session)
     principal = await seed_session(db_session, user, fake_clock)
     async with db_sessionmaker() as setup:
@@ -150,7 +168,10 @@ async def test_me_change_password_concurrent_reset_wins_is_422_password_unchange
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Mật khẩu bị đổi trực tiếp (giả N9) giữa lúc N13 đang băm → N13 422, mật khẩu không bị đè."""
+    """Mật khẩu bị đổi trực tiếp (giả N9) giữa lúc N13 đang băm → N13 422, mật khẩu không bị đè.
+
+    Catalog: B07-G-108.
+    """
     user = await make_user(db_session)
     principal = await seed_session(db_session, user, fake_clock)
     started, proceed = asyncio.Event(), asyncio.Event()
@@ -179,7 +200,10 @@ async def test_me_change_password_concurrent_reset_wins_is_422_password_unchange
 async def test_me_change_password_session_revoked_when_user_deleted(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Người của `Principal` đã xoá mềm → 401, không băm mật khẩu."""
+    """Người của `Principal` đã xoá mềm → 401, không băm mật khẩu.
+
+    Catalog: B07-G-043.
+    """
     user = await make_user(db_session)
     user.deleted_at = user.created_at
     await db_session.commit()
@@ -191,7 +215,10 @@ async def test_me_change_password_session_revoked_when_user_deleted(
 async def test_me_change_password_invalidates_pending_password_reset_token(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Sau N13, token `password_reset` còn hạn trước đó bị N9 dùng → 422 (`revoke_tokens`)."""
+    """Sau N13, token `password_reset` còn hạn trước đó bị N9 dùng → 422 (`revoke_tokens`).
+
+    Catalog: B07-G-107.
+    """
     user = await make_user(db_session)
     principal = await seed_session(db_session, user, fake_clock)
     _, plain = await seed_token(db_session, user_id=user.id, purpose="password_reset", clock=fake_clock)
@@ -214,6 +241,7 @@ async def test_me_change_password_safe_redis_down_is_503(
     Hỏng hóc dựng bằng client thật trỏ vào một cổng không ai nghe (`refused_url`), như
     `apps/api/core/tests/test_ratelimit.py::test_redis_down_is_503_when_closed_and_passes_when_open`
     — không mock Redis (K23). `cache` vẫn là client thật để không ảnh hưởng hạn mức khác của app.
+    Catalog: B07-G-110.
     """
     user = await make_user(db_session)
     dead = refused_url("redis")
@@ -221,3 +249,50 @@ async def test_me_change_password_safe_redis_down_is_503(
     response = await _change(api_client, headers_of(principal_of(user)))
     assert response.status_code == 503
     assert response.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+
+
+async def test_me_change_password_hash_executor_busy_is_503(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mọi chỗ của executor băm đang bận quá `HASH_WAIT_S` → 503 `DEPENDENCY_UNAVAILABLE` + `Retry-After`.
+
+    Giữ hết chỗ băm bằng `hash_slot()` như `auth/tests/test_units.py`; hạ `HASH_WAIT_S` để không ngủ thật.
+    Mật khẩu không đổi.
+    Catalog: B07-G-112.
+    """
+    user = await make_user(db_session)
+    principal = await seed_session(db_session, user, fake_clock)
+    monkeypatch.setattr(passwords, "HASH_WAIT_S", 0.05)
+    async with AsyncExitStack() as held:
+        for _ in range(get_auth_settings().password_hash_concurrency):
+            await held.enter_async_context(hash_slot())
+        response = await _change(api_client, headers_of(principal))
+    assert response.status_code == 503
+    assert response.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert response.headers["Retry-After"] == str(passwords.HASH_RETRY_AFTER_S)
+    row = await user_row(db_session, user.id)
+    assert await verify_password(row.password_hash, TEST_PASSWORD) is True
+
+
+async def test_me_change_password_min_length_counts_nfc_chars_is_422(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Độ dài tối thiểu đếm sau NFC: `"ê"` dạng NFD lặp 4 lần = 8 điểm mã nhưng 4 ký tự → 422.
+
+    Lỗi `newPassword` đến trước cả kiểm tra mật khẩu hiện tại (sai cũng vẫn 422 VALIDATION trường `newPassword`).
+    Catalog: B07-C-070.
+    """
+    user = await make_user(db_session)
+    principal = await seed_session(db_session, user, fake_clock)
+    response = await api_client.post(
+        PATH,
+        json={"currentPassword": "sai-mat-khau-hien-tai", "newPassword": "e\u0302" * 4},
+        headers=headers_of(principal),
+    )
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION"
+    assert body["field"] == "newPassword"

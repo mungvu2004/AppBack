@@ -42,7 +42,10 @@ async def test_purge_avatars__J01(
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
 ) -> None:
-    """Ảnh cũ và ảnh của người đã xoá bị xoá; ảnh hiện tại và khoá lạ ngoài mẫu còn nguyên."""
+    """Ảnh cũ và ảnh của người đã xoá bị xoá; ảnh hiện tại và khoá lạ ngoài mẫu còn nguyên.
+
+    Catalog: B07-G-120.
+    """
     current_user = await make_user(db_session)
     deleted_user = await make_user(db_session)
     deleted_user.deleted_at = fake_clock.now()
@@ -76,7 +79,10 @@ async def test_purge_avatars__J06(
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
 ) -> None:
-    """Giao lặp: lượt thứ hai không xoá thêm gì (idempotent)."""
+    """Giao lặp: lượt thứ hai không xoá thêm gì (idempotent).
+
+    Catalog: B07-G-121.
+    """
     user = await make_user(db_session)
     await _seed_object(local_storage, user.id, 4)
     fake_clock.set(datetime.now(UTC) + timedelta(days=2))
@@ -91,7 +97,10 @@ async def test_purge_avatars_runs_in_batches(
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
 ) -> None:
-    """Lô nhỏ hơn số object phải xoá: vòng lặp lô (`_batches`) chạy tiếp cho tới hết."""
+    """Lô nhỏ hơn số object phải xoá: vòng lặp lô (`_batches`) chạy tiếp cho tới hết.
+
+    Catalog: B07-G-122.
+    """
     user = await make_user(db_session)
     for n in range(5, 8):
         await _seed_object(local_storage, user.id, n)
@@ -101,7 +110,10 @@ async def test_purge_avatars_runs_in_batches(
 
 
 def test_purge_avatars_smoke(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test khói: gọi hàm lịch thật (`SystemClock()`, `worker_sessionmaker()`, kho local); DB rỗng nên không xoá gì."""
+    """Test khói: gọi hàm lịch thật (`SystemClock()`, `worker_sessionmaker()`, kho local); DB rỗng nên không xoá gì.
+
+    Catalog: B07-G-123.
+    """
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("STORAGE_BACKEND", "local")
@@ -120,13 +132,19 @@ def test_purge_avatars_smoke(db_url: str, monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_purge_avatars_schedule_is_registered() -> None:
-    """Lịch beat có mục `purge_avatars` trỏ đúng hàm job."""
+    """Lịch beat có mục `purge_avatars` trỏ đúng hàm job.
+
+    Catalog: B07-G-124.
+    """
     entries = {entry.name: entry for entry in schedule_entries()}
     assert entries[TASK_NAME].function == "purge_avatars"
 
 
 def test_jobs_import_without_web_or_crypto_packages() -> None:
-    """Worker nhập `apps.api.me.jobs` để chạy task/beat: nhập được khi bốn gói web/crypto bị chặn."""
+    """Worker nhập `apps.api.me.jobs` để chạy task/beat: nhập được khi bốn gói web/crypto bị chặn.
+
+    Catalog: B07-G-125.
+    """
     blocked = "; ".join(f"sys.modules[{name!r}] = None" for name in WORKER_BLOCKED)
     result = subprocess.run(  # noqa: S603 — trình thông dịch của chính tiến trình test, mã cố định
         [sys.executable, "-c", f"import sys; {blocked}; import apps.api.me.jobs"],
