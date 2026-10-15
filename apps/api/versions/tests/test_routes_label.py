@@ -100,6 +100,23 @@ def test_normalize_label__zwj_allowed_bidi_and_control_rejected(raw: str, ok: bo
             normalize_label(raw)
 
 
+async def test_versions_label_version__zwj_family_label_is_stored(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """BUG-721: nhãn emoji ghép bằng ZWJ → 200 và nhãn được lưu nguyên.
+
+    Hàng catalog: [B06-G-228].
+    """
+    stage = await make_stage(db_session)
+    version_id = await _one_version(db_session, stage, fake_clock)
+    family = "\U0001f468‍\U0001f469‍\U0001f467"
+
+    response = await relabel(api_client, stage, version_id, family)
+
+    assert response.status_code == 200
+    assert response.json()["label"] == family
+
+
 async def test_versions_label_version__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:

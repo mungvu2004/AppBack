@@ -38,6 +38,16 @@ async def test_rules_replace_config__unknown_code(api_client: httpx.AsyncClient,
     await _rejected(api_client, db_session, {"GARAGE-WIDTH": {"enabled": True}}, "RULE_CODE_UNKNOWN", "body.overrides")
 
 
+async def test_rules_replace_config__empty_general_override_field_stops_at_overrides(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """BUG-720: `{"GENERAL": {}}` → 422 `VALIDATION`, `field` dừng ở `body.overrides` (khoá `GENERAL` không lọt ra).
+
+    Hàng catalog: [B06-G-046].
+    """
+    await _rejected(api_client, db_session, {"GENERAL": {}}, "VALIDATION", "body.overrides")
+
+
 async def test_rules_replace_config__code_pattern(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """`wall-thickness` (sai mẫu) → `VALIDATION`, không phải `RULE_CODE_UNKNOWN`.
 
