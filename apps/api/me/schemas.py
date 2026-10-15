@@ -11,7 +11,7 @@ from pydantic import Field, field_validator, model_validator
 from apps.api.auth.passwords import MIN_PASSWORD_LENGTH
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.me.avatar import MAX_BASE64_LEN
-from packages.core.text import clean_text
+from packages.core.text import clean_text, nfc
 
 FULL_NAME_MAX: Final = 120
 PHONE_MAX: Final = 32
@@ -100,6 +100,12 @@ class ChangePasswordBody(WireRequest):
 
     current_password: Annotated[str, Field(min_length=1)]
     new_password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH)]
+
+    @field_validator("new_password", mode="before")
+    @classmethod
+    def _nfc_before_length(cls, value: object) -> object:
+        """Mật khẩu lưu/so ở dạng NFC (`passwords.py`) → đếm độ dài sau NFC, không phải trên chuỗi thô."""
+        return nfc(value) if isinstance(value, str) else value
 
 
 class ReplaceAvatarBody(WireRequest):

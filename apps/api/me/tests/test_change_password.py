@@ -275,3 +275,24 @@ async def test_me_change_password_hash_executor_busy_is_503(
     assert response.headers["Retry-After"] == str(passwords.HASH_RETRY_AFTER_S)
     row = await user_row(db_session, user.id)
     assert await verify_password(row.password_hash, TEST_PASSWORD) is True
+
+
+async def test_me_change_password_min_length_counts_nfc_chars_is_422(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Độ dài tối thiểu đếm sau NFC (mật khẩu lưu/so ở dạng NFC): `"ê"` dạng NFD ×4 = 8 điểm mã nhưng 4 ký tự → 422.
+
+    Lỗi `newPassword` đến trước cả kiểm tra mật khẩu hiện tại (sai cũng vẫn 422 VALIDATION trường `newPassword`).
+    Catalog: B07-C-070.
+    """
+    user = await make_user(db_session)
+    principal = await seed_session(db_session, user, fake_clock)
+    response = await api_client.post(
+        PATH,
+        json={"currentPassword": "sai-mat-khau-hien-tai", "newPassword": "e\u0302" * 4},
+        headers=headers_of(principal),
+    )
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION"
+    assert body["field"] == "newPassword"
