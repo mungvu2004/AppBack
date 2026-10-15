@@ -257,3 +257,22 @@ async def test_me_update_profile_phone_forbidden_char_is_422(
     body = response.json()
     assert body["code"] == "VALIDATION"
     assert body["field"] == "phone"
+
+
+@pytest.mark.parametrize("char", ["\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"])
+async def test_me_update_profile_full_name_zero_width_char_is_422(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, char: str
+) -> None:
+    """Ký tự vô hình (U+200B/200C/200D/2060/FEFF) giữa `fullName` → 422 `field:"fullName"`, không ghi gì (Q4).
+
+    Catalog: B07-C-071.
+    """
+    user = await make_user(db_session)
+    before = user.name
+    response = await _patch(api_client, user, {"fullName": f"Nguyễn{char}Văn"})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION"
+    assert body["field"] == "fullName"
+    await db_session.refresh(user)
+    assert user.name == before

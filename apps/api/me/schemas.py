@@ -42,13 +42,14 @@ class UpdateMeBody(WireRequest):
     def _validate_full_name(cls, value: str | None) -> str:
         """NFC + trim; `null` tường minh, rỗng (kể cả toàn khoảng trắng), > 120 ký tự, hay ký tự cấm → 422.
 
+        Ký tự cấm gồm Cc, đảo chiều và ký tự vô hình U+200B/200C/200D/2060/FEFF (`zero_width`, B07-C-071).
         Không như `jobTitle`/`phone`, `fullName` ánh xạ cột `NOT NULL` (1-120 ký tự) — `null`
         tường minh bị từ chối chứ không lặng lẽ coi như vắng khoá (`language` cũng vậy, cùng lý
         do gốc: NO-165, R-19 — mọi khoá của `_COLUMN_OF` ánh xạ cột `NOT NULL` đều chặn `null`).
         """
         if value is None:
             raise ValueError("fullName không được null")
-        normalized = clean_text(value)
+        normalized = clean_text(value, zero_width=True)
         if not 1 <= len(normalized) <= FULL_NAME_MAX:
             raise ValueError("fullName sai định dạng")
         return normalized
