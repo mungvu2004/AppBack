@@ -147,14 +147,22 @@ async def test_spatial_write_layer_rejects_pipeline_layer_without_merge(
 async def test_spatial_write_layer_rejects_foreign_dimensions(
     db_session: AsyncSession, fake_clock: FakeClock, overrides: dict[str, object], level_of_other_floor: bool
 ) -> None:
-    """`body.dimensions` chỉ nhận mục AI chưa duyệt **của tầng đang ghi** ([2])."""
+    """Pipeline: `body.dimensions` chỉ nhận mục AI chưa duyệt **của tầng đang ghi** ([2])."""
     scene = await make_scene(db_session, floors=2)
     floor, other = scene.floors
     level_id = other.level_id if level_of_other_floor else floor.level_id
     dimension = make_dimension(level_id).model_copy(update=overrides)
 
     with pytest.raises(ValueError, match="AI chưa duyệt"):
-        await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, dimensions=(dimension,))
+        await write_layer(
+            db_session,
+            floor_pk=floor.pk,
+            base_revision=0,
+            body=LayerWrite(layer=None, scale_mm_per_px=None, dimensions=(dimension,)),
+            actor_id=SYSTEM_PIPELINE,
+            actor_name="Pipeline",
+            clock=fake_clock,
+        )
 
 
 async def test_spatial_write_layer_rejects_ai_reviewed_entity(db_session: AsyncSession, fake_clock: FakeClock) -> None:

@@ -15,10 +15,12 @@ Ba luật bất biến:
 import json
 import logging
 from collections.abc import Iterable, Mapping
-from typing import Any, Final
+from types import UnionType
+from typing import Annotated, Any, Final, Union, get_args, get_origin
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
@@ -133,14 +135,54 @@ def _body_path(parts: list[object], body: object) -> list[object]:
     return kept
 
 
-def field_of(loc: Iterable[object], body: object = None) -> str | None:
+def _unwrap(tp: object) -> object:
+    """Bỏ `Annotated[...]` và `X | None`; union nhiều nhánh giữ nguyên (không đoán được nhánh)."""
+    while True:
+        if get_origin(tp) is Annotated:
+            tp = get_args(tp)[0]
+            continue
+        if get_origin(tp) in (Union, UnionType):
+            rest = [a for a in get_args(tp) if a is not type(None)]
+            if len(rest) == 1:
+                tp = rest[0]
+                continue
+        return tp
+
+
+def _user_key_index(model: object, parts: list[object]) -> int | None:
+    """Vị trí đoạn đầu tiên là **khoá dict của người dùng** khi đi `parts` theo kiểu của `model`.
+
+    Đi song song loc với chú thích kiểu: trường model → kiểu trường; `list`/`tuple`/`set` → kiểu
+    phần tử (đoạn là chỉ số); `dict`/`Mapping` → đoạn kế là khoá người dùng. Kiểu lạ → `None`.
+    """
+    tp = model
+    for index, part in enumerate(parts):
+        tp = _unwrap(tp)
+        origin = get_origin(tp)
+        if isinstance(origin, type) and issubclass(origin, Mapping):
+            return index
+        if origin in (list, tuple, set, frozenset):
+            tp = get_args(tp)[0] if get_args(tp) else None
+        elif isinstance(tp, type) and issubclass(tp, BaseModel):
+            fields = tp.model_fields
+            name = next((n for n, f in fields.items() if part in (n, f.alias, to_camel(n))), None)
+            if name is None:
+                return None
+            tp = fields[name].annotation
+        else:
+            return None
+    return None
+
+
+def field_of(loc: Iterable[object], body: object = None, model: object = None) -> str | None:
     """`field` của một lỗi Pydantic (BE-00 §4).
 
     Bỏ đoạn gốc (`body`/`query`/`path`); khi thân JSON là object/mảng thì bỏ tag nhánh union
     (`_body_path`; form multipart không truyền thân, giữ loc nguyên trạng). Đổi từng đoạn sang
     camelCase và **dừng** trước đoạn đầu tiên không khớp `^[A-Za-z0-9]+$` — khoá dict của người
     dùng (`overrides.WALL-THICKNESS`) hay tên validator (`function-after[...]`) không phải tên
-    trường và không được lọt ra dây (`registry.ts:443`).
+    trường và không được lọt ra dây (`registry.ts:443`). Khi biết kiểu thân (`model`) thì khoá của
+    mọi `dict`/`Mapping` cũng dừng đường, dù chỉ gồm chữ-số (`overrides.GENERAL` → `overrides`).
     """
     parts = list(loc)
     root = parts[0] if parts else None
@@ -148,6 +190,10 @@ def field_of(loc: Iterable[object], body: object = None) -> str | None:
         parts = parts[1:]
     if root == _BODY_ROOT and isinstance(body, dict | list):
         parts = _body_path(parts, body)
+    if model is not None and root == _BODY_ROOT:
+        cut = _user_key_index(model, parts)
+        if cut is not None:
+            parts = parts[:cut]
     kept: list[str] = []
     for part in parts:
         segment = to_camel(part) if isinstance(part, str) else str(part)
@@ -167,13 +213,13 @@ def _error_loc(error: Mapping[str, Any]) -> tuple[object, ...]:
     return loc
 
 
-def validation_error(exc: RequestValidationError, rid: str) -> Response:
+def validation_error(exc: RequestValidationError, rid: str, model: object = None) -> Response:
     """Lỗi Pydantic → 422 `VALIDATION` (`field` của lỗi đầu, `count` = số lỗi), JSON hỏng → 400."""
     errors = list(exc.errors())
     if any(error.get("type") == _JSON_INVALID for error in errors):
         return error_response(AppError(MALFORMED_JSON), rid)
     count = len(errors)
-    field = field_of(_error_loc(errors[0]), exc.body) if errors else None
+    field = field_of(_error_loc(errors[0]), exc.body, model) if errors else None
     if field is None:
         return error_response(AppError(VALIDATION, count=count), rid)
     try:
@@ -211,7 +257,9 @@ async def _app_error_handler(request: Request, exc: Exception) -> Response:
 async def _validation_handler(request: Request, exc: Exception) -> Response:
     """Lỗi Pydantic → 422 `VALIDATION` hoặc 400 `MALFORMED_JSON`."""
     assert isinstance(exc, RequestValidationError)  # noqa: S101 — như trên
-    return validation_error(exc, request_id())
+    body_field = getattr(request.scope.get("route"), "body_field", None)
+    model = body_field.field_info.annotation if body_field is not None else None
+    return validation_error(exc, request_id(), model)
 
 
 async def _http_exception_handler(request: Request, exc: Exception) -> Response:

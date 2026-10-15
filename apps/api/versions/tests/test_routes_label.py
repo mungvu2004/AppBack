@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from apps.api.access.kinds import ActivityKind
 from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_write.tests._helpers import simple_layer
+from apps.api.versions.service import normalize_label
 from apps.api.versions.tests._helpers import versions_of
 from apps.api.versions.tests._route_helpers import (
     Stage,
@@ -26,6 +27,7 @@ from apps.api.versions.tests._route_helpers import (
     relabel,
     versions_path,
 )
+from packages.core.errors import AppError
 from packages.db.models.floors import FloorRow
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
@@ -69,7 +71,10 @@ async def test_versions_label_version__C01(
 async def test_versions_label_version__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, payload: dict[str, Any]
 ) -> None:
-    """61 đơn vị UTF-16 (kể cả 31 emoji = 62), `label: 5`, `null`, thiếu, U+202E → 422 `VALIDATION` `field:"label"`."""
+    """61 đơn vị UTF-16 (kể cả 31 emoji = 62), `label: 5`, `null`, thiếu, U+202E → 422 `VALIDATION` `field:"label"`.
+
+    Hàng catalog: [B06-G-209, B06-G-211].
+    """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
 
@@ -82,10 +87,43 @@ async def test_versions_label_version__C02(
     assert response.json()["field"] == "label"
 
 
+@pytest.mark.parametrize(
+    ("raw", "ok"),
+    [("\U0001f468‍\U0001f469‍\U0001f467", True), ("x‏y", False), ("x⁦y", False), ("x\ny", False)],
+)
+def test_normalize_label__zwj_allowed_bidi_and_control_rejected(raw: str, ok: bool) -> None:
+    """BUG-721 [B06-G-228]: ZWJ của emoji ghép hợp lệ; ký tự đảo chiều/điều khiển bị từ chối."""
+    if ok:
+        assert normalize_label(raw) == raw
+    else:
+        with pytest.raises(AppError):
+            normalize_label(raw)
+
+
+async def test_versions_label_version__zwj_family_label_is_stored(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """BUG-721: nhãn emoji ghép bằng ZWJ → 200 và nhãn được lưu nguyên.
+
+    Hàng catalog: [B06-G-228].
+    """
+    stage = await make_stage(db_session)
+    version_id = await _one_version(db_session, stage, fake_clock)
+    family = "\U0001f468‍\U0001f469‍\U0001f467"
+
+    response = await relabel(api_client, stage, version_id, family)
+
+    assert response.status_code == 200
+    assert response.json()["label"] == family
+
+
 async def test_versions_label_version__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Khoá lạ ở thân → 422 `VALIDATION` (zod `.strict()`)."""
+    """Khoá lạ ở thân → 422 `VALIDATION` (zod `.strict()`).
+
+    Hàng catalog: [B06-G-212].
+    """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
 
@@ -103,7 +141,10 @@ async def test_versions_label_version__C03(
 async def test_versions_label_version__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`.
+
+    Hàng catalog: [B06-G-223].
+    """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
     outsider = await make_user(db_session, role="admin")
@@ -131,7 +172,10 @@ async def test_versions_label_version__C07(
 async def test_versions_label_version__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, missing: str
 ) -> None:
-    """Phiên bản không có, sai mẫu, của dự án khác, hay của tầng xoá mềm → 404 `resource:"version"`."""
+    """Phiên bản không có, sai mẫu, của dự án khác, hay của tầng xoá mềm → 404 `resource:"version"`.
+
+    Hàng catalog: [B06-G-216, B06-G-225].
+    """
     stage = await make_stage(db_session)
     other = await make_stage(db_session)
     version_id = {"absent": ABSENT_VERSION, "malformed": "ver_nope"}.get(missing, "")
@@ -151,7 +195,10 @@ async def test_versions_label_version__C08(
 async def test_versions_label_version__C16(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Nhãn NFD → lưu và trả NFC; N17 đọc lại cũng NFC."""
+    """Nhãn NFD → lưu và trả NFC; N17 đọc lại cũng NFC.
+
+    Hàng catalog: [B06-G-202].
+    """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
     nfd = unicodedata.normalize("NFD", "Bản đẹp")
@@ -188,7 +235,10 @@ async def test_versions_label_version__C18(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Đổi nhãn → một dòng `version.label` (`object_code` = id, nhãn = tên tầng); nhãn không đổi → không thêm."""
+    """Đổi nhãn → một dòng `version.label` (`object_code` = id, nhãn = tên tầng); nhãn không đổi → không thêm.
+
+    Hàng catalog: [B06-G-204].
+    """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
 
@@ -239,7 +289,10 @@ async def test_versions_label_version__sixty_vietnamese_characters(
 async def test_versions_label_version__purged_snapshot_can_be_labelled(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Bản đã mất ảnh chụp vẫn gắn được nhãn; `hasSnapshot` vẫn `false`."""
+    """Bản đã mất ảnh chụp vẫn gắn được nhãn; `hasSnapshot` vẫn `false`.
+
+    Hàng catalog: [B06-G-220].
+    """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
     await corrupt_snapshot(db_session, version_id, "purged")

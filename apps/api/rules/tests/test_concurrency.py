@@ -13,7 +13,10 @@ from packages.testing.factories.auth import make_user
 
 @pytest.mark.parametrize("base", [0, 1])
 async def test_rules_replace_config__C14(api_client: httpx.AsyncClient, db_session: AsyncSession, base: int) -> None:
-    """Hai admin cùng base (0 = chưa có dòng, 1 = đã có) gọi song song: chỉ một bên thắng."""
+    """Hai admin cùng base (0 = chưa có dòng, 1 = đã có) gọi song song: chỉ một bên thắng.
+
+    Hàng catalog: [B06-G-031].
+    """
     first = await make_user(db_session, role="admin")
     second = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=first, members=[second])

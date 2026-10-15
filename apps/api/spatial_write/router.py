@@ -59,7 +59,11 @@ async def spatial_write_layer(
         db,
         floor_pk=floor.pk,
         base_revision=body.base_version,
-        body=LayerWrite(layer=body.body.layer, scale_mm_per_px=body.body.scale_millimetres_per_pixel),
+        body=LayerWrite(
+            layer=body.body.layer,
+            scale_mm_per_px=body.body.scale_millimetres_per_pixel,
+            dimensions=None if body.body.dimensions is None else tuple(body.body.dimensions),
+        ),
         actor_id=access.principal.user_id,
         actor_name=await _actor_name(db, access.principal.user_id),
         clock=clock,

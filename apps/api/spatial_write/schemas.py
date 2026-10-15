@@ -20,7 +20,7 @@ from pydantic import BeforeValidator, Field, model_validator
 
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.spatial_read.wire import SpatialLayerOut
-from packages.domain.spatial import SpatialLayer
+from packages.domain.spatial import Dimension, SpatialLayer
 
 SCALE_PLACES: Final = 6
 """Số chữ số thập phân của `floor_documents.scale_mm_per_px` (`Numeric(12,6)`, B3-02)."""
@@ -63,12 +63,13 @@ class FloorLayerWriteBodySchema(WireRequest):
 
     layer: SpatialLayer | None = None
     scale_millimetres_per_pixel: LayerScaleMmPerPx | None = None
+    dimensions: list[Dimension] | None = None
 
     @model_validator(mode="after")
     def _at_least_one_key(self) -> Self:
         """`body: {}` là lượt ghi không nói gì → 422 `field:"body"`, không phải 200 im lặng."""
-        if self.layer is None and self.scale_millimetres_per_pixel is None:
-            raise ValueError("body phải có layer hoặc scaleMillimetresPerPixel")
+        if self.layer is None and self.scale_millimetres_per_pixel is None and self.dimensions is None:
+            raise ValueError("body phải có layer, dimensions hoặc scaleMillimetresPerPixel")
         return self
 
 

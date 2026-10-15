@@ -81,7 +81,10 @@ def test_version_out_has_the_six_old_fields_only() -> None:
     ],
 )
 def test_restore_body_is_strict(payload: dict[str, Any]) -> None:
-    """Số ép kiểu, `baseVersion` âm, `floorId` rỗng, khoá lạ ở hai tầng, thiếu `baseVersion` → từ chối."""
+    """Số ép kiểu, `baseVersion` âm, `floorId` rỗng, khoá lạ ở hai tầng, thiếu `baseVersion` → từ chối.
+
+    Hàng catalog: [B06-G-227].
+    """
     with pytest.raises(ValidationError):
         VersionRestoreIn.model_validate(payload)
 
@@ -95,7 +98,10 @@ def test_restore_body_accepts_the_wire_shape() -> None:
 
 @pytest.mark.parametrize("payload", [{"label": 5}, {"label": None}, {}, {"label": "a", "extra": 1}])
 def test_label_body_is_strict(payload: dict[str, Any]) -> None:
-    """`label` phải là chuỗi thật (không ép số), bắt buộc, và không có khoá lạ."""
+    """`label` phải là chuỗi thật (không ép số), bắt buộc, và không có khoá lạ.
+
+    Hàng catalog: [B06-G-227].
+    """
     with pytest.raises(ValidationError):
         VersionLabelIn.model_validate(payload)
 
@@ -110,16 +116,25 @@ def test_label_body_is_strict(payload: dict[str, Any]) -> None:
         ("ệ" * 60, "ệ" * 60),
         ("😀" * 30, "😀" * 30),
         (unicodedata.normalize("NFD", "Bản đẹp"), "Bản đẹp"),
+        ("x\u200by", "x\u200by"),
     ],
 )
 def test_normalize_label_accepts(raw: str, expected: str | None) -> None:
-    """Cắt khoảng trắng, NFC, rỗng → `None`; 60 đơn vị UTF-16 vẫn nhận (ký tự ngoài BMP tính 2)."""
+    """Cắt khoảng trắng, NFC, rỗng → `None`; 60 đơn vị UTF-16 vẫn nhận (ký tự ngoài BMP tính 2).
+
+    U+200B là `Cf`, không phải `Cc`/đảo chiều: nhận theo luật chung NO-169.
+
+    Hàng catalog: [B06-G-227].
+    """
     assert normalize_label(raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["a" * 61, "😀" * 31, "ệ" * 61, "x\u202ey", "x\u200by", "x\ny", "\x00", "a\u2066"])
+@pytest.mark.parametrize("raw", ["a" * 61, "😀" * 31, "ệ" * 61, "x\u202ey", "x\ny", "\x00", "a\u2066"])
 def test_normalize_label_rejects(raw: str) -> None:
-    """Quá 60 đơn vị UTF-16, ký tự `Cc`/`Cf` (U+202E, U+200B, xuống dòng, NUL, U+2066) → `VALIDATION` `label`."""
+    """Quá 60 đơn vị UTF-16, ký tự `Cc` hay đảo chiều (U+202E, xuống dòng, NUL, U+2066) → `VALIDATION` `label`.
+
+    Hàng catalog: [B06-G-227].
+    """
     with pytest.raises(AppError) as caught:
         normalize_label(raw)
 

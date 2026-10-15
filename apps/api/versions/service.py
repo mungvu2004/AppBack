@@ -10,7 +10,6 @@ chưa xoá; id sai mẫu hay của dự án khác đều là 404 `resource:"vers
 nào xoá dòng `versions`.
 """
 
-import unicodedata
 from dataclasses import dataclass, replace
 from typing import Final
 
@@ -41,7 +40,7 @@ from apps.api.versions.snapshots import (
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND, VALIDATION
 from packages.core.ids import is_id
-from packages.core.text import nfc
+from packages.core.text import first_forbidden_char, nfc
 from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.versions import VersionRecord
@@ -53,9 +52,6 @@ LIST_OP: Final = "versions_list_versions"
 
 LABEL_MAX_UNITS: Final = 60
 """Độ dài nhãn tối đa tính bằng **đơn vị UTF-16**, như `z.string().max(60)` của FE."""
-
-_FORBIDDEN_LABEL_CATEGORIES: Final = frozenset({"Cc", "Cf"})
-"""Ký tự điều khiển và định dạng (gồm U+202A-U+202E, U+2066-U+2069): nhãn không được chứa."""
 
 
 @dataclass(frozen=True)
@@ -301,12 +297,13 @@ async def _apply_restore(
 def normalize_label(raw: str) -> str | None:
     """Nhãn chuẩn: `nfc` rồi `strip`; rỗng → `None` (gỡ nhãn).
 
-    Đo độ dài bằng đơn vị UTF-16 như zod của FE (ký tự ngoài BMP = 2), và cấm ký tự `Cc`/`Cf`
-    (điều khiển, đảo chiều U+202E…). Sai → 422 `VALIDATION` `field:"label"`.
+    Đo độ dài bằng đơn vị UTF-16 như zod của FE (ký tự ngoài BMP = 2), và cấm ký tự điều khiển
+    (`Cc`) và đảo chiều theo `first_forbidden_char(bidi_marks=True)` (NO-169); ZWJ (U+200D) và
+    U+200B hợp lệ. Sai → 422 `VALIDATION` `field:"label"`.
     """
     text = nfc(raw).strip()
     units = len(text.encode("utf-16-le")) // 2
-    if units > LABEL_MAX_UNITS or any(unicodedata.category(ch) in _FORBIDDEN_LABEL_CATEGORIES for ch in text):
+    if units > LABEL_MAX_UNITS or first_forbidden_char(text, bidi_marks=True) is not None:
         raise VALIDATION.error(field="label")
     return text or None
 

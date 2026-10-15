@@ -1,5 +1,7 @@
 # HOP-DONG-MOI — Đặc tả dây của hợp đồng mới v1
 
+> **Bản 11 · 2026-10-14** (QA-04, BUG-577, QD-001): §4 #35 nhận thêm `dimensions?` — thay trọn danh sách kích thước của tầng, ghi nhật ký §1.3 theo id `M-…`, base cũ → 409 như lớp; N16 `dimensions` không còn chỉ đọc.
+>
 > **Bản 10 · 2026-09-18** (chỉnh sau kiểm áp 6b: §4 "áp cho mọi tầng" — chủ là F-04c, base của tầng bẩn, hộp thoại A9; sau kiểm áp 6c: §5 N19 trùng hiện trạng nhận ra bằng `floorRevision`). Tranh luận phần 6 (`dieu-phoi/phan-6/phan-xu-6a.md`): §7.1 FE không tái dùng id đã xoá trong phiên, hoàn tác xoá gặp 409 → id mới gửi lại một lần; §10 AC1 chỉ báo lưu của giao diện/thông báo nói "chỉ giữ trong phiên này"; §5 N19 trùng hiện trạng trả bản sẵn có (phân xử 6c); §1.1 gửi lại đúng thân sau mất phản hồi (phân xử 6b).
 >
 > **Bản 9 · 2026-09-18.** Chuẩn bị phần 6: §1.1 rào C1 thêm N19 (409 → dải tải lại, không `resolveConflict`); §3 tách F-09 → F-09a/F-09b; §10 ML2/ML4 theo bản gốc `pending`.
@@ -368,17 +370,18 @@ Xoá tài khoản và danh sách phiên để v2.
 | `scaleStatus` | literal `unresolved` | không | refine: có ⇒ có tỉ lệ |
 | `layer` | `SpatialLayerSchema` | có | H1 ngữ cảnh: mọi `levelId` bằng `level.id` |
 | `axes` | `AxisSchema[]` | có | v1 `[]` |
-| `dimensions` | `DimensionSchema[]` | có | chỉ đọc ở v1 |
+| `dimensions` | `DimensionSchema[]` | có | ghi qua #35 `dimensions?` (bản 11) |
 
 ### Ghi lớp — `PUT /api/projects/{project_id}/floors/{floor_id}/spatial/layer` (#35) → `spatialLayer.ts`
 
 | schema | hình dạng |
 |---|---|
-| `FloorLayerWriteBodySchema` | `{layer?: SpatialLayerSchema, scaleMillimetresPerPixel?: number > 0 hữu hạn}` strict, refine ≥ 1 khoá |
+| `FloorLayerWriteBodySchema` | `{layer?: SpatialLayerSchema, scaleMillimetresPerPixel?: number > 0 hữu hạn, dimensions?: DimensionSchema[]}` strict, refine ≥ 1 khoá |
 | `FloorLayerWriteSchema` | `VersionedWriteSchema(FloorLayerWriteBodySchema)` |
 | `FloorLayerWriteResultSchema` | `{revision: int ≥ 0, layer: SpatialLayerSchema}` strict |
 
 - **Có `scaleMillimetresPerPixel`:** B3-03 ghi tỉ lệ tầng, gỡ `scaleStatus`, và tính lại mm cho **mọi thực thể chưa `reviewed`** (của AI lẫn do người vẽ) theo tỉ số tỉ lệ mới/cũ, gồm `line` của `Dimension` chưa duyệt (v1 `axes` luôn rỗng). Mục đã duyệt giữ nguyên. Thân có cả `layer` lẫn tỉ lệ → `layer` hiểu ở hệ tỉ lệ **cũ**, server tính lại. **Tỉ lệ gắn với trang:** server gắn tỉ lệ với trang của lớp đang có (trang lượt pipeline ghi gần nhất; chưa có thì bản vẽ hiện tại); kết quả AI của trang khác không nhận tỉ lệ cũ (hạng coi như chưa có, N16 hiện `scaleStatus: "unresolved"`).
+- *(bản 11)* **Có `dimensions`:** thay **trọn** danh sách kích thước của tầng (`[]` xoá hết; vắng = không đụng). Mọi `levelId` bằng tầng (`LAYER_LEVEL_MISMATCH`); `source: "ai"` kèm `reviewed: true` → `REVIEW_BY_AI_FORBIDDEN` (`field: body.dimensions.<i>.reviewed`); id trùng trong thân → 422 `VALIDATION`. Nhật ký §1.3 ghi theo id `M-…`: kích thước mới (mỗi trường một mục), xoá (`__deleted__`), đổi `value_mm` / `override_value_mm` / `reference_ids`; chỉ đổi `reviewed` hay `confidence` thì ghi dấu chạm như thực thể của lớp. Nhờ vậy hai người cùng sửa kích thước với `baseVersion` cũ nhận 409 `VERSION_CONFLICT`, không ghi đè im lặng. Thân có cả tỉ lệ: `dimensions` hiểu ở hệ tỉ lệ **của thân**; tỉ lệ đó không được nhận (nguồn hạng thấp hơn tỉ lệ đang có) thì server quy đổi chúng về tỉ lệ của tầng (`writer.py:472-478`).
 - **`Room.areaM2` do server tính** từ `outline` (W18), kể cả phòng đã duyệt. Thân tối đa 8 MiB (quá → 413).
 - **Response `layer` là nguồn thay store** (F-04b).
 - **"Áp cho mọi tầng"** (`S:screens/pipeline/ScaleCalibration/scaleCalibrationGateway.ts:155-161`): F-04c đọc `floorRevisions` từ N15, rồi gửi mỗi tầng một PUT **chỉ mang tỉ lệ**, với `baseVersion` riêng của tầng đó. Tầng đang có sửa chưa lưu gửi **một** PUT lớp + tỉ lệ với `baseVersion` của chính lớp đó (ống F-04b), **không** nâng theo N15; tầng đang bị chặn (409 chưa tải lại, 413, 422) không gửi và được nêu tên (kiểm áp 6b, KL-1). Trước khi gửi có hộp thoại A9: tỉ lệ nguồn `human` làm `has_human_geometry` đúng, nên các tầng đó không nắn hay cắt lại bản vẽ được nữa (KL-8).
@@ -645,6 +648,7 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
 | L1 | Mở rộng hay bọc `SpatialLayerSchema` | bọc | `ZodType` |
 | L2 | `notes` ở N16 | bỏ | không màn QC nào đọc |
 | L3 | Ghi tỉ lệ | `layer?` + `scaleMillimetresPerPixel?`; tính lại mm cho **mọi** thực thể chưa duyệt | áp mọi tầng không phải gửi trọn lớp |
+| L4 | Ghi kích thước | `dimensions?` ở #35, thay trọn danh sách, nhật ký theo id | màn Đọc kích thước OCR báo "Đã lưu" mà không gửi gì (BUG-577); người dùng chọn cho ghi (QD-001) |
 | SC | `scaleStatus` ở N15 | **không** | chưa màn nào đọc (W1) |
 | V1 | `creatorName`, `changedByName` | có | màn in thô id khi thiếu tên |
 | V4 | `baseVersion` của restore | `revision` của tầng; thêm `floorRevision` | `sequence` đè im lặng; `isCurrent` sai |

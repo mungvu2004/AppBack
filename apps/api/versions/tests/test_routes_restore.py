@@ -113,7 +113,10 @@ async def test_versions_restore_version__C01(
 async def test_versions_restore_version__one_version_when_latest_is_current(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Bản mới nhất đã chụp đúng hiện trạng → không sinh bản "trước": `sequence` tăng **1**."""
+    """Bản mới nhất đã chụp đúng hiện trạng → không sinh bản "trước": `sequence` tăng **1**.
+
+    Hàng catalog: [B06-G-170].
+    """
     stage = await make_stage(db_session)
     first, _second = await _history(db_session, stage, fake_clock, (200, 250))
 
@@ -161,7 +164,10 @@ async def test_versions_restore_version__C02(
     payload: dict[str, Any] | str,
     field: str,
 ) -> None:
-    """`floorId` rỗng, `baseVersion` âm/chuỗi, `baseVersion = revision + 1` → 422 `VALIDATION` kèm `field`."""
+    """`floorId` rỗng, `baseVersion` âm/chuỗi, `baseVersion = revision + 1` → 422 `VALIDATION` kèm `field`.
+
+    Hàng catalog: [B06-G-154].
+    """
     stage = await make_stage(db_session)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
     body = restore_body(2, stage.level_id) if payload == "above_revision" else payload
@@ -179,7 +185,10 @@ async def test_versions_restore_version__C02(
 async def test_versions_restore_version__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, where: str
 ) -> None:
-    """Khoá lạ trong `body` hay ở vỏ ngoài → 422 `VALIDATION`."""
+    """Khoá lạ trong `body` hay ở vỏ ngoài → 422 `VALIDATION`.
+
+    Hàng catalog: [B06-G-157].
+    """
     stage = await make_stage(db_session)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
     payload = restore_body(1, stage.level_id)
@@ -195,7 +204,10 @@ async def test_versions_restore_version__C03(
 async def test_versions_restore_version__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08)."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08).
+
+    Hàng catalog: [B06-G-182].
+    """
     stage = await make_stage(db_session)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
     outsider = await make_user(db_session, role="admin")
@@ -223,7 +235,10 @@ async def test_versions_restore_version__C07(
 async def test_versions_restore_version__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, missing: str
 ) -> None:
-    """Phiên bản không có, sai mẫu, của dự án khác, hay của tầng xoá mềm → 404 `resource:"version"`."""
+    """Phiên bản không có, sai mẫu, của dự án khác, hay của tầng xoá mềm → 404 `resource:"version"`.
+
+    Hàng catalog: [B06-G-159, B06-G-184].
+    """
     stage = await make_stage(db_session)
     other = await make_stage(db_session)
     version_id = {"absent": ABSENT_VERSION, "malformed": "ver_nope"}.get(missing, "")
@@ -308,7 +323,10 @@ async def test_versions_restore_version__C09b_after_source_is_pushed_out(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Trần 3: lượt phục hồi tự đẩy bản nguồn khỏi ba bản còn nội dung; gửi lại vẫn 200 (C09b trước kiểm ảnh)."""
+    """Trần 3: lượt phục hồi tự đẩy bản nguồn khỏi ba bản còn nội dung; gửi lại vẫn 200 (C09b trước kiểm ảnh).
+
+    Hàng catalog: [B06-G-167].
+    """
     keep_snapshots(monkeypatch, 3)
     stage = await make_stage(db_session)
     first, *_ = await _history(db_session, stage, fake_clock, (200, 250, 300))
@@ -326,7 +344,10 @@ async def test_versions_restore_version__C09b_after_source_is_pushed_out(
 async def test_versions_restore_version__C09b_after_empty_diff_branch(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """`revision` bị tăng bằng SQL (không đổi nội dung) → W20 nhánh "diff rỗng" vẫn ghi; gửi lại → 200 C09b."""
+    """`revision` bị tăng bằng SQL (không đổi nội dung) → W20 nhánh "diff rỗng" vẫn ghi; gửi lại → 200 C09b.
+
+    Hàng catalog: [B06-G-168].
+    """
     stage = await make_stage(db_session)
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
     await db_session.execute(
@@ -348,7 +369,10 @@ async def test_versions_restore_version__C14(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Hai người, hai client thật, hai bản khác nhau, cùng `baseVersion` → một 201, một 409; `revision` +1."""
+    """Hai người, hai client thật, hai bản khác nhau, cùng `baseVersion` → một 201, một 409; `revision` +1.
+
+    Hàng catalog: [B06-G-177].
+    """
     second = await make_user(db_session, name="Người thứ hai")
     stage = await make_stage(db_session, members=[second])
     first, middle = await _history(db_session, stage, fake_clock, (200, 250))
@@ -382,7 +406,10 @@ async def test_versions_restore_version__C14(
 async def test_versions_restore_version__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """201 không có `label` → khoá `label` vắng (W2); `note` có mặt."""
+    """201 không có `label` → khoá `label` vắng (W2); `note` có mặt.
+
+    Hàng catalog: [B06-G-179].
+    """
     stage = await make_stage(db_session)
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
 
@@ -398,7 +425,10 @@ async def test_versions_restore_version__C18(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Một dòng `version.restore`, `object_code` = id bản nguồn, nhãn là tên tầng; gửi lại (200) không thêm dòng."""
+    """Một dòng `version.restore`, `object_code` = id bản nguồn, nhãn là tên tầng; gửi lại (200) không thêm dòng.
+
+    Hàng catalog: [B06-G-165].
+    """
     stage = await make_stage(db_session)
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
 
@@ -415,7 +445,10 @@ async def test_versions_restore_version__C18(
 async def test_versions_restore_version__floor_mismatch(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """`floorId` của tầng khác → 422 `VERSION_FLOOR_MISMATCH` `field:"body.floorId"`, chưa ghi gì."""
+    """`floorId` của tầng khác → 422 `VERSION_FLOOR_MISMATCH` `field:"body.floorId"`, chưa ghi gì.
+
+    Hàng catalog: [B06-G-158].
+    """
     stage = await make_stage(db_session, floors=2)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
 
@@ -435,7 +468,10 @@ async def test_versions_restore_version__purged(
     caplog: pytest.LogCaptureFixture,
     how: Corruption,
 ) -> None:
-    """Mất ảnh chụp, `schemaVersion: 2`, khoá lạ trong `document` → 422 `VERSION_SNAPSHOT_PURGED`; không ghi gì."""
+    """Mất ảnh chụp, `schemaVersion: 2`, khoá lạ trong `document` → 422 `VERSION_SNAPSHOT_PURGED`; không ghi gì.
+
+    Hàng catalog: [B06-G-178].
+    """
     stage = await make_stage(db_session)
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
     await corrupt_snapshot(db_session, first, how)
@@ -452,7 +488,10 @@ async def test_versions_restore_version__purged(
 async def test_versions_restore_version__restore_rescales_to_current_scale(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Chụp ở tỉ lệ 1, hiệu chỉnh 10, phục hồi → mục AI và `line` kích thước dài gấp 10, mục đã duyệt giữ nguyên."""
+    """Chụp ở tỉ lệ 1, hiệu chỉnh 10, phục hồi → mục AI và `line` kích thước dài gấp 10, mục đã duyệt giữ nguyên.
+
+    Hàng catalog: [B06-G-172].
+    """
     stage = await make_stage(db_session)
     human = Wall.model_validate(
         wire(
@@ -489,7 +528,10 @@ async def test_versions_restore_version__rescale_that_breaks_the_model_is_422(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Đổi tỉ lệ làm tường dài 4 mm co về 0 (x0,1) → 422 `VALIDATION`, giao dịch rollback, chưa ghi gì."""
+    """Đổi tỉ lệ làm tường dài 4 mm co về 0 (x0,1) → 422 `VALIDATION`, giao dịch rollback, chưa ghi gì.
+
+    Hàng catalog: [B06-G-173].
+    """
     stage = await make_stage(db_session)
     tiny = simple_layer(stage.level_id, walls=(make_wall(stage.level_id, length=4, thickness=50),))
     await put_layer(db_session, stage, fake_clock, tiny, base=0, scale=Decimal(10))
@@ -518,7 +560,10 @@ def _wall_at(level_id: str, entity_id: str, y: int) -> Wall:
 async def test_versions_restore_version__undo_brings_back_the_lost_wall(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Phục hồi làm mất tường W, rồi phục hồi bản "trước" vừa sinh → `layer`, `dimensions` về như cũ (có lại W)."""
+    """Phục hồi làm mất tường W, rồi phục hồi bản "trước" vừa sinh → `layer`, `dimensions` về như cũ (có lại W).
+
+    Hàng catalog: [B06-G-174].
+    """
     stage = await make_stage(db_session)
     kept, lost = _wall_at(stage.level_id, "W-KEPTWALL01", 0), _wall_at(stage.level_id, "W-LOSTWALL01", 2000)
     await put_layer(
@@ -567,7 +612,10 @@ async def test_versions_restore_version__undo_brings_back_the_lost_wall(
 async def test_versions_restore_version__creator_name_is_the_name_at_write_time(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đổi `users.name` sau khi phục hồi → N17 vẫn trả tên cũ cho bản "sau" và cho lượt gắn nhãn sau đó."""
+    """Đổi `users.name` sau khi phục hồi → N17 vẫn trả tên cũ cho bản "sau" và cho lượt gắn nhãn sau đó.
+
+    Hàng catalog: [B06-G-176].
+    """
     stage = await make_stage(db_session)
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))
     old_name = stage.owner.name
@@ -585,7 +633,10 @@ async def test_versions_restore_version__creator_name_is_the_name_at_write_time(
 async def test_versions_restore_version__other_users_are_recorded_as_the_actor(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Người gọi (không phải người tạo bản nguồn) là `creatorId`/`creatorName` của bản "sau" — lấy từ `Principal`."""
+    """Người gọi (không phải người tạo bản nguồn) là `creatorId`/`creatorName` của bản "sau" — lấy từ `Principal`.
+
+    Hàng catalog: [B06-G-175].
+    """
     second: User = await make_user(db_session, name="Người thứ hai")
     stage = await make_stage(db_session, members=[second])
     first, _ = await _history(db_session, stage, fake_clock, (200, 250))

@@ -31,17 +31,36 @@ async def _rejected(
 
 
 async def test_rules_replace_config__unknown_code(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`GARAGE-WIDTH` (đúng mẫu, ngoài danh mục) → `RULE_CODE_UNKNOWN`."""
+    """`GARAGE-WIDTH` (đúng mẫu, ngoài danh mục) → `RULE_CODE_UNKNOWN`.
+
+    Hàng catalog: [B06-G-052].
+    """
     await _rejected(api_client, db_session, {"GARAGE-WIDTH": {"enabled": True}}, "RULE_CODE_UNKNOWN", "body.overrides")
 
 
+async def test_rules_replace_config__empty_general_override_field_stops_at_overrides(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """BUG-720: `{"GENERAL": {}}` → 422 `VALIDATION`, `field` dừng ở `body.overrides` (khoá `GENERAL` không lọt ra).
+
+    Hàng catalog: [B06-G-046].
+    """
+    await _rejected(api_client, db_session, {"GENERAL": {}}, "VALIDATION", "body.overrides")
+
+
 async def test_rules_replace_config__code_pattern(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`wall-thickness` (sai mẫu) → `VALIDATION`, không phải `RULE_CODE_UNKNOWN`."""
+    """`wall-thickness` (sai mẫu) → `VALIDATION`, không phải `RULE_CODE_UNKNOWN`.
+
+    Hàng catalog: [B06-G-044].
+    """
     await _rejected(api_client, db_session, {"wall-thickness": {"enabled": True}}, "VALIDATION", None)
 
 
 async def test_rules_replace_config__unknown_threshold(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`wall.fooMm` → `RULE_THRESHOLD_UNKNOWN`."""
+    """`wall.fooMm` → `RULE_THRESHOLD_UNKNOWN`.
+
+    Hàng catalog: [B06-G-054].
+    """
     overrides = {"WALL-THICKNESS": {"thresholds": {"wall.fooMm": 50}}}
     await _rejected(api_client, db_session, overrides, "RULE_THRESHOLD_UNKNOWN", "body.overrides")
 
@@ -49,7 +68,10 @@ async def test_rules_replace_config__unknown_threshold(api_client: httpx.AsyncCl
 async def test_rules_replace_config__threshold_under_other_code(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`wall.minThicknessMm` dưới `DOOR-WIDTH` → `RULE_THRESHOLD_UNKNOWN`."""
+    """`wall.minThicknessMm` dưới `DOOR-WIDTH` → `RULE_THRESHOLD_UNKNOWN`.
+
+    Hàng catalog: [B06-G-053].
+    """
     overrides = {"DOOR-WIDTH": {"thresholds": {"wall.minThicknessMm": 50}}}
     await _rejected(api_client, db_session, overrides, "RULE_THRESHOLD_UNKNOWN", "body.overrides")
 
@@ -57,7 +79,10 @@ async def test_rules_replace_config__threshold_under_other_code(
 async def test_rules_replace_config__general_threshold_ok(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`general.jointToleranceMm` dưới `GENERAL` → 200."""
+    """`general.jointToleranceMm` dưới `GENERAL` → 200.
+
+    Hàng catalog: [B06-G-059].
+    """
     owner, project = await seed_admin_project(db_session)
     overrides = {"GENERAL": {"thresholds": {"general.jointToleranceMm": 20}}}
     assert (await put_config(api_client, project.id, owner, replace_body(0, overrides))).status_code == 200
@@ -67,7 +92,10 @@ async def test_rules_replace_config__general_threshold_ok(
 async def test_rules_replace_config__out_of_range(
     api_client: httpx.AsyncClient, db_session: AsyncSession, value: int
 ) -> None:
-    """`wall.minThicknessMm` 29 và 201 (ngoài `[30, 200]`) → `RULE_THRESHOLD_OUT_OF_RANGE`, không kẹp."""
+    """`wall.minThicknessMm` 29 và 201 (ngoài `[30, 200]`) → `RULE_THRESHOLD_OUT_OF_RANGE`, không kẹp.
+
+    Hàng catalog: [B06-G-056].
+    """
     overrides = {"WALL-THICKNESS": {"thresholds": {"wall.minThicknessMm": value}}}
     await _rejected(api_client, db_session, overrides, "RULE_THRESHOLD_OUT_OF_RANGE", "body.overrides")
 
@@ -88,7 +116,10 @@ async def test_rules_replace_config__range_bounds_ok(
 async def test_rules_replace_config__general_not_toggleable(
     api_client: httpx.AsyncClient, db_session: AsyncSession, name: str, value: Any
 ) -> None:
-    """`GENERAL` mang `enabled` hoặc `severity` → `RULE_GENERAL_NOT_TOGGLEABLE`, `field` trỏ tới khoá đó."""
+    """`GENERAL` mang `enabled` hoặc `severity` → `RULE_GENERAL_NOT_TOGGLEABLE`, `field` trỏ tới khoá đó.
+
+    Hàng catalog: [B06-G-058].
+    """
     await _rejected(
         api_client,
         db_session,
@@ -102,7 +133,10 @@ async def test_rules_replace_config__general_not_toggleable(
 async def test_rules_replace_config__non_finite_raw(
     api_client: httpx.AsyncClient, db_session: AsyncSession, literal: str
 ) -> None:
-    """Thân thô có `NaN`, `Infinity`, `1e999` làm ngưỡng → 422 `VALIDATION`, không ghi gì."""
+    """Thân thô có `NaN`, `Infinity`, `1e999` làm ngưỡng → 422 `VALIDATION`, không ghi gì.
+
+    Hàng catalog: [B06-G-051].
+    """
     owner, project = await seed_admin_project(db_session)
     raw = (
         '{"baseVersion": 0, "body": {"overrides": {"WALL-THICKNESS": '
@@ -118,7 +152,10 @@ async def test_rules_replace_config__non_finite_raw(
 async def test_rules_replace_config__two_errors_first_by_code_order(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Hai lỗi cùng lúc → mã của lỗi đứng trước theo thứ tự chữ; bị từ chối thì `revision` không đổi."""
+    """Hai lỗi cùng lúc → mã của lỗi đứng trước theo thứ tự chữ; bị từ chối thì `revision` không đổi.
+
+    Hàng catalog: [B06-G-060].
+    """
     overrides = {
         "GARAGE-WIDTH": {"enabled": True},
         "DOOR-WIDTH": {"thresholds": {"door.minWidthMm": 100}},
@@ -151,7 +188,10 @@ _PRESETS: dict[str, dict[str, Any]] = {
 async def test_rules_replace_config__preset_roundtrip(
     api_client: httpx.AsyncClient, db_session: AsyncSession, preset: str
 ) -> None:
-    """`overrides` của preset văn phòng / nhà xưởng → 200; N21 đọc lại đúng từng giá trị, gồm `false` và `critical`."""
+    """`overrides` của preset văn phòng / nhà xưởng → 200; N21 đọc lại đúng từng giá trị, gồm `false` và `critical`.
+
+    Hàng catalog: [B06-G-063].
+    """
     owner, project = await seed_admin_project(db_session)
     response = await put_config(api_client, project.id, owner, replace_body(0, _PRESETS[preset]))
     assert response.status_code == 200

@@ -21,7 +21,7 @@ from apps.api.core.errors import (
     translate_unknown,
     validation_error,
 )
-from apps.api.core.tests.sample import sample_app, sample_client
+from apps.api.core.tests.sample import OverridesBody, sample_app, sample_client
 from apps.api.core.wire import WireModel
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND, PAYLOAD_TOO_LARGE
 from packages.core.errors import MISSING, AppError, RemoteFieldChange, VersionConflictError
@@ -50,6 +50,12 @@ def _change(value: object) -> RemoteFieldChange:
 def test_field_of_stops_at_dict_key() -> None:
     """`overrides.WALL-THICKNESS.severity` → `overrides` (khoá dict không phải tên trường)."""
     assert field_of(("body", "overrides", "WALL-THICKNESS", "severity")) == "overrides"
+
+
+def test_field_of_model_walk_only_applies_to_body() -> None:
+    """Loc `query`/`path` không đi theo kiểu thân: `overrides.GENERAL` ở query vẫn như cũ."""
+    assert field_of(("body", "overrides", "GENERAL", "severity"), None, OverridesBody) == "overrides"
+    assert field_of(("query", "overrides", "GENERAL"), None, OverridesBody) == "overrides.general"
 
 
 def test_field_of_converts_snake_case() -> None:
@@ -187,6 +193,20 @@ async def test_pydantic_error_on_dict_key_is_422_with_short_field(
     assert body["code"] == "VALIDATION"
     assert body["field"] == "overrides"
     assert body["count"] == 1
+
+
+@pytest.mark.parametrize("key", ["GENERAL", "WALL-THICKNESS"])
+async def test_pydantic_error_on_alnum_dict_key_stops_at_the_dict(
+    sample_client: httpx.AsyncClient, fake_principal: Principal, key: str
+) -> None:
+    """BUG-720: khoá dict chỉ gồm chữ-số (`GENERAL`) cũng không lọt ra `field` — vẫn `overrides`."""
+    response = await sample_client.post(
+        "/api/sample/overrides",
+        json={"overrides": {key: {"severity": 7}}},
+        headers=auth_headers(fake_principal),
+    )
+    assert response.status_code == 422
+    assert response.json()["field"] == "overrides"
 
 
 async def test_extra_key_is_422(sample_client: httpx.AsyncClient, fake_principal: Principal) -> None:
