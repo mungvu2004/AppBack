@@ -55,3 +55,30 @@ P0: 0 | P1: 0 | P2: 0 | P3: 0 | Nit: 1
 Cổng đầy đủ thoát 0 trên `ed94b153`, độ phủ ≥ 90/90; ba finding 5–7 của review `fix/qa06-be` lượt 2 đã đóng đúng đề xuất, không đổi
 hành vi. Finding 1 là Nit tài liệu, không chặn. Verify tích hợp trên `main` sau gộp bỏ được nếu cây sau gộp trùng cây `ed94b153`
 (khác chỉ ở `docs/reviews/*`, `DEBT.md`).
+
+---
+
+# Lượt 2 (2026-10-15)
+
+- Commit đầu nhánh: 8be3a66c (`docs(changes): drop the humanText.ts cross-reference (review Nit)`); soát `git diff f4c96fe5..8be3a66c`
+  — 1 tệp `changes/QA-06b.md`, +1/−1. Cây sạch; trailer `Prompt: QA-06b` liền khối, có dòng trống trước (R-36b đạt).
+- Cổng: phạm vi đích — lượt ≥ 2; `git diff --stat ed94b153..8be3a66c` (sha lượt đầy đủ) chỉ có `changes/QA-06b.md` và
+  `docs/reviews/*`, không `.py`, không chạm đk (2)–(7) của R-33b. Bước 1–4 chỉ đọc mã Python, mà cây `.py` trùng hệt cây đã qua lượt đầy
+  đủ (mã thoát 0) → không chạy lại cổng; không có file mã đổi nên không có độ phủ file đổi để đo.
+- Độ phủ: không đo (phạm vi đích) — file đổi: không có file `.py`.
+
+## Soát vòng sửa
+- Finding 1 (Nit, `changes/QA-06b.md:10`): bỏ `humanText.ts:19`, chỉ còn trích câu FE "ký tự điều khiển hoặc đảo chiều"
+  (`versionHistoryModel.ts:452`); đã đối chiếu dòng 452 trên AppFront `qa/phase06-run` = `LABEL_BAD_CHARS`, đúng câu đó → đóng.
+
+## Finding lượt 2
+Không có.
+
+## Điểm lượt 2
+SEC 5 · CON 5 · LOG 5 · PERF 5 · RES 5 · DB, API 5 · TEST 5 · OBS, OPS 5 · MNT 5 → Tổng: 5,00 / 5
+
+P0: 0 | P1: 0 | P2: 0 | P3: 0 | Nit: 0
+
+## PHÁN QUYẾT (lượt 2): APPROVE
+Nit duy nhất của lượt 1 đã đóng; diff chỉ là tài liệu, cây mã trùng cây đã qua cổng đầy đủ `ed94b153`. Verify tích hợp trên `main`
+sau gộp bỏ được nếu cây sau gộp trùng cây `8be3a66c` (khác chỉ ở `docs/reviews/*`, `DEBT.md`).
