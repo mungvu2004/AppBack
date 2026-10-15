@@ -189,6 +189,20 @@ async def test_pydantic_error_on_dict_key_is_422_with_short_field(
     assert body["count"] == 1
 
 
+@pytest.mark.parametrize("key", ["GENERAL", "WALL-THICKNESS"])
+async def test_pydantic_error_on_alnum_dict_key_stops_at_the_dict(
+    sample_client: httpx.AsyncClient, fake_principal: Principal, key: str
+) -> None:
+    """BUG-720: khoá dict chỉ gồm chữ-số (`GENERAL`) cũng không lọt ra `field` — vẫn `overrides`."""
+    response = await sample_client.post(
+        "/api/sample/overrides",
+        json={"overrides": {key: {"severity": 7}}},
+        headers=auth_headers(fake_principal),
+    )
+    assert response.status_code == 422
+    assert response.json()["field"] == "overrides"
+
+
 async def test_extra_key_is_422(sample_client: httpx.AsyncClient, fake_principal: Principal) -> None:
     """C03: khoá lạ trong thân → 422 `VALIDATION` (`extra="forbid"`)."""
     response = await sample_client.post(
