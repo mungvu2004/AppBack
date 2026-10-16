@@ -20,10 +20,11 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from functools import cache
-from typing import Final
+from typing import Annotated, Final
 
 from argon2 import PasswordHasher, profiles
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from pydantic import BeforeValidator, Field
 
 from apps.api.auth.settings import Argon2Profile, get_auth_settings
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -33,6 +34,18 @@ _log: Final = logging.getLogger(__name__)
 
 MIN_PASSWORD_LENGTH: Final = 8
 """Như `MIN_PASSWORD_LENGTH` của FE (`src/api/schemas/index.ts:56`)."""
+
+
+def _nfc_if_str(value: object) -> object:
+    """NFC cho chuỗi; giá trị khác để nguyên cho pydantic báo lỗi kiểu."""
+    return nfc(value) if isinstance(value, str) else value
+
+
+NewPassword = Annotated[str, BeforeValidator(_nfc_if_str), Field(min_length=MIN_PASSWORD_LENGTH)]
+"""Mật khẩu mới trên dây (N9, N10): đếm độ dài SAU NFC — 4 ký tự NFD là 8 điểm mã (BUG-P07-014/015).
+
+N13 còn validator riêng (NO-428).
+"""
 
 HASH_WAIT_S: Final = 2.0
 HASH_RETRY_AFTER_S: Final = 1
