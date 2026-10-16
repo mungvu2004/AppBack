@@ -27,7 +27,10 @@ async def _get(client: httpx.AsyncClient, principal: Principal, path: str, **par
 async def test_ml_list_datasets__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """200, mới nhất trước, bộ lọc `family` chỉ trả dataset của họ đó; item đúng bốn trường của dây."""
+    """200, mới nhất trước, bộ lọc `family` chỉ trả dataset của họ đó; item đúng bốn trường của dây.
+
+    Catalog: B08M-G-106.
+    """
     wall = await make_dataset(db_session, family=WALL)
     opening = await make_dataset(db_session, family=OPENING)
 
@@ -49,7 +52,10 @@ async def test_ml_list_datasets__C01(
 async def test_ml_list_datasets__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """0, 1, 5 mục; `limit=3` → `nextCursor`, trang 2 đủ 2."""
+    """0, 1, 5 mục; `limit=3` → `nextCursor`, trang 2 đủ 2.
+
+    Catalog: B08M-G-106.
+    """
     empty = await _get(api_client, fake_principal, DATASETS_PATH, family=WALL)
     assert empty.json() == {"items": []}
 
@@ -71,7 +77,10 @@ async def test_ml_list_datasets__C15(
 
 
 async def test_ml_list_datasets__C02(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """`family` ngoài ba họ → 422 `field:"family"`; `limit=201` vượt trần 200 → 422 khung."""
+    """`family` ngoài ba họ → 422 `field:"family"`; `limit=201` vượt trần 200 → 422 khung.
+
+    Catalog: B08M-G-106.
+    """
     unknown = await _get(api_client, fake_principal, DATASETS_PATH, family="walls")
     too_many = await _get(api_client, fake_principal, DATASETS_PATH, limit=201)
 
@@ -84,7 +93,10 @@ async def test_ml_list_datasets__C02(api_client: httpx.AsyncClient, fake_princip
 async def test_ml_list_datasets__no_family_filter(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Không truyền `family` → mọi họ trong một trang (nhánh không lọc)."""
+    """Không truyền `family` → mọi họ trong một trang (nhánh không lọc).
+
+    Catalog: B08M-G-106.
+    """
     wall = await make_dataset(db_session, family=WALL)
     dimension = await make_dataset(db_session, family=DIMENSION)
 
@@ -96,7 +108,10 @@ async def test_ml_list_datasets__no_family_filter(
 async def test_ml_list_datasets_refuses_a_cursor_of_another_family(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Cursor mang dấu vết bộ lọc `family`: dùng cho họ khác → 422 `CURSOR_INVALID`."""
+    """Cursor mang dấu vết bộ lọc `family`: dùng cho họ khác → 422 `CURSOR_INVALID`.
+
+    Catalog: B08M-G-106.
+    """
     for minute in range(2):
         await make_dataset(db_session, family=WALL, created_at=fake_clock.now().replace(minute=minute))
 
@@ -110,7 +125,10 @@ async def test_ml_list_datasets_refuses_a_cursor_of_another_family(
 async def test_ml_list_datasets__C17_shape(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`DatasetOut`: đúng bộ khoá dây, không `createdBy`/`nameKey` (K01)."""
+    """`DatasetOut`: đúng bộ khoá dây, không `createdBy`/`nameKey` (K01).
+
+    Catalog: B08M-G-106.
+    """
     row = await make_dataset(db_session, family=DIMENSION)
 
     response = await _get(api_client, fake_principal, DATASETS_PATH, family=DIMENSION)
@@ -128,7 +146,10 @@ async def test_ml_list_datasets__C17_shape(
 async def test_ml_list_dataset_versions__C01_ready(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Bản `ready`: `manifestSha256`, `splitCounts` (đủ ba khoá) có mặt; `failureCode` vắng."""
+    """Bản `ready`: `manifestSha256`, `splitCounts` (đủ ba khoá) có mặt; `failureCode` vắng.
+
+    Catalog: B08M-G-116.
+    """
     dataset = await make_dataset(db_session, family=OPENING)
     version = await make_dataset_version(db_session, dataset=dataset, status="ready")
 
@@ -146,7 +167,10 @@ async def test_ml_list_dataset_versions__C01_ready(
 async def test_ml_list_dataset_versions__C01_failed(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Bản `failed`: `failureCode` có mặt; `manifestSha256`, `splitCounts` vắng."""
+    """Bản `failed`: `failureCode` có mặt; `manifestSha256`, `splitCounts` vắng.
+
+    Catalog: B08M-G-116.
+    """
     dataset = await make_dataset(db_session, family=OPENING)
     await make_dataset_version(db_session, dataset=dataset, status="failed", failure_code="DATASET_TOO_LARGE")
 
@@ -159,7 +183,10 @@ async def test_ml_list_dataset_versions__C01_failed(
 
 
 async def test_ml_list_dataset_versions__C08(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Dataset không có **và** id sai mẫu đều 404 `resource:"dataset"`."""
+    """Dataset không có **và** id sai mẫu đều 404 `resource:"dataset"`.
+
+    Catalog: B08M-G-116.
+    """
     missing = await _get(api_client, fake_principal, versions_path("dst_01KB6020000000000000000404"))
     malformed = await _get(api_client, fake_principal, versions_path("khong-phai-id"))
 
@@ -172,7 +199,10 @@ async def test_ml_list_dataset_versions__C08(api_client: httpx.AsyncClient, fake
 async def test_ml_list_dataset_versions__C15_pages(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """5 bản, `limit=3` → trang 1 có 3 và `nextCursor`, trang 2 có đúng 2, `sequence` giảm dần."""
+    """5 bản, `limit=3` → trang 1 có 3 và `nextCursor`, trang 2 có đúng 2, `sequence` giảm dần.
+
+    Catalog: B08M-G-116.
+    """
     dataset = await make_dataset(db_session, family=WALL)
     for seq in range(1, 6):
         await make_dataset_version(db_session, dataset=dataset, status="ready", sequence=seq)
@@ -190,7 +220,10 @@ async def test_ml_list_dataset_versions__C15_pages(
 async def test_ml_list_dataset_versions__C17_building(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Bản `building`: vắng cả `manifestSha256`, `splitCounts`, `failureCode` (K02)."""
+    """Bản `building`: vắng cả `manifestSha256`, `splitCounts`, `failureCode` (K02).
+
+    Catalog: B08M-G-116.
+    """
     dataset = await make_dataset(db_session, family=WALL)
     version = await make_dataset_version(db_session, dataset=dataset, status="building")
 
@@ -206,9 +239,24 @@ async def test_ml_list_dataset_versions__C17_building(
 async def test_ml_list_dataset_versions__C02_limit_bounds(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, query: dict[str, int]
 ) -> None:
-    """`limit` ngoài [1, 200] → 422 của khung."""
+    """`limit` ngoài [1, 200] → 422 của khung.
+
+    Catalog: B08M-G-116.
+    """
     dataset = await make_dataset(db_session, family=WALL)
 
     response = await _get(api_client, fake_principal, versions_path(dataset.id), **query)
 
     assert response.status_code == 422
+
+
+async def test_ml_list_dataset_versions__nul_in_id(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
+    """Id dataset chứa NUL (`%00`) → 404 `dataset`, không 500.
+
+    Chưa chạy, cần R1/pytest xác nhận. Catalog: B08M-G-112.
+    """
+    response = await _get(api_client, fake_principal, versions_path("dst_%00x"))
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "NOT_FOUND"
+    assert response.json()["resource"] == "dataset"

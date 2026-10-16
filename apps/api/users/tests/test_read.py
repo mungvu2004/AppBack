@@ -71,7 +71,10 @@ async def test_users_list_users__C01(
 async def test_users_list_users__invite_bounced(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """NO-150: người `pending` có lời mời bị từ chối vĩnh viễn không hiện `invitedAt`/`inviteExpiresAt`."""
+    """NO-150: người `pending` có lời mời bị từ chối vĩnh viễn không hiện `invitedAt`/`inviteExpiresAt`.
+
+    Catalog: B08U-G-009.
+    """
     admin = await make_admin(db_session)
     bounced = await make_user(db_session, status="pending", password=None)
     await seed_token(db_session, user_id=bounced.id, purpose="invite", clock=fake_clock, failed_at=fake_clock.now())
@@ -84,7 +87,10 @@ async def test_users_list_users__invite_bounced(
 
 
 async def test_users_list_users__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`lastActiveAt` luôn có khoá (`null` nếu chưa hoạt động); `avatarUrl`/lời mời vắng khoá khi không có."""
+    """`lastActiveAt` luôn có khoá (`null` nếu chưa hoạt động); `avatarUrl`/lời mời vắng khoá khi không có.
+
+    Catalog: B08U-G-008.
+    """
     admin = await make_admin(db_session)
     active = await make_user(db_session)
     with_avatar = await make_user(db_session)
@@ -113,7 +119,10 @@ async def test_users_list_users__C07(api_client: httpx.AsyncClient, db_session: 
 async def test_users_list_users__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Trần = 3: một người, đúng trần, vượt trần (`total` vẫn đếm đủ, thứ tự cố định)."""
+    """Trần = 3: một người, đúng trần, vượt trần (`total` vẫn đếm đủ, thứ tự cố định).
+
+    Catalog: B08U-G-005.
+    """
     admin = await make_admin(db_session)
     with users_limits(monkeypatch, users_list_max=3):
         one = (await send(api_client, admin, "GET", USERS)).json()
@@ -132,7 +141,10 @@ async def test_users_list_users__C15(
 async def test_users_list_users__signs_all_avatars_in_one_batch(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """NO-207: 5 người có ảnh đại diện → đúng **một** lượt `signed_urls` cho cả lô, mọi `avatarUrl` có mặt."""
+    """NO-207: 5 người có ảnh đại diện → đúng **một** lượt `signed_urls` cho cả lô, mọi `avatarUrl` có mặt.
+
+    Catalog: B08U-G-007.
+    """
     admin = await make_admin(db_session)
     for _ in range(5):
         user = await make_user(db_session, password=None)
@@ -156,7 +168,10 @@ async def test_users_list_users__signs_all_avatars_in_one_batch(
 
 
 async def test_users_list_users_sql_count_is_flat(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Không N+1: 3 và 30 người ra **cùng** số câu SQL (in số để báo cáo)."""
+    """Không N+1: 3 và 30 người ra **cùng** số câu SQL (in số để báo cáo).
+
+    Catalog: B08U-G-006.
+    """
     admin = await make_admin(db_session)
     for _ in range(2):
         await make_user(db_session, password=None)
@@ -195,6 +210,28 @@ async def test_users_list_memberships__C01(
     ]
 
 
+async def test_users_list_memberships__role_follows_role_change(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Sau #41 đổi vai hệ thống, `role` của membership (#39) là vai mới, không phải vai lúc vào dự án.
+
+    Catalog: B08U-G-015.
+    """
+    admin = await make_admin(db_session)
+    member = await make_user(db_session, role="viewer")
+    project = await make_project(db_session, owner=admin, members=[member])
+    await db_session.commit()
+
+    changed = await send(
+        api_client, admin, "PATCH", f"{USERS}/{member.id}/role", json={"role": "engineer", "userId": member.id}
+    )
+    response = await send(api_client, admin, "GET", f"{USERS}/{member.id}/memberships")
+
+    assert changed.status_code == 200
+    assert response.status_code == 200
+    assert response.json() == [{"projectId": project.id, "projectName": project.name, "role": "engineer"}]
+
+
 async def test_users_list_memberships__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Thiếu quyền → 403."""
     caller = await make_user(db_session, role="engineer")
@@ -216,7 +253,10 @@ async def test_users_list_memberships__C08(api_client: httpx.AsyncClient, db_ses
 async def test_users_list_memberships__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Trần = 3: rỗng, một dự án, vượt trần (3 dự án đầu theo `projectId ASC`)."""
+    """Trần = 3: rỗng, một dự án, vượt trần (3 dự án đầu theo `projectId ASC`).
+
+    Catalog: B08U-G-014.
+    """
     admin = await make_admin(db_session)
     member = await make_user(db_session)
     path = f"{USERS}/{member.id}/memberships"
@@ -283,7 +323,10 @@ async def test_users_list_activity__C15(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Trần = 3: rỗng, một dòng, vượt trần (3 dòng mới nhất)."""
+    """Trần = 3: rỗng, một dòng, vượt trần (3 dòng mới nhất).
+
+    Catalog: B08U-G-018.
+    """
     admin = await make_admin(db_session)
     path = f"{USERS}/{admin.id}/activity"
     with users_limits(monkeypatch, user_activity_max=3):

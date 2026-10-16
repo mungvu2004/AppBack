@@ -36,7 +36,10 @@ def _delete(user_id: str, confirm: str, *, body_id: str | None = None) -> dict[s
 async def test_users_delete_user__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Xoá mềm: trả `AdminUser` trước khi xoá (còn `active`); DB `deleted_at` + `disabled`; phiên/lời mời thu hồi."""
+    """Xoá mềm: trả `AdminUser` trước khi xoá (còn `active`); DB `deleted_at` + `disabled`; phiên/lời mời thu hồi.
+
+    Catalog: B08U-G-073.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session, role="engineer")
     await seed_session(db_session, target, fake_clock)
     await seed_token(db_session, user_id=target.id, purpose="invite", clock=fake_clock)
@@ -87,7 +90,10 @@ async def test_users_delete_user__C02(
 
 
 async def test_users_delete_user__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`."""
+    """Khoá lạ trong thân → 422 `VALIDATION`.
+
+    Catalog: B08U-G-071.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     body = {**_delete(target.id, target.email), "x": 1}
     response = await send(api_client, admin, "DELETE", f"{USERS}/{target.id}", json=body)
@@ -125,7 +131,10 @@ async def test_users_delete_user__C21(api_client: httpx.AsyncClient, db_session:
 async def test_users_delete_user_confirm_email_is_compared_normalized(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """`confirmEmail` khác hoa thường vẫn khớp (200); khác hẳn → 422 `USER_CONFIRM_EMAIL_MISMATCH`."""
+    """`confirmEmail` khác hoa thường vẫn khớp (200); khác hẳn → 422 `USER_CONFIRM_EMAIL_MISMATCH`.
+
+    Catalog: B08U-C-022.
+    """
     admin = await make_admin(db_session)
     lower = await make_user(db_session, email="Nguoi.Xoa@Example.com")
     other = await make_user(db_session)
@@ -141,7 +150,10 @@ async def test_users_delete_user_confirm_email_is_compared_normalized(
 
 
 async def test_users_delete_user_self_is_rejected(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Tự xoá chính mình khi còn admin khác → 422 `USER_SELF_MODIFICATION`."""
+    """Tự xoá chính mình khi còn admin khác → 422 `USER_SELF_MODIFICATION`.
+
+    Catalog: B08U-C-003.
+    """
     admin = await make_admin(db_session)
     await make_admin(db_session)
     response = await send(api_client, admin, "DELETE", f"{USERS}/{admin.id}", json=_delete(admin.id, admin.email))
@@ -152,7 +164,10 @@ async def test_users_delete_user_self_is_rejected(api_client: httpx.AsyncClient,
 async def test_users_delete_user_last_admin_is_rejected(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """NO-206: admin `active` duy nhất tự xoá → 422 `USER_LAST_ADMIN`, không xoá gì."""
+    """NO-206: admin `active` duy nhất tự xoá → 422 `USER_LAST_ADMIN`, không xoá gì.
+
+    Catalog: B08U-C-007.
+    """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "DELETE", f"{USERS}/{admin.id}", json=_delete(admin.id, admin.email))
     assert (response.status_code, response.json()["code"]) == (422, "USER_LAST_ADMIN")
@@ -181,7 +196,10 @@ async def test_users_delete_user_disappears_from_list_and_frees_email(
 async def test_users_delete_user_removes_memberships_and_logs_orphans(
     api_client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Gỡ khỏi mọi dự án; dự án chỉ còn người này là người sửa → log `project_orphaned` (không chặn xoá)."""
+    """Gỡ khỏi mọi dự án; dự án chỉ còn người này là người sửa → log `project_orphaned` (không chặn xoá).
+
+    Catalog: B08U-G-069.
+    """
     admin, target, peer = await make_admin(db_session), await make_user(db_session), await make_user(db_session)
     orphan = await make_project(db_session, owner=target)
     shared = await make_project(db_session, owner=target, members=[peer])
@@ -202,7 +220,10 @@ async def test_users_delete_user_removes_memberships_and_logs_orphans(
 async def test_users_delete_user_confirm_email_rejects_non_ascii_folding(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local: str, fold_char: str
 ) -> None:
-    """`confirmEmail` có Kelvin U+212A hay U+017F gấp về email mục tiêu → 422 `VALIDATION`, không xoá (K37)."""
+    """`confirmEmail` có Kelvin U+212A hay U+017F gấp về email mục tiêu → 422 `VALIDATION`, không xoá (K37).
+
+    Catalog: B08U-C-021.
+    """
     admin = await make_admin(db_session)
     target = await make_user(db_session, email=f"{local}@example.com")
     confirm = target.email.replace(local[0], fold_char)

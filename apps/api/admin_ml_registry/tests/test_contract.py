@@ -91,32 +91,50 @@ async def _forbidden_for_engineer(client: AsyncClient, clock: FakeClock, op: str
 
 
 async def test_ml_list_families__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """N23 chỉ cho `admin`."""
+    """N23 chỉ cho `admin`.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_families")
 
 
 async def test_ml_activate_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """N24 chỉ cho `admin` — 403 tới trước cả guard 428 của ghi có version."""
+    """N24 chỉ cho `admin` — 403 tới trước cả guard 428 của ghi có version.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_activate_version")
 
 
 async def test_ml_list_versions__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """N25 chỉ cho `admin`."""
+    """N25 chỉ cho `admin`.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_versions")
 
 
 async def test_ml_upload_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """N26 chỉ cho `admin` — 403 trước khi đọc một byte nào của luồng multipart."""
+    """N26 chỉ cho `admin` — 403 trước khi đọc một byte nào của luồng multipart.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_upload_version")
 
 
 async def test_ml_read_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """N27 chỉ cho `admin`."""
+    """N27 chỉ cho `admin`.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_read_version")
 
 
 def test_ml_activate_version_is_a_versioned_route(api_app: FastAPI) -> None:
-    """N24 khai `versioned=True`, giữ `idempotency="auto"` và trần thân mặc định."""
+    """N24 khai `versioned=True`, giữ `idempotency="auto"` và trần thân mặc định.
+
+    Catalog: B08M-G-065.
+    """
     route = _route(api_app, "ml_activate_version")
 
     assert route.options.versioned
@@ -125,7 +143,10 @@ def test_ml_activate_version_is_a_versioned_route(api_app: FastAPI) -> None:
 
 
 def test_ml_upload_version_takes_a_large_body_without_idempotency(api_app: FastAPI) -> None:
-    """N26: trần thân 512 MiB buộc `idempotency="off"` (`routing.py:78`) và trả 201."""
+    """N26: trần thân 512 MiB buộc `idempotency="off"` (`routing.py:78`) và trả 201.
+
+    Catalog: B08M-G-082.
+    """
     route = _route(api_app, "ml_upload_version")
 
     assert route.options.body_limit == UPLOAD_BODY_LIMIT
@@ -135,7 +156,10 @@ def test_ml_upload_version_takes_a_large_body_without_idempotency(api_app: FastA
 
 
 def test_ml_routes_are_all_admin_only(api_app: FastAPI) -> None:
-    """Cả năm route mang đúng năm `operationId` của BE-BIND và đều được bảo vệ."""
+    """Cả năm route mang đúng năm `operationId` của BE-BIND và đều được bảo vệ.
+
+    Catalog: B08M-D-040.
+    """
     routes = [_route(api_app, op) for op, _method, _path in _ROUTES]
 
     assert [route.wire_method for route in routes] == [method for _op, method, _path in _ROUTES]
@@ -143,7 +167,10 @@ def test_ml_routes_are_all_admin_only(api_app: FastAPI) -> None:
 
 
 def test_set_active_model_version_in_is_strict_on_both_shells() -> None:
-    """Khoá lạ ở vỏ ngoài hay trong `body` đều là lỗi validate (C03)."""
+    """Khoá lạ ở vỏ ngoài hay trong `body` đều là lỗi validate (C03).
+
+    Catalog: B08M-G-065.
+    """
     assert SetActiveModelVersionIn(base_version=3, body={"versionId": None}).body.version_id is None
     with pytest.raises(ValueError, match="creatorId"):
         SetActiveModelVersionIn(base_version=0, body={"versionId": None, "creatorId": "x"})
@@ -235,7 +262,10 @@ async def test_version_out_omits_absent_fields_instead_of_null(db_session: Async
 
 
 def test_family_out_omits_a_family_without_an_active_version() -> None:
-    """Họ tường chưa kích hoạt bản nào: `activeVersionId` vắng, không `null` (C17)."""
+    """Họ tường chưa kích hoạt bản nào: `activeVersionId` vắng, không `null` (C17).
+
+    Catalog: B08M-G-005.
+    """
     assert family_out(ModelFamilyRow(family=WALL, revision=0)).model_dump(by_alias=True) == {
         "family": WALL,
         "revision": 0,

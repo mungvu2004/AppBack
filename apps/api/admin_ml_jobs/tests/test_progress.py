@@ -27,7 +27,7 @@ from apps.api.admin_ml_jobs.tests._helpers import (
     metrics_path,
 )
 from apps.api.core.auth import Principal
-from packages.db.models.admin_ml_jobs import TrainingJobRow
+from packages.db.models.admin_ml_jobs import METRIC_SPLITS, TrainingJobRow
 from packages.testing.factories.admin_ml_datasets import make_dataset, make_dataset_version
 from packages.testing.factories.admin_ml_jobs import make_training_job
 from packages.testing.fixtures.api import auth_headers
@@ -75,7 +75,10 @@ def _steps(body: dict[str, object]) -> list[tuple[int, str]]:
 async def test_ml_list_job_metrics__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """200, `step` tăng rồi `split`; `since` loại trừ; `nextCursor` là chuỗi số của bước cuối."""
+    """200, `step` tăng rồi `split`; `since` loại trừ; `nextCursor` là chuỗi số của bước cuối.
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session)
     await add_metrics(
         db_session,
@@ -91,6 +94,57 @@ async def test_ml_list_job_metrics__C01(
     assert _steps(first.json()) == [(1, "train"), (1, "validation"), (2, "train"), (2, "validation")]
     assert first.json()["nextCursor"] == "2"
     assert _steps(after_one.json()) == [(2, "train"), (2, "validation")]
+
+
+async def test_ml_list_job_metrics__limit_caps_items(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
+) -> None:
+    """Trang có thể dài hơn `limit` tới `len(METRIC_SPLITS) - 1` item, mọi bước đủ mọi `split`.
+
+    Q9: page may exceed limit to keep whole steps (service.py _whole_steps).
+
+    Catalog: B08M-G-191.
+    """
+    job = await _job(db_session)
+    await add_metrics(
+        db_session,
+        job_id=job.id,
+        at=fake_clock.now(),
+        points=[(step, split) for step in (1, 2, 3) for split in METRIC_SPLITS],
+    )
+
+    response = await _get(api_client, fake_principal, metrics_path(job.id), limit=1)
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert 1 <= len(items) <= 1 + len(METRIC_SPLITS) - 1
+    for step in {item["step"] for item in items}:
+        assert {item["split"] for item in items if item["step"] == step} == set(METRIC_SPLITS)
+
+
+@pytest.mark.parametrize(
+    ("path", "catalog"), [(metrics_path, "B08M-G-173"), (logs_path, "B08M-G-183")], ids=["metrics", "logs"]
+)
+async def test_ml_list_job_stream__since_upper_bound(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    fake_principal: Principal,
+    path: Callable[[str], str],
+    catalog: str,
+) -> None:
+    """`since` > 2**31-1 (cột Integer) → 422 `VALIDATION` `field:"since"`; đúng trần → 200, không 500.
+
+    Chưa chạy, cần R1/pytest xác nhận. Catalog: B08M-G-173 (N36) / B08M-G-183 (N37).
+    """
+    job = await _job(db_session)
+
+    over = await _get(api_client, fake_principal, path(job.id), since=2**31)
+    at_cap = await _get(api_client, fake_principal, path(job.id), since=2**31 - 1)
+
+    assert over.status_code == 422
+    assert over.json()["code"] == "VALIDATION"
+    assert over.json()["field"] == "since"
+    assert at_cap.status_code == 200
 
 
 async def test_ml_list_job_metrics__C02(
@@ -119,7 +173,10 @@ async def test_ml_list_job_metrics__C08(api_client: httpx.AsyncClient, fake_prin
 async def test_ml_list_job_metrics__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """0 điểm; 1 bước; 5 bước với `limit=2` → `nextCursor` rồi trang 2; cửa sổ muộn giữ cursor, quá thì vắng."""
+    """0 điểm; 1 bước; 5 bước với `limit=2` → `nextCursor` rồi trang 2; cửa sổ muộn giữ cursor, quá thì vắng.
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session, started_at=fake_clock.now())
     empty = await _get(api_client, fake_principal, metrics_path(job.id))
     assert empty.json() == {"items": [], "nextCursor": "-1"}
@@ -157,7 +214,10 @@ async def test_ml_list_job_metrics__C15(
 async def test_ml_list_job_metrics__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Điểm chỉ có `loss` (họ cửa/nội thất): `iou`, `map50` **vắng khoá**, không `null` (W2)."""
+    """Điểm chỉ có `loss` (họ cửa/nội thất): `iou`, `map50` **vắng khoá**, không `null` (W2).
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session)
     await add_metrics(
         db_session, job_id=job.id, at=fake_clock.now(), points=[(1, "train"), (1, "validation"), (2, "train")]
@@ -172,7 +232,10 @@ async def test_ml_list_job_metrics__C17(
 async def test_ml_list_job_metrics_holds_the_last_step_until_both_splits_arrive(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Bước 3 mới một `split` → chưa trả; thêm bước 4 → bước 3 ra đủ hai `split` ([8] N36)."""
+    """Bước 3 mới một `split` → chưa trả; thêm bước 4 → bước 3 ra đủ hai `split` ([8] N36).
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session)
     await add_metrics(db_session, job_id=job.id, at=fake_clock.now(), points=[(3, "train"), (3, "validation")])
     held = await _get(api_client, fake_principal, metrics_path(job.id), since=2)
@@ -188,7 +251,10 @@ async def test_ml_list_job_metrics_holds_the_last_step_until_both_splits_arrive(
 async def test_ml_list_job_metrics_releases_the_last_step_after_the_job_ends(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Job kết thúc trong cửa sổ, bước cuối mới có `train` → chưa trả; `validation` tới → trả."""
+    """Job kết thúc trong cửa sổ, bước cuối mới có `train` → chưa trả; `validation` tới → trả.
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session, status="cancelled", ended_at=fake_clock.now())
     await add_metrics(db_session, job_id=job.id, at=fake_clock.now(), points=[(5, "train")])
 
@@ -203,7 +269,10 @@ async def test_ml_list_job_metrics_releases_the_last_step_after_the_job_ends(
 async def test_ml_list_job_metrics_releases_the_last_step_past_the_late_window(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Quá cửa sổ muộn, bước cuối thiếu `validation` vẫn phải ra (sẽ không còn ai ghi nữa)."""
+    """Quá cửa sổ muộn, bước cuối thiếu `validation` vẫn phải ra (sẽ không còn ai ghi nữa).
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session, status="failed", ended_at=fake_clock.now())
     await add_metrics(db_session, job_id=job.id, at=fake_clock.now(), points=[(5, "train")])
 
@@ -219,7 +288,10 @@ async def test_ml_list_job_metrics_releases_the_last_step_past_the_late_window(
 async def test_ml_list_job_metrics_never_cuts_a_step_in_half(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """`limit=1` trên bước đủ hai `split` vẫn trả **cả hai**: `since=<bước>` sẽ bỏ qua bước ấy."""
+    """`limit=1` trên bước đủ hai `split` vẫn trả **cả hai**: `since=<bước>` sẽ bỏ qua bước ấy.
+
+    Catalog: B08M-G-190.
+    """
     job = await _job(db_session)
     await add_metrics(
         db_session,
@@ -242,7 +314,10 @@ async def test_ml_list_job_metrics_never_cuts_a_step_in_half(
 async def test_ml_list_job_logs__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """200, `seq` tăng, `since` loại trừ; `nextCursor` là `seq` cuối trang."""
+    """200, `seq` tăng, `since` loại trừ; `nextCursor` là `seq` cuối trang.
+
+    Catalog: B08M-G-192.
+    """
     job = await _job(db_session)
     await add_logs(db_session, job_id=job.id, at=fake_clock.now(), seqs=[0, 1, 2])
 
@@ -259,7 +334,10 @@ async def test_ml_list_job_logs__C01(
 async def test_ml_list_job_logs__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`since` < -1 và `limit` ngoài [1, 200] → 422 của khung."""
+    """`since` < -1 và `limit` ngoài [1, 200] → 422 của khung.
+
+    Catalog: B08M-G-192.
+    """
     job = await _job(db_session)
 
     bad_since = await _get(api_client, fake_principal, logs_path(job.id), since=-2)
@@ -270,7 +348,10 @@ async def test_ml_list_job_logs__C02(
 
 
 async def test_ml_list_job_logs__C08(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Job không có → 404 `trainingJob`, trước khi đọc `training_logs`."""
+    """Job không có → 404 `trainingJob`, trước khi đọc `training_logs`.
+
+    Catalog: B08M-G-192.
+    """
     response = await _get(api_client, fake_principal, logs_path(MISSING_JOB_ID))
 
     assert response.status_code == 404
@@ -280,7 +361,10 @@ async def test_ml_list_job_logs__C08(api_client: httpx.AsyncClient, fake_princip
 async def test_ml_list_job_logs__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """0 dòng; 1 dòng; 5 dòng `limit=2` → hai trang; cửa sổ muộn giữ `nextCursor`, quá thì vắng."""
+    """0 dòng; 1 dòng; 5 dòng `limit=2` → hai trang; cửa sổ muộn giữ `nextCursor`, quá thì vắng.
+
+    Catalog: B08M-G-192.
+    """
     job = await _job(db_session, started_at=fake_clock.now())
     empty = await _get(api_client, fake_principal, logs_path(job.id))
     assert empty.json() == {"items": [], "nextCursor": "-1"}
@@ -312,7 +396,10 @@ async def test_ml_list_job_logs__C15(
 async def test_ml_list_job_logs__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Dòng log chỉ có bốn khoá dây: không `jobId`, không `dedupeSha` (K01)."""
+    """Dòng log chỉ có bốn khoá dây: không `jobId`, không `dedupeSha` (K01).
+
+    Catalog: B08M-G-192.
+    """
     job = await _job(db_session)
     await add_logs(db_session, job_id=job.id, at=fake_clock.now(), seqs=[0])
 
@@ -325,7 +412,10 @@ async def test_ml_list_job_logs__C17(
 async def test_ml_training_progress_rejects_a_malformed_job_id(
     api_client: httpx.AsyncClient, fake_principal: Principal, path_of: Callable[[str], str]
 ) -> None:
-    """Id sai mẫu trên đường của cả N36 và N37 → 404, không 422 (id là tài nguyên)."""
+    """Id sai mẫu trên đường của cả N36 và N37 → 404, không 422 (id là tài nguyên).
+
+    Catalog: B08M-G-192.
+    """
     response = await _get(api_client, fake_principal, path_of("khong-phai-id"))
 
     assert response.status_code == 404

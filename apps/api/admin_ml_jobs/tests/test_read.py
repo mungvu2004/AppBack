@@ -41,7 +41,10 @@ async def _ready_version(db: AsyncSession, family: str) -> DatasetVersionRow:
 async def test_ml_list_jobs__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """200, mới nhất trước; `family` và `status` lọc độc lập và cộng dồn."""
+    """200, mới nhất trước; `family` và `status` lọc độc lập và cộng dồn.
+
+    Catalog: B08M-G-158.
+    """
     wall_version = await _ready_version(db_session, WALL)
     opening_version = await _ready_version(db_session, OPENING)
     wall = await make_training_job(db_session, dataset_version_id=wall_version.id, family=WALL)
@@ -65,7 +68,10 @@ async def test_ml_list_jobs__C01(
 async def test_ml_list_jobs__C02(
     api_client: httpx.AsyncClient, fake_principal: Principal, query: dict[str, str]
 ) -> None:
-    """`family` ngoài hai họ huấn luyện được (kể cả họ thứ ba) và `status` lạ → 422 có `field`."""
+    """`family` ngoài hai họ huấn luyện được (kể cả họ thứ ba) và `status` lạ → 422 có `field`.
+
+    Catalog: B08M-G-158.
+    """
     response = await _get(api_client, fake_principal, JOBS_PATH, **query)
 
     assert response.status_code == 422
@@ -76,7 +82,10 @@ async def test_ml_list_jobs__C02(
 async def test_ml_list_jobs__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """0, 1, 5 job; `limit=3` → `nextCursor`, trang 2 đủ 2; `limit=201` vượt trần 200 → 422."""
+    """0, 1, 5 job; `limit=3` → `nextCursor`, trang 2 đủ 2; `limit=201` vượt trần 200 → 422.
+
+    Catalog: B08M-G-158.
+    """
     version = await _ready_version(db_session, WALL)
     empty = await _get(api_client, fake_principal, JOBS_PATH, family=WALL)
     assert empty.json() == {"items": []}
@@ -107,7 +116,10 @@ async def test_ml_list_jobs__C15(
 async def test_ml_list_jobs__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Job `queued`: vắng `currentEpoch`, `startedAt`, `endedAt`, `resultModelVersionId`, `failureCode` (K02)."""
+    """Job `queued`: vắng `currentEpoch`, `startedAt`, `endedAt`, `resultModelVersionId`, `failureCode` (K02).
+
+    Catalog: B08M-G-158.
+    """
     version = await _ready_version(db_session, WALL)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=WALL)
 
@@ -129,7 +141,10 @@ async def test_ml_list_jobs__C17(
 async def test_ml_list_jobs_refuses_a_cursor_of_another_filter(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Cursor mang dấu vết `(family, status)`: dùng cho bộ lọc khác → 422 `CURSOR_INVALID`."""
+    """Cursor mang dấu vết `(family, status)`: dùng cho bộ lọc khác → 422 `CURSOR_INVALID`.
+
+    Catalog: B08M-G-158.
+    """
     version = await _ready_version(db_session, WALL)
     for minute in range(2):
         await make_training_job(
@@ -154,7 +169,10 @@ async def test_ml_list_jobs_refuses_a_cursor_of_another_filter(
 async def test_ml_read_job__C01_queued(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`queued`: đủ bảy trường bắt buộc, vắng cả năm trường theo trạng thái."""
+    """`queued`: đủ bảy trường bắt buộc, vắng cả năm trường theo trạng thái.
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, epochs=7)
 
@@ -174,7 +192,10 @@ async def test_ml_read_job__C01_queued(
 async def test_ml_read_job__C01_running(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`running`: có `startedAt`, `currentEpoch`; vắng `endedAt`."""
+    """`running`: có `startedAt`, `currentEpoch`; vắng `endedAt`.
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(
         db_session, dataset_version_id=version.id, family=OPENING, status="running", current_epoch=2
@@ -191,7 +212,10 @@ async def test_ml_read_job__C01_running(
 async def test_ml_read_job__C01_cancelling(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`cancelling`: có `startedAt`, chưa có `endedAt` (job vẫn đang dừng dở)."""
+    """`cancelling`: có `startedAt`, chưa có `endedAt` (job vẫn đang dừng dở).
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status="cancelling")
 
@@ -205,7 +229,10 @@ async def test_ml_read_job__C01_cancelling(
 async def test_ml_read_job__C01_cancelled(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`cancelled`: có `endedAt`, vắng `failureCode` và `resultModelVersionId`."""
+    """`cancelled`: có `endedAt`, vắng `failureCode` và `resultModelVersionId`.
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status="cancelled")
 
@@ -219,7 +246,10 @@ async def test_ml_read_job__C01_cancelled(
 async def test_ml_read_job__C01_failed(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`failed`: `failureCode` có mặt (hằng chuỗi của cầu nối), `resultModelVersionId` vắng."""
+    """`failed`: `failureCode` có mặt (hằng chuỗi của cầu nối), `resultModelVersionId` vắng.
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(
         db_session,
@@ -239,7 +269,10 @@ async def test_ml_read_job__C01_failed(
 async def test_ml_read_job__C01_succeeded(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`succeeded`: `resultModelVersionId` trỏ bản model có thật, `failureCode` vắng."""
+    """`succeeded`: `resultModelVersionId` trỏ bản model có thật, `failureCode` vắng.
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, OPENING)
     model = await make_model_version(db_session, family=OPENING, training=True)
     job = await make_training_job(
@@ -259,7 +292,10 @@ async def test_ml_read_job__C01_succeeded(
 
 
 async def test_ml_read_job__C08(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Job không có **và** id sai mẫu đều 404 `resource:"trainingJob"`."""
+    """Job không có **và** id sai mẫu đều 404 `resource:"trainingJob"`.
+
+    Catalog: B08M-G-163.
+    """
     missing = await _get(api_client, fake_principal, job_path(MISSING_JOB_ID))
     malformed = await _get(api_client, fake_principal, job_path("khong-phai-id"))
 
@@ -272,7 +308,10 @@ async def test_ml_read_job__C08(api_client: httpx.AsyncClient, fake_principal: P
 async def test_ml_read_job__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Năm trường tuỳ chọn của `queued` **vắng khoá**, không `null` (W2)."""
+    """Năm trường tuỳ chọn của `queued` **vắng khoá**, không `null` (W2).
+
+    Catalog: B08M-G-163.
+    """
     version = await _ready_version(db_session, WALL)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=WALL)
 
@@ -288,3 +327,16 @@ async def test_ml_read_job__C17(
         "id",
         "status",
     }
+
+
+@pytest.mark.parametrize("suffix", ["", "/metrics", "/logs"])
+async def test_ml_read_job__nul_in_id(api_client: httpx.AsyncClient, fake_principal: Principal, suffix: str) -> None:
+    """Id job chứa NUL (`%00`) → 404 `trainingJob` ở N34/N36/N37, không 500.
+
+    Chưa chạy, cần R1/pytest xác nhận. Catalog: B08M-G-161.
+    """
+    response = await _get(api_client, fake_principal, job_path("job_%00x") + suffix)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "NOT_FOUND"
+    assert response.json()["resource"] == "trainingJob"

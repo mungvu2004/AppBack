@@ -59,7 +59,10 @@ async def _duel(
 async def test_users_change_role__C14(
     auth_app: FastAPI, auth_client: httpx.AsyncClient, db_session: AsyncSession, signed_in: SignIn
 ) -> None:
-    """Hai admin hạ vai nhau song song → một bên 200, bên kia bị chặn, còn một admin."""
+    """Hai admin hạ vai nhau song song → một bên 200, bên kia bị chặn, còn một admin.
+
+    Catalog: B08U-G-030.
+    """
 
     async def call(client: httpx.AsyncClient, headers: dict[str, str], victim: User) -> httpx.Response:
         body = {"role": "viewer", "userId": victim.id}
@@ -71,7 +74,10 @@ async def test_users_change_role__C14(
 async def test_users_disable_user__C14(
     auth_app: FastAPI, auth_client: httpx.AsyncClient, db_session: AsyncSession, signed_in: SignIn
 ) -> None:
-    """Hai admin vô hiệu nhau song song → một bên 200, bên kia bị chặn, còn một admin `active`."""
+    """Hai admin vô hiệu nhau song song → một bên 200, bên kia bị chặn, còn một admin `active`.
+
+    Catalog: B08U-G-038.
+    """
 
     async def call(client: httpx.AsyncClient, headers: dict[str, str], victim: User) -> httpx.Response:
         return await client.post(f"{USERS}/{victim.id}/disable", json={}, headers=headers)
@@ -82,7 +88,10 @@ async def test_users_disable_user__C14(
 async def test_users_delete_user__C14(
     auth_app: FastAPI, auth_client: httpx.AsyncClient, db_session: AsyncSession, signed_in: SignIn
 ) -> None:
-    """Hai admin xoá nhau song song → một bên 200, bên kia bị chặn, còn một admin `active` chưa xoá."""
+    """Hai admin xoá nhau song song → một bên 200, bên kia bị chặn, còn một admin `active` chưa xoá.
+
+    Catalog: B08U-G-072.
+    """
 
     async def call(client: httpx.AsyncClient, headers: dict[str, str], victim: User) -> httpx.Response:
         body = {"confirmEmail": victim.email, "userId": victim.id}

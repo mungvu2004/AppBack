@@ -45,7 +45,10 @@ async def _get(client: httpx.AsyncClient, principal: Principal, path: str, **par
 
 
 async def test_ml_list_families__C01(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Sau migrate: đủ ba họ đúng thứ tự `pipeline.ts:50-52`, hai họ ghim đã kích hoạt bản gốc."""
+    """Sau migrate: đủ ba họ đúng thứ tự `pipeline.ts:50-52`, hai họ ghim đã kích hoạt bản gốc.
+
+    Catalog: B08M-G-005.
+    """
     response = await _get(api_client, fake_principal, FAMILIES_PATH)
 
     body = response.json()
@@ -59,7 +62,10 @@ async def test_ml_list_families__C01(api_client: httpx.AsyncClient, fake_princip
 
 
 async def test_ml_list_families__C15(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Hai lượt giống hệt cho cùng một thân, và `nextCursor` **vắng**: ba họ không phân trang."""
+    """Hai lượt giống hệt cho cùng một thân, và `nextCursor` **vắng**: ba họ không phân trang.
+
+    Catalog: B08M-G-005.
+    """
     first = await _get(api_client, fake_principal, FAMILIES_PATH)
     second = await _get(api_client, fake_principal, FAMILIES_PATH)
 
@@ -69,7 +75,10 @@ async def test_ml_list_families__C15(api_client: httpx.AsyncClient, fake_princip
 
 
 async def test_ml_list_families__C17(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Họ tường chưa có bản nào: `activeVersionId` **vắng**, không `null` (W2, K02)."""
+    """Họ tường chưa có bản nào: `activeVersionId` **vắng**, không `null` (W2, K02).
+
+    Catalog: B08M-G-005.
+    """
     response = await _get(api_client, fake_principal, FAMILIES_PATH)
 
     wall = next(item for item in response.json()["items"] if item["family"] == WALL)
@@ -83,7 +92,10 @@ async def test_ml_list_families__C17(api_client: httpx.AsyncClient, fake_princip
 
 
 async def test_ml_list_versions__C01(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Không lọc: đúng hai bản gốc `pending`, mới nhất trước, không `nextCursor`."""
+    """Không lọc: đúng hai bản gốc `pending`, mới nhất trước, không `nextCursor`.
+
+    Catalog: B08M-G-024.
+    """
     response = await _get(api_client, fake_principal, VERSIONS_PATH)
 
     body = response.json()
@@ -97,7 +109,10 @@ async def test_ml_list_versions__C01(api_client: httpx.AsyncClient, fake_princip
 async def test_ml_list_versions__C01_completed(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Một bản đã đánh giá: `metrics` ra dây với đúng khoá của họ, số JSON `float`."""
+    """Một bản đã đánh giá: `metrics` ra dây với đúng khoá của họ, số JSON `float`.
+
+    Catalog: B08M-G-024.
+    """
     row = await make_model_version(db_session, family=OPENING)
 
     response = await _get(api_client, fake_principal, VERSIONS_PATH, family=OPENING)
@@ -110,7 +125,10 @@ async def test_ml_list_versions__C01_completed(
 
 
 async def test_ml_list_versions__C02(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """`family` ngoài ba họ → 422 `field:"family"`; `limit` vượt trần 200 → 422 của khung."""
+    """`family` ngoài ba họ → 422 `field:"family"`; `limit` vượt trần 200 → 422 của khung.
+
+    Catalog: B08M-G-024.
+    """
     unknown = await _get(api_client, fake_principal, VERSIONS_PATH, family="walls")
     too_many = await _get(api_client, fake_principal, VERSIONS_PATH, limit=201)
 
@@ -123,7 +141,10 @@ async def test_ml_list_versions__C02(api_client: httpx.AsyncClient, fake_princip
 async def test_ml_list_versions__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Họ không có bản nào → `items: []`; thêm đúng một bản → đúng một dòng, không `nextCursor`."""
+    """Họ không có bản nào → `items: []`; thêm đúng một bản → đúng một dòng, không `nextCursor`.
+
+    Catalog: B08M-G-024.
+    """
     empty = await _get(api_client, fake_principal, VERSIONS_PATH, family=WALL)
     row = await make_model_version(db_session, family=WALL, status="pending")
     one = await _get(api_client, fake_principal, VERSIONS_PATH, family=WALL)
@@ -136,7 +157,10 @@ async def test_ml_list_versions__C15(
 async def test_ml_list_versions__C15_pages(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """5 bản, `limit=3` → trang 1 có 3 và `nextCursor`, trang 2 có đúng 2 và hết cursor."""
+    """5 bản, `limit=3` → trang 1 có 3 và `nextCursor`, trang 2 có đúng 2 và hết cursor.
+
+    Catalog: B08M-G-024.
+    """
     rows = [
         await make_model_version(db_session, family=WALL, created_at=fake_clock.now().replace(minute=minute))
         for minute in range(5)
@@ -153,7 +177,10 @@ async def test_ml_list_versions__C15_pages(
 
 
 async def test_ml_list_versions__C17(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Bản gốc `pending`: `metrics`, `trainingJobId`, `datasetVersionId` **vắng** (W2, K02)."""
+    """Bản gốc `pending`: `metrics`, `trainingJobId`, `datasetVersionId` **vắng** (W2, K02).
+
+    Catalog: B08M-G-024.
+    """
     response = await _get(api_client, fake_principal, VERSIONS_PATH, family=DIMENSION)
 
     item = response.json()["items"][0]
@@ -165,7 +192,10 @@ async def test_ml_list_versions__C17(api_client: httpx.AsyncClient, fake_princip
 async def test_ml_list_versions_refuses_a_cursor_of_another_family(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, fake_principal: Principal
 ) -> None:
-    """Cursor mang dấu vết bộ lọc: dùng lại cho họ khác → 422 `CURSOR_INVALID` (W22)."""
+    """Cursor mang dấu vết bộ lọc: dùng lại cho họ khác → 422 `CURSOR_INVALID` (W22).
+
+    Catalog: B08M-G-024.
+    """
     for minute in range(2):
         await make_model_version(db_session, family=WALL, created_at=fake_clock.now().replace(minute=minute))
 
@@ -184,7 +214,10 @@ async def test_ml_list_versions_refuses_a_cursor_of_another_family(
 async def test_ml_read_version__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Một bản đã đánh giá đọc lại đủ trường dây, `metrics` đúng khoá của họ."""
+    """Một bản đã đánh giá đọc lại đủ trường dây, `metrics` đúng khoá của họ.
+
+    Catalog: B08M-G-034.
+    """
     row = await make_model_version(db_session, family=DIMENSION, label="bản đã đo")
 
     response = await _get(api_client, fake_principal, f"{VERSIONS_PATH}/{row.id}")
@@ -197,7 +230,10 @@ async def test_ml_read_version__C01(
 
 
 async def test_ml_read_version__C08(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Id không có **và** id sai mẫu đều là 404 `modelVersion` — không phân biệt (không máy dò)."""
+    """Id không có **và** id sai mẫu đều là 404 `modelVersion` — không phân biệt (không máy dò).
+
+    Catalog: B08M-G-034.
+    """
     missing = await _get(api_client, fake_principal, f"{VERSIONS_PATH}/mdl_01KB6010000000000000000404")
     malformed = await _get(api_client, fake_principal, f"{VERSIONS_PATH}/khong-phai-id")
 
@@ -210,7 +246,10 @@ async def test_ml_read_version__C08(api_client: httpx.AsyncClient, fake_principa
 
 
 async def test_ml_read_version__C17(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Bản gốc `pending` đọc một mình: ba trường tuỳ chọn vắng, không cột nội bộ nào (K01)."""
+    """Bản gốc `pending` đọc một mình: ba trường tuỳ chọn vắng, không cột nội bộ nào (K01).
+
+    Catalog: B08M-G-034.
+    """
     response = await _get(api_client, fake_principal, f"{VERSIONS_PATH}/{BASELINE_OPENING}")
 
     body = response.json()
@@ -231,10 +270,25 @@ async def test_ml_read_version__C17(api_client: httpx.AsyncClient, fake_principa
 async def test_ml_read_version_never_leaks_the_weights_location(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """K01: `weightsKey`, `pinnedName`, `evaluationAttempts`, mã đánh giá không ra dây bao giờ."""
+    """K01: `weightsKey`, `pinnedName`, `evaluationAttempts`, mã đánh giá không ra dây bao giờ.
+
+    Catalog: B08M-G-034.
+    """
     row: ModelVersionRow = await make_model_version(db_session, family=OPENING)
 
     body = (await _get(api_client, fake_principal, f"{VERSIONS_PATH}/{row.id}")).json()
 
     assert row.weights_key is not None
     assert {"weightsKey", "pinnedName", "evaluationAttempts", "evaluationErrorCode"}.isdisjoint(body)
+
+
+async def test_ml_read_version__nul_in_id(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
+    """Id chứa NUL (`%00`) → 404 `modelVersion`, không 500 (Postgres từ chối NUL trong bind text).
+
+    Chưa chạy, cần R1/pytest xác nhận. Catalog: B08M-G-033.
+    """
+    response = await _get(api_client, fake_principal, f"{VERSIONS_PATH}/mdl_%00x")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "NOT_FOUND"
+    assert response.json()["resource"] == "modelVersion"

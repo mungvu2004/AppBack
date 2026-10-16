@@ -115,7 +115,8 @@ async def create_dataset(db: AsyncSession, *, name: str, family: str, principal:
 
 async def _get_dataset(db: AsyncSession, dataset_id: str) -> DatasetRow:
     """Dataset chưa khoá; không có → 404 `resource:"dataset"` (N30, N31 bước 1)."""
-    row = (await db.execute(select(DatasetRow).where(DatasetRow.id == dataset_id))).scalar_one_or_none()
+    stmt = select(DatasetRow).where(DatasetRow.id == dataset_id)
+    row = None if "\x00" in dataset_id else (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise _dataset_not_found()
     return row

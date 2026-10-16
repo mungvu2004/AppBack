@@ -85,37 +85,58 @@ async def _forbidden_for_engineer(client: AsyncClient, clock: FakeClock, op: str
 
 
 async def test_ml_list_jobs__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """`engineer` → 403 `FORBIDDEN` (cổng `require_admin` của router, trước endpoint)."""
+    """`engineer` → 403 `FORBIDDEN` (cổng `require_admin` của router, trước endpoint).
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_jobs")
 
 
 async def test_ml_create_job__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """`engineer` → 403; không job nào được chèn vì cổng chặn trước endpoint."""
+    """`engineer` → 403; không job nào được chèn vì cổng chặn trước endpoint.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_create_job")
 
 
 async def test_ml_read_job__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """`engineer` → 403 `FORBIDDEN` (403 thắng 404: quyền kiểm trước tài nguyên)."""
+    """`engineer` → 403 `FORBIDDEN` (403 thắng 404: quyền kiểm trước tài nguyên).
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_read_job")
 
 
 async def test_ml_cancel_job__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """`engineer` → 403 `FORBIDDEN`; không đặt `cancel_key`, không đổi job."""
+    """`engineer` → 403 `FORBIDDEN`; không đặt `cancel_key`, không đổi job.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_cancel_job")
 
 
 async def test_ml_list_job_metrics__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """`engineer` → 403 `FORBIDDEN`."""
+    """`engineer` → 403 `FORBIDDEN`.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_job_metrics")
 
 
 async def test_ml_list_job_logs__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
-    """`engineer` → 403 `FORBIDDEN`."""
+    """`engineer` → 403 `FORBIDDEN`.
+
+    Catalog: B08M-D-040.
+    """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_job_logs")
 
 
 def test_ml_jobs_routes_are_all_admin_only(api_app: FastAPI) -> None:
-    """Sáu route mount đúng method và đều `protected` (BE-BIND N32-N37)."""
+    """Sáu route mount đúng method và đều `protected` (BE-BIND N32-N37).
+
+    Catalog: B08M-D-040.
+    """
     routes = [_route(api_app, op) for op, _method, _path in _ROUTES]
 
     assert [route.wire_method for route in routes] == [method for _op, method, _path in _ROUTES]
@@ -123,13 +144,19 @@ def test_ml_jobs_routes_are_all_admin_only(api_app: FastAPI) -> None:
 
 
 def test_create_training_job_in_rejects_unknown_keys() -> None:
-    """Khoá lạ trong thân N33 → `ValueError` của Pydantic (C03)."""
+    """Khoá lạ trong thân N33 → `ValueError` của Pydantic (C03).
+
+    Catalog: B08M-G-211.
+    """
     with pytest.raises(ValueError, match="creatorId"):
         CreateTrainingJobIn(**_BODIES["ml_create_job"], creatorId="usr_x")
 
 
 def test_create_training_job_in_rejects_a_malformed_dataset_version_id() -> None:
-    """`datasetVersionId` không phải `dsv_<ULID>` → lỗi trường, không 404."""
+    """`datasetVersionId` không phải `dsv_<ULID>` → lỗi trường, không 404.
+
+    Catalog: B08M-G-211.
+    """
     body = {**_BODIES["ml_create_job"], "datasetVersionId": "dst_01KB6030000000000000000001"}
     with pytest.raises(ValueError, match="dsv"):
         CreateTrainingJobIn(**body)
@@ -137,20 +164,29 @@ def test_create_training_job_in_rejects_a_malformed_dataset_version_id() -> None
 
 @pytest.mark.parametrize("epochs", [0, 301])
 def test_create_training_job_in_rejects_epochs_out_of_range(epochs: int) -> None:
-    """`epochs` ngoài 1-300 (CHECK `epochs_range`) → lỗi trường."""
+    """`epochs` ngoài 1-300 (CHECK `epochs_range`) → lỗi trường.
+
+    Catalog: B08M-G-211.
+    """
     with pytest.raises(ValueError, match="epochs"):
         CreateTrainingJobIn(**{**_BODIES["ml_create_job"], "epochs": epochs})
 
 
 def test_cancel_training_job_in_rejects_unknown_keys() -> None:
-    """Thân N35 là `{}`; khoá lạ không bị bỏ qua (C03)."""
+    """Thân N35 là `{}`; khoá lạ không bị bỏ qua (C03).
+
+    Catalog: B08M-G-224.
+    """
     assert CancelTrainingJobIn().model_dump() == {}
     with pytest.raises(ValueError, match="reason"):
         CancelTrainingJobIn(reason="x")
 
 
 async def test_job_out_omits_bridge_columns(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """`last_heartbeat_at`, `artifacts_purged_at`, `requeue_count`, `updated_at` không ra dây (K01)."""
+    """`last_heartbeat_at`, `artifacts_purged_at`, `requeue_count`, `updated_at` không ra dây (K01).
+
+    Catalog: B08M-G-230.
+    """
     dataset = await make_dataset(db_session, family=OPENING)
     version = await make_dataset_version(db_session, dataset=dataset, status="ready")
     job = await make_training_job(
@@ -181,7 +217,10 @@ async def test_job_out_omits_bridge_columns(db_session: AsyncSession, fake_clock
 
 
 def test_metric_and_log_wire_models_drop_internal_keys() -> None:
-    """`metric_point_out` bỏ `job_id`, `log_line_out` bỏ `job_id`/`dedupe_sha`; số đo `None` vắng."""
+    """`metric_point_out` bỏ `job_id`, `log_line_out` bỏ `job_id`/`dedupe_sha`; số đo `None` vắng.
+
+    Catalog: B08M-G-230.
+    """
     at = datetime(2026, 1, 1, tzinfo=UTC)
     metric = TrainingMetricRow(job_id="job_x", split="train", step=4, epoch=1, recorded_at=at, loss=0.25)
     log = TrainingLogRow(job_id="job_x", seq=7, at=at, level="warning", message="cham", dedupe_sha="a" * 64)

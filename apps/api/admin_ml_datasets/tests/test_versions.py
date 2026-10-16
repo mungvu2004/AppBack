@@ -56,7 +56,10 @@ async def _start_and_commit(
 
 
 async def test_start_version__sequence_increments(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Bản đầu `sequence=1`; sau khi bản đó `ready`, bản kế `sequence=2`."""
+    """Bản đầu `sequence=1`; sau khi bản đó `ready`, bản kế `sequence=2`.
+
+    Catalog: B08M-G-139.
+    """
     dataset = await make_dataset(db_session, family="wallSegmentation")
 
     first = await _start(db_session, dataset_id=dataset.id, clock=fake_clock, created_by="usr_a")
@@ -78,7 +81,10 @@ async def test_start_version__sequence_increments(db_session: AsyncSession, fake
 
 
 async def test_start_version__none_when_already_building(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Cùng session: gọi lần hai trong khi bản đầu còn `building` → `None`, không tạo dòng thứ hai."""
+    """Cùng session: gọi lần hai trong khi bản đầu còn `building` → `None`, không tạo dòng thứ hai.
+
+    Catalog: B08M-G-139.
+    """
     dataset = await make_dataset(db_session, family="wallSegmentation")
     first = await _start(db_session, dataset_id=dataset.id, clock=fake_clock, created_by="usr_a")
     assert first is not None
@@ -95,7 +101,10 @@ async def test_start_version__dataset_missing_is_value_error(db_session: AsyncSe
 
 
 async def test_start_version__C14(db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock) -> None:
-    """Hai `start_version` song song (hai session Postgres thật) → đúng một dòng `building`."""
+    """Hai `start_version` song song (hai session Postgres thật) → đúng một dòng `building`.
+
+    Catalog: B08M-G-139.
+    """
     async with db_sessionmaker() as db:
         dataset = await make_dataset(db, family="wallSegmentation")
 
@@ -136,7 +145,10 @@ async def test_touch_finish_fail__building_true_else_false(db_session: AsyncSess
 
 
 async def test_fail_version__building_to_failed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """`building` → `failed` ghi `failure_code` và trả `True`."""
+    """`building` → `failed` ghi `failure_code` và trả `True`.
+
+    Catalog: B08M-G-139.
+    """
     dataset = await make_dataset(db_session, family="wallSegmentation")
     version = await make_dataset_version(db_session, dataset=dataset, status="building")
 
@@ -161,7 +173,10 @@ async def test_touch_version__unknown_id_is_false(db_session: AsyncSession, fake
 
 
 async def test_check_ready_requires_manifest_and_split_counts(db_session: AsyncSession) -> None:
-    """Bản `ready` thiếu manifest và split_counts bị CHECK chặn."""
+    """Bản `ready` thiếu manifest và split_counts bị CHECK chặn.
+
+    Catalog: B08M-G-139.
+    """
     dataset = await make_dataset(db_session, family="wallSegmentation")
     row = DatasetVersionRow(
         id="dsv_01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -177,7 +192,10 @@ async def test_check_ready_requires_manifest_and_split_counts(db_session: AsyncS
 
 
 async def test_check_failed_requires_failure_code_format(db_session: AsyncSession) -> None:
-    """`failure_code` sai định dạng bị CHECK chặn."""
+    """`failure_code` sai định dạng bị CHECK chặn.
+
+    Catalog: B08M-G-139.
+    """
     dataset = await make_dataset(db_session, family="wallSegmentation")
     row = DatasetVersionRow(
         id="dsv_01ARZ3NDEKTSV4RRFFQ69G5FAW",

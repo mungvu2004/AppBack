@@ -19,7 +19,10 @@ def _user(user_id: str, *, status: str = "active") -> User:
     ("admins", "code"), [(("usr_a",), "USER_LAST_ADMIN"), (("usr_a", "usr_b"), "USER_SELF_MODIFICATION")]
 )
 def test_forbid_self_reports_last_admin_first(admins: tuple[str, ...], code: str) -> None:
-    """Tự sửa mình: admin `active` duy nhất → `USER_LAST_ADMIN`, còn admin khác → `USER_SELF_MODIFICATION` (NO-206)."""
+    """Tự sửa mình: admin `active` duy nhất → `USER_LAST_ADMIN`, còn admin khác → `USER_SELF_MODIFICATION` (NO-206).
+
+    Catalog: B08U-C-004.
+    """
     scope = WriteScope(actor_id="usr_a", target=_user("usr_a"), admins=admins)
     with pytest.raises(AppError) as caught:
         scope.forbid_self()
@@ -27,7 +30,10 @@ def test_forbid_self_reports_last_admin_first(admins: tuple[str, ...], code: str
 
 
 def test_forbid_self_allows_another_target() -> None:
-    """Mục tiêu là người khác → không ném, kể cả khi người thực hiện là admin duy nhất."""
+    """Mục tiêu là người khác → không ném, kể cả khi người thực hiện là admin duy nhất.
+
+    Catalog: B08U-C-005.
+    """
     WriteScope(actor_id="usr_a", target=_user("usr_b"), admins=("usr_a",)).forbid_self()
 
 

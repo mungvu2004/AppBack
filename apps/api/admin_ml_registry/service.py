@@ -93,7 +93,7 @@ async def _activatable_version(db: AsyncSession, *, family: str, version_id: str
     `MODEL_FORMAT_UNSUPPORTED` (định dạng là lý do gần hơn).
     """
     stmt = select(ModelVersionRow).where(ModelVersionRow.id == version_id).with_for_update(read=True)
-    row = (await db.execute(stmt)).scalar_one_or_none()
+    row = None if "\x00" in version_id else (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise version_not_found()
     if row.family != family:
@@ -206,7 +206,8 @@ async def read_version(db: AsyncSession, *, version_id: str) -> ModelVersionOut:
     Không kiểm mẫu `mdl_…` riêng: một id sai mẫu không khớp dòng nào, và trả cùng một câu trả
     lời cho "sai mẫu" và "không có" thì API không thành máy dò id (cùng lý lẽ với `CURSOR_INVALID`).
     """
-    row = (await db.execute(select(ModelVersionRow).where(ModelVersionRow.id == version_id))).scalar_one_or_none()
+    stmt = select(ModelVersionRow).where(ModelVersionRow.id == version_id)
+    row = None if "\x00" in version_id else (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise version_not_found()
     return version_out(row)

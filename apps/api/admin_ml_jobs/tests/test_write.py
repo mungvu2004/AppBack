@@ -72,7 +72,10 @@ def _body(version_id: str, *, family: str = OPENING, base_model: str = "yolov8n"
 async def test_ml_create_job__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """202 `queued`, `creatorId` lấy từ token (K05), `id` tiền tố `job_`."""
+    """202 `queued`, `creatorId` lấy từ token (K05), `id` tiền tố `job_`.
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, OPENING)
 
     response = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id))
@@ -89,7 +92,10 @@ async def test_ml_create_job__C01(
 async def test_ml_create_job__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`family` lạ, `epochs` ngoài 1-300, `datasetVersionId` sai mẫu → 422 `VALIDATION` có `field`."""
+    """`family` lạ, `epochs` ngoài 1-300, `datasetVersionId` sai mẫu → 422 `VALIDATION` có `field`.
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, OPENING)
     bad_family = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id, family="walls"))
     bad_epochs = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id, epochs=301))
@@ -101,10 +107,32 @@ async def test_ml_create_job__C02(
         assert response.json()["field"] == field
 
 
+async def test_ml_create_job__epochs_strict_type(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
+) -> None:
+    """`epochs` là `true` hoặc chuỗi `"3"` → 422 `VALIDATION` `field:"epochs"`; số nguyên 300 vẫn 202.
+
+    Catalog: B08M-G-201. Người dùng chốt Q12: không ép kiểu `true` → 1, `"3"` → 3.
+    """
+    version = await _ready_version(db_session, OPENING)
+    for bad in (True, "3"):
+        body = {**_body(version.id), "epochs": bad}
+        response = await _post(api_client, fake_principal, JOBS_PATH, body)
+        assert response.status_code == 422, bad
+        assert response.json()["code"] == "VALIDATION"
+        assert response.json()["field"] == "epochs"
+
+    ok = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id, epochs=300))
+    assert ok.status_code == 202
+
+
 async def test_ml_create_job__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`."""
+    """Khoá lạ trong thân → 422 `VALIDATION`.
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, OPENING)
 
     response = await _post(api_client, fake_principal, JOBS_PATH, {**_body(version.id), "creatorId": "usr_x"})
@@ -116,7 +144,10 @@ async def test_ml_create_job__C03(
 async def test_ml_create_job__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Thân 202 của job `queued` vắng cả năm trường theo trạng thái (W2, K02)."""
+    """Thân 202 của job `queued` vắng cả năm trường theo trạng thái (W2, K02).
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, OPENING)
 
     body = (await _post(api_client, fake_principal, JOBS_PATH, _body(version.id))).json()
@@ -140,7 +171,10 @@ async def test_ml_create_job__C18(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
-    """Một dòng `activity_log` `training.create`, `objectLabel` là họ ([6])."""
+    """Một dòng `activity_log` `training.create`, `objectLabel` là họ ([6]).
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, WALL)
 
     response = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id, family=WALL, base_model="mitB0"))
@@ -157,7 +191,10 @@ async def test_ml_create_job__C18(
 async def test_ml_create_job__version_not_ready(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Bản `building` và bản `failed` → 422 `DATASET_VERSION_NOT_READY`."""
+    """Bản `building` và bản `failed` → 422 `DATASET_VERSION_NOT_READY`.
+
+    Catalog: B08M-G-211.
+    """
     building = await _ready_version(db_session, OPENING, status="building")
     failed = await _ready_version(db_session, OPENING, status="failed")
 
@@ -170,7 +207,10 @@ async def test_ml_create_job__version_not_ready(
 async def test_ml_create_job__family_mismatch(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Dataset họ tường + job họ cửa/nội thất → 422 `DATASET_FAMILY_MISMATCH`."""
+    """Dataset họ tường + job họ cửa/nội thất → 422 `DATASET_FAMILY_MISMATCH`.
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, WALL)
 
     response = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id, family=OPENING))
@@ -182,7 +222,10 @@ async def test_ml_create_job__family_mismatch(
 async def test_ml_create_job__base_model_mismatch(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`yolov8n` cho họ tường → 422 `TRAINING_BASE_MODEL_MISMATCH`, không `VALIDATION`."""
+    """`yolov8n` cho họ tường → 422 `TRAINING_BASE_MODEL_MISMATCH`, không `VALIDATION`.
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, WALL)
 
     response = await _post(api_client, fake_principal, JOBS_PATH, _body(version.id, family=WALL))
@@ -192,7 +235,10 @@ async def test_ml_create_job__base_model_mismatch(
 
 
 async def test_ml_create_job__missing_version(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Bản dataset không có → 404 `resource:"datasetVersion"` (không 422)."""
+    """Bản dataset không có → 404 `resource:"datasetVersion"` (không 422).
+
+    Catalog: B08M-G-211.
+    """
     response = await _post(api_client, fake_principal, JOBS_PATH, _body("dsv_01KB6030000000000000000404"))
 
     assert response.status_code == 404
@@ -202,7 +248,10 @@ async def test_ml_create_job__missing_version(api_client: httpx.AsyncClient, fak
 async def test_ml_create_job__J09_rollback_leaves_no_message(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, messaging_env: None
 ) -> None:
-    """J09 — lượt hỏng (họ lệch) rollback: không dòng `training_jobs`, không thông điệp (K17)."""
+    """J09 — lượt hỏng (họ lệch) rollback: không dòng `training_jobs`, không thông điệp (K17).
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, WALL)
     broker = broker_redis_sync()
     broker.delete(TRAINING_QUEUE)
@@ -226,7 +275,10 @@ async def test_ml_create_job__C10_queue_once(
     fake_principal: Principal,
     messaging_env: None,
 ) -> None:
-    """Lặp cùng `Idempotency-Key`: cùng response, **một** job, **một** thông điệp, **một** dòng nhật ký."""
+    """Lặp cùng `Idempotency-Key`: cùng response, **một** job, **một** thông điệp, **một** dòng nhật ký.
+
+    Catalog: B08M-G-211.
+    """
     version = await _ready_version(db_session, OPENING)
     broker = broker_redis_sync()
     broker.delete(TRAINING_QUEUE)
@@ -263,7 +315,10 @@ async def test_ml_create_job__C10_queue_once(
 async def test_ml_cancel_job__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, messaging_env: None
 ) -> None:
-    """`queued` → `cancelled` + `endedAt`; `running` → `cancelling`; cả hai đặt `cancel_key`."""
+    """`queued` → `cancelled` + `endedAt`; `running` → `cancelling`; cả hai đặt `cancel_key`.
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     queued = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING)
     running = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status="running")
@@ -287,7 +342,10 @@ async def test_ml_cancel_job__C01(
 async def test_ml_cancel_job__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Thân không phải object → 422 `VALIDATION` (thân N35 là `{}`)."""
+    """Thân không phải object → 422 `VALIDATION` (thân N35 là `{}`).
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING)
 
@@ -300,7 +358,10 @@ async def test_ml_cancel_job__C02(
 async def test_ml_cancel_job__C03(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`; job không đổi trạng thái."""
+    """Khoá lạ trong thân → 422 `VALIDATION`; job không đổi trạng thái.
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING)
 
@@ -313,7 +374,10 @@ async def test_ml_cancel_job__C03(
 
 
 async def test_ml_cancel_job__C08(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Job không có **và** id sai mẫu đều 404 `resource:"trainingJob"`."""
+    """Job không có **và** id sai mẫu đều 404 `resource:"trainingJob"`.
+
+    Catalog: B08M-G-224.
+    """
     missing = await _post(api_client, fake_principal, cancel_path(MISSING_JOB_ID), {})
     malformed = await _post(api_client, fake_principal, cancel_path("khong-phai-id"), {})
 
@@ -325,7 +389,10 @@ async def test_ml_cancel_job__C08(api_client: httpx.AsyncClient, fake_principal:
 async def test_ml_cancel_job__C17(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, messaging_env: None
 ) -> None:
-    """Thân của job `cancelled` vắng `failureCode`, `resultModelVersionId`, `currentEpoch`."""
+    """Thân của job `cancelled` vắng `failureCode`, `resultModelVersionId`, `currentEpoch`.
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING)
     client = safe_redis_sync()
@@ -356,7 +423,10 @@ async def test_ml_cancel_job__C18(
     fake_principal: Principal,
     messaging_env: None,
 ) -> None:
-    """Một dòng `activity_log` `training.cancel`, `objectLabel` là họ."""
+    """Một dòng `activity_log` `training.cancel`, `objectLabel` là họ.
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, WALL)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=WALL, status="running")
     client = safe_redis_sync()
@@ -376,7 +446,10 @@ async def test_ml_cancel_job__C18(
 async def test_ml_cancel_job__no_effect(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, status: str
 ) -> None:
-    """`cancelling|cancelled` → 200 không tác dụng: không đổi trạng thái, không đặt khoá (K18)."""
+    """`cancelling|cancelled` → 200 không tác dụng: không đổi trạng thái, không đặt khoá (K18).
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status=status)
     client = safe_redis_sync()
@@ -395,7 +468,10 @@ async def test_ml_cancel_job__no_effect(
 async def test_ml_cancel_job__not_cancellable(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, status: str
 ) -> None:
-    """`succeeded|failed` → 409 `TRAINING_JOB_NOT_CANCELLABLE` (mã riêng để F-12 rẽ được)."""
+    """`succeeded|failed` → 409 `TRAINING_JOB_NOT_CANCELLABLE` (mã riêng để F-12 rẽ được).
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     model = await make_model_version(db_session, family=OPENING, training=True) if status == "succeeded" else None
     job = await make_training_job(
@@ -423,6 +499,8 @@ async def test_ml_cancel_job__C10_once(
 
     TTL đọc trước/sau lượt lặp; lượt hai rơi vào nhánh "không tác dụng" nên nó không
     gọi `SET … EX` lần nữa, và TTL chỉ đi xuống theo thời gian thật.
+
+    Catalog: B08M-G-224.
     """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status="running")
@@ -453,7 +531,10 @@ async def test_ml_cancel_job__C14_concurrent(
     fake_principal: Principal,
     messaging_env: None,
 ) -> None:
-    """Hai N35 song song trên cùng job → cả hai 200, đúng **một** dòng nhật ký (`FOR UPDATE`)."""
+    """Hai N35 song song trên cùng job → cả hai 200, đúng **một** dòng nhật ký (`FOR UPDATE`).
+
+    Catalog: B08M-G-224.
+    """
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status="running")
     client = safe_redis_sync()
@@ -480,7 +561,10 @@ async def test_ml_cancel_job__C13_redis_down(
     fake_principal: Principal,
     dead_redis: tuple[RedisContainer, str],
 ) -> None:
-    """Redis dừng → 503 `DEPENDENCY_UNAVAILABLE`, rollback: job vẫn `running` ([6] N35)."""
+    """Redis dừng → 503 `DEPENDENCY_UNAVAILABLE`, rollback: job vẫn `running` ([6] N35).
+
+    Catalog: B08M-G-224.
+    """
     container, _shared_url = dead_redis
     version = await _ready_version(db_session, OPENING)
     job = await make_training_job(db_session, dataset_version_id=version.id, family=OPENING, status="running")

@@ -38,7 +38,10 @@ async def test_invited_user_can_accept_and_sign_in(
     mailpit_inbox: MailpitInbox,
     celery_worker_factory: WorkerFactory,
 ) -> None:
-    """Admin mời một email: thư tới Mailpit thật qua worker thật, N10 nhận lời mời, người đó đăng nhập được."""
+    """Admin mời một email: thư tới Mailpit thật qua worker thật, N10 nhận lời mời, người đó đăng nhập được.
+
+    Catalog: B08U-G-054.
+    """
     async with db_sessionmaker() as setup:
         admin = await make_admin(setup)
     session = await sign_in(e2e_client, admin)

@@ -33,7 +33,10 @@ ROUTERS: Final = (router,)
 SINCE_MIN: Final = -1
 """`since` loại trừ, nên `-1` là "từ đầu" (`step`/`seq` nhỏ nhất là 0)."""
 
-Since = Annotated[int, Query(ge=SINCE_MIN)]
+SINCE_MAX: Final = 2**31 - 1
+"""Trần của cột Integer `step`/`seq`: lớn hơn thì so sánh tràn int4 → 500 (B08M-G-173/183)."""
+
+Since = Annotated[int, Query(ge=SINCE_MIN, le=SINCE_MAX)]
 StreamLimit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
 
 

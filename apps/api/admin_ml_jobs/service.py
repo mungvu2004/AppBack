@@ -82,7 +82,7 @@ async def _get_job(db: AsyncSession, job_id: str, *, for_update: bool = False) -
     stmt = select(TrainingJobRow).where(TrainingJobRow.id == job_id)
     if for_update:
         stmt = stmt.with_for_update()
-    row = (await db.execute(stmt)).scalar_one_or_none()
+    row = None if "\x00" in job_id else (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise _job_not_found()
     return row

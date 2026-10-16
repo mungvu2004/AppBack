@@ -77,7 +77,10 @@ async def test_ml_activate_version__C01(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
-    """Kích hoạt một bản `completed` `onnx`: 200, `revision` 0 → 1, `activeVersionId` là bản ấy."""
+    """Kích hoạt một bản `completed` `onnx`: 200, `revision` 0 → 1, `activeVersionId` là bản ấy.
+
+    Catalog: B08M-G-065.
+    """
     row = await make_model_version(db_session, family=OPENING)
 
     response = await _activate(api_client, fake_principal, OPENING, _body(0, row.id))
@@ -90,7 +93,10 @@ async def test_ml_activate_version__C01(
 
 
 async def test_ml_activate_version__C02(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """`versionId` phải là chuỗi hoặc `null`; số 5 → 422 `VALIDATION`."""
+    """`versionId` phải là chuỗi hoặc `null`; số 5 → 422 `VALIDATION`.
+
+    Catalog: B08M-G-065.
+    """
     response = await _activate(api_client, fake_principal, OPENING, {"baseVersion": 0, "body": {"versionId": 5}})
 
     assert response.status_code == 422
@@ -98,7 +104,10 @@ async def test_ml_activate_version__C02(api_client: httpx.AsyncClient, fake_prin
 
 
 async def test_ml_activate_version__C03(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Khoá lạ ở vỏ ngoài **và** trong `body` đều 422 `VALIDATION` (`WireRequest` cấm extra)."""
+    """Khoá lạ ở vỏ ngoài **và** trong `body` đều 422 `VALIDATION` (`WireRequest` cấm extra).
+
+    Catalog: B08M-G-065.
+    """
     outer = await _activate(api_client, fake_principal, WALL, _body(0, None) | {"note": "x"})
     inner = await _activate(api_client, fake_principal, WALL, {"baseVersion": 0, "body": {"versionId": None, "q": 1}})
 
@@ -109,7 +118,10 @@ async def test_ml_activate_version__C03(api_client: httpx.AsyncClient, fake_prin
 async def test_ml_activate_version__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Họ lạ → 404 `modelFamily`; bản không có → 404 `modelVersion` (hai `resource` khác nhau)."""
+    """Họ lạ → 404 `modelFamily`; bản không có → 404 `modelVersion` (hai `resource` khác nhau).
+
+    Catalog: B08M-G-065.
+    """
     await make_model_version(db_session, family=OPENING)
 
     unknown_family = await _activate(api_client, fake_principal, "walls", _body(0, None))
@@ -123,7 +135,10 @@ async def test_ml_activate_version__C08(
 async def test_ml_activate_version__C09_stale(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, fake_clock: FakeClock
 ) -> None:
-    """Người khác đã ghi xong: base 0 trên `revision` 1 → 409 `currentVersion 1`, `remoteChanges: []`."""
+    """Người khác đã ghi xong: base 0 trên `revision` 1 → 409 `currentVersion 1`, `remoteChanges: []`.
+
+    Catalog: B08M-G-065.
+    """
     first = await make_model_version(db_session, family=OPENING)
     second = await make_model_version(db_session, family=OPENING)
     assert (await _activate(api_client, fake_principal, OPENING, _body(0, first.id))).status_code == 200
@@ -138,7 +153,10 @@ async def test_ml_activate_version__C09_stale(
 async def test_ml_activate_version__C09_ahead(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`baseVersion` **lớn hơn** hiện tại cũng là xung đột: base 7 trên `revision` 0 → 409."""
+    """`baseVersion` **lớn hơn** hiện tại cũng là xung đột: base 7 trên `revision` 0 → 409.
+
+    Catalog: B08M-G-065.
+    """
     row = await make_model_version(db_session, family=OPENING)
 
     response = await _activate(api_client, fake_principal, OPENING, _body(7, row.id))
@@ -150,7 +168,10 @@ async def test_ml_activate_version__C09_ahead(
 
 
 async def test_ml_activate_version__C09_missing(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Thiếu `baseVersion` → 428 `PRECONDITION_REQUIRED`, do guard của khung trước Pydantic."""
+    """Thiếu `baseVersion` → 428 `PRECONDITION_REQUIRED`, do guard của khung trước Pydantic.
+
+    Catalog: B08M-G-065.
+    """
     response = await _activate(api_client, fake_principal, WALL, {"body": {"versionId": None}})
 
     assert response.status_code == 428
@@ -163,7 +184,10 @@ async def test_ml_activate_version__C09b(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
-    """Cùng người, cùng thân, base = `revision` - 1 → 200 hiện trạng, không tăng, không ghi nhật ký lần hai."""
+    """Cùng người, cùng thân, base = `revision` - 1 → 200 hiện trạng, không tăng, không ghi nhật ký lần hai.
+
+    Catalog: B08M-G-065.
+    """
     row = await make_model_version(db_session, family=OPENING)
     assert (await _activate(api_client, fake_principal, OPENING, _body(0, row.id))).status_code == 200
 
@@ -182,7 +206,10 @@ async def test_ml_activate_version__C09b(
 async def test_ml_activate_version__C09b_other(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, fake_clock: FakeClock
 ) -> None:
-    """Cùng thân nhưng **người khác** không phải lượt lặp: 409, không im lặng nuốt lượt ghi."""
+    """Cùng thân nhưng **người khác** không phải lượt lặp: 409, không im lặng nuốt lượt ghi.
+
+    Catalog: B08M-G-065.
+    """
     row = await make_model_version(db_session, family=OPENING)
     assert (await _activate(api_client, fake_principal, OPENING, _body(0, row.id))).status_code == 200
 
@@ -199,7 +226,10 @@ async def test_ml_activate_version__C14(
     fake_principal: Principal,
     fake_clock: FakeClock,
 ) -> None:
-    """Hai người cùng base 0, hai bản khác nhau, song song → một 200 một 409; bản của bên thắng."""
+    """Hai người cùng base 0, hai bản khác nhau, song song → một 200 một 409; bản của bên thắng.
+
+    Catalog: B08M-G-065.
+    """
     first = await make_model_version(db_session, family=OPENING)
     second = await make_model_version(db_session, family=OPENING)
 
@@ -217,7 +247,10 @@ async def test_ml_activate_version__C14(
 
 
 async def test_ml_activate_version__C17(api_client: httpx.AsyncClient, fake_principal: Principal) -> None:
-    """Họ tường chưa kích hoạt gì, gửi `null`: 200 và `activeVersionId` **vắng** (W2, K02)."""
+    """Họ tường chưa kích hoạt gì, gửi `null`: 200 và `activeVersionId` **vắng** (W2, K02).
+
+    Catalog: B08M-G-065.
+    """
     response = await _activate(api_client, fake_principal, WALL, _body(0, None))
 
     assert response.status_code == 200
@@ -230,7 +263,10 @@ async def test_ml_activate_version__C18(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
-    """Đúng một dòng `model.activate` mang id bản và nhãn bản (K05: người thực hiện từ `Principal`)."""
+    """Đúng một dòng `model.activate` mang id bản và nhãn bản (K05: người thực hiện từ `Principal`).
+
+    Catalog: B08M-G-065.
+    """
     row = await make_model_version(db_session, family=DIMENSION, label="bản đo chữ")
 
     assert (await _activate(api_client, fake_principal, DIMENSION, _body(0, row.id))).status_code == 200
@@ -250,7 +286,10 @@ async def test_ml_activate_version__C18(
 async def test_set_active_version_rejects_a_version_of_another_family(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """Bản của họ khác → 422 `MODEL_VERSION_FAMILY_MISMATCH`, không bao giờ ghi chéo họ."""
+    """Bản của họ khác → 422 `MODEL_VERSION_FAMILY_MISMATCH`, không bao giờ ghi chéo họ.
+
+    Catalog: B08M-G-060.
+    """
     row = await make_model_version(db_session, family=DIMENSION)
 
     response = await _activate(api_client, fake_principal, OPENING, _body(0, row.id))
@@ -262,7 +301,10 @@ async def test_set_active_version_rejects_a_version_of_another_family(
 async def test_set_active_version_rejects_a_safetensors_version(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
 ) -> None:
-    """`safetensors` dù `completed` vẫn không chạy được suy luận → `MODEL_FORMAT_UNSUPPORTED`."""
+    """`safetensors` dù `completed` vẫn không chạy được suy luận → `MODEL_FORMAT_UNSUPPORTED`.
+
+    Catalog: B08M-G-060.
+    """
     row = await make_model_version(db_session, family=OPENING, weights_format="safetensors")
 
     response = await _activate(api_client, fake_principal, OPENING, _body(0, row.id))
@@ -275,7 +317,10 @@ async def test_set_active_version_rejects_a_safetensors_version(
 async def test_set_active_version_rejects_a_version_that_is_not_evaluated(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal, status: str
 ) -> None:
-    """Chưa `completed` (kể cả `failed`) → `MODEL_VERSION_NOT_EVALUATED`: chưa ai biết nó đo được bao nhiêu."""
+    """Chưa `completed` (kể cả `failed`) → `MODEL_VERSION_NOT_EVALUATED`: chưa ai biết nó đo được bao nhiêu.
+
+    Catalog: B08M-G-060.
+    """
     row = await make_model_version(db_session, family=OPENING, status=status)
 
     response = await _activate(api_client, fake_principal, OPENING, _body(0, row.id))
@@ -294,6 +339,8 @@ async def test_set_active_version_rolls_back_to_the_baseline_version(
 
     Khẳng định cuối đi qua `registry.active_versions` — đúng hàm mà pipeline đọc để ghim model
     (BE-00 §9): bản gốc quay lại phải ra `ModelRef` **dạng ghim**, không dạng storage của bản mới.
+
+    Catalog: B08M-G-065.
     """
     await _evaluate_baseline_opening(db_session)
     new_version = await make_model_version(db_session, family=OPENING)
@@ -316,7 +363,10 @@ async def test_set_active_version_keeps_the_revision_when_nothing_changes(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
-    """Đặt lại **đúng** bản đang kích hoạt: 200 hiện trạng, `revision` không tăng, không nhật ký."""
+    """Đặt lại **đúng** bản đang kích hoạt: 200 hiện trạng, `revision` không tăng, không nhật ký.
+
+    Catalog: B08M-G-065.
+    """
     await _evaluate_baseline_opening(db_session)
 
     response = await _activate(api_client, fake_principal, OPENING, _body(0, BASELINE_OPENING))
@@ -330,7 +380,10 @@ async def test_set_active_version_keeps_the_revision_when_nothing_changes(
 async def test_set_active_version_rejects_null_outside_the_wall_family(
     api_client: httpx.AsyncClient, fake_principal: Principal
 ) -> None:
-    """`null` là "chạy đường cổ điển", chỉ họ tường có đường ấy → họ khác nhận 422."""
+    """`null` là "chạy đường cổ điển", chỉ họ tường có đường ấy → họ khác nhận 422.
+
+    Catalog: B08M-G-060.
+    """
     response = await _activate(api_client, fake_principal, DIMENSION, _body(0, None))
 
     assert response.status_code == 422
@@ -343,7 +396,10 @@ async def test_set_active_version_clears_the_wall_family_with_null(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_principal: Principal,
 ) -> None:
-    """Họ tường đang có bản kích hoạt, gửi `null` → 200 vắng `activeVersionId`, đúng 1 dòng nhật ký."""
+    """Họ tường đang có bản kích hoạt, gửi `null` → 200 vắng `activeVersionId`, đúng 1 dòng nhật ký.
+
+    Catalog: B08M-G-065.
+    """
     row = await make_model_version(db_session, family=WALL)
     assert (await _activate(api_client, fake_principal, WALL, _body(0, row.id))).status_code == 200
 
@@ -357,3 +413,19 @@ async def test_set_active_version_clears_the_wall_family_with_null(
         db_sessionmaker, actor_id=fake_principal.user_id, kind=ActivityKind.MODEL_ACTIVATE, object_code=WALL
     )
     assert logged.object_label == "đường cổ điển"
+
+
+async def test_ml_activate_version__nul_in_version_id(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_principal: Principal
+) -> None:
+    """`versionId` chứa NUL → 404 `modelVersion` như id rác, không 500.
+
+    Chưa chạy, cần R1/pytest xác nhận. Catalog: B08M-G-054.
+    """
+    await make_model_version(db_session, family=OPENING)
+
+    response = await _activate(api_client, fake_principal, OPENING, _body(0, "mdl_" + chr(0) + "x"))
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "NOT_FOUND"
+    assert response.json()["resource"] == "modelVersion"

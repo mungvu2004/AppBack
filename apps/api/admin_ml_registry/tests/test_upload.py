@@ -173,7 +173,10 @@ async def _broken_activity(*args: Any, **kwargs: Any) -> None:
 async def test_ml_upload_version__C01(
     api_client: AsyncClient, api_app: FastAPI, fake_principal: Principal, object_storage: ObjectStorage
 ) -> None:
-    """ONNX tí hon → 201 bản `pending`, object trong kho có `sha256` đúng như khai (M03)."""
+    """ONNX tí hon → 201 bản `pending`, object trong kho có `sha256` đúng như khai (M03).
+
+    Catalog: B08M-G-083.
+    """
     _counting(api_app, object_storage)
 
     response = await api_client.post(VERSIONS_PATH, content=_upload_body(), headers=_headers(fake_principal))
@@ -199,7 +202,10 @@ async def test_ml_upload_version__C01(
 async def test_ml_upload_version__C02(
     api_client: AsyncClient, fake_principal: Principal, overrides: dict[str, Any], field: str
 ) -> None:
-    """Nhãn 81 ký tự, checksum chữ hoa, định dạng `pt` → 422 `VALIDATION` đúng `field`."""
+    """Nhãn 81 ký tự, checksum chữ hoa, định dạng `pt` → 422 `VALIDATION` đúng `field`.
+
+    Catalog: B08M-G-084.
+    """
     response = await api_client.post(VERSIONS_PATH, content=_upload_body(**overrides), headers=_headers(fake_principal))
 
     assert response.status_code == 422
@@ -208,7 +214,10 @@ async def test_ml_upload_version__C02(
 
 
 async def test_ml_upload_version__C03(api_client: AsyncClient, fake_principal: Principal) -> None:
-    """`metadata` mang khoá lạ `creatorId` → 422 `VALIDATION` (lớp strict của `schemas`)."""
+    """`metadata` mang khoá lạ `creatorId` → 422 `VALIDATION` (lớp strict của `schemas`).
+
+    Catalog: B08M-G-084.
+    """
     body = _upload_body(creatorId="usr_x")
 
     response = await api_client.post(VERSIONS_PATH, content=body, headers=_headers(fake_principal))
@@ -219,7 +228,10 @@ async def test_ml_upload_version__C03(api_client: AsyncClient, fake_principal: P
 
 
 async def test_ml_upload_version__C16(api_client: AsyncClient, fake_principal: Principal) -> None:
-    """`label` gửi dạng NFD (có khoảng trắng hai đầu) → lưu và trả về dạng NFC."""
+    """`label` gửi dạng NFD (có khoảng trắng hai đầu) → lưu và trả về dạng NFC.
+
+    Catalog: B08M-G-084.
+    """
     label = unicodedata.normalize("NFD", "bản đã tách dấu")
 
     body = _upload_body(label=f"  {label}  ")
@@ -231,7 +243,10 @@ async def test_ml_upload_version__C16(api_client: AsyncClient, fake_principal: P
 
 
 async def test_ml_upload_version__C17(api_client: AsyncClient, fake_principal: Principal) -> None:
-    """Bản vừa tải lên: `metrics`, `trainingJobId`, `datasetVersionId` **vắng**, không cột nội bộ (K01, K02)."""
+    """Bản vừa tải lên: `metrics`, `trainingJobId`, `datasetVersionId` **vắng**, không cột nội bộ (K01, K02).
+
+    Catalog: B08M-G-083.
+    """
     response = await api_client.post(VERSIONS_PATH, content=_upload_body(), headers=_headers(fake_principal))
 
     assert response.status_code == 201, response.text
@@ -250,7 +265,10 @@ async def test_ml_upload_version__C17(api_client: AsyncClient, fake_principal: P
 async def test_ml_upload_version__C18(
     api_client: AsyncClient, fake_principal: Principal, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đúng một dòng `activity_log` `model.upload` mang id bản và nhãn của nó."""
+    """Đúng một dòng `activity_log` `model.upload` mang id bản và nhãn của nó.
+
+    Catalog: B08M-G-083.
+    """
     response = await api_client.post(VERSIONS_PATH, content=_upload_body(), headers=_headers(fake_principal))
 
     assert response.status_code == 201, response.text
@@ -266,7 +284,10 @@ async def test_ml_upload_version__C18(
 async def test_upload_version_rejects_a_checksum_mismatch(
     api_client: AsyncClient, api_app: FastAPI, fake_principal: Principal, object_storage: ObjectStorage
 ) -> None:
-    """Checksum khai lệch băm đo lúc nhận → 422 `MODEL_CHECKSUM_MISMATCH`, `stat` trả `None` (M03)."""
+    """Checksum khai lệch băm đo lúc nhận → 422 `MODEL_CHECKSUM_MISMATCH`, `stat` trả `None` (M03).
+
+    Catalog: B08M-G-084.
+    """
     counting = _counting(api_app, object_storage)
 
     response = await api_client.post(
@@ -296,7 +317,10 @@ async def test_upload_version_rejects_a_checksum_mismatch(
 async def test_upload_version_refuses_bad_first_bytes_without_writing(
     api_client: AsyncClient, api_app: FastAPI, fake_principal: Principal, weights_format: str, weights: bytes
 ) -> None:
-    """Byte đầu lệch định dạng khai → 422 `MODEL_FORMAT_UNSUPPORTED` và **không** gọi `put` (M02)."""
+    """Byte đầu lệch định dạng khai → 422 `MODEL_FORMAT_UNSUPPORTED` và **không** gọi `put` (M02).
+
+    Catalog: B08M-G-084.
+    """
     counting = _counting(api_app)
     body = _body(
         _part("metadata", _metadata(weights, weightsFormat=weights_format)),
@@ -325,7 +349,10 @@ async def test_upload_version_refuses_bad_first_bytes_without_writing(
 async def test_upload_version_enforces_the_part_rules(
     api_client: AsyncClient, api_app: FastAPI, fake_principal: Principal, body: bytes, field: str | None
 ) -> None:
-    """Thứ tự phần, phần thiếu, thân rỗng, tên phần lạ, phần thứ ba, JSON hỏng, `metadata` > 16 KiB → 422."""
+    """Thứ tự phần, phần thiếu, thân rỗng, tên phần lạ, phần thứ ba, JSON hỏng, `metadata` > 16 KiB → 422.
+
+    Catalog: B08M-G-084.
+    """
     counting = _counting(api_app)
 
     response = await api_client.post(VERSIONS_PATH, content=body, headers=_headers(fake_principal))
@@ -339,7 +366,10 @@ async def test_upload_version_enforces_the_part_rules(
 async def test_upload_version_refuses_a_body_that_is_not_multipart(
     api_client: AsyncClient, fake_principal: Principal
 ) -> None:
-    """`Content-Type` không phải `multipart/form-data` → 422 `VALIDATION`, không đọc thân."""
+    """`Content-Type` không phải `multipart/form-data` → 422 `VALIDATION`, không đọc thân.
+
+    Catalog: B08M-G-084.
+    """
     response = await api_client.post(
         VERSIONS_PATH, content=_metadata(), headers={**auth_headers(fake_principal), "content-type": "application/json"}
     )
@@ -351,7 +381,10 @@ async def test_upload_version_refuses_a_body_that_is_not_multipart(
 async def test_upload_version_refuses_a_file_over_the_configured_ceiling(
     api_client: AsyncClient, api_app: FastAPI, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Trần 1 MiB, tệp 2 MiB → 413 `PAYLOAD_TOO_LARGE` và kho không giữ object dở (C12)."""
+    """Trần 1 MiB, tệp 2 MiB → 413 `PAYLOAD_TOO_LARGE` và kho không giữ object dở (C12).
+
+    Catalog: B08M-G-085.
+    """
     counting = _counting(api_app)
     body = _upload_body(OVER_LIMIT_BYTES)
     monkeypatch.setenv("MODEL_UPLOAD_MAX_BYTES", str(MEGABYTE))
@@ -377,6 +410,8 @@ async def test_upload_version_leaves_nothing_when_the_client_disconnects(
 
     `httpx` không gửi được `http.disconnect` giữa thân, nên test gọi thẳng lớp ASGI của app —
     đúng thông điệp mà Starlette đổi thành `ClientDisconnect` trong `request.stream()`.
+
+    Catalog: B08M-G-085.
     """
     counting = _counting(api_app)
     prefix = _part("metadata", _metadata()) + _part_header("weights", None) + b"\x08" + b"\x00" * 1024
@@ -407,7 +442,10 @@ async def test_upload_version_returns_503_and_deletes_the_object_when_the_commit
     db_sessionmaker: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Commit hỏng (mất kết nối) → 503, object đã ghi bị xoá, không dòng nào còn lại."""
+    """Commit hỏng (mất kết nối) → 503, object đã ghi bị xoá, không dòng nào còn lại.
+
+    Catalog: B08M-G-085.
+    """
     counting = _counting(api_app)
     monkeypatch.setattr(AsyncSession, "commit", _broken_commit)
 
@@ -427,7 +465,10 @@ async def test_upload_version_sends_no_task_when_step_six_fails(
     messaging_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Lỗi DB ở bước 6 → hàng `ml.infer` rỗng (K17) và object đã ghi bị xoá."""
+    """Lỗi DB ở bước 6 → hàng `ml.infer` rỗng (K17) và object đã ghi bị xoá.
+
+    Catalog: B08M-G-085.
+    """
     counting = _counting(api_app)
     monkeypatch.setattr(upload, "record_activity", _broken_activity)
     broker = broker_redis_sync()
@@ -448,7 +489,10 @@ async def test_upload_version_sends_no_task_when_step_six_fails(
 async def test_upload_version_queues_exactly_one_evaluation(
     api_client: AsyncClient, fake_principal: Principal, messaging_env: None
 ) -> None:
-    """Lượt thành công → đúng **một** thông điệp đánh giá trên hàng `ml.infer` (Redis thật)."""
+    """Lượt thành công → đúng **một** thông điệp đánh giá trên hàng `ml.infer` (Redis thật).
+
+    Catalog: B08M-G-083.
+    """
     broker = broker_redis_sync()
     broker.delete(ML_QUEUE)
     try:
@@ -470,6 +514,8 @@ async def test_upload_version_streams_a_file_larger_than_the_sniffed_head(
 
     Phần `weights` mang thêm `Content-Type`: N26 không tin header ấy (K12), nên nó chỉ là một
     header phải đọc rồi bỏ — đúng đường mà một tệp thật đi qua.
+
+    Catalog: B08M-G-085.
     """
     weights = b"\x08" + bytes(range(256)) * 16
     counting = _counting(api_app)
@@ -519,7 +565,10 @@ async def _k36_upload(
 async def test_upload_version_keeps_the_pool_free_while_streaming(
     api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """K36 — pool một kết nối: 64 MiB đang `put` không giữ kết nối, đỉnh RAM < 32 MiB (trần GET ở test `perf`)."""
+    """K36 — pool một kết nối: 64 MiB đang `put` không giữ kết nối, đỉnh RAM < 32 MiB (trần GET ở test `perf`).
+
+    Catalog: B08M-G-085.
+    """
     (response, checked_out, peak), _ = await _k36_upload(fake_clock, fake_principal, monkeypatch)
 
     assert response.status_code == 201, response.text
@@ -531,7 +580,10 @@ async def test_upload_version_keeps_the_pool_free_while_streaming(
 async def test_upload_version_get_beats_the_deadline_while_streaming(
     api_env: None, fake_clock: FakeClock, fake_principal: Principal, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """K36 — trần thời gian: GET có DB song song với 64 MiB đang `put` xong dưới 1 s, đo tuần tự ở bước 5b."""
+    """K36 — trần thời gian: GET có DB song song với 64 MiB đang `put` xong dưới 1 s, đo tuần tự ở bước 5b.
+
+    Catalog: B08M-G-085.
+    """
     (_, checked_out, peak), elapsed = await _k36_upload(fake_clock, fake_principal, monkeypatch)
 
     _log.info("k36_measured", extra={"getSeconds": elapsed, "peakBytes": peak, "checkedOut": checked_out})

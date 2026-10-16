@@ -60,7 +60,10 @@ async def _users_by_email(db: AsyncSession, *emails: str) -> list[User]:
 async def test_users_invite_users__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """201, người `pending` `usr_…`, trả theo thứ tự đầu vào (dù xử lý theo email), một lô thư sau commit."""
+    """201, người `pending` `usr_…`, trả theo thứ tự đầu vào (dù xử lý theo email), một lô thư sau commit.
+
+    Catalog: B08U-G-061.
+    """
     admin = await make_admin(db_session)
     batches = capture_mail_batches(monkeypatch)
     response = await send(api_client, admin, "POST", INVITE, json=_body(["zeta@example.com", "alpha@example.com"]))
@@ -88,7 +91,10 @@ async def test_users_invite_users__C17(api_client: httpx.AsyncClient, db_session
 async def test_users_invite_users__C18(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Mỗi người một dòng `user.invite`: actor là người thực hiện, `objectCode` là id, nhãn là email."""
+    """Mỗi người một dòng `user.invite`: actor là người thực hiện, `objectCode` là id, nhãn là email.
+
+    Catalog: B08U-G-059.
+    """
     admin = await make_admin(db_session)
     rows = (await send(api_client, admin, "POST", INVITE, json=_body(["a1@example.com", "a2@example.com"]))).json()
     for row in rows:
@@ -120,7 +126,10 @@ async def test_users_invite_users__C02(
 
 
 async def test_users_invite_users__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`."""
+    """Khoá lạ trong thân → 422 `VALIDATION`.
+
+    Catalog: B08U-G-058.
+    """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "POST", INVITE, json={**_body(["a@example.com"]), "x": 1})
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
@@ -138,7 +147,10 @@ async def test_users_invite_users__C07(api_client: httpx.AsyncClient, db_session
 async def test_users_invite_users__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Trần lô = 3: 1 email, đúng 3 email đều qua; 4 email → 422 `field:"emails"`, không tạo ai."""
+    """Trần lô = 3: 1 email, đúng 3 email đều qua; 4 email → 422 `field:"emails"`, không tạo ai.
+
+    Catalog: B08U-G-060.
+    """
     admin = await make_admin(db_session)
     with users_limits(monkeypatch, invite_batch_max=3):
         one = await send(api_client, admin, "POST", INVITE, json=_body(["c1@example.com"]))
@@ -166,7 +178,10 @@ async def test_users_invite_users_default_batch_cap_is_50(
 async def test_users_invite_users_rejects_non_wire_emails(
     api_client: httpx.AsyncClient, db_session: AsyncSession, bad_email: str
 ) -> None:
-    """Email ngoài `validate_wire_email` (không ASCII, U+017F, Kelvin U+212A) → 422 `field:"emails"` (K37)."""
+    """Email ngoài `validate_wire_email` (không ASCII, U+017F, Kelvin U+212A) → 422 `field:"emails"` (K37).
+
+    Catalog: B08U-C-015.
+    """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "POST", INVITE, json=_body(["hop-le@example.com", bad_email]))
     assert (response.status_code, response.json()["field"]) == (422, "emails")
@@ -205,7 +220,10 @@ async def test_users_invite_users_dedupes_by_normalized_email(
 async def test_users_invite_users_long_local_part_truncates_name(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Phần trước `@` dài 130 ký tự → `name` đúng 120 ký tự, không 500."""
+    """Phần trước `@` dài 130 ký tự → `name` đúng 120 ký tự, không 500.
+
+    Catalog: B08U-C-017.
+    """
     admin = await make_admin(db_session)
     local = "x" * 130
     response = await send(api_client, admin, "POST", INVITE, json=_body([f"{local}@example.com"]))
@@ -260,7 +278,10 @@ async def test_users_invite_users_actor_demoted_in_db_is_forbidden(
 async def test_users_invite_users_parallel_batches_in_opposite_order(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Hai lô `[a,b]` và `[b,a]` song song từ hai admin: cả hai 201 (không 503, không 500), mỗi email đúng một người."""
+    """Hai lô `[a,b]` và `[b,a]` song song từ hai admin: cả hai 201 (không 503, không 500), mỗi email đúng một người.
+
+    Catalog: B08U-G-055.
+    """
     first, second = await make_admin(db_session), await make_admin(db_session)
     forward, backward = ["a@example.com", "b@example.com"], ["b@example.com", "a@example.com"]
     responses = await asyncio.gather(
@@ -275,7 +296,10 @@ async def test_users_invite_users_parallel_batches_in_opposite_order(
 async def test_users_invite_users_lost_race_reuses_pending(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Thua tranh chấp `uq_users_email`: `ON CONFLICT` bỏ dòng, đọc lại thấy người `pending` → dùng lại, 201."""
+    """Thua tranh chấp `uq_users_email`: `ON CONFLICT` bỏ dòng, đọc lại thấy người `pending` → dùng lại, 201.
+
+    Catalog: B08U-G-056.
+    """
     admin = await make_admin(db_session)
     winner = await make_user(db_session, status="pending", password=None, email="thang@example.com")
     _stale_first_lookup(monkeypatch)
@@ -286,7 +310,10 @@ async def test_users_invite_users_lost_race_reuses_pending(
 async def test_users_invite_users_lost_race_to_active_is_taken(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Thua tranh chấp cho người đã `active` → 422 `USER_EMAIL_TAKEN`, không 500."""
+    """Thua tranh chấp cho người đã `active` → 422 `USER_EMAIL_TAKEN`, không 500.
+
+    Catalog: B08U-G-057.
+    """
     admin = await make_admin(db_session)
     await make_user(db_session, email="thang@example.com")
     _stale_first_lookup(monkeypatch)
@@ -307,7 +334,10 @@ def _stale_first_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_users_invite_users__C11(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """30 lượt/giờ theo người thực hiện; lượt 31 → 429 `RATE_LIMITED` + `Retry-After`; #45 chung xô đếm."""
+    """30 lượt/giờ theo người thực hiện; lượt 31 → 429 `RATE_LIMITED` + `Retry-After`; #45 chung xô đếm.
+
+    Catalog: B08U-G-053.
+    """
     admin = await make_admin(db_session)
     for _ in range(30):
         assert (await send(api_client, admin, "POST", INVITE, json={})).status_code == 422
@@ -321,7 +351,10 @@ async def test_users_invite_users__C11(api_client: httpx.AsyncClient, db_session
 async def test_users_invite_users__C10(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Lặp cùng `Idempotency-Key` và thân: response đã lưu, **không** phát token/thư lần hai (K17)."""
+    """Lặp cùng `Idempotency-Key` và thân: response đã lưu, **không** phát token/thư lần hai (K17).
+
+    Catalog: B08U-G-052.
+    """
     admin = await make_admin(db_session)
     batches = capture_mail_batches(monkeypatch)
     headers = {"Idempotency-Key": "khoa-moi-mot-lan-01"}
@@ -352,7 +385,10 @@ async def _pending_with_invite(db: AsyncSession, clock: FakeClock) -> User:
 async def test_users_resend_invitation__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """200, token cũ bị thay bằng token mới, đúng một lô thư sau commit."""
+    """200, token cũ bị thay bằng token mới, đúng một lô thư sau commit.
+
+    Catalog: B08U-G-065.
+    """
     admin, target = await make_admin(db_session), await _pending_with_invite(db_session, fake_clock)
     batches = capture_mail_batches(monkeypatch)
     response = await send(api_client, admin, "POST", _resend(target.id), json={})
@@ -445,7 +481,10 @@ async def test_users_resend_invitation__C10(
 async def test_users_invite_users_batch_cap_counts_before_dedupe(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Trần = 3: 4 phần tử (bỏ trùng còn 2) vẫn 422 `field:"emails"`; không tạo ai, không thư."""
+    """Trần = 3: 4 phần tử (bỏ trùng còn 2) vẫn 422 `field:"emails"`; không tạo ai, không thư.
+
+    Catalog: B08U-G-051.
+    """
     admin = await make_admin(db_session)
     batches = capture_mail_batches(monkeypatch)
     emails = ["a@example.com", "A@example.com", "b@example.com", "B@example.com"]

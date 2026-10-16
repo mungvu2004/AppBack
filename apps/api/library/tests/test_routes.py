@@ -56,7 +56,10 @@ async def test_library_list_items__C01(
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
 ) -> None:
-    """Seed thật + phát hành thật: đủ 16 mục, tải được `.glb` (byte = `build_glb`) và ảnh qua app."""
+    """Seed thật + phát hành thật: đủ 16 mục, tải được `.glb` (byte = `build_glb`) và ảnh qua app.
+
+    Catalog: B08U-G-079.
+    """
     admin = await make_user(db_session)
     report = await seed_and_publish(db_session, db_sessionmaker, local_storage, fake_clock)
     assert (report.published, report.failed) == (len(CATALOGUE), 0)
@@ -83,7 +86,10 @@ async def test_library_read_item__C01(
     local_storage: LocalDiskStorage,
     fake_clock: FakeClock,
 ) -> None:
-    """Đọc một mục: đúng khoá hợp đồng, số đo khớp bảng danh mục, tải được `.glb`."""
+    """Đọc một mục: đúng khoá hợp đồng, số đo khớp bảng danh mục, tải được `.glb`.
+
+    Catalog: B08U-G-087.
+    """
     admin = await make_user(db_session)
     await seed_and_publish(db_session, db_sessionmaker, local_storage, fake_clock)
 
@@ -102,7 +108,10 @@ async def test_library_read_item__C01(
 async def test_library_list_items__C15(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """Biên danh sách cũ: 0, 1 mục; 5 mục với trần 3 → đúng 3 mục đầu theo `(sort_order, id)`, hai lượt như nhau."""
+    """Biên danh sách cũ: 0, 1 mục; 5 mục với trần 3 → đúng 3 mục đầu theo `(sort_order, id)`, hai lượt như nhau.
+
+    Catalog: B08U-G-078.
+    """
     user = await make_user(db_session)
     headers = headers_of(user)
     assert (await api_client.get(LIST_PATH, headers=headers)).json() == []
@@ -143,7 +152,10 @@ async def test_library_read_item__C17(
 async def test_library_read_item__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """404 `libraryItem`: không có, sai mẫu (`A`, `a_b`, 65 ký tự), chưa phát hành, đã rút, `mine` của người khác."""
+    """404 `libraryItem`: không có, sai mẫu (`A`, `a_b`, 65 ký tự), chưa phát hành, đã rút, `mine` của người khác.
+
+    Catalog: B08U-G-086.
+    """
     me = await make_user(db_session)
     other = await make_user(db_session)
     await make_library_item(db_session, local_storage, id="unpublished", published=False)
@@ -160,7 +172,10 @@ async def test_library_read_item__C08(
 async def test_library_mine_source_and_visibility(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """`mine` của người gọi → `source: "mine"` ở cả hai route; của người khác vắng ở #14."""
+    """`mine` của người gọi → `source: "mine"` ở cả hai route; của người khác vắng ở #14.
+
+    Catalog: B08U-G-082.
+    """
     me = await make_user(db_session)
     other = await make_user(db_session)
     await make_library_item(db_session, local_storage, id="a-mine", owner=me, sort_order=1)
@@ -178,7 +193,10 @@ async def test_library_urls_absolute_stable_within_hour(
     fake_clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """URL tuyệt đối; cùng giờ giống hệt; qua mốc giờ khác; #14 không gọi `stat` (W23)."""
+    """URL tuyệt đối; cùng giờ giống hệt; qua mốc giờ khác; #14 không gọi `stat` (W23).
+
+    Catalog: B08U-G-080.
+    """
     user = await make_user(db_session)
     for n in range(16):
         await make_library_item(db_session, local_storage, id=f"item-{n:02d}", sort_order=n)
@@ -202,7 +220,10 @@ async def test_library_list_items__signs_every_url_in_one_batch(
     local_storage: LocalDiskStorage,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """NO-207: #14 với 16 mục (mô hình + ảnh xem trước) ký 32 URL trong đúng **một** lượt `signed_urls`."""
+    """NO-207: #14 với 16 mục (mô hình + ảnh xem trước) ký 32 URL trong đúng **một** lượt `signed_urls`.
+
+    Catalog: B08U-G-081.
+    """
     user = await make_user(db_session)
     for n in range(16):
         await make_library_item(db_session, local_storage, id=f"item-{n:02d}", sort_order=n)

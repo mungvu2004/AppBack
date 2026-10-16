@@ -51,7 +51,10 @@ async def _wrote_nothing(
 async def test_users_change_role__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đổi vai → 200 `AdminUser` với vai mới, `token_version` tăng, một dòng nhật ký `user.role_change`."""
+    """Đổi vai → 200 `AdminUser` với vai mới, `token_version` tăng, một dòng nhật ký `user.role_change`.
+
+    Catalog: B08U-G-031.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session, role="engineer")
     response = await send(api_client, admin, "PATCH", _role_path(target.id), json=_role_body(target, "viewer"))
     assert response.status_code == 200
@@ -98,7 +101,10 @@ async def test_users_change_role__C02(
 
 
 async def test_users_change_role__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`."""
+    """Khoá lạ trong thân → 422 `VALIDATION`.
+
+    Catalog: B08U-G-027.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     response = await send(api_client, admin, "PATCH", _role_path(target.id), json={**_role_body(target), "x": 1})
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
@@ -106,14 +112,20 @@ async def test_users_change_role__C03(api_client: httpx.AsyncClient, db_session:
 
 @pytest.mark.parametrize("role", ["engineer", "viewer"])
 async def test_users_change_role__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
-    """Không phải admin → 403."""
+    """Không phải admin → 403.
+
+    Catalog: B08U-D-007.
+    """
     caller, target = await make_user(db_session, role=role), await make_user(db_session)
     response = await send(api_client, caller, "PATCH", _role_path(target.id), json=_role_body(target))
     assert (response.status_code, response.json()["code"]) == (403, "FORBIDDEN")
 
 
 async def test_users_change_role__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Không có người hoặc đã xoá mềm → 404 `resource:"user"`."""
+    """Không có người hoặc đã xoá mềm → 404 `resource:"user"`.
+
+    Catalog: B08U-G-026.
+    """
     admin, gone = await make_admin(db_session), await make_user(db_session)
     await db_session.execute(update(User).where(User.id == gone.id).values(deleted_at=User.created_at))
     await db_session.commit()
@@ -123,7 +135,10 @@ async def test_users_change_role__C08(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_users_change_role__C21(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`userId` thân khác đường → 422 `PATH_BODY_MISMATCH`, không ghi gì (K09)."""
+    """`userId` thân khác đường → 422 `PATH_BODY_MISMATCH`, không ghi gì (K09).
+
+    Catalog: B08U-G-025.
+    """
     admin, target, other = await make_admin(db_session), await make_user(db_session), await make_user(db_session)
     response = await send(api_client, admin, "PATCH", _role_path(target.id), json=_role_body(other, "viewer"))
     assert (response.status_code, response.json()["code"]) == (422, "PATH_BODY_MISMATCH")
@@ -152,7 +167,10 @@ async def test_users_change_role_self_is_rejected(api_client: httpx.AsyncClient,
 async def test_users_change_role_last_admin_is_rejected(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """NO-206: admin `active` duy nhất tự hạ vai → 422 `USER_LAST_ADMIN` (bất biến ra trước "tự sửa mình")."""
+    """NO-206: admin `active` duy nhất tự hạ vai → 422 `USER_LAST_ADMIN` (bất biến ra trước "tự sửa mình").
+
+    Catalog: B08U-C-006.
+    """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "PATCH", _role_path(admin.id), json=_role_body(admin, "viewer"))
     assert (response.status_code, response.json()["code"]) == (422, "USER_LAST_ADMIN")
@@ -162,7 +180,10 @@ async def test_users_change_role_last_admin_is_rejected(
 async def test_users_change_role_actor_demoted_in_db_is_forbidden(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Vai vừa bị hạ trong DB (`Principal` còn `admin`, như cache ≤ 5 s) → 403 ở khoá tập admin, không ghi gì."""
+    """Vai vừa bị hạ trong DB (`Principal` còn `admin`, như cache ≤ 5 s) → 403 ở khoá tập admin, không ghi gì.
+
+    Catalog: B08U-G-029.
+    """
     actor, other_admin, target = await make_admin(db_session), await make_admin(db_session), await make_user(db_session)
     await db_session.execute(update(User).where(User.id == actor.id).values(role="engineer"))
     await db_session.commit()
@@ -176,7 +197,10 @@ async def test_users_change_role_actor_demoted_in_db_is_forbidden(
 async def test_users_change_role_revokes_old_access_token(
     auth_app: FastAPI, auth_client: httpx.AsyncClient, db_session: AsyncSession, signed_in: SignIn
 ) -> None:
-    """Hạ vai người đang đăng nhập: access token cũ 401 `SESSION_REVOKED`, refresh trả `roles` mới (C25)."""
+    """Hạ vai người đang đăng nhập: access token cũ 401 `SESSION_REVOKED`, refresh trả `roles` mới (C25).
+
+    Catalog: B08U-G-032.
+    """
     admin, victim = await make_admin(db_session), await make_user(db_session, role="engineer")
     admin_session = await signed_in(admin)
     async with second_client(auth_app) as victim_client:
@@ -206,7 +230,10 @@ async def test_users_disable_user__C01(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """Vô hiệu → `disabled`, phiên bị thu hồi, lời mời chờ mất hiệu lực, `token_version` tăng."""
+    """Vô hiệu → `disabled`, phiên bị thu hồi, lời mời chờ mất hiệu lực, `token_version` tăng.
+
+    Catalog: B08U-G-040.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session, status="pending", password=None)
     await seed_token(db_session, user_id=target.id, purpose="invite", clock=fake_clock)
     response = await send(api_client, admin, "POST", _path(target.id, "disable"), json={})
@@ -246,7 +273,10 @@ async def test_users_disable_user__C02(api_client: httpx.AsyncClient, db_session
 
 
 async def test_users_disable_user__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Khoá lạ trong thân → 422 `VALIDATION`."""
+    """Khoá lạ trong thân → 422 `VALIDATION`.
+
+    Catalog: B08U-G-035.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     response = await send(api_client, admin, "POST", _path(target.id, "disable"), json={"x": 1})
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
@@ -261,7 +291,10 @@ async def test_users_disable_user__C07(api_client: httpx.AsyncClient, db_session
 
 
 async def test_users_disable_user__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Không có người → 404 `resource:"user"`."""
+    """Không có người → 404 `resource:"user"`.
+
+    Catalog: B08U-G-036.
+    """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "POST", _path(GHOST, "disable"), json={})
     assert (response.status_code, response.json()["resource"]) == (404, "user")
@@ -271,7 +304,10 @@ async def test_users_disable_user_twice_and_self(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     """Đã `disabled` → 200, không ghi thêm gì; tự vô hiệu mình → 422 `USER_LAST_ADMIN` khi là admin duy nhất
-    (NO-206), `USER_SELF_MODIFICATION` khi còn admin khác."""
+    (NO-206), `USER_SELF_MODIFICATION` khi còn admin khác.
+
+    Catalog: B08U-C-008.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session, status="disabled")
     response = await send(api_client, admin, "POST", _path(target.id, "disable"), json={})
     assert (response.status_code, response.json()["status"]) == (200, "disabled")
@@ -287,7 +323,10 @@ async def test_users_disable_user_twice_and_self(
 async def test_users_disable_user_kills_every_session(
     auth_app: FastAPI, auth_client: httpx.AsyncClient, db_session: AsyncSession, signed_in: SignIn
 ) -> None:
-    """Mọi phiên của người bị vô hiệu chết: access token 401, refresh 401, đăng nhập lại 401 (C25)."""
+    """Mọi phiên của người bị vô hiệu chết: access token 401, refresh 401, đăng nhập lại 401 (C25).
+
+    Catalog: B08U-G-037.
+    """
     admin, victim = await make_admin(db_session), await make_user(db_session, role="engineer")
     admin_session = await signed_in(admin)
     async with second_client(auth_app) as victim_client:
@@ -314,7 +353,10 @@ async def test_users_disable_user_kills_every_session(
 async def test_users_enable_user__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Bật lại người có mật khẩu → `active`; người chưa có mật khẩu → `pending` (cần gửi lại lời mời)."""
+    """Bật lại người có mật khẩu → `active`; người chưa có mật khẩu → `pending` (cần gửi lại lời mời).
+
+    Catalog: B08U-G-045.
+    """
     admin = await make_admin(db_session)
     with_password = await make_user(db_session, status="disabled")
     without_password = await make_user(db_session, status="disabled", password=None)
@@ -369,7 +411,10 @@ async def test_users_enable_user__C07(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_users_enable_user__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Không có người → 404 `resource:"user"`."""
+    """Không có người → 404 `resource:"user"`.
+
+    Catalog: B08U-G-044.
+    """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "POST", _path(GHOST, "enable"), json={})
     assert (response.status_code, response.json()["resource"]) == (404, "user")
@@ -378,7 +423,10 @@ async def test_users_enable_user__C08(api_client: httpx.AsyncClient, db_session:
 async def test_users_enable_user_not_disabled_writes_nothing(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Bật người không `disabled` → 200 trả nguyên trạng, không nhật ký, không tăng `token_version`."""
+    """Bật người không `disabled` → 200 trả nguyên trạng, không nhật ký, không tăng `token_version`.
+
+    Catalog: B08U-G-043.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     response = await send(api_client, admin, "POST", _path(target.id, "enable"), json={})
     assert (response.status_code, response.json()["status"]) == (200, "active")

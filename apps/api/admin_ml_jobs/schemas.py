@@ -14,7 +14,7 @@ Ba luật của FE mà lớp này giữ thay cho `service.py`:
 from functools import partial
 from typing import Annotated, cast
 
-from pydantic import AfterValidator, Field
+from pydantic import AfterValidator, BeforeValidator, Field
 
 from apps.api.core.pagination import CursorPage
 from apps.api.core.wire import WireDatetime, WireModel, WireRequest
@@ -25,8 +25,16 @@ from packages.ml_contracts.families import TrainableFamily
 DatasetVersionId = Annotated[str, AfterValidator(partial(check_id, "dsv"))]
 """`dsv_<ULID>` trong thân N33; `ValueError` của lõi thành 422 `field:"datasetVersionId"`."""
 
-Epochs = Annotated[int, Field(ge=1, le=EPOCHS_MAX)]
-"""1-300 như CHECK `epochs_range` của bảng và refine `TrainingJobSchema`."""
+
+def _no_bool_or_str(value: object) -> object:
+    """Chặn `true` và chuỗi (pydantic lax ép thành 1, 3): Q12 — chỉ số mới là `epochs`; số thực giữ như cũ."""
+    if isinstance(value, bool | str):
+        raise ValueError("epochs phải là số nguyên")
+    return value
+
+
+Epochs = Annotated[int, BeforeValidator(_no_bool_or_str), Field(ge=1, le=EPOCHS_MAX)]
+"""1-300 như CHECK `epochs_range` của bảng và refine `TrainingJobSchema`; không nhận bool, chuỗi (Q12)."""
 
 
 class TrainingJobOut(WireModel):
