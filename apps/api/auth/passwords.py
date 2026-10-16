@@ -37,11 +37,15 @@ MIN_PASSWORD_LENGTH: Final = 8
 
 
 def _nfc_if_str(value: object) -> object:
+    """NFC cho chuỗi; giá trị khác để nguyên cho pydantic báo lỗi kiểu."""
     return nfc(value) if isinstance(value, str) else value
 
 
 NewPassword = Annotated[str, BeforeValidator(_nfc_if_str), Field(min_length=MIN_PASSWORD_LENGTH)]
-"""Mật khẩu mới trên dây (N9, N10, N13): đếm độ dài SAU NFC — 4 ký tự NFD là 8 điểm mã (BUG-P07-014/015)."""
+"""Mật khẩu mới trên dây (N9, N10): đếm độ dài SAU NFC — 4 ký tự NFD là 8 điểm mã (BUG-P07-014/015).
+
+N13 còn validator riêng (NO-428).
+"""
 
 HASH_WAIT_S: Final = 2.0
 HASH_RETRY_AFTER_S: Final = 1

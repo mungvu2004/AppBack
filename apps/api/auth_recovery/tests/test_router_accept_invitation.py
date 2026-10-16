@@ -63,7 +63,7 @@ async def test_auth_accept_invitation__C02(auth_client: httpx.AsyncClient) -> No
 
 async def test_auth_accept_invitation__C02_nfd_length(auth_client: httpx.AsyncClient) -> None:
     """4 ký tự gửi dạng NFD (8 điểm mã) vẫn là mật khẩu 4 ký tự → 422 `field:"password"` (BUG-P07-015)."""
-    body = {"token": "x" * 10, "fullName": "A", "password": "ê" * 4}
+    body = {"token": "x" * 10, "fullName": "A", "password": "e\u0302" * 4}
     response = await auth_client.post(PATH, json=body, headers=ORIGIN)
     assert response.status_code == 422
     assert response.json()["field"] == "password"
