@@ -120,7 +120,9 @@ async def test_drawings_read_progress__C01_failed(
 async def test_drawings_read_progress__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, sync_bus_reset: None
 ) -> None:
-    """Người ngoài dự án (vai `admin`) → 404 `resource:"project"`."""
+    """Người ngoài dự án (vai `admin`) → 404 `resource:"project"`.
+    Catalog: B09-drw-011.
+    """
     stage = await make_stage(db_session)
     upload = await make_upload(db_session, project=stage.scene.project, floor=stage.scene.floor)
     outsider = await make_user(db_session, role="admin")

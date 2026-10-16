@@ -46,7 +46,9 @@ async def test_floors_list_floors__C01(api_client: httpx.AsyncClient, db_session
 
 
 async def test_floors_list_floors__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`.
+    Catalog: B09-flr-002.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")

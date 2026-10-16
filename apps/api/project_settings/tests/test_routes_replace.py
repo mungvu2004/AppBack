@@ -124,7 +124,9 @@ async def test_settings_replace_settings__C03(api_client: httpx.AsyncClient, db_
 
 
 async def test_settings_replace_settings__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404, không ghi gì."""
+    """Admin hệ thống không phải thành viên → 404, không ghi gì.
+    Catalog: B09-set-006.
+    """
     _, project = await seed_engineer_project(db_session)
     outsider = await make_user(db_session, role="admin")
     response = await put_settings(api_client, project.id, outsider, replace_body(0))
@@ -133,7 +135,9 @@ async def test_settings_replace_settings__C06(api_client: httpx.AsyncClient, db_
 
 
 async def test_settings_replace_settings__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thành viên `viewer` → 403 `FORBIDDEN`, không ghi gì."""
+    """Thành viên `viewer` → 403 `FORBIDDEN`, không ghi gì.
+    Catalog: B09-set-005.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role="viewer")
     project = await seed_project(db_session, owner=owner, members=[viewer])

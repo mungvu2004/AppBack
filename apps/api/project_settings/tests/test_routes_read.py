@@ -43,7 +43,9 @@ async def test_settings_read_settings__C01(api_client: httpx.AsyncClient, db_ses
 
 
 async def test_settings_read_settings__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403.
+    Catalog: B09-set-002.
+    """
     _, project = await seed_engineer_project(db_session)
     outsider = await make_user(db_session, role="admin")
     response = await api_client.get(settings_path(project.id), headers=headers_of(outsider))

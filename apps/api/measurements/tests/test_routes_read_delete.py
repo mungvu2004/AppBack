@@ -54,7 +54,9 @@ async def test_measurements_list_records__C01(api_client: httpx.AsyncClient, db_
 
 
 async def test_measurements_list_records__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên → 404 `resource:"project"`."""
+    """Admin hệ thống không là thành viên → 404 `resource:"project"`.
+    Catalog: B09-msr-002.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -182,7 +184,9 @@ async def test_measurements_delete_record__C01(
 
 
 async def test_measurements_delete_record__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên, id có thật → 404 `resource:"project"` (K08)."""
+    """Admin hệ thống không là thành viên, id có thật → 404 `resource:"project"` (K08).
+    Catalog: B09-msr-009.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     await api_client.post(measurements_path(project.id), json=record_body(), headers=headers_of(owner))
@@ -194,7 +198,9 @@ async def test_measurements_delete_record__C06(api_client: httpx.AsyncClient, db
 async def test_measurements_delete_record__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """`viewer` → 403 và dòng còn nguyên."""
+    """`viewer` → 403 và dòng còn nguyên.
+    Catalog: B09-msr-008.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])

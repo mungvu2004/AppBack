@@ -122,7 +122,9 @@ async def test_drawings_complete_upload__C01(
 async def test_drawings_complete_upload__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, sync_bus_reset: None
 ) -> None:
-    """Người ngoài dự án → 404 `resource:"project"`."""
+    """Người ngoài dự án → 404 `resource:"project"`.
+    Catalog: B09-drw-009.
+    """
     stage = await make_stage(db_session)
     upload_id = await _start(api_client, stage, upload_png(600))
     outsider = await make_user(db_session, role="admin")

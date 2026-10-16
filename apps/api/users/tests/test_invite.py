@@ -137,7 +137,9 @@ async def test_users_invite_users__C03(api_client: httpx.AsyncClient, db_session
 
 @pytest.mark.parametrize("role", ["engineer", "viewer"])
 async def test_users_invite_users__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
-    """Không phải admin → 403, không tạo ai."""
+    """Không phải admin → 403, không tạo ai.
+    Catalog: B09-usr-007.
+    """
     caller = await make_user(db_session, role=role)
     response = await send(api_client, caller, "POST", INVITE, json=_body(["a@example.com"]))
     assert (response.status_code, response.json()["code"]) == (403, "FORBIDDEN")
@@ -441,7 +443,9 @@ async def test_users_resend_invitation__C03(api_client: httpx.AsyncClient, db_se
 async def test_users_resend_invitation__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock, role: str
 ) -> None:
-    """Không phải admin → 403."""
+    """Không phải admin → 403.
+    Catalog: B09-usr-010.
+    """
     caller, target = await make_user(db_session, role=role), await _pending_with_invite(db_session, fake_clock)
     assert (await send(api_client, caller, "POST", _resend(target.id), json={})).status_code == 403
 

@@ -76,7 +76,9 @@ async def test_drawings_init_upload__C03(api_client: httpx.AsyncClient, db_sessi
 
 
 async def test_drawings_init_upload__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Người ngoài dự án (vai `admin`) → 404 `resource:"project"`, không 403."""
+    """Người ngoài dự án (vai `admin`) → 404 `resource:"project"`, không 403.
+    Catalog: B09-drw-003.
+    """
     stage = await make_stage(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()
@@ -90,7 +92,9 @@ async def test_drawings_init_upload__C06(api_client: httpx.AsyncClient, db_sessi
 
 
 async def test_drawings_init_upload__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thành viên vai `viewer` (vai mạnh nhất không có `floor.upload`) → 403."""
+    """Thành viên vai `viewer` (vai mạnh nhất không có `floor.upload`) → 403.
+    Catalog: B09-drw-002.
+    """
     owner = await make_user(db_session)
     viewer = await make_user(db_session, role="viewer")
     project = await make_project(db_session, owner=owner, members=[viewer])

@@ -41,6 +41,7 @@ async def test_rules_read_config__C06(api_client: httpx.AsyncClient, db_session:
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403.
 
     Hàng catalog: [B05-G-031, B06-G-005].
+    Catalog: B09-rul-002.
     """
     _, project = await seed_admin_project(db_session)
     outsider = await make_user(db_session, role="admin")

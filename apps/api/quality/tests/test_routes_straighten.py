@@ -174,7 +174,9 @@ async def test_quality_straighten__C03(
 async def test_quality_straighten__C06(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """Người ngoài dự án, kể cả admin hệ thống → 404 `project`."""
+    """Người ngoài dự án, kể cả admin hệ thống → 404 `project`.
+    Catalog: B09-qlt-009.
+    """
     stage = await make_stage(db_session, local_storage)
     admin = await make_user(db_session, role="admin")
     await db_session.commit()
@@ -188,7 +190,9 @@ async def test_quality_straighten__C06(
 async def test_quality_straighten__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
-    """Viewer → 403 `FORBIDDEN`."""
+    """Viewer → 403 `FORBIDDEN`.
+    Catalog: B09-qlt-008.
+    """
     stage = await make_stage(db_session, local_storage)
 
     response = await _post(api_client, stage, headers=stage.viewer_headers)

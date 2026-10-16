@@ -87,7 +87,7 @@ async def _forbidden_for_engineer(client: AsyncClient, clock: FakeClock, op: str
 async def test_ml_list_jobs__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN` (cổng `require_admin` của router, trước endpoint).
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlj-003.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_jobs")
 
@@ -95,7 +95,7 @@ async def test_ml_list_jobs__C07(api_client: AsyncClient, fake_clock: FakeClock)
 async def test_ml_create_job__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403; không job nào được chèn vì cổng chặn trước endpoint.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlj-007.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_create_job")
 
@@ -103,7 +103,7 @@ async def test_ml_create_job__C07(api_client: AsyncClient, fake_clock: FakeClock
 async def test_ml_read_job__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN` (403 thắng 404: quyền kiểm trước tài nguyên).
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlj-010.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_read_job")
 
@@ -111,7 +111,7 @@ async def test_ml_read_job__C07(api_client: AsyncClient, fake_clock: FakeClock) 
 async def test_ml_cancel_job__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN`; không đặt `cancel_key`, không đổi job.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlj-014.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_cancel_job")
 
@@ -119,7 +119,7 @@ async def test_ml_cancel_job__C07(api_client: AsyncClient, fake_clock: FakeClock
 async def test_ml_list_job_metrics__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlj-017.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_job_metrics")
 
@@ -127,7 +127,7 @@ async def test_ml_list_job_metrics__C07(api_client: AsyncClient, fake_clock: Fak
 async def test_ml_list_job_logs__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlj-021.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_job_logs")
 

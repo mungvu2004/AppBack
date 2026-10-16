@@ -100,7 +100,9 @@ async def test_floors_create_floor__C03(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_floors_create_floor__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"` (K08)."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"` (K08).
+    Catalog: B09-flr-006.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -110,7 +112,9 @@ async def test_floors_create_floor__C06(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_floors_create_floor__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Vai mạnh nhất thiếu `layer.edit` (`viewer`) → 403."""
+    """Vai mạnh nhất thiếu `layer.edit` (`viewer`) → 403.
+    Catalog: B09-flr-005.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])

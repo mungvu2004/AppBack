@@ -64,7 +64,9 @@ async def test_templates_list_templates__C01(
 
 
 async def test_templates_list_templates__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên → 404 `resource:"project"`."""
+    """Admin hệ thống không là thành viên → 404 `resource:"project"`.
+    Catalog: B09-tpl-002.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -249,6 +251,7 @@ async def test_templates_create_template__C06(api_client: httpx.AsyncClient, db_
     """Admin hệ thống không là thành viên → 404 `resource:"project"` (K08).
 
     Hàng catalog: [B05-G-124].
+    Catalog: B09-tpl-006.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
@@ -261,6 +264,7 @@ async def test_templates_create_template__C07(api_client: httpx.AsyncClient, db_
     """`viewer` → 403.
 
     Hàng catalog: [B05-G-123].
+    Catalog: B09-tpl-005.
     """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)

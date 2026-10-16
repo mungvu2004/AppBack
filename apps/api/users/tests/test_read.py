@@ -108,7 +108,9 @@ async def test_users_list_users__C17(api_client: httpx.AsyncClient, db_session: 
 
 
 async def test_users_list_users__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`engineer` và `viewer` → 403 `FORBIDDEN` (chỉ admin có `user.manage`)."""
+    """`engineer` và `viewer` → 403 `FORBIDDEN` (chỉ admin có `user.manage`).
+    Catalog: B09-usr-003.
+    """
     for role in ("engineer", "viewer"):
         caller = await make_user(db_session, role=role)
         response = await send(api_client, caller, "GET", USERS)
@@ -233,7 +235,9 @@ async def test_users_list_memberships__role_follows_role_change(
 
 
 async def test_users_list_memberships__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thiếu quyền → 403."""
+    """Thiếu quyền → 403.
+    Catalog: B09-usr-013.
+    """
     caller = await make_user(db_session, role="engineer")
     response = await send(api_client, caller, "GET", f"{USERS}/{caller.id}/memberships")
     assert response.status_code == 403
@@ -301,7 +305,9 @@ async def test_users_list_activity__C01(
 
 
 async def test_users_list_activity__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thiếu quyền → 403."""
+    """Thiếu quyền → 403.
+    Catalog: B09-usr-017.
+    """
     caller = await make_user(db_session, role="viewer")
     assert (await send(api_client, caller, "GET", f"{USERS}/{caller.id}/activity")).status_code == 403
 

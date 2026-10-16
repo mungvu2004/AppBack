@@ -115,6 +115,7 @@ async def test_rules_replace_config__C06(api_client: httpx.AsyncClient, db_sessi
     """Người ngoài dự án, kể cả admin hệ thống → 404, không ghi gì.
 
     Hàng catalog: [B06-G-068].
+    Catalog: B09-rul-007.
     """
     _, project = await seed_admin_project(db_session)
     outsider = await make_user(db_session, role="admin")
@@ -128,6 +129,7 @@ async def test_rules_replace_config__C07(api_client: httpx.AsyncClient, db_sessi
     """`engineer` (vai mạnh nhất không có `ruleset.edit`) → 403 `FORBIDDEN`, không ghi gì; quyền kiểm trước 428.
 
     Hàng catalog: [B06-G-067].
+    Catalog: B09-rul-005, B09-rul-006.
     """
     owner = await make_user(db_session, role="admin")
     engineer = await make_user(db_session, role="engineer")

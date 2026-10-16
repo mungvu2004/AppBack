@@ -79,7 +79,9 @@ async def test_spatial_read_graph__C01_empty_project(api_client: httpx.AsyncClie
 
 
 async def test_spatial_read_graph__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống ngoài dự án → 404 `resource:"project"` (K08)."""
+    """Admin hệ thống ngoài dự án → 404 `resource:"project"` (K08).
+    Catalog: B09-spr-005.
+    """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()

@@ -136,6 +136,7 @@ async def test_versions_list_versions__C06(api_client: httpx.AsyncClient, db_ses
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`.
 
     Hàng catalog: [B06-G-096].
+    Catalog: B09-ver-002.
     """
     stage = await make_stage(db_session)
     outsider = await make_user(db_session, role="admin")

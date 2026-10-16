@@ -102,7 +102,9 @@ async def test_users_delete_user__C03(api_client: httpx.AsyncClient, db_session:
 
 @pytest.mark.parametrize("role", ["engineer", "viewer"])
 async def test_users_delete_user__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
-    """Không phải admin → 403; không xoá."""
+    """Không phải admin → 403; không xoá.
+    Catalog: B09-usr-030.
+    """
     caller, target = await make_user(db_session, role=role), await make_user(db_session)
     response = await send(api_client, caller, "DELETE", f"{USERS}/{target.id}", json=_delete(target.id, target.email))
     assert response.status_code == 403

@@ -93,7 +93,7 @@ async def _forbidden_for_engineer(client: AsyncClient, clock: FakeClock, op: str
 async def test_ml_list_families__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """N23 chỉ cho `admin`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlr-003.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_families")
 
@@ -101,7 +101,7 @@ async def test_ml_list_families__C07(api_client: AsyncClient, fake_clock: FakeCl
 async def test_ml_activate_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """N24 chỉ cho `admin` — 403 tới trước cả guard 428 của ghi có version.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlr-007.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_activate_version")
 
@@ -109,7 +109,7 @@ async def test_ml_activate_version__C07(api_client: AsyncClient, fake_clock: Fak
 async def test_ml_list_versions__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """N25 chỉ cho `admin`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlr-010.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_versions")
 
@@ -117,7 +117,7 @@ async def test_ml_list_versions__C07(api_client: AsyncClient, fake_clock: FakeCl
 async def test_ml_upload_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """N26 chỉ cho `admin` — 403 trước khi đọc một byte nào của luồng multipart.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlr-014.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_upload_version")
 
@@ -125,7 +125,7 @@ async def test_ml_upload_version__C07(api_client: AsyncClient, fake_clock: FakeC
 async def test_ml_read_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """N27 chỉ cho `admin`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mlr-017.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_read_version")
 

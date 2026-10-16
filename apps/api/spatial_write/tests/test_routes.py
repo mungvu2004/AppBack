@@ -152,6 +152,7 @@ async def test_spatial_write_layer__C06(api_client: httpx.AsyncClient, db_sessio
     Hàng catalog: [BE4-G-212] [BE4-G-311].
 
     Hàng catalog: [B05-G-049].
+    Catalog: B09-spw-003.
     """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
@@ -171,6 +172,7 @@ async def test_spatial_write_layer__C07(api_client: httpx.AsyncClient, db_sessio
     Hàng catalog: [BE4-G-211] [BE4-G-312].
 
     Hàng catalog: [B05-G-048].
+    Catalog: B09-spw-002.
     """
     viewer = await make_user(db_session, role="viewer")
     scene = await make_scene(db_session, members=[viewer])

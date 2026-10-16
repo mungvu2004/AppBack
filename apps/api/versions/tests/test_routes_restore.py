@@ -207,6 +207,7 @@ async def test_versions_restore_version__C06(
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08).
 
     Hàng catalog: [B06-G-182].
+    Catalog: B09-ver-012.
     """
     stage = await make_stage(db_session)
     (first,) = await _history(db_session, stage, fake_clock, (200,))
@@ -221,7 +222,9 @@ async def test_versions_restore_version__C06(
 async def test_versions_restore_version__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Viewer là thành viên nhưng thiếu `layer.edit` → 403 `FORBIDDEN`."""
+    """Viewer là thành viên nhưng thiếu `layer.edit` → 403 `FORBIDDEN`.
+    Catalog: B09-ver-011.
+    """
     viewer = await make_user(db_session, role="viewer")
     stage = await make_stage(db_session, members=[viewer])
     (first,) = await _history(db_session, stage, fake_clock, (200,))

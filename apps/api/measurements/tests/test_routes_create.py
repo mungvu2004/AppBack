@@ -108,7 +108,9 @@ async def test_measurements_create_record__C03(
 
 
 async def test_measurements_create_record__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên → 404 `resource:"project"` (K08)."""
+    """Admin hệ thống không là thành viên → 404 `resource:"project"` (K08).
+    Catalog: B09-msr-006.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -118,7 +120,9 @@ async def test_measurements_create_record__C06(api_client: httpx.AsyncClient, db
 
 
 async def test_measurements_create_record__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`viewer` (vai mạnh nhất thiếu `layer.edit`) → 403."""
+    """`viewer` (vai mạnh nhất thiếu `layer.edit`) → 403.
+    Catalog: B09-msr-005.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])

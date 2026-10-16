@@ -66,6 +66,7 @@ async def test_versions_read_version__C06(
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không 403 (K08).
 
     Hàng catalog: [B06-G-117].
+    Catalog: B09-ver-005.
     """
     stage = await make_stage(db_session)
     version = await commit_snap(db_session, stage, fake_clock)
@@ -173,6 +174,7 @@ async def test_versions_read_snapshot__C06(
     """Người ngoài dự án → 404 `resource:"project"`.
 
     Hàng catalog: [B06-G-141].
+    Catalog: B09-ver-008.
     """
     stage = await make_stage(db_session)
     version = await commit_snap(db_session, stage, fake_clock)

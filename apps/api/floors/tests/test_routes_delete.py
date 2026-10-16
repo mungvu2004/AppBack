@@ -45,7 +45,9 @@ async def test_floors_delete_floor__C01(
 
 
 async def test_floors_delete_floor__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên, id tầng có thật → 404 `resource:"floor"` (K08)."""
+    """Admin hệ thống không phải thành viên, id tầng có thật → 404 `resource:"floor"` (K08).
+    Catalog: B09-flr-009.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, order=0)
@@ -58,7 +60,9 @@ async def test_floors_delete_floor__C06(api_client: httpx.AsyncClient, db_sessio
 
 
 async def test_floors_delete_floor__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Vai mạnh nhất thiếu `layer.edit` (`viewer`) → 403."""
+    """Vai mạnh nhất thiếu `layer.edit` (`viewer`) → 403.
+    Catalog: B09-flr-008.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])

@@ -42,7 +42,9 @@ async def test_spatial_read_floor_matches_floors_list(api_client: httpx.AsyncCli
 
 
 async def test_spatial_read_floor__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, **trước** khi tìm tầng (K08)."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, **trước** khi tìm tầng (K08).
+    Catalog: B09-spr-002.
+    """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")
     await db_session.commit()

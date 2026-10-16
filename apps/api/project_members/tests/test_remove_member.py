@@ -31,7 +31,9 @@ async def test_members_remove_member__C01(
 
 
 async def test_members_remove_member__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên → 404 `project`."""
+    """Admin hệ thống không là thành viên → 404 `project`.
+    Catalog: B09-mem-006.
+    """
     owner, outsider = await make_user(db_session, role="engineer"), await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner)
     response = await remove(api_client, outsider, project.id, owner.id)
@@ -39,7 +41,9 @@ async def test_members_remove_member__C06(api_client: httpx.AsyncClient, db_sess
 
 
 async def test_members_remove_member__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Viewer là thành viên → 403."""
+    """Viewer là thành viên → 403.
+    Catalog: B09-mem-005.
+    """
     owner, viewer = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
     project = await seed_project(db_session, owner=owner, members=[viewer])
     response = await remove(api_client, viewer, project.id, owner.id)

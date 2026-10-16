@@ -118,7 +118,9 @@ async def test_projects_read_project__C01(api_client: httpx.AsyncClient, db_sess
 
 
 async def test_projects_read_project__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"` (404 trước 403, K08)."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"` (404 trước 403, K08).
+    Catalog: B09-prj-004.
+    """
     owner = await make_user(db_session)
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")

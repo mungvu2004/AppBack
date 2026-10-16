@@ -144,6 +144,7 @@ async def test_versions_label_version__C06(
     """Admin hệ thống không phải thành viên → 404 `resource:"project"`.
 
     Hàng catalog: [B06-G-223].
+    Catalog: B09-ver-015.
     """
     stage = await make_stage(db_session)
     version_id = await _one_version(db_session, stage, fake_clock)
@@ -158,7 +159,9 @@ async def test_versions_label_version__C06(
 async def test_versions_label_version__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Viewer thiếu `layer.edit` → 403 `FORBIDDEN`."""
+    """Viewer thiếu `layer.edit` → 403 `FORBIDDEN`.
+    Catalog: B09-ver-014.
+    """
     viewer = await make_user(db_session, role="viewer")
     stage = await make_stage(db_session, members=[viewer])
     version_id = await _one_version(db_session, stage, fake_clock)

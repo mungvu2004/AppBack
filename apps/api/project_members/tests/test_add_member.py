@@ -62,7 +62,9 @@ async def test_members_add_member__C03(api_client: httpx.AsyncClient, db_session
 
 
 async def test_members_add_member__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không là thành viên → 404 `project` (K08), không phải 403."""
+    """Admin hệ thống không là thành viên → 404 `project` (K08), không phải 403.
+    Catalog: B09-mem-003.
+    """
     owner, outsider = await make_user(db_session, role="engineer"), await make_user(db_session, role="admin")
     target = await make_user(db_session)
     project = await seed_project(db_session, owner=owner)
@@ -73,7 +75,9 @@ async def test_members_add_member__C06(api_client: httpx.AsyncClient, db_session
 
 
 async def test_members_add_member__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Viewer là thành viên nhưng thiếu `project.settings.edit` → 403."""
+    """Viewer là thành viên nhưng thiếu `project.settings.edit` → 403.
+    Catalog: B09-mem-002.
+    """
     owner, viewer = await make_user(db_session, role="engineer"), await make_user(db_session, role="viewer")
     target = await make_user(db_session)
     project = await seed_project(db_session, owner=owner, members=[viewer])

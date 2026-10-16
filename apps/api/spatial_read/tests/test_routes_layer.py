@@ -125,6 +125,7 @@ async def test_spatial_read_layer__C06(api_client: httpx.AsyncClient, db_session
     """Admin hệ thống ngoài dự án → 404 `resource:"project"` (K08).
 
     Hàng catalog: [BE4-G-204] [BE4-G-302].
+    Catalog: B09-spr-008.
     """
     scene = await make_scene(db_session)
     outsider = await make_user(db_session, role="admin")

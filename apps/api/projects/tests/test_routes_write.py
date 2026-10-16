@@ -87,7 +87,9 @@ async def test_projects_create_project__C03(api_client: httpx.AsyncClient, db_se
 
 
 async def test_projects_create_project__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Vai mạnh nhất thiếu `project.create` (`viewer`) → 403 `FORBIDDEN`."""
+    """Vai mạnh nhất thiếu `project.create` (`viewer`) → 403 `FORBIDDEN`.
+    Catalog: B09-prj-002.
+    """
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     response = await api_client.post(PROJECTS_PATH, json={"name": "Nhà mới"}, headers=headers_of(viewer))
     assert response.status_code == 403
@@ -292,7 +294,9 @@ async def test_projects_update_project__C03(api_client: httpx.AsyncClient, db_se
 
 
 async def test_projects_update_project__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403."""
+    """Admin hệ thống không phải thành viên → 404 `resource:"project"`, không phải 403.
+    Catalog: B09-prj-008.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -301,7 +305,9 @@ async def test_projects_update_project__C06(api_client: httpx.AsyncClient, db_se
 
 
 async def test_projects_update_project__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thành viên `viewer` (vai mạnh nhất thiếu `project.settings.edit`) → 403."""
+    """Thành viên `viewer` (vai mạnh nhất thiếu `project.settings.edit`) → 403.
+    Catalog: B09-prj-007.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])
@@ -391,7 +397,9 @@ async def test_projects_delete_project__C01(api_client: httpx.AsyncClient, db_se
 
 
 async def test_projects_delete_project__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → 404."""
+    """Admin hệ thống không phải thành viên → 404.
+    Catalog: B09-prj-012.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     outsider = await make_user(db_session, role="admin")
@@ -400,7 +408,9 @@ async def test_projects_delete_project__C06(api_client: httpx.AsyncClient, db_se
 
 
 async def test_projects_delete_project__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thành viên `viewer` không phải admin → 403."""
+    """Thành viên `viewer` không phải admin → 403.
+    Catalog: B09-prj-010.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])
@@ -445,6 +455,7 @@ async def test_delete_project_engineer_member_is_forbidden(
     """BUG-513: thành viên `engineer` (kể cả người tạo) → 403 `FORBIDDEN`; dự án còn, không nhật ký.
 
     FE chỉ mở vùng nguy hiểm cho admin; BE chưa có vai theo dự án nên khoá theo vai hệ thống.
+    Catalog: B09-prj-011.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)

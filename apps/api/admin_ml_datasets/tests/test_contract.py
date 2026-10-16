@@ -68,7 +68,7 @@ async def _forbidden_for_engineer(client: AsyncClient, clock: FakeClock, op: str
 async def test_ml_list_datasets__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN` (cổng `require_admin` của router, chạy trước endpoint).
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mld-003.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_datasets")
 
@@ -76,7 +76,7 @@ async def test_ml_list_datasets__C07(api_client: AsyncClient, fake_clock: FakeCl
 async def test_ml_create_dataset__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mld-007.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_create_dataset")
 
@@ -84,7 +84,7 @@ async def test_ml_create_dataset__C07(api_client: AsyncClient, fake_clock: FakeC
 async def test_ml_list_dataset_versions__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN`.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mld-010.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_list_dataset_versions")
 
@@ -92,7 +92,7 @@ async def test_ml_list_dataset_versions__C07(api_client: AsyncClient, fake_clock
 async def test_ml_build_dataset_version__C07(api_client: AsyncClient, fake_clock: FakeClock) -> None:
     """`engineer` → 403 `FORBIDDEN`; bản `building` **không** được tạo vì cổng chặn trước endpoint.
 
-    Catalog: B08M-D-040.
+    Catalog: B08M-D-040, B09-mld-014.
     """
     await _forbidden_for_engineer(api_client, fake_clock, "ml_build_dataset_version")
 

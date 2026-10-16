@@ -87,7 +87,9 @@ async def test_floors_reorder_floors__C03(api_client: httpx.AsyncClient, db_sess
 
 
 async def test_floors_reorder_floors__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Admin hệ thống không phải thành viên → tầng không được tính khi dò → 404 `resource:"floor"`."""
+    """Admin hệ thống không phải thành viên → tầng không được tính khi dò → 404 `resource:"floor"`.
+    Catalog: B09-flr-012.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     floor = await make_floor(db_session, project=project, order=0)
@@ -100,7 +102,9 @@ async def test_floors_reorder_floors__C06(api_client: httpx.AsyncClient, db_sess
 
 
 async def test_floors_reorder_floors__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thành viên `viewer` thiếu `layer.edit` → 403."""
+    """Thành viên `viewer` thiếu `layer.edit` → 403.
+    Catalog: B09-flr-011.
+    """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
     project = await seed_project(db_session, owner=owner, members=[viewer])

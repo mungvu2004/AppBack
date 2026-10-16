@@ -114,7 +114,7 @@ async def test_users_change_role__C03(api_client: httpx.AsyncClient, db_session:
 async def test_users_change_role__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
     """Không phải admin → 403.
 
-    Catalog: B08U-D-007.
+    Catalog: B08U-D-007, B09-usr-021.
     """
     caller, target = await make_user(db_session, role=role), await make_user(db_session)
     response = await send(api_client, caller, "PATCH", _role_path(target.id), json=_role_body(target))
@@ -284,7 +284,9 @@ async def test_users_disable_user__C03(api_client: httpx.AsyncClient, db_session
 
 @pytest.mark.parametrize("role", ["engineer", "viewer"])
 async def test_users_disable_user__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
-    """Không phải admin → 403."""
+    """Không phải admin → 403.
+    Catalog: B09-usr-024.
+    """
     caller, target = await make_user(db_session, role=role), await make_user(db_session)
     response = await send(api_client, caller, "POST", _path(target.id, "disable"), json={})
     assert response.status_code == 403
@@ -405,7 +407,9 @@ async def test_users_enable_user__C03(api_client: httpx.AsyncClient, db_session:
 
 @pytest.mark.parametrize("role", ["engineer", "viewer"])
 async def test_users_enable_user__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
-    """Không phải admin → 403."""
+    """Không phải admin → 403.
+    Catalog: B09-usr-027.
+    """
     caller, target = await make_user(db_session, role=role), await make_user(db_session, status="disabled")
     assert (await send(api_client, caller, "POST", _path(target.id, "enable"), json={})).status_code == 403
 

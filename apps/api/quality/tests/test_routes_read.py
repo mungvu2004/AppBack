@@ -71,6 +71,7 @@ async def test_quality_read_assessment__C06(
     """Người ngoài dự án, kể cả admin hệ thống → 404 `project`.
 
     Hàng catalog: [BE5-G-014].
+    Catalog: B09-qlt-002.
     """
     stage = await make_stage(db_session, local_storage)
     admin = await make_user(db_session, role="admin")
