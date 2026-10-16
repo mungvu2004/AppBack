@@ -2,8 +2,9 @@
 
 `require_project("layer.edit")` là tham số nên nó chạy **trước** cả guard 428 và Pydantic:
 người ngoài dự án nhận 404 `resource:"project"` mà không biết tầng nào có thật (BE-00 §4),
-viewer nhận 403. Guard 428 của khung (`route_options(versioned=True)`) gắn cuối cây dependency
-nên "thiếu `baseVersion`" ra 428 chứ không phải 422.
+viewer nhận 403. Duyệt QC (cấp `reviewed=True` mới) còn đòi `qc.approve`: `write_layer` kiểm
+dưới khoá tầng, so với tài liệu thật (NFR-02). Guard 428 của khung (`route_options(versioned=True)`)
+gắn cuối cây dependency nên "thiếu `baseVersion`" ra 428 chứ không phải 422.
 
 `body_limit=8 MiB` (HOP-DONG-MOI #35) buộc `idempotency="off"`: bảng `idempotency_records`
 không nhận việc của route này, header `Idempotency-Key` FE gắn sẵn bị bỏ qua và lượt lặp đi
@@ -25,6 +26,7 @@ from apps.api.spatial_write.schemas import FloorLayerWriteResultSchema, FloorLay
 from apps.api.spatial_write.writer import LayerWrite, write_layer
 from packages.core.error_codes import NOT_FOUND
 from packages.db.models.auth import User
+from packages.domain.permissions import can
 
 BODY_LIMIT: Final = 8 * 1024 * 1024
 """Trần thân của #35 (HOP-DONG-MOI §4 "Ghi lớp"): tầng 3.000 tường vượt 1 MiB mặc định."""
@@ -67,5 +69,6 @@ async def spatial_write_layer(
         actor_id=access.principal.user_id,
         actor_name=await _actor_name(db, access.principal.user_id),
         clock=clock,
+        may_approve=can(access.principal.role, "qc.approve"),
     )
     return FloorLayerWriteResultSchema(revision=result.revision, layer=layer_out(result.layer))

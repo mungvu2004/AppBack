@@ -63,9 +63,13 @@ async def write(
     layer: SpatialLayer | None = None,
     scale: Decimal | None = None,
     dimensions: Sequence[Dimension] | None = None,
+    may_approve: bool = True,
     **options: Any,
 ) -> WriteResult:
-    """Gọi `write_layer` cho một tầng với người ghi là `actor`; `options` đi thẳng vào hàm thật."""
+    """Gọi `write_layer` cho một tầng với người ghi là `actor`; `options` đi thẳng vào hàm thật.
+
+    `may_approve=True` mặc định: người ghi của các test dựng trạng thái là engineer, có `qc.approve`.
+    """
     return await write_layer(
         db,
         floor_pk=floor.pk,
@@ -76,6 +80,7 @@ async def write(
         actor_id=actor.id,
         actor_name=actor.name,
         clock=clock,
+        may_approve=may_approve,
         **options,
     )
 

@@ -40,7 +40,7 @@ from apps.api.spatial_write.changes import remote_changes_since
 from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN, LAYER_LEVEL_MISMATCH, REVIEW_BY_AI_FORBIDDEN
 from apps.api.spatial_write.settings import get_spatial_write_settings
 from packages.core.clock import Clock
-from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, NOT_FOUND, VALIDATION
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, FORBIDDEN, NOT_FOUND, VALIDATION
 from packages.core.errors import MISSING, SYSTEM_PIPELINE, VersionConflictError
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorChangeLogRow, FloorDocumentRow
@@ -50,7 +50,11 @@ from packages.domain.spatial import (
     ChangeEntityType,
     Dimension,
     FieldChange,
+    Furniture,
+    Opening,
+    Room,
     SpatialLayer,
+    Wall,
     ai_reviewed_ids,
     change_entity_type,
     check_integrity,
@@ -146,6 +150,7 @@ class _Request:
     merge: Callable[[SpatialLayer, Decimal | None], MergeOutcome] | None
     scale_source: ScaleWriter
     page_key: str | None
+    may_approve: bool
     project_id: str
     level_id: str
 
@@ -207,10 +212,15 @@ async def write_layer(
     merge: Callable[[SpatialLayer, Decimal | None], MergeOutcome] | None = None,
     scale_source: ScaleWriter = "human",
     page_key: str | None = None,
+    may_approve: bool = False,
 ) -> WriteResult:
     """Ghi lớp (và/hoặc tỉ lệ) của một tầng trong giao dịch của người gọi; **không** `commit`.
 
-    Ném `NOT_FOUND` (`resource="floor"`), `VALIDATION`, `REVIEW_BY_AI_FORBIDDEN`,
+    `may_approve`: người ghi có `qc.approve` (NFR-02). Thiếu mà lượt ghi làm một thực thể hay
+    kích thước **mới** mang `reviewed=True` (tức là duyệt) → `FORBIDDEN`. Mặc định `False` (đóng):
+    pipeline không bao giờ duyệt, route của người truyền `can(role, "qc.approve")`.
+
+    Ném `NOT_FOUND` (`resource="floor"`), `FORBIDDEN`, `VALIDATION`, `REVIEW_BY_AI_FORBIDDEN`,
     `LAYER_LEVEL_MISMATCH`, `LAYER_INTEGRITY_BROKEN`, `VersionConflictError` (W20), hay
     `DEPENDENCY_UNAVAILABLE` + `Retry-After: 1` khi thua đua `SPATIAL_WRITE_ATTEMPTS` lần
     liền. `ValueError` chỉ khi **người gọi Python** truyền sai đối số ([2]).
@@ -231,6 +241,7 @@ async def write_layer(
         merge=merge,
         scale_source=scale_source,
         page_key=page_key,
+        may_approve=may_approve,
         project_id=floor.project_id,
         level_id=floor.level_id,
     )
@@ -357,12 +368,31 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     scale = await _target_scale(db, request, current)
     nxt = _next_layer(request, current, scale)
     dimensions = _next_dimensions(request, current, scale, nxt)
+    if not request.may_approve and _approves(
+        (*current.layer.entities(), *current.dimensions), (*nxt.layer.entities(), *dimensions)
+    ):
+        raise FORBIDDEN.error()
     document = document_to_json(nxt.layer, (), dimensions)
     if _unchanged(current, document, scale):
         return WriteResult(current.revision, current.layer, applied=False)
     return await _commit(
         db, request, current, expected=settled, nxt=nxt, document=document, scale=scale, dimensions=dimensions
     )
+
+
+type _Reviewable = Wall | Opening | Room | Furniture | Dimension
+"""Mục mang dấu duyệt và `id` trong một tài liệu tầng."""
+
+
+def _approves(before: Sequence[_Reviewable], after: Sequence[_Reviewable]) -> bool:
+    """Lượt ghi có duyệt gì không: một mục của `after` mang `reviewed=True` mà ở `before` chưa duyệt hay chưa có.
+
+    Giữ nguyên dấu duyệt cũ hay bỏ duyệt không tính — chỉ cấp dấu duyệt mới là việc của `qc.approve`.
+    Khoá là `(loại, id)`: id đã mang tiền tố theo loại (`_spatial_id`), khoá kèm loại để luật không
+    dựa vào bất biến của module khác.
+    """
+    approved = {(type(item), item.id) for item in before if item.reviewed}
+    return any(item.reviewed and (type(item), item.id) not in approved for item in after)
 
 
 async def _settle_base(db: AsyncSession, request: _Request, current: FloorDocument) -> int | WriteResult:

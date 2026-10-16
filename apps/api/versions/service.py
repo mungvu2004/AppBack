@@ -44,6 +44,7 @@ from packages.core.text import first_forbidden_char, nfc
 from packages.db.models.auth import User
 from packages.db.models.floors import FloorRow
 from packages.db.models.versions import VersionRecord
+from packages.domain.permissions import can
 from packages.domain.scale.rescale import RescaleError, rescale_dimensions, rescale_unreviewed
 from packages.domain.spatial import Dimension, SpatialLayer
 
@@ -232,7 +233,14 @@ async def restore_version(
         raise VALIDATION.error(field="baseVersion")
     decoded = await _load_snapshot(db, version.id)
     after, new_revision = await _apply_restore(
-        db, version=version, decoded=decoded, doc=doc, actor_id=actor_id, base_version=base_version, clock=clock
+        db,
+        version=version,
+        decoded=decoded,
+        doc=doc,
+        actor_id=actor_id,
+        base_version=base_version,
+        clock=clock,
+        may_approve=can(access.principal.role, "qc.approve"),
     )
     if new_revision != doc.revision:
         await record_activity(
@@ -256,8 +264,12 @@ async def _apply_restore(
     actor_id: str,
     base_version: int,
     clock: Clock,
+    may_approve: bool,
 ) -> tuple[VersionRow, int]:
     """Bước 6-8 của N19: bản "trước", `write_layer` sau khi tính lại tỉ lệ, bản "sau".
+
+    Phục hồi về bản có mục đã duyệt là duyệt lại chúng: `may_approve` (`qc.approve`) đi thẳng vào
+    `write_layer`, thiếu thì 403 và giao dịch rollback cả bản "trước".
 
     Trả `(bản sau, revision mới)`. `revision` không đổi nghĩa là ảnh chụp trùng hiện trạng: bản
     "sau" khi đó là bản mới nhất có sẵn (`record_version` không chèn, K18).
@@ -280,6 +292,7 @@ async def _apply_restore(
         actor_id=actor_id,
         actor_name=actor_name,
         clock=clock,
+        may_approve=may_approve,
     )
     after = await record_version(
         db,
