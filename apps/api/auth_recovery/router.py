@@ -32,7 +32,7 @@ from starlette.responses import Response
 
 from apps.api.auth.cookies import clear_auth_cookies, refresh_cookie_of
 from apps.api.auth.emails import validate_wire_email
-from apps.api.auth.passwords import MIN_PASSWORD_LENGTH, hash_password
+from apps.api.auth.passwords import NewPassword, hash_password
 from apps.api.auth.sessions import revoke_sessions, start_session
 from apps.api.auth_recovery.settings import get_recovery_settings
 from apps.api.auth_recovery.tokens import active_clause, consume_token, find_active_token, issue_token, revoke_tokens
@@ -85,7 +85,7 @@ class PasswordResetConfirmBody(WireRequest):
     """Thân N9: `PasswordResetConfirmSchema {token, newPassword}`."""
 
     token: Annotated[str, Field(min_length=1, max_length=TOKEN_MAX_LEN)]
-    new_password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH)]
+    new_password: NewPassword
 
 
 class AcceptInvitationBody(WireRequest):
@@ -93,7 +93,7 @@ class AcceptInvitationBody(WireRequest):
 
     token: Annotated[str, Field(min_length=1, max_length=TOKEN_MAX_LEN)]
     full_name: str
-    password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH)]
+    password: NewPassword
 
     @field_validator("full_name")
     @classmethod

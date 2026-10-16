@@ -58,6 +58,14 @@ async def test_auth_confirm_password_reset__C02(auth_client: httpx.AsyncClient) 
     assert empty_token.json()["field"] == "token"
 
 
+async def test_auth_confirm_password_reset__C02_nfd_length(auth_client: httpx.AsyncClient) -> None:
+    """4 ký tự gửi dạng NFD (8 điểm mã) vẫn là mật khẩu 4 ký tự → 422 `field:"newPassword"` (BUG-P07-015)."""
+    body = {"token": "x" * 10, "newPassword": "ê" * 4}
+    response = await auth_client.post(PATH, json=body, headers=ORIGIN)
+    assert response.status_code == 422
+    assert response.json()["field"] == "newPassword"
+
+
 async def test_auth_confirm_password_reset__C03(auth_client: httpx.AsyncClient) -> None:
     """Khoá lạ → 422 `VALIDATION`."""
     body = {"token": "x" * 10, "newPassword": NEW_PASSWORD, "extra": 1}
