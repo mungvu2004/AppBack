@@ -465,6 +465,9 @@ def _drop_short(segs: list[_Seg], graph: _Graph) -> tuple[list[_Seg], int]:
     Đoạn một đầu là lá riêng, đầu kia không phải lá được tính cả phần bước 9 sẽ kéo dài ở
     đầu lá (distance tại đó): vách ngắn chạm tường dày không bị bỏ chỉ vì xương hụt ½
     bề dày ở đầu tự do (NO-288).
+    Nhập theo gốc nhóm như union-find: hai khoá đã chung nhóm (nhánh đi từ nút về chính nút
+    đó cho đoạn có `a_key == b_key`, hay vài đoạn ngắn khép vòng) thì không nối nữa, nên
+    `alias` không bao giờ có chu trình để `_resolve` quay mãi.
     """
     uses = Counter(key for seg in segs for key in (seg.a_key, seg.b_key))
     alias: dict[_Key, _Key] = {}
@@ -474,7 +477,9 @@ def _drop_short(segs: list[_Seg], graph: _Graph) -> tuple[list[_Seg], int]:
         if seg.length() + _leaf_reach(seg, uses, graph) >= seg.thickness:
             keep.append(seg)
         elif uses[seg.a_key] > 1 and uses[seg.b_key] > 1:
-            alias[seg.b_key] = seg.a_key
+            head, tail = _resolve(alias, seg.a_key), _resolve(alias, seg.b_key)
+            if head != tail:
+                alias[tail] = head
         else:
             short += 1
     for seg in keep:

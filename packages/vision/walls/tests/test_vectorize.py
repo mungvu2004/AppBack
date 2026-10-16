@@ -5,13 +5,14 @@ Mặt nạ dựng tay nên đáp án biết trước: mọi khẳng định về
 """
 
 import math
+import threading
 
 import cv2
 import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from packages.vision.walls.types import WallSegment
+from packages.vision.walls.types import VectorizeResult, WallSegment
 from packages.vision.walls.vectorize import keep_longest, vectorize, vectorize_with_stats
 
 THICK = 12
@@ -270,3 +271,42 @@ def test_vectorize__very_thin_wall_on_very_thick_wall_is_kept(mm_per_px: float) 
     stubs = [w for w in vectorize(mask) if w.start[0] == w.end[0] and abs(w.start[0] - 300) <= partition]
     assert stubs, "mất vách ngắn"
     assert abs(max(w.end[1] for w in stubs) - bottom) <= 3.0
+
+
+_JUNCTION_SELF_LOOP: tuple[str, ...] = (
+    ".....#########",
+    "....##########",
+    "....##########",
+    "...###########",
+    "...###########",
+    "...###########",
+    "...###########",
+    "..############",
+    "..############",
+    "..############",
+    "....##########",
+    ".......#######",
+    "........######",
+    "........######",
+    "........######",
+    "........######",
+)
+"""Mặt nạ SegFormer 16 x 14 cắt từ trang CubiCasa `high_quality_architectural-7809` quanh (45, 113).
+
+Bỏ râu xong còn một điểm xương nối hai điểm của cùng một cụm giao: nhánh đi từ nút về chính nút
+đó, cho đoạn dài 0 có hai đầu cùng một khoá, mà đoạn tường giữ lại vẫn dùng khoá ấy.
+"""
+
+
+def test_vectorize__branch_back_to_its_own_junction_terminates() -> None:
+    """Đoạn ngắn có hai đầu cùng khoá không làm `_drop_short` lặp mãi (trang thật từng treo > 30 phút).
+
+    Chạy trong luồng nền có hạn 10 s: lỗi cũ quay vô hạn trong `_resolve`, test phải đỏ chứ không treo cổng.
+    """
+    mask = np.array([[cell == "#" for cell in row] for row in _JUNCTION_SELF_LOOP])
+    result: list[VectorizeResult] = []
+    worker = threading.Thread(target=lambda: result.append(vectorize_with_stats(mask)), daemon=True)
+    worker.start()
+    worker.join(timeout=10.0)
+    assert result, "vectorize_with_stats không xong trong 10 s"
+    assert result[0].walls
