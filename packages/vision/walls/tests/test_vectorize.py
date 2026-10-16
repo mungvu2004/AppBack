@@ -13,7 +13,7 @@ import pytest
 from numpy.typing import NDArray
 
 from packages.vision.walls.types import VectorizeResult, WallSegment
-from packages.vision.walls.vectorize import keep_longest, vectorize, vectorize_with_stats
+from packages.vision.walls.vectorize import _finalise, _Seg, keep_longest, vectorize, vectorize_with_stats
 
 THICK = 12
 """Bề dày tường mẫu (px); đủ dày để `distanceTransform` cho trung vị ổn định."""
@@ -310,3 +310,12 @@ def test_vectorize__branch_back_to_its_own_junction_terminates() -> None:
     worker.join(timeout=10.0)
     assert result, "vectorize_with_stats không xong trong 10 s"
     assert result[0].walls
+
+
+def test_finalise__ends_that_collapse_after_rounding_are_dropped() -> None:
+    """BUG-P09-008: hai đầu lệch < 0.005 px bằng nhau sau làm tròn → bỏ và tính vào `short`."""
+    key = (0, 0, 0)
+    seg = _Seg(615.1201, 720.2501, 615.1203, 720.2499, 4.0, 0.9, key, key)
+    walls, short = _finalise([seg], (1000, 1000))
+    assert walls == ()
+    assert short == 1

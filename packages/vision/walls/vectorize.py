@@ -563,21 +563,23 @@ def _clamp(point: tuple[float, float], shape: tuple[int, int]) -> PointPx:
 
 
 def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegment, ...], int]:
-    """Kẹp biên, bỏ đoạn suy biến, làm tròn và sắp theo `(start, end)` (bước 9-11)."""
+    """Kẹp biên, làm tròn, bỏ đoạn suy biến SAU làm tròn và sắp theo `(start, end)` (bước 9-11)."""
     walls: list[WallSegment] = []
     short = 0
     for seg in segs:
-        start = _clamp((seg.ax, seg.ay), shape)
-        end = _clamp((seg.bx, seg.by), shape)
-        if start == end:
+        a = _clamp((seg.ax, seg.ay), shape)
+        b = _clamp((seg.bx, seg.by), shape)
+        start = (round(a[0], 2), round(a[1], 2))
+        end = (round(b[0], 2), round(b[1], 2))
+        if start == end:  # so sau khi làm tròn: hai đầu lệch < 0.005 px thành trùng nhau
             short += 1
             continue
         if end < start:
             start, end = end, start
         walls.append(
             WallSegment(
-                start=(round(start[0], 2), round(start[1], 2)),
-                end=(round(end[0], 2), round(end[1], 2)),
+                start=start,
+                end=end,
                 thickness_px=round(seg.thickness, 2),
                 confidence=round(min(1.0, max(0.0, seg.conf)), 3),
             )
