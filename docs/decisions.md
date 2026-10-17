@@ -45,3 +45,25 @@ Nguồn duy nhất cho quyết định khi spec, app và BE lệch nhau (skill `
 - Ảnh hưởng test: vitest `ScaleCalibration.test.tsx` '… Esc vẫn huỷ đoạn (14-E-004, QD-004)'; stack `phase04_scale_edge.spec.ts` FL-14-04 không đổi kỳ vọng
 - Ảnh hưởng tài liệu: catalog QA-04c 14-E-004 nguồn trỏ QD-004
 - Trạng thái: có hiệu lực
+
+### QD-005 · 2026-10-16 · phase 05 · SCR-23/25
+- Câu hỏi: "Cô lập (Alt+H)" trên ray công cụ viewer là một chế độ (sáng thay công cụ đang chọn) hay công tắc theo cảnh?
+- Nguồn lệch: catalog QA-05c 25-A-020 "sáu công cụ, đúng một sáng", 25-C-047 "Alt+H phải sáng Cô lập" + `polish.md:6` E2-B7 | app (trước d72194dd) `ViewerToolRail.tsx` sáng theo `activeToolId`, Alt+H chạy `isolateSelection` mà không đổi công cụ | BUG-655
+- Phương án: A) Cô lập là công tắc theo cảnh: sáng khi đang cô lập (`isolatedEntityIds !== null`), không đổi chế độ đang chọn; chưa chọn gì thì bấm/Alt+H không làm gì; B) Cô lập là chế độ thứ sáu, sáng thay công cụ khác
+- Quyết định: A
+- Người quyết: người dùng, 2026-10-16 (duyệt sửa P3 #2 của tl-review-fe nhánh AppFront `fix/debt-p05-09`: ghi QD theo hành vi đã sửa ở BUG-655)
+- Ảnh hưởng mã: AppFront `ViewerToolRail.tsx` prop `isolateActive`, `useViewerShell.ts` `onToolChange('isolate')` → `isolateSelection`, no-op khi chưa chọn (4ebed6d4)
+- Ảnh hưởng test: vitest `ViewerShell.test.tsx` [25-C-047 · BUG-655]; stack `phase05_measure_edge.spec.ts` 25-A-020 (năm công cụ chế độ, Cô lập không sáng khi chưa chọn), 25-C-047 (chưa chọn → không sáng, công cụ giữ nguyên); nhánh "đã chọn → sáng" chỉ ở vitest vì SCR-25 không có đường chọn thực thể (`useMeasurementTool.ts:624-626`)
+- Ảnh hưởng tài liệu: catalog QA-05c `catalog-C4.md` 25-A-020, 25-C-047 trỏ QD-005; BUG-655 đóng; polish E2-B7 hết hiệu lực
+- Trạng thái: có hiệu lực
+
+### QD-006 · 2026-10-16 · phase 05 · SCR-25
+- Câu hỏi: trên màn đo, thanh "Độ tách" và phím E có còn tách tầng không?
+- Nguồn lệch: catalog QA-05c 25-A-019 "slider tách tầng trên canvas", 25-C-042 "E bật/tắt độ tách" | app `measurementToolScene.ts:188-229` không đọc `frame.separation`, chỉ khung vỏ dịch | `polish.md:7` E2-B8 "nên ẩn/khoá điều khiển" | BUG-656
+- Phương án: A) khoá: slider `disabled`, E không làm gì trên màn đo; B) cho cảnh đo đọc `separation` (đo trên tầng đã tách lệch toạ độ thật)
+- Quyết định: A
+- Người quyết: người dùng, 2026-10-16 (duyệt sửa P3 #2 của tl-review-fe nhánh AppFront `fix/debt-p05-09`: ghi QD theo hành vi đã sửa ở BUG-656)
+- Ảnh hưởng mã: AppFront `useViewerShell.ts` tuỳ chọn `separationDisabled`, `useMeasurementTool.ts` truyền `true` (4ebed6d4)
+- Ảnh hưởng test: vitest `useMeasurementTool.test.tsx` [BUG-656]; stack `phase05_measure_edge.spec.ts` 25-A-019 (slider `disabled`), 25-C-042 (E không đổi giá trị)
+- Ảnh hưởng tài liệu: catalog QA-05c `catalog-C4.md` 25-A-019, 25-C-042 trỏ QD-006; BUG-656 đóng; polish E2-B8 đã làm
+- Trạng thái: có hiệu lực
