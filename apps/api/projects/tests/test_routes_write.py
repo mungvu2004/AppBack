@@ -318,7 +318,9 @@ async def test_projects_update_project__C07(api_client: httpx.AsyncClient, db_se
 async def test_projects_update_project__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Dự án đã xoá mềm → 404."""
+    """Dự án đã xoá mềm → 404.
+    Catalog: B11-prj-017.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
     response = await api_client.patch(project_path(project.id), json={"name": "X"}, headers=headers_of(owner))
@@ -388,7 +390,9 @@ async def test_update_project_same_values_behaves_like_empty_body(
 
 
 async def test_projects_delete_project__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """200, thân là trạng thái **ngay trước khi xoá** (K01)."""
+    """200, thân là trạng thái **ngay trước khi xoá** (K01).
+    Catalog: B11-prj-001.
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, name="Sắp xoá")
     response = await api_client.delete(project_path(project.id), headers=headers_of(owner))
@@ -398,7 +402,7 @@ async def test_projects_delete_project__C01(api_client: httpx.AsyncClient, db_se
 
 async def test_projects_delete_project__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Admin hệ thống không phải thành viên → 404.
-    Catalog: B09-prj-012.
+    Catalog: B09-prj-012, B11-prj-004., B11-prj-004.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
@@ -409,7 +413,7 @@ async def test_projects_delete_project__C06(api_client: httpx.AsyncClient, db_se
 
 async def test_projects_delete_project__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Thành viên `viewer` không phải admin → 403.
-    Catalog: B09-prj-010.
+    Catalog: B09-prj-010, B11-prj-005., B11-prj-005.
     """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
@@ -421,7 +425,9 @@ async def test_projects_delete_project__C07(api_client: httpx.AsyncClient, db_se
 async def test_projects_delete_project__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Đã xoá mềm từ trước → 404."""
+    """Đã xoá mềm từ trước → 404.
+    Catalog: B11-prj-003.
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
     response = await api_client.delete(project_path(project.id), headers=headers_of(owner))
@@ -439,7 +445,9 @@ async def test_projects_delete_project__C17(api_client: httpx.AsyncClient, db_se
 async def test_projects_delete_project__C18(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Đúng một dòng nhật ký `PROJECT_DELETE`."""
+    """Đúng một dòng nhật ký `PROJECT_DELETE`.
+    Catalog: B11-prj-008.
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, name="Ghi rồi xoá")
     await api_client.delete(project_path(project.id), headers=headers_of(owner))
@@ -455,7 +463,7 @@ async def test_delete_project_engineer_member_is_forbidden(
     """BUG-513: thành viên `engineer` (kể cả người tạo) → 403 `FORBIDDEN`; dự án còn, không nhật ký.
 
     FE chỉ mở vùng nguy hiểm cho admin; BE chưa có vai theo dự án nên khoá theo vai hệ thống.
-    Catalog: B09-prj-011.
+    Catalog: B09-prj-011, B11-prj-006., B11-prj-006.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
@@ -469,7 +477,9 @@ async def test_delete_project_engineer_member_is_forbidden(
 async def test_delete_project_second_delete_returns_404(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Xoá lần hai (dự án đã `deleted_at`) → 404, không nhật ký thêm."""
+    """Xoá lần hai (dự án đã `deleted_at`) → 404, không nhật ký thêm.
+    Catalog: B11-prj-002.
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner)
     first = await api_client.delete(project_path(project.id), headers=headers_of(owner))
@@ -480,7 +490,9 @@ async def test_delete_project_second_delete_returns_404(
 async def test_delete_project_keeps_membership_row_but_revokes_access(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Xoá mềm giữ `project_memberships` (cho lịch dọn) nhưng mọi thành viên mất quyền ngay."""
+    """Xoá mềm giữ `project_memberships` (cho lịch dọn) nhưng mọi thành viên mất quyền ngay.
+    Catalog: B11-prj-009.
+    """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner)
     await api_client.delete(project_path(project.id), headers=headers_of(owner))

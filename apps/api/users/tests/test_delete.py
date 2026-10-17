@@ -38,7 +38,7 @@ async def test_users_delete_user__C01(
 ) -> None:
     """Xoá mềm: trả `AdminUser` trước khi xoá (còn `active`); DB `deleted_at` + `disabled`; phiên/lời mời thu hồi.
 
-    Catalog: B08U-G-073.
+    Catalog: B08U-G-073, B11-usr-014., B11-usr-014.
     """
     admin, target = await make_admin(db_session), await make_user(db_session, role="engineer")
     await seed_session(db_session, target, fake_clock)
@@ -59,7 +59,9 @@ async def test_users_delete_user__C01(
 async def test_users_delete_user__C18(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Nhật ký `user.delete` do admin thực hiện; `activity_log` của người bị xoá giữ nguyên."""
+    """Nhật ký `user.delete` do admin thực hiện; `activity_log` của người bị xoá giữ nguyên.
+    Catalog: B11-usr-025.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     await send(api_client, admin, "DELETE", f"{USERS}/{target.id}", json=_delete(target.id, target.email))
     row = await assert_one_activity(
@@ -92,7 +94,7 @@ async def test_users_delete_user__C02(
 async def test_users_delete_user__C03(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Khoá lạ trong thân → 422 `VALIDATION`.
 
-    Catalog: B08U-G-071.
+    Catalog: B08U-G-071, B11-usr-019., B11-usr-019.
     """
     admin, target = await make_admin(db_session), await make_user(db_session)
     body = {**_delete(target.id, target.email), "x": 1}
@@ -112,7 +114,9 @@ async def test_users_delete_user__C07(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_users_delete_user__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Không có người, hoặc đã xoá rồi → 404 `resource:"user"`."""
+    """Không có người, hoặc đã xoá rồi → 404 `resource:"user"`.
+    Catalog: B11-usr-022.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     await send(api_client, admin, "DELETE", f"{USERS}/{target.id}", json=_delete(target.id, target.email))
     for user_id in (GHOST, target.id):
@@ -121,7 +125,9 @@ async def test_users_delete_user__C08(api_client: httpx.AsyncClient, db_session:
 
 
 async def test_users_delete_user__C21(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`userId` thân khác đường → 422 `PATH_BODY_MISMATCH`, không xoá ai (K09)."""
+    """`userId` thân khác đường → 422 `PATH_BODY_MISMATCH`, không xoá ai (K09).
+    Catalog: B11-usr-018.
+    """
     admin, target, other = await make_admin(db_session), await make_user(db_session), await make_user(db_session)
     body = _delete(target.id, target.email, body_id=other.id)
     response = await send(api_client, admin, "DELETE", f"{USERS}/{target.id}", json=body)
@@ -135,7 +141,7 @@ async def test_users_delete_user_confirm_email_is_compared_normalized(
 ) -> None:
     """`confirmEmail` khác hoa thường vẫn khớp (200); khác hẳn → 422 `USER_CONFIRM_EMAIL_MISMATCH`.
 
-    Catalog: B08U-C-022.
+    Catalog: B08U-C-022, B11-usr-015, B11-usr-016., B11-usr-015, B11-usr-016.
     """
     admin = await make_admin(db_session)
     lower = await make_user(db_session, email="Nguoi.Xoa@Example.com")
@@ -154,7 +160,7 @@ async def test_users_delete_user_confirm_email_is_compared_normalized(
 async def test_users_delete_user_self_is_rejected(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Tự xoá chính mình khi còn admin khác → 422 `USER_SELF_MODIFICATION`.
 
-    Catalog: B08U-C-003.
+    Catalog: B08U-C-003, B11-usr-020., B11-usr-020.
     """
     admin = await make_admin(db_session)
     await make_admin(db_session)
@@ -168,7 +174,7 @@ async def test_users_delete_user_last_admin_is_rejected(
 ) -> None:
     """NO-206: admin `active` duy nhất tự xoá → 422 `USER_LAST_ADMIN`, không xoá gì.
 
-    Catalog: B08U-C-007.
+    Catalog: B08U-C-007, B11-usr-021., B11-usr-021.
     """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "DELETE", f"{USERS}/{admin.id}", json=_delete(admin.id, admin.email))
@@ -179,7 +185,9 @@ async def test_users_delete_user_last_admin_is_rejected(
 async def test_users_delete_user_disappears_from_list_and_frees_email(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Sau xoá: #38 không còn người đó (và `total` giảm); mời lại cùng email ra người mới có `id` khác."""
+    """Sau xoá: #38 không còn người đó (và `total` giảm); mời lại cùng email ra người mới có `id` khác.
+    Catalog: B11-usr-023.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session, email="tai-su-dung@example.com")
     await send(api_client, admin, "DELETE", f"{USERS}/{target.id}", json=_delete(target.id, target.email))
     listing = (await send(api_client, admin, "GET", USERS)).json()
@@ -200,7 +208,7 @@ async def test_users_delete_user_removes_memberships_and_logs_orphans(
 ) -> None:
     """Gỡ khỏi mọi dự án; dự án chỉ còn người này là người sửa → log `project_orphaned` (không chặn xoá).
 
-    Catalog: B08U-G-069.
+    Catalog: B08U-G-069, B11-usr-024., B11-usr-024.
     """
     admin, target, peer = await make_admin(db_session), await make_user(db_session), await make_user(db_session)
     orphan = await make_project(db_session, owner=target)
@@ -224,7 +232,7 @@ async def test_users_delete_user_confirm_email_rejects_non_ascii_folding(
 ) -> None:
     """`confirmEmail` có Kelvin U+212A hay U+017F gấp về email mục tiêu → 422 `VALIDATION`, không xoá (K37).
 
-    Catalog: B08U-C-021.
+    Catalog: B08U-C-021, B11-usr-017., B11-usr-017.
     """
     admin = await make_admin(db_session)
     target = await make_user(db_session, email=f"{local}@example.com")

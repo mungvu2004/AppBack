@@ -232,7 +232,7 @@ async def test_users_disable_user__C01(
 ) -> None:
     """Vô hiệu → `disabled`, phiên bị thu hồi, lời mời chờ mất hiệu lực, `token_version` tăng.
 
-    Catalog: B08U-G-040.
+    Catalog: B08U-G-040, B11-usr-001., B11-usr-001.
     """
     admin, target = await make_admin(db_session), await make_user(db_session, status="pending", password=None)
     await seed_token(db_session, user_id=target.id, purpose="invite", clock=fake_clock)
@@ -265,7 +265,9 @@ async def test_users_disable_user__C17(api_client: httpx.AsyncClient, db_session
 
 
 async def test_users_disable_user__C02(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Thân không phải object (`[]`) → 422 `VALIDATION`."""
+    """Thân không phải object (`[]`) → 422 `VALIDATION`.
+    Catalog: B11-usr-005.
+    """
     admin, target = await make_admin(db_session), await make_user(db_session)
     response = await send(api_client, admin, "POST", _path(target.id, "disable"), json=[])
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
@@ -285,7 +287,7 @@ async def test_users_disable_user__C03(api_client: httpx.AsyncClient, db_session
 @pytest.mark.parametrize("role", ["engineer", "viewer"])
 async def test_users_disable_user__C07(api_client: httpx.AsyncClient, db_session: AsyncSession, role: str) -> None:
     """Không phải admin → 403.
-    Catalog: B09-usr-024.
+    Catalog: B09-usr-024, B11-usr-006., B11-usr-006.
     """
     caller, target = await make_user(db_session, role=role), await make_user(db_session)
     response = await send(api_client, caller, "POST", _path(target.id, "disable"), json={})
@@ -295,7 +297,7 @@ async def test_users_disable_user__C07(api_client: httpx.AsyncClient, db_session
 async def test_users_disable_user__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Không có người → 404 `resource:"user"`.
 
-    Catalog: B08U-G-036.
+    Catalog: B08U-G-036, B11-usr-004., B11-usr-004.
     """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "POST", _path(GHOST, "disable"), json={})
@@ -308,7 +310,7 @@ async def test_users_disable_user_twice_and_self(
     """Đã `disabled` → 200, không ghi thêm gì; tự vô hiệu mình → 422 `USER_LAST_ADMIN` khi là admin duy nhất
     (NO-206), `USER_SELF_MODIFICATION` khi còn admin khác.
 
-    Catalog: B08U-C-008.
+    Catalog: B08U-C-008, B11-usr-002, B11-usr-003., B11-usr-002, B11-usr-003.
     """
     admin, target = await make_admin(db_session), await make_user(db_session, status="disabled")
     response = await send(api_client, admin, "POST", _path(target.id, "disable"), json={})
@@ -327,7 +329,7 @@ async def test_users_disable_user_kills_every_session(
 ) -> None:
     """Mọi phiên của người bị vô hiệu chết: access token 401, refresh 401, đăng nhập lại 401 (C25).
 
-    Catalog: B08U-G-037.
+    Catalog: B08U-G-037, B11-usr-008., B11-usr-008.
     """
     admin, victim = await make_admin(db_session), await make_user(db_session, role="engineer")
     admin_session = await signed_in(admin)
@@ -357,7 +359,7 @@ async def test_users_enable_user__C01(
 ) -> None:
     """Bật lại người có mật khẩu → `active`; người chưa có mật khẩu → `pending` (cần gửi lại lời mời).
 
-    Catalog: B08U-G-045.
+    Catalog: B08U-G-045, B11-usr-009., B11-usr-009.
     """
     admin = await make_admin(db_session)
     with_password = await make_user(db_session, status="disabled")
@@ -417,7 +419,7 @@ async def test_users_enable_user__C07(api_client: httpx.AsyncClient, db_session:
 async def test_users_enable_user__C08(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Không có người → 404 `resource:"user"`.
 
-    Catalog: B08U-G-044.
+    Catalog: B08U-G-044, B11-usr-011., B11-usr-011.
     """
     admin = await make_admin(db_session)
     response = await send(api_client, admin, "POST", _path(GHOST, "enable"), json={})
@@ -429,7 +431,7 @@ async def test_users_enable_user_not_disabled_writes_nothing(
 ) -> None:
     """Bật người không `disabled` → 200 trả nguyên trạng, không nhật ký, không tăng `token_version`.
 
-    Catalog: B08U-G-043.
+    Catalog: B08U-G-043, B11-usr-010., B11-usr-010.
     """
     admin, target = await make_admin(db_session), await make_user(db_session)
     response = await send(api_client, admin, "POST", _path(target.id, "enable"), json={})

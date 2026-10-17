@@ -53,7 +53,7 @@ async def test_me_change_password__C01(
 ) -> None:
     """Đúng: 204 rỗng, thu hồi phiên **khác**, phiên hiện tại vẫn sống.
 
-    Catalog: B07-G-090.
+    Catalog: B07-G-090, B11-out-010., B11-out-010.
     """
     user = await make_user(db_session)
     current = await seed_session(db_session, user, fake_clock)

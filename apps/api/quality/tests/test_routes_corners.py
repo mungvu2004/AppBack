@@ -113,7 +113,9 @@ async def test_quality_set_corners__four_corners_applied(
     fake_clock: Clock,
     broker: SyncRedis,
 ) -> None:
-    """Ảnh có khung nghiêng: khoá trang mới, `FRAME_NOT_FOUND` biến mất, lượt mới `pending`, lượt cũ bị thay."""
+    """Ảnh có khung nghiêng: khoá trang mới, `FRAME_NOT_FOUND` biến mất, lượt mới `pending`, lượt cũ bị thay.
+    Catalog: B11-qlt-014.
+    """
     stage = await make_stage(db_session, local_storage)
     shot = desk_shot(SHOT_W, SHOT_H)
     await measure_real(db_session, fake_clock, stage.floors[0], shot.pixels)
@@ -185,7 +187,9 @@ async def test_quality_set_corners__C02_shape(
     local_storage: LocalDiskStorage,
     points: Any,
 ) -> None:
-    """Tứ giác tự cắt, ngược chiều, diện tích 1 %, lõm → 422 `VALIDATION` `field:"corners"`, không lượt mới."""
+    """Tứ giác tự cắt, ngược chiều, diện tích 1 %, lõm → 422 `VALIDATION` `field:"corners"`, không lượt mới.
+    Catalog: B11-qlt-015.
+    """
     stage = await make_stage(db_session, local_storage)
 
     response = await _post(api_client, stage, points)
@@ -232,7 +236,7 @@ async def test_quality_set_corners__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
 ) -> None:
     """Viewer (vai mạnh nhất không có `floor.upload`) → 403 `FORBIDDEN`.
-    Catalog: B09-qlt-005.
+    Catalog: B09-qlt-005, B11-qlt-016., B11-qlt-016.
     """
     stage = await make_stage(db_session, local_storage)
 
@@ -293,7 +297,9 @@ async def test_quality_set_corners__C10_queue_once(
     fake_clock: Clock,
     broker: SyncRedis,
 ) -> None:
-    """Lặp `Idempotency-Key` → cùng response, **một** lượt mới và **một** thông điệp `pipeline.cpu`."""
+    """Lặp `Idempotency-Key` → cùng response, **một** lượt mới và **một** thông điệp `pipeline.cpu`.
+    Catalog: B11-qlt-019.
+    """
     stage = await make_stage(db_session, local_storage)
     shot = desk_shot(SHOT_W, SHOT_H)
     await measure_real(db_session, fake_clock, stage.floors[0], shot.pixels)
@@ -343,7 +349,9 @@ async def test_quality_set_corners__reviewed_layer(
     fake_clock: Clock,
     broker: SyncRedis,
 ) -> None:
-    """Tầng đã duyệt (lượt `completed`) → #31, #32 đều 422; bản vẽ mới chưa `completed` → #32 200."""
+    """Tầng đã duyệt (lượt `completed`) → #31, #32 đều 422; bản vẽ mới chưa `completed` → #32 200.
+    Catalog: B11-qlt-017.
+    """
     stage = await make_stage(db_session, local_storage)
     drawn = stage.floors[0]
     await mark_reviewed(db_session, fake_clock, drawn)
@@ -379,7 +387,9 @@ async def test_quality_set_corners__undo(
     local_storage: LocalDiskStorage,
     fake_clock: Clock,
 ) -> None:
-    """Khung C0 chưa áp → #31 với C1 → #31 với C0: trang cuối = nắn từ C0 trên trang chưa nắn, không nắn chồng."""
+    """Khung C0 chưa áp → #31 với C1 → #31 với C0: trang cuối = nắn từ C0 trên trang chưa nắn, không nắn chồng.
+    Catalog: B11-qlt-018.
+    """
     pixels = tilted_drawing(2.0, 900, 640)
     stage = await make_stage(db_session, local_storage, pixels=pixels)
     await measure_real(db_session, fake_clock, stage.floors[0], pixels)

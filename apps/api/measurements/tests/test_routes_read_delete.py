@@ -172,7 +172,9 @@ async def test_measurements_list_records__real_limit_under_two_seconds(
 async def test_measurements_delete_record__C01(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
-    """Xoá → 204 thân rỗng; dòng bị xoá **cứng**, dòng khác còn (K22)."""
+    """Xoá → 204 thân rỗng; dòng bị xoá **cứng**, dòng khác còn (K22).
+    Catalog: B11-msr-001.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)
@@ -185,7 +187,7 @@ async def test_measurements_delete_record__C01(
 
 async def test_measurements_delete_record__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Admin hệ thống không là thành viên, id có thật → 404 `resource:"project"` (K08).
-    Catalog: B09-msr-009.
+    Catalog: B09-msr-009, B11-msr-002., B11-msr-002.
     """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
@@ -199,7 +201,7 @@ async def test_measurements_delete_record__C07(
     api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     """`viewer` → 403 và dòng còn nguyên.
-    Catalog: B09-msr-008.
+    Catalog: B09-msr-008, B11-msr-003., B11-msr-003.
     """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)
@@ -214,7 +216,9 @@ async def test_measurements_delete_record__C07(
 async def test_measurements_delete_record__C08(
     api_client: httpx.AsyncClient, db_session: AsyncSession, missing_id: str
 ) -> None:
-    """`MS-9999` không có, hoặc id sai mẫu → 404 `resource:"measurement"`."""
+    """`MS-9999` không có, hoặc id sai mẫu → 404 `resource:"measurement"`.
+    Catalog: B11-msr-004.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     response = await api_client.delete(measurement_path(project.id, missing_id), headers=headers_of(owner))
@@ -224,7 +228,9 @@ async def test_measurements_delete_record__C08(
 async def test_measurements_delete_record__C08_deleted_project(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Dự án đã xoá mềm → 404 `resource:"project"`."""
+    """Dự án đã xoá mềm → 404 `resource:"project"`.
+    Catalog: B11-prj-015.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
     response = await api_client.delete(measurement_path(project.id, "MS-0001"), headers=headers_of(owner))
@@ -237,6 +243,7 @@ async def test_measurements_delete_record__other_project_id_not_deletable(
     """`MS-0001` của dự án A không xoá được qua đường của dự án B (404), dòng còn nguyên.
 
     Hàng catalog: [25-G-027].
+    Catalog: B11-msr-005.
     """
     owner = await make_user(db_session, role="engineer")
     project_a = await seed_project(db_session, owner=owner)
@@ -254,7 +261,9 @@ async def test_measurements_delete_record__touch_project(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     fake_clock: FakeClock,
 ) -> None:
-    """`touch_project` chạy khi xoá được (204), không chạy khi 404 (đo bằng `projects.updated_at`)."""
+    """`touch_project` chạy khi xoá được (204), không chạy khi 404 (đo bằng `projects.updated_at`).
+    Catalog: B11-msr-006.
+    """
     owner = await make_user(db_session, role="engineer")
     project = await seed_project(db_session, owner=owner)
     headers = headers_of(owner)

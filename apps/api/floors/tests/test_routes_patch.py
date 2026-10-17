@@ -96,7 +96,7 @@ async def test_floors_patch_spatial_floor__C06(api_client: httpx.AsyncClient, db
 
 async def test_floors_patch_spatial_floor__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Vai mạnh nhất thiếu `layer.edit` (`viewer`) → 403.
-    Catalog: B09-flr-014.
+    Catalog: B09-flr-014, B11-set-002., B11-set-002.
     """
     owner = await make_user(db_session, role="engineer")
     viewer = await make_user(db_session, role=FORBIDDEN_ROLE)

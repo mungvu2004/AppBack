@@ -65,6 +65,7 @@ async def test_rules_replace_config__C01_same_config_still_writes(
     """Gửi lại đúng cấu hình đang có với `baseVersion = revision` vẫn là một lần ghi (tăng `revision`).
 
     Hàng catalog: [B06-G-025].
+    Catalog: B11-rul-008.
     """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
@@ -115,7 +116,7 @@ async def test_rules_replace_config__C06(api_client: httpx.AsyncClient, db_sessi
     """Người ngoài dự án, kể cả admin hệ thống → 404, không ghi gì.
 
     Hàng catalog: [B06-G-068].
-    Catalog: B09-rul-007.
+    Catalog: B09-rul-007, B11-rul-006., B11-rul-006.
     """
     _, project = await seed_admin_project(db_session)
     outsider = await make_user(db_session, role="admin")
@@ -129,7 +130,7 @@ async def test_rules_replace_config__C07(api_client: httpx.AsyncClient, db_sessi
     """`engineer` (vai mạnh nhất không có `ruleset.edit`) → 403 `FORBIDDEN`, không ghi gì; quyền kiểm trước 428.
 
     Hàng catalog: [B06-G-067].
-    Catalog: B09-rul-005, B09-rul-006.
+    Catalog: B09-rul-005, B09-rul-006, B11-rul-005., B11-rul-005.
     """
     owner = await make_user(db_session, role="admin")
     engineer = await make_user(db_session, role="engineer")
@@ -150,6 +151,7 @@ async def test_rules_replace_config__C08(
     """Dự án đã xoá mềm → 404.
 
     Hàng catalog: [B06-G-069].
+    Catalog: B11-prj-018.
     """
     owner = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
@@ -157,7 +159,9 @@ async def test_rules_replace_config__C08(
 
 
 async def test_rules_replace_config__C09(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Base cũ → 409 thân W20; `baseVersion = revision + 1` cũng 409 (không 422); thiếu `baseVersion` → 428."""
+    """Base cũ → 409 thân W20; `baseVersion = revision + 1` cũng 409 (không 422); thiếu `baseVersion` → 428.
+    Catalog: B11-rul-003.
+    """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
     await put_config(api_client, project.id, owner, replace_body(1, {}))
@@ -191,6 +195,7 @@ async def test_rules_replace_config__C09b(
     """Cùng người, cùng thân, `baseVersion = revision - 1` → 200, `revision` giữ nguyên, đúng một dòng nhật ký.
 
     Hàng catalog: [B06-G-021].
+    Catalog: B11-rul-004.
     """
     owner, project = await seed_admin_project(db_session)
     first = await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))
@@ -295,6 +300,7 @@ async def test_rules_replace_config__cascade_on_project_delete(
     """Xoá cứng dự án (SQL trực tiếp) → dòng `rule_configs` mất (FK `ON DELETE CASCADE`).
 
     Hàng catalog: [B06-G-070].
+    Catalog: B11-prj-022.
     """
     owner, project = await seed_admin_project(db_session)
     await put_config(api_client, project.id, owner, replace_body(0, _CONFIG))

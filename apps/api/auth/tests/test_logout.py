@@ -27,7 +27,9 @@ def _with_cookie(value: str, origin: dict[str, str]) -> dict[str, str]:
 async def test_auth_logout__C01(
     auth_client: httpx.AsyncClient, db_session: AsyncSession, cache_client: AsyncRedis
 ) -> None:
-    """Đúng: 204 thân rỗng, xoá hai cookie, phiên bị thu hồi (`logout`), ảnh chụp cache bị xoá."""
+    """Đúng: 204 thân rỗng, xoá hai cookie, phiên bị thu hồi (`logout`), ảnh chụp cache bị xoá.
+    Catalog: B11-out-001.
+    """
     user = await make_user(db_session)
     cookie = refresh_cookie(await login(auth_client, user.email, TEST_PASSWORD))
     sid = cookie.split(".", 1)[0]
@@ -43,7 +45,9 @@ async def test_auth_logout__C01(
 
 
 async def test_auth_logout__C24(auth_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`Origin` lệch hay thiếu → 403 `ORIGIN_MISMATCH` **kèm** lệnh xoá cookie; phiên không bị thu hồi."""
+    """`Origin` lệch hay thiếu → 403 `ORIGIN_MISMATCH` **kèm** lệnh xoá cookie; phiên không bị thu hồi.
+    Catalog: B11-out-004.
+    """
     user = await make_user(db_session)
     cookie = refresh_cookie(await login(auth_client, user.email, TEST_PASSWORD))
     foreign = await auth_client.post(LOGOUT_PATH, headers=_with_cookie(cookie, {"Origin": "https://ke-gian.example"}))
@@ -56,7 +60,9 @@ async def test_auth_logout__C24(auth_client: httpx.AsyncClient, db_session: Asyn
 
 
 async def test_logout_without_a_cookie_is_204(auth_client: httpx.AsyncClient) -> None:
-    """Không cookie (hay cookie rác) → vẫn 204 và vẫn xoá cookie."""
+    """Không cookie (hay cookie rác) → vẫn 204 và vẫn xoá cookie.
+    Catalog: B11-out-003.
+    """
     auth_client.cookies.clear()
     bare = await auth_client.post(LOGOUT_PATH, headers=ORIGIN)
     junk = await auth_client.post(LOGOUT_PATH, headers=_with_cookie("rac", ORIGIN))
@@ -66,7 +72,9 @@ async def test_logout_without_a_cookie_is_204(auth_client: httpx.AsyncClient) ->
 
 
 async def test_logout_twice_is_204(auth_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """Đăng xuất lặp lại cùng cookie → 204 cả hai lần; lần hai không đổi lý do thu hồi."""
+    """Đăng xuất lặp lại cùng cookie → 204 cả hai lần; lần hai không đổi lý do thu hồi.
+    Catalog: B11-out-002.
+    """
     user = await make_user(db_session)
     cookie = refresh_cookie(await login(auth_client, user.email, TEST_PASSWORD))
     first = await auth_client.post(LOGOUT_PATH, headers=_with_cookie(cookie, ORIGIN))
