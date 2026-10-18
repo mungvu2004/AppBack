@@ -153,9 +153,68 @@
         "title": "AdminUserOut",
         "type": "object"
       },
+      "Axis": {
+        "additionalProperties": false,
+        "description": "Trục định vị của màn Trục; #35 ghi, N15/N16 trả lại (G4b-17).",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "line": {
+            "$ref": "#/components/schemas/Segment"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "label",
+          "direction",
+          "line"
+        ],
+        "title": "Axis",
+        "type": "object"
+      },
       "AxisOut": {
         "additionalProperties": false,
-        "description": "`AxisSchema` — trục định vị; v1 danh sách luôn rỗng nhưng hình dạng vẫn phải đúng.",
+        "description": "`AxisSchema` — trục định vị đã lưu qua #35 (G4b-17).",
         "properties": {
           "confidence": {
             "maximum": 1.0,
@@ -484,8 +543,8 @@
             "type": "string"
           },
           "epochs": {
-            "maximum": 300.0,
-            "minimum": 1.0,
+            "ge": 1,
+            "le": 300,
             "title": "Epochs",
             "type": "integer"
           },
@@ -1353,6 +1412,16 @@
           "level": {
             "$ref": "#/components/schemas/LevelOut"
           },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PointOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "revision": {
             "minimum": 0.0,
             "title": "Revision",
@@ -1383,8 +1452,22 @@
       },
       "FloorLayerWriteBodySchema": {
         "additionalProperties": false,
-        "description": "`body` của #35: lớp, tỉ lệ, hay cả hai — nhưng không được rỗng (FE `refine` ≥ 1 khoá).",
+        "description": "`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).\n\n`axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).",
         "properties": {
+          "axes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Axis"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axes"
+          },
           "dimensions": {
             "anyOf": [
               {
@@ -1403,6 +1486,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SpatialLayer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Point"
               },
               {
                 "type": "null"
@@ -2166,6 +2259,65 @@
           "sizeBytes"
         ],
         "title": "InitUploadBody",
+        "type": "object"
+      },
+      "InvitationPreviewBody": {
+        "additionalProperties": false,
+        "description": "Thân xem trước lời mời: `{token}` — token đi trong thân, không lên URL/log truy cập (K11).",
+        "properties": {
+          "token": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "InvitationPreviewBody",
+        "type": "object"
+      },
+      "InvitationPreviewOut": {
+        "additionalProperties": false,
+        "description": "Lời mời còn dùng được: đủ để màn nhận lời mời nói \"mời ai, vai gì, ai mời, đến bao giờ\".",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "inviterName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitername"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "status": {
+            "const": "valid",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "email",
+          "role",
+          "expiresAt"
+        ],
+        "title": "InvitationPreviewOut",
         "type": "object"
       },
       "InviteBody": {
@@ -6401,6 +6553,7 @@
             "required": false,
             "schema": {
               "default": -1,
+              "maximum": 2147483647,
               "minimum": -1,
               "title": "Since",
               "type": "integer"
@@ -6467,6 +6620,7 @@
             "required": false,
             "schema": {
               "default": -1,
+              "maximum": 2147483647,
               "minimum": -1,
               "title": "Since",
               "type": "integer"
@@ -6543,6 +6697,48 @@
           }
         },
         "summary": "Auth Accept Invitation",
+        "tags": [
+          "auth-recovery"
+        ]
+      }
+    },
+    "/api/auth/invitations/preview": {
+      "post": {
+        "description": "Xem trước lời mời trước khi điền form (G2-9, G2-10); chỉ đọc, không tiêu token.\n\nBa mã 422 tách \"link sai\" / \"đã dùng\" / \"hết hạn hoặc đã gửi lại\" (G1-10). Chỉ trả email,\nvai, tên người mời, hạn — không id, không trạng thái nội bộ.",
+        "operationId": "auth_preview_invitation_api_auth_invitations_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationPreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Preview Invitation",
         "tags": [
           "auth-recovery"
         ]
