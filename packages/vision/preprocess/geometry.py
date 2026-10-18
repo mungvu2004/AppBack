@@ -30,6 +30,7 @@ _WHITE: Final = (255.0, 255.0, 255.0)
 _MIN_EDGE_PX: Final = 16.0
 _MIN_AREA_RATIO: Final = 0.01
 _SKEW_MIN_SEGMENTS: Final = 4
+_PERSPECTIVE_AXIS_DEG: Final = 20.0
 _DESKEW_MIN_DEG: Final = 0.05
 _FRAME_MIN_AREA_RATIO: Final = 0.25
 _FRAME_INK_RATIO: Final = 0.97
@@ -100,12 +101,23 @@ class SkewEstimate:
     """Góc nghiêng có dấu `(-45, 45]` độ, chưa làm tròn, và hộp bao các đoạn đã dùng.
 
     `segments_bbox` = `(x0, y0, x1, y1)` theo pixel **ảnh gốc**; `None` khi < 4 đoạn
-    (lúc đó `angle_deg == 0.0`). Dấu: ảnh thẳng xoay bằng
-    `cv2.getRotationMatrix2D(c, +3.4, 1)` đo ra ≈ +3.4.
+    (lúc đó `angle_deg == 0.0` chỉ là giá trị giữ chỗ, xem `is_measured`). Dấu: ảnh
+    thẳng xoay bằng `cv2.getRotationMatrix2D(c, +3.4, 1)` đo ra ≈ +3.4.
+
+    `perspective_deg` (G3-35) = độ hội tụ, tức chênh góc lớn nhất giữa nửa trái và
+    nửa phải của các đoạn gần dọc (hoặc nửa trên và nửa dưới của các đoạn gần ngang).
+    Xoay đều không làm chênh (mọi đoạn nghiêng cùng một góc), còn méo hình thang thì
+    có: hai mép dọc nghiêng ngược chiều nhau. `None` khi không nhóm nào có đủ hai nửa.
     """
 
     angle_deg: float
     segments_bbox: tuple[float, float, float, float] | None
+    perspective_deg: float | None = None
+
+    @property
+    def is_measured(self) -> bool:
+        """Đủ đoạn Hough để đo; `False` thì `angle_deg` không mang nghĩa "thẳng"."""
+        return self.segments_bbox is not None
 
 
 def _weighted_median(values: NDArray[np.float64], weights: NDArray[np.float64]) -> float:
@@ -120,6 +132,49 @@ def _weighted_median(values: NDArray[np.float64], weights: NDArray[np.float64]) 
     return float(sorted_values[min(index, sorted_values.size - 1)])
 
 
+def _half_spread(
+    deviation: NDArray[np.float64], position: NDArray[np.float64], weights: NDArray[np.float64]
+) -> float | None:
+    """Chênh trung vị có trọng số của độ lệch trục giữa hai nửa (chia ở giữa dải `position`).
+
+    Một nửa rỗng → `None`: không có gì để so, không kết luận được hội tụ.
+    """
+    if position.size == 0:
+        return None
+    first = position < (float(position.min()) + float(position.max())) / 2.0
+    if not first.any() or first.all():
+        return None
+    low = _weighted_median(deviation[first], weights[first])
+    high = _weighted_median(deviation[~first], weights[~first])
+    return abs(low - high)
+
+
+def _perspective_spread(points: NDArray[np.float64]) -> float | None:
+    """Độ hội tụ (độ) của các đoạn gần trục; lớn nhất của hai nhóm dọc/ngang, `None` nếu cả hai rỗng.
+
+    Chỉ lấy đoạn lệch trục ≤ 20° để nét xiên 45° (gạch chéo, mũi tên) không nhảy
+    qua lại giữa hai nhóm. Đoạn dọc chia trái/phải theo hoành độ trung điểm, đoạn
+    ngang chia trên/dưới theo tung độ.
+    """
+    delta_x, delta_y = points[:, 2] - points[:, 0], points[:, 3] - points[:, 1]
+    weights = np.hypot(delta_x, delta_y)
+    raw = np.degrees(np.arctan2(-delta_y, delta_x)) % 180.0
+    horizontal = np.where(raw > 90.0, raw - 180.0, raw)
+    vertical = raw - 90.0
+    mid_x, mid_y = (points[:, 0] + points[:, 2]) / 2.0, (points[:, 1] + points[:, 3]) / 2.0
+    is_h = np.abs(horizontal) <= _PERSPECTIVE_AXIS_DEG
+    is_v = np.abs(vertical) <= _PERSPECTIVE_AXIS_DEG
+    spreads = [
+        spread
+        for spread in (
+            _half_spread(vertical[is_v], mid_x[is_v], weights[is_v]),
+            _half_spread(horizontal[is_h], mid_y[is_h], weights[is_h]),
+        )
+        if spread is not None
+    ]
+    return max(spreads) if spreads else None
+
+
 def estimate_skew(work: WorkingImage) -> SkewEstimate:
     """Trung vị có trọng số độ dài của các đoạn Hough dài, gấp về gần trục nhất.
 
@@ -131,6 +186,9 @@ def estimate_skew(work: WorkingImage) -> SkewEstimate:
     Bước góc Hough là 0,2° chứ không phải 1° mặc định: với 1° đầu mút đoạn bị bắt
     vào bội số của 1° nên ảnh nghiêng 3,4° đo ra 2,99°, ngoài dải test. 0,2° cho
     3,40° và tốn ~0,1 s trên bản làm việc 2.000 px (trần đã có sẵn).
+
+    Cùng lượt đoạn Hough còn cho `perspective_deg` (`_perspective_spread`): trung vị
+    góc không thấy méo hình thang vì hai mép dọc ±θ triệt nhau (G3-35).
     """
     short_edge = min(int(work.gray.shape[0]), int(work.gray.shape[1]))
     edges = cv2.Canny(cv2.GaussianBlur(work.gray, (5, 5), 0), 50, 150)
@@ -156,7 +214,7 @@ def estimate_skew(work: WorkingImage) -> SkewEstimate:
         float(xs.max()) / work.scale,
         float(ys.max()) / work.scale,
     )
-    return SkewEstimate(angle, bbox)
+    return SkewEstimate(angle, bbox, _perspective_spread(points))
 
 
 def order_corners(points: Sequence[Point]) -> Quad:
