@@ -22,13 +22,14 @@ from apps.api.core.routing import protected_router, route_options
 from apps.api.drawings import complete, uploads
 from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import progress_wire
+from apps.api.drawings.run_history import router as run_history_router
 from apps.api.drawings.schemas import CompleteUploadBody, InitUploadBody, ProgressOut, UploadChunkBody
 from apps.api.drawings.settings import get_drawings_settings
 from apps.api.projects.access import require_project
 
 router = protected_router(tags=["drawings"])
-ROUTERS: Final = (router, latest_router)
-"""N7 sống ở `latest.py` với router riêng của nó; `discover_routers()` chỉ đọc bộ này."""
+ROUTERS: Final = (router, latest_router, run_history_router)
+"""N7 (`latest.py`) và N7b (`run_history.py`) có router riêng; `discover_routers()` chỉ đọc bộ này."""
 
 CHUNK_BODY_LIMIT: Final = 8 * 1024 * 1024
 """Trần thân của #6 (BE-00 §11): 5 MiB nhị phân nở ~6,7 MiB khi base64, cộng bao JSON."""

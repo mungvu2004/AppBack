@@ -7,10 +7,11 @@
 
 import logging
 import re
+from datetime import datetime
 from functools import cache
 from typing import Final
 
-from sqlalchemy import ColumnElement, exists, select, update
+from sqlalchemy import ColumnElement, exists, literal, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -159,14 +160,22 @@ async def notify(
     return None
 
 
-async def list_notifications(db: AsyncSession, user_id: str) -> list[NotificationRow]:
-    """#19: dòng của `user_id` còn hiện, mới nhất trước, tối đa `NOTIFICATIONS_LIST_MAX`."""
+async def list_notifications(
+    db: AsyncSession, user_id: str, *, limit: int | None = None, after: tuple[datetime, str] | None = None
+) -> list[NotificationRow]:
+    """#19: dòng của `user_id` còn hiện, mới nhất trước, tối đa `limit` (mặc định `NOTIFICATIONS_LIST_MAX`).
+
+    `after` = `(created_at, id)` của dòng cuối trang trước ("Xem cũ hơn", UIFIX-B7): chỉ lấy dòng cũ hơn nó.
+    Router đọc dư một dòng (`limit + 1`) để biết còn trang sau, nên trần nằm ở router chứ không ở đây.
+    """
     stmt = (
         select(NotificationRow)
         .where(NotificationRow.user_id == user_id, visible_to_owner())
         .order_by(NotificationRow.created_at.desc(), NotificationRow.id.desc())
-        .limit(get_notifications_settings().notifications_list_max)
+        .limit(limit or get_notifications_settings().notifications_list_max)
     )
+    if after is not None:
+        stmt = stmt.where(tuple_(NotificationRow.created_at, NotificationRow.id) < tuple_(literal(after[0]), literal(after[1])))
     return list((await db.execute(stmt)).scalars())
 
 
