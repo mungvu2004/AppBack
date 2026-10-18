@@ -11,7 +11,7 @@ không được đọc nó chắc ngang một model đã huấn luyện.
 
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
@@ -19,7 +19,7 @@ import numpy as np
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 from numpy.typing import NDArray
 
-from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED
+from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED, NOT_A_FLOOR_PLAN
 from apps.ml.walls.segformer import SegformerOnnxSegmenter
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import MAX_WALLS, PointPx, WallPx, WallsResult, encode_mask, walls_to_json
@@ -31,12 +31,21 @@ from packages.vision.walls.classic import classic_wall_mask, default_min_thickne
 from packages.vision.walls.types import WallSegment
 from packages.vision.walls.vectorize import keep_longest, vectorize_with_stats
 
-__all__ = ["CLASSIC_CONFIDENCE_CAP", "WallsStepOutput", "segment_page", "to_wall_px"]
+__all__ = ["CLASSIC_CONFIDENCE_CAP", "MIN_WALL_LENGTH_RATIO", "WallsStepOutput", "segment_page", "to_wall_px"]
 
 _log: Final = logging.getLogger(__name__)
 
 CLASSIC_CONFIDENCE_CAP: Final = 0.5
 """Trần độ tin của đường lùi cổ điển: hình thái học không chắc bằng model đã huấn luyện."""
+
+MIN_WALL_LENGTH_RATIO: Final = 1.0
+"""Tổng chiều dài tim tường tối thiểu, tính theo cạnh dài của trang, để nhận trang là bản vẽ mặt bằng.
+
+Đo 2026-10-18 với SegFormer-B0 huấn luyện trên CubiCasa5k (IoU 0.816): 45 bản vẽ tập test thấp
+nhất 3.02; 11 ảnh không phải bản vẽ (biểu đồ cột/đường/tròn, bảng, văn bản, sơ đồ khối, ảnh
+chụp, ảnh chụp màn hình) cao nhất 0.23. Chỉ áp cho nhánh `onnx`: nhánh cổ điển cho ảnh chụp
+tới 27.07 nên không phân biệt được, nhánh giả chỉ phục vụ trang tổng hợp.
+"""
 
 type Used = Literal["onnx", "classic", "fake"]
 
@@ -117,8 +126,9 @@ def segment_page(
     """Tách tường một trang đã nắn; cùng ảnh + cùng nhánh → cùng bytes artifact (J06, M01).
 
     Mặt nạ khác khổ ảnh là model sai hợp đồng, không phải trang xấu →
-    `MODEL_FORMAT_UNSUPPORTED`. Quá `MAX_WALLS` đoạn thì giữ các đoạn dài nhất và đếm
-    `cap`, vì `WallsResult` từ chối nhiều hơn thế.
+    `MODEL_FORMAT_UNSUPPORTED`. Model đã huấn luyện thấy tổng tường ngắn hơn
+    `MIN_WALL_LENGTH_RATIO` lần cạnh dài trang → `NOT_A_FLOOR_PLAN`. Quá `MAX_WALLS` đoạn thì
+    giữ các đoạn dài nhất và đếm `cap`, vì `WallsResult` từ chối nhiều hơn thế.
     """
     started = time.monotonic()
     mask, used = _mask_of(image, model, backend=backend, session=session, px_per_paper_mm=px_per_paper_mm)
@@ -128,6 +138,8 @@ def segment_page(
     vectorized = time.monotonic()
     result = vectorize_with_stats(mask)
     walls = result.walls
+    if used == "onnx" and _total_length(walls) < MIN_WALL_LENGTH_RATIO * max(mask.shape):
+        raise PermanentError(NOT_A_FLOOR_PLAN)
     dropped = {**result.dropped, "cap": max(0, len(walls) - MAX_WALLS)}
     if dropped["cap"]:
         walls = keep_longest(walls, MAX_WALLS)
@@ -152,6 +164,11 @@ def segment_page(
         },
     )
     return WallsStepOutput(artifacts=artifacts, used=used, dropped=dropped)
+
+
+def _total_length(walls: Sequence[WallSegment]) -> float:
+    """Tổng chiều dài tim tường (px)."""
+    return sum(float(np.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1])) for seg in walls)
 
 
 def _since(started: float) -> int:
