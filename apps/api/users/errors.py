@@ -11,6 +11,12 @@ USER_LAST_ADMIN = ERRORS.define("USER_LAST_ADMIN", 422)
 USER_EMAIL_TAKEN = ERRORS.define("USER_EMAIL_TAKEN", 422)
 """#44: email đã thuộc người `active` hay `disabled`; ném kèm `field="emails"`."""
 
+USER_INVITE_PENDING = ERRORS.define("USER_INVITE_PENDING", 409)
+"""#44: email thuộc người `pending` còn chờ chấp nhận; ném kèm `field="emails"`, không tạo lời mời, không gửi thư.
+
+Muốn gửi lại thì dùng #45 (`resend_invitation`): một thao tác rõ ý, tránh admin vô tình gửi trùng (G2-8).
+"""
+
 USER_NOT_PENDING = ERRORS.define("USER_NOT_PENDING", 422)
 """#45: gửi lại lời mời cho người không còn `pending`."""
 

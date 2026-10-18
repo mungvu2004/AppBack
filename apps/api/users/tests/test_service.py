@@ -37,14 +37,14 @@ def test_forbid_self_allows_another_target() -> None:
     WriteScope(actor_id="usr_a", target=_user("usr_b"), admins=("usr_a",)).forbid_self()
 
 
-def test_pending_or_taken_rejects_missing_and_non_pending() -> None:
-    """Đọc lại không thấy người, hay thấy người `active` → `USER_EMAIL_TAKEN`; `pending` → trả nguyên người đó."""
-    pending = _user("usr_p", status="pending")
-    assert service._pending_or_taken(pending) is pending
-    for found in (None, _user("usr_x")):
+def test_raise_lost_race_maps_status_to_code() -> None:
+    """Đọc lại: không thấy/`active` → `USER_EMAIL_TAKEN`; `pending` → `USER_INVITE_PENDING` (G2-8)."""
+    cases: list[tuple[User | None, str]] = [(None, "USER_EMAIL_TAKEN"), (_user("usr_x"), "USER_EMAIL_TAKEN")]
+    cases.append((_user("usr_p", status="pending"), "USER_INVITE_PENDING"))
+    for found, code in cases:
         with pytest.raises(AppError) as caught:
-            service._pending_or_taken(found)
-        assert caught.value.code.code == "USER_EMAIL_TAKEN"
+            service._raise_lost_race(found)
+        assert caught.value.code.code == code
 
 
 def test_settings_defaults_and_reset(monkeypatch: pytest.MonkeyPatch) -> None:

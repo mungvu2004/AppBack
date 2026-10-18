@@ -25,7 +25,7 @@ from packages.core.ids import is_id
 from packages.core.text import normalize_email
 from packages.db.models.access import OBJECT_LABEL_MAX
 from packages.db.models.auth import User
-from packages.db.models.projects import ProjectMembership
+from packages.db.models.projects import Project, ProjectMembership
 from packages.storage.port import ObjectStorage
 
 
@@ -129,3 +129,22 @@ async def remove_project_member(
     )
     await touch_project(db, project_id=project_id, clock=clock)
     return out
+
+
+async def require_editors_left(db: AsyncSession, user_id: str) -> None:
+    """#41 hạ vai / #42 vô hiệu: người này là người sửa cuối của một dự án còn sống → 422 `MEMBER_LAST_EDITOR`.
+
+    Người gọi gọi **trước** khi đổi vai/trạng thái. Mỗi dự án khoá tập người sửa bằng
+    `lock_editor_ids` (cùng khoá với N4, `project_id ASC`) nên lượt N4 gỡ song song phải chờ;
+    quyết định dùng lại `_require_not_last_editor`. Người không `active` không nằm trong tập
+    người sửa nên không bao giờ bị chặn.
+    """
+    stmt = (
+        select(ProjectMembership.project_id)
+        .join(Project, Project.id == ProjectMembership.project_id)
+        .where(ProjectMembership.user_id == user_id, Project.deleted_at.is_(None))
+        .order_by(ProjectMembership.project_id)
+    )
+    # ponytail: một lệnh khoá mỗi dự án (thao tác admin hiếm); gộp một câu nếu người dùng có hàng trăm dự án.
+    for project_id in (await db.execute(stmt)).scalars().all():
+        _require_not_last_editor(await lock_editor_ids(db, project_id), user_id)
