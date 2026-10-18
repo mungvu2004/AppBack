@@ -36,6 +36,7 @@ from apps.ml.runtime.error_codes import (
     MODEL_FORMAT_UNSUPPORTED,
     MODEL_NOT_FOUND,
     MODEL_VERSION_FAMILY_MISMATCH,
+    NOT_A_FLOOR_PLAN,
     PIPELINE_ARTIFACT_MISSING,
 )
 from packages.core import error_codes
@@ -49,6 +50,7 @@ __all__ = [
     "MODEL_FORMAT_UNSUPPORTED",
     "MODEL_NOT_FOUND",
     "MODEL_VERSION_FAMILY_MISMATCH",
+    "NOT_A_FLOOR_PLAN",
     "ORT_ERRORS",
     "PIPELINE_ARTIFACT_MISSING",
 ]

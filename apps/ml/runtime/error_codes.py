@@ -14,6 +14,7 @@ __all__ = [
     "MODEL_FORMAT_UNSUPPORTED",
     "MODEL_NOT_FOUND",
     "MODEL_VERSION_FAMILY_MISMATCH",
+    "NOT_A_FLOOR_PLAN",
     "PIPELINE_ARTIFACT_MISSING",
 ]
 
@@ -26,3 +27,5 @@ ML_DEVICE_UNAVAILABLE: Final = "ML_DEVICE_UNAVAILABLE"
 GPU_LOCK_LOST: Final = "GPU_LOCK_LOST"
 PIPELINE_ARTIFACT_MISSING: Final = "PIPELINE_ARTIFACT_MISSING"
 """Trang vào của bước không còn trong kho (lượt bị dọn giữa chừng) — B5-06c đánh hỏng lượt."""
+NOT_A_FLOOR_PLAN: Final = "NOT_A_FLOOR_PLAN"
+"""Model tường đã huấn luyện không thấy đủ tường: trang không phải bản vẽ mặt bằng (`walls/step.py`)."""

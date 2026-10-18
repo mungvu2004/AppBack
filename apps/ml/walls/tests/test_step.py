@@ -85,6 +85,24 @@ def test_segment_page_runs_onnx_when_the_model_is_pinned_to_a_version() -> None:
     assert mask.shape == (PAGE_H, PAGE_W)
 
 
+def test_segment_page_rejects_a_page_without_walls_on_the_onnx_branch() -> None:
+    """Model thật không thấy tường nào trên trang trắng → `NOT_A_FLOOR_PLAN`, không artifact rỗng."""
+    data = make_threshold_segformer()
+    ref, _ = storage_ref(data)
+    session = ort.InferenceSession(data, providers=["CPUExecutionProvider"])
+    blank = np.full_like(PLAN.pixels, 255)
+    with pytest.raises(PermanentError) as caught:
+        segment_page(blank, ref, backend="onnx", session=session)
+    assert caught.value.code == "NOT_A_FLOOR_PLAN"
+
+
+def test_segment_page_keeps_a_page_without_walls_on_the_fake_branch() -> None:
+    """Nhánh giả không kiểm "có phải bản vẽ": trang trắng vẫn ra `walls.json` rỗng."""
+    blank = np.full_like(PLAN.pixels, 255)
+    output = segment_page(blank, classic_ref(), backend="fake", session=None)
+    assert walls_of(output) == ()
+
+
 def test_segment_page_rejects_a_mask_of_another_size(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mặt nạ khác khổ ảnh là model sai hợp đồng → `MODEL_FORMAT_UNSUPPORTED`."""
     use_segmenter(monkeypatch, np.zeros((PAGE_H // 2, PAGE_W), dtype=np.bool_))
