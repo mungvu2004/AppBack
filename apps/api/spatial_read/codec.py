@@ -10,18 +10,20 @@ là số nguyên JSON, trường tuỳ chọn **vắng khoá** chứ không `nul
 là tài liệu hỏng. Đọc **không bao giờ tự sửa** — một tài liệu hỏng là lỗi phải thấy, không
 phải dữ liệu cần đoán lại.
 
-`axes` là `[]` ở v1 (hợp đồng [2]) dù mẫu A14 có bốn trục: FE chưa vẽ trục nào, và ghi
-trục vào jsonb bây giờ sẽ thành dữ liệu không ai đọc mà phải migrate về sau.
+`axes` và `origin` (gốc toạ độ, mm, tuỳ chọn) là dữ liệu màn Trục gửi qua #35 (G4b-17);
+tài liệu cũ không có khoá `origin` vẫn đọc được, nên không cần migration.
 """
 
 from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from packages.domain.spatial import Axis, Dimension, SpatialLayer, document_to_json, entity_ids
+from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer, document_to_json, entity_ids
 
 __all__ = [
     "DocumentCorruptError",
+    "DocumentEnvelope",
+    "decode_document",
     "document_from_json",
     "document_to_json",
     "entity_ids",
@@ -37,7 +39,7 @@ class DocumentCorruptError(Exception):
     """
 
 
-class _Envelope(BaseModel):
+class DocumentEnvelope(BaseModel):
     """Khung của cột `document`; `extra="forbid"` nên khoá lạ ở **mức ngoài** cũng là hỏng."""
 
     model_config = ConfigDict(extra="forbid")
@@ -45,12 +47,18 @@ class _Envelope(BaseModel):
     layer: SpatialLayer
     axes: tuple[Axis, ...]
     dimensions: tuple[Dimension, ...]
+    origin: Point | None = None
 
 
 def document_from_json(raw: Mapping[str, object]) -> tuple[SpatialLayer, tuple[Axis, ...], tuple[Dimension, ...]]:
     """Giải một cột `document`; bất kỳ lệch nào so với mô hình B3-01 → `DocumentCorruptError`."""
+    envelope = decode_document(raw)
+    return envelope.layer, envelope.axes, envelope.dimensions
+
+
+def decode_document(raw: Mapping[str, object]) -> DocumentEnvelope:
+    """Giải cả khung, kể cả `origin` (G4b-17); lệch mô hình → `DocumentCorruptError`."""
     try:
-        envelope = _Envelope.model_validate(raw)
+        return DocumentEnvelope.model_validate(raw)
     except ValidationError as error:
         raise DocumentCorruptError(str(error)) from error
-    return envelope.layer, envelope.axes, envelope.dimensions

@@ -27,7 +27,14 @@ from apps.api.spatial_read.assemble import effective_scale_source, level_out, sc
 from apps.api.spatial_read.documents import empty_document, load_document
 from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.pages import load_pages
-from apps.api.spatial_read.wire import FloorLayerDocumentOut, SpatialGraphDocumentOut, dimensions_out, layer_out
+from apps.api.spatial_read.wire import (
+    FloorLayerDocumentOut,
+    PointOut,
+    SpatialGraphDocumentOut,
+    axes_out,
+    dimensions_out,
+    layer_out,
+)
 from packages.core.error_codes import NOT_FOUND
 from packages.db.models.floors import FloorRow
 
@@ -82,6 +89,7 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         level=level_out(out, document, source),
         scale_status=scale_status(source),
         layer=layer_out(document.layer),
-        axes=[],
+        axes=axes_out(document.axes),
         dimensions=dimensions_out(document.dimensions),
+        origin=None if document.origin is None else PointOut.model_validate(document.origin.model_dump()),
     )

@@ -21,10 +21,10 @@ Module này nằm trong nhóm được nhập `fastapi` (B3-02 [2]: trừ `route
 from collections.abc import Sequence
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from apps.api.core.wire import WireDatetime, WireModel
-from packages.domain.spatial import Dimension, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, SpatialLayer
 
 Millimetres = int
 """Mọi toạ độ và kích thước hình học là **số nguyên** milimét (`S:domain/spatial/types.ts`)."""
@@ -141,7 +141,7 @@ class BuildingOut(_ReviewedOut):
 
 
 class AxisOut(_ReviewedOut):
-    """`AxisSchema` — trục định vị; v1 danh sách luôn rỗng nhưng hình dạng vẫn phải đúng."""
+    """`AxisSchema` — trục định vị đã lưu qua #35 (G4b-17)."""
 
     id: str
     level_id: str
@@ -218,6 +218,8 @@ class FloorLayerDocumentOut(WireModel):
     layer: SpatialLayerOut
     axes: list[AxisOut]
     dimensions: list[DimensionOut]
+    origin: PointOut | None = None
+    """Gốc toạ độ màn Trục (mm, G4b-17); vắng khi chưa đặt."""
 
 
 def layer_out(layer: SpatialLayer) -> SpatialLayerOut:
@@ -227,7 +229,14 @@ def layer_out(layer: SpatialLayer) -> SpatialLayerOut:
 
 def dimensions_out(dimensions: Sequence[Dimension]) -> list[DimensionOut]:
     """Kích thước miền → dây, cùng đường kiểm với `layer_out`."""
-    return [
-        DimensionOut.model_validate(dimension.model_dump(mode="json", by_alias=True, exclude_none=True))
-        for dimension in dimensions
-    ]
+    return [DimensionOut.model_validate(_dump(dimension)) for dimension in dimensions]
+
+
+def axes_out(axes: Sequence[Axis]) -> list[AxisOut]:
+    """Trục miền → dây (G4b-17), cùng đường kiểm với `layer_out`."""
+    return [AxisOut.model_validate(_dump(axis)) for axis in axes]
+
+
+def _dump(model: BaseModel) -> dict[str, object]:
+    """Dạng dây của một mô hình miền (camelCase, vắng khoá thay `null`)."""
+    return model.model_dump(mode="json", by_alias=True, exclude_none=True)

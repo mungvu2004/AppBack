@@ -4,8 +4,14 @@ from typing import Any
 
 import pytest
 
-from apps.api.spatial_read.codec import DocumentCorruptError, document_from_json, document_to_json, entity_ids
-from packages.domain.spatial import sample_building, sample_layer
+from apps.api.spatial_read.codec import (
+    DocumentCorruptError,
+    decode_document,
+    document_from_json,
+    document_to_json,
+    entity_ids,
+)
+from packages.domain.spatial import Point, sample_building, sample_layer
 from packages.testing.factories.spatial import sample_floor_dimensions, sample_floor_layer
 
 SAMPLE_ENTITY_COUNT = 99
@@ -31,10 +37,13 @@ def test_round_trip_keeps_every_sample_level(level_index: int) -> None:
     assert document_to_json(layer, axes, dimensions) == raw
 
 
-def test_document_to_json_drops_axes() -> None:
-    """`axes` được nhận nhưng v1 không ghi: khoá có mặt, giá trị rỗng (hợp đồng [2])."""
+def test_document_axes_and_origin_round_trip() -> None:
+    """G4b-17: trục và gốc toạ độ ghi vào jsonb rồi giải ra đúng; thiếu gốc thì **vắng khoá** `origin`."""
     graph = sample_building()
-    assert document_to_json(sample_layer(0), graph.axes, ())["axes"] == []
+    raw = document_to_json(sample_layer(0), graph.axes, (), Point(x=1200, y=-300))
+    decoded = decode_document(raw)
+    assert (decoded.axes, decoded.origin) == (tuple(graph.axes), Point(x=1200, y=-300))
+    assert "origin" not in document_to_json(sample_layer(0), graph.axes, ())
 
 
 def test_unknown_key_is_corrupt() -> None:

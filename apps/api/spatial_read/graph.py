@@ -28,6 +28,7 @@ from apps.api.spatial_read.wire import (
     LevelOut,
     SpatialGraphDocumentOut,
     SpatialGraphOut,
+    axes_out,
     dimensions_out,
     layer_out,
 )
@@ -81,7 +82,7 @@ async def spatial_graph(db: AsyncSession, project_id: str, *, app: object | None
         openings=[opening for layer in layers for opening in layer.openings],
         furniture=[item for layer in layers for item in layer.furniture],
         rooms=[room for layer in layers for room in layer.rooms],
-        axes=[],
+        axes=[item for doc in docs for item in axes_out(doc.axes)],
         dimensions=[item for doc in docs for item in dimensions_out(doc.dimensions)],
         notes=[],
     )
