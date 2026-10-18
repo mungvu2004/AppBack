@@ -231,7 +231,7 @@ Mặc định của `BE`/`FE`/`WEB_SHA` trỏ worktree và SHA cũ, có thể đ
 | `seed` | `create-admin` (tài khoản sinh vào `.secrets.env` cạnh script, không in), xuất `drawing.png` = `render_plan(7)`, nạp model thứ hai qua N26, chờ eval `completed` (≤ 5') | `chuoi.sh:11-13,39-68` |
 | `run` | `E2E_FULLSTACK_BASE_URL=$BASE E2E_DRAWING_PNG=… pnpm e2e:fullstack` trong `$FE` | `chuoi.sh:69-72` |
 
-Chuỗi chạy 1 worker, không retry, báo cáo ở `playwright-report/fullstack` (`playwright.fullstack.config.ts:17-25`).
+Chuỗi chạy 1 worker, không retry, báo cáo ở `playwright-report/fullstack` (`AppFront/e2e/fullstack/playwright.config.ts`).
 Trace/báo cáo chứa cookie phiên — không đính vào báo cáo (`e2e/fullstack/README.md:147`). Chạy bằng Git Bash:
 `>` của PowerShell 5.1 ghi UTF-16, làm hỏng PNG/ONNX (`e2e/fullstack/README.md:39`).
 
