@@ -92,6 +92,7 @@
 | N8 | `POST /api/auth/password-reset` | `auth_request_password_reset` | `auth.ts` | C | — | — | B1-03 | F-09a |
 | N9 | `POST /api/auth/password-reset/confirm` | `auth_confirm_password_reset` | `auth.ts` | C | — | — | B1-03 | F-09a |
 | N10 | `POST /api/auth/invitations/accept` | `auth_accept_invitation` | `auth.ts` | C | — | — | B1-03 | F-09a |
+| N10b | `POST /api/auth/invitations/preview` | `auth_preview_invitation` | `auth.ts` | C | — | — | UIFIX-B2 | F-09a |
 | N11 | `GET /api/me` | `me_read_profile` | `me.ts` | Đ\* | — | — | B1-04 | F-09b |
 | N12 | `PATCH /api/me` | `me_update_profile` | `me.ts` | G\* | — | — | B1-04 | F-09b |
 | N13 | `POST /api/me/password` | `me_change_password` | `me.ts` | G\* | — | — | B1-04 | F-09b |

@@ -14,6 +14,8 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.access.activity import record_activity
+from apps.api.access.kinds import ActivityKind
 from apps.api.auth_recovery import jobs, tokens
 from apps.api.auth_recovery.jobs import (
     MAIL_REJECTED,
@@ -94,6 +96,37 @@ async def test_send_token_mail__J01(
         refreshed = await check.get(OneTimeToken, row.id)
     assert refreshed is not None
     assert refreshed.sent_at is not None
+
+
+async def test_send_token_mail_invite_names_inviter_and_role(
+    db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock, memory_mailer: MemoryMailer
+) -> None:
+    """Thư mời nêu người mời gần nhất (nhật ký `user.invite_resend`) và vai người nhận (G2-11)."""
+    async with db_sessionmaker() as setup:
+        first = await make_user(setup, name="Ngô An", role="admin")
+        latest = await make_user(setup, name="Lê Minh", role="admin")
+        invitee = await make_user(setup, status="pending", password=None, role="engineer")
+        no_log = await make_user(setup, status="pending", password=None, role="viewer")
+        for actor, kind in ((first, ActivityKind.USER_INVITE), (latest, ActivityKind.USER_INVITE_RESEND)):
+            await record_activity(
+                setup,
+                actor_id=actor.id,
+                kind=kind,
+                object_code=invitee.id,
+                object_label=invitee.email,
+                clock=fake_clock,
+            )
+            fake_clock.advance(timedelta(seconds=1))
+        await setup.commit()
+        rows = [
+            await seed_token(setup, user_id=user.id, purpose="invite", clock=fake_clock) for user in (invitee, no_log)
+        ]
+
+    assert await run_send_token_mail(db_sessionmaker, fake_clock, [row.id for row, _ in rows]) == 2
+
+    texts = {message.to: message.text for message in memory_mailer.sent}
+    assert "Lê Minh đã mời bạn tham gia AppFront với vai Kỹ sư." in texts[invitee.email]
+    assert "Bạn được mời tham gia AppFront với vai Người xem." in texts[no_log.email]
 
 
 async def test_send_token_mail__J06(

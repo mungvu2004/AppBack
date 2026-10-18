@@ -15,13 +15,16 @@ from typing import Any, Final, cast
 
 from sqlalchemy import CursorResult, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
+from apps.api.access.kinds import ActivityKind
 from apps.api.auth_recovery.messages import build_token_mail
 from apps.api.auth_recovery.settings import get_recovery_settings
 from apps.api.auth_recovery.tokens import SEND_TOKEN_MAIL_TASK, active_clause, derive_token, hash_token
 from packages.core.clock import Clock, SystemClock
 from packages.core.keys import verification_keys
 from packages.db.engine import worker_sessionmaker
+from packages.db.models.access import ActivityLog
 from packages.db.models.auth import User
 from packages.db.models.auth_recovery import OneTimeToken, TokenPurpose
 from packages.mail.sender import Mailer, MailRejectedError, MailTransientError, create_mailer
@@ -46,6 +49,29 @@ PURGE_MAX_BATCHES: Final = 100
 
 TOKEN_KEY_ROTATED: Final = "TOKEN_KEY_ROTATED"  # noqa: S105 — mã lỗi, không phải bí mật
 MAIL_REJECTED: Final = "MAIL_REJECTED"
+
+
+def _inviter_name() -> Any:
+    """Tên người mời gần nhất (nhật ký `user.invite`/`user.invite_resend` của người nhận), `NULL` nếu không có.
+
+    Nhật ký ghi cùng giao dịch với token nên đã commit khi thư gửi (K17). Người mời đã xoá mềm → `NULL`.
+    """
+    # ponytail: activity_logs không có chỉ mục object_code; thêm ix(object_code, at) nếu bảng lớn làm thư chậm
+    actor = aliased(User)
+    return (
+        select(actor.name)
+        .join(ActivityLog, ActivityLog.actor_id == actor.id)
+        .where(
+            ActivityLog.object_code == User.id,
+            ActivityLog.kind.in_([ActivityKind.USER_INVITE, ActivityKind.USER_INVITE_RESEND]),
+            actor.deleted_at.is_(None),
+        )
+        .order_by(ActivityLog.at.desc(), ActivityLog.id.desc())
+        .limit(1)
+        .correlate(User)
+        .scalar_subquery()
+        .label("inviter")
+    )
 
 
 def _resolve_plain_token(row: Any, keys: tuple[bytes, ...]) -> str | None:
@@ -136,7 +162,13 @@ async def _send_one(
         _log_isolated_failure(token_id=row.id, code=TOKEN_KEY_ROTATED, smtp_code=None)
         return TOKEN_KEY_ROTATED
     message = build_token_mail(
-        purpose=cast("TokenPurpose", row.purpose), to=row.email, name=row.name, token=plain, expires_at=row.expires_at
+        purpose=cast("TokenPurpose", row.purpose),
+        to=row.email,
+        name=row.name,
+        token=plain,
+        expires_at=row.expires_at,
+        role=row.role,
+        inviter=row.inviter,
     )
     try:
         mailer.send(message)
@@ -172,6 +204,8 @@ async def run_send_token_mail(
                 OneTimeToken.expires_at,
                 User.email,
                 User.name,
+                User.role,
+                _inviter_name(),
             )
             .join(User, User.id == OneTimeToken.user_id)
             .where(
