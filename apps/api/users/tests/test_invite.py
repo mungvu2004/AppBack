@@ -205,7 +205,7 @@ async def test_users_invite_users__C16(
     assert (response.status_code, response.json()["code"], response.json()["field"]) == (
         409,
         "USER_INVITE_PENDING",
-        "emails",
+        "emails.0",
     )
     stored = await reload(db_session, pending.id)
     assert (stored.role, stored.token_version) == ("viewer", 0)
@@ -225,8 +225,13 @@ async def test_users_invite_users_pending_in_batch_fails_whole_batch(
     batches = capture_mail_batches(monkeypatch)
     pending_only = await send(api_client, admin, "POST", INVITE, json=_body(["moi@example.com", "cho@example.com"]))
     both = await send(api_client, admin, "POST", INVITE, json=_body(["cho@example.com", "da-co@example.com"]))
-    assert (pending_only.status_code, pending_only.json()["code"]) == (409, "USER_INVITE_PENDING")
-    assert (both.status_code, both.json()["code"]) == (422, "USER_EMAIL_TAKEN")
+    # `field` chỉ đúng email vướng theo thứ tự đầu vào, để màn nêu tên email đó.
+    assert (pending_only.status_code, pending_only.json()["code"], pending_only.json()["field"]) == (
+        409,
+        "USER_INVITE_PENDING",
+        "emails.1",
+    )
+    assert (both.status_code, both.json()["code"], both.json()["field"]) == (422, "USER_EMAIL_TAKEN", "emails.1")
     assert await _users_by_email(db_session, "moi@example.com") == []
     assert batches == []
 
@@ -267,7 +272,7 @@ async def test_users_invite_users_taken_email_fails_whole_batch(
     assert (response.status_code, response.json()["code"], response.json()["field"]) == (
         422,
         "USER_EMAIL_TAKEN",
-        "emails",
+        "emails.1",
     )
     assert await _users_by_email(db_session, "moi1@example.com", "moi2@example.com") == []
     assert batches == []

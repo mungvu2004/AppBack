@@ -29,7 +29,19 @@ LIST_OP: Final = "notifications_list"
 NEXT_CURSOR_HEADER: Final = "X-Next-Cursor"
 
 
-@router.get("/notifications")
+@router.get(
+    "/notifications",
+    responses={
+        200: {
+            "headers": {
+                NEXT_CURSOR_HEADER: {
+                    "description": "Cursor cho lượt gọi sau; vắng khi không còn thông báo cũ hơn.",
+                    "schema": {"type": "string"},
+                }
+            }
+        }
+    },
+)
 async def notifications_list(
     principal: CurrentPrincipal,
     db: DbSession,

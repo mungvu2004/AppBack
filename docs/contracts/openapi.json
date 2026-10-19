@@ -7453,7 +7453,15 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Next-Cursor": {
+                "description": "Cursor cho lượt gọi sau; vắng khi không còn thông báo cũ hơn.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {

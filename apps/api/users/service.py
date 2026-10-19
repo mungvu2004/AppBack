@@ -12,7 +12,7 @@ Mọi thư đi qua `issue_token` (sau commit, K17); module này không chạm SM
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from typing import Final, NoReturn, cast
@@ -123,16 +123,25 @@ def _require_batch_size(emails: Sequence[str]) -> None:
         raise VALIDATION.error(field="emails")
 
 
-def _require_none_taken(existing: dict[str, User]) -> None:
+def _require_none_taken(existing: dict[str, User], emails: Sequence[str] = ()) -> None:
     """#44: email đã có người → lỗi; `active`/`disabled` (422 `USER_EMAIL_TAKEN`) xét trước `pending` (409).
 
     Người `pending` còn chờ → 409 `USER_INVITE_PENDING`: không tạo lời mời thứ hai, không gửi thư
-    trùng (G2-8); gửi lại là việc của #45.
+    trùng (G2-8); gửi lại là việc của #45. `field` là `emails.<i>` của email đầu tiên vướng trong
+    lô (thứ tự đầu vào) để màn chỉ ra đúng email; không biết lô thì `emails`.
     """
+
+    def field_of(blocked: Callable[[User], bool]) -> str:
+        for index, email in enumerate(emails):
+            user = existing.get(normalize_email(email))
+            if user is not None and blocked(user):
+                return f"emails.{index}"
+        return "emails"
+
     if any(user.status != "pending" for user in existing.values()):
-        raise USER_EMAIL_TAKEN.error(field="emails")
+        raise USER_EMAIL_TAKEN.error(field=field_of(lambda user: user.status != "pending"))
     if existing:
-        raise USER_INVITE_PENDING.error(field="emails")
+        raise USER_INVITE_PENDING.error(field=field_of(lambda _user: True))
 
 
 def _raise_lost_race(found: User | None) -> NoReturn:
@@ -419,7 +428,7 @@ async def invite_users(
         first_seen.setdefault(normalize_email(email), email)  # bỏ trùng theo K20, giữ thứ tự đầu
     keys = {email: key for key, email in first_seen.items()}
     existing = await _lock_by_emails(db, list(keys.values()))
-    _require_none_taken(existing)
+    _require_none_taken(existing, emails)
     invited: dict[str, User] = {}
     for email, key in sorted(keys.items(), key=lambda pair: pair[1]):
         invited[key] = await _invite_one(db, actor_id=actor_id, email=email, key=key, role=role, clock=clock)
