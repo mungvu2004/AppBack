@@ -175,7 +175,9 @@ async def list_notifications(
         .limit(limit or get_notifications_settings().notifications_list_max)
     )
     if after is not None:
-        stmt = stmt.where(tuple_(NotificationRow.created_at, NotificationRow.id) < tuple_(literal(after[0]), literal(after[1])))
+        stmt = stmt.where(
+            tuple_(NotificationRow.created_at, NotificationRow.id) < tuple_(literal(after[0]), literal(after[1]))
+        )
     return list((await db.execute(stmt)).scalars())
 
 

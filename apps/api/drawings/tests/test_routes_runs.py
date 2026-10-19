@@ -61,7 +61,9 @@ async def test_drawings_list_pipeline_runs__C01(
     failing = await _run(db_session, local_storage, scene, fake_clock, floor=upper)
     await record_step(db_session, run_id=failing.id, step=FIRST_STEP, status="running", clock=fake_clock)
     await _tick(db_session, fake_clock)
-    await record_step(db_session, run_id=failing.id, step=FIRST_STEP, status="failed", clock=fake_clock, error_code="BOOM")
+    await record_step(
+        db_session, run_id=failing.id, step=FIRST_STEP, status="failed", clock=fake_clock, error_code="BOOM"
+    )
     await _tick(db_session, fake_clock)
 
     response = await api_client.get(runs_path(scene.project.id), headers=headers_of(scene.user))
@@ -214,5 +216,7 @@ async def test_drawings_list_pipeline_runs__C15_limit_out_of_range(
     """`limit` ngoài `1…200` → 422 `VALIDATION`."""
     scene = await make_scene(db_session)
     await _tick(db_session, fake_clock)
-    response = await api_client.get(runs_path(scene.project.id), headers=headers_of(scene.user), params={"limit": limit})
+    response = await api_client.get(
+        runs_path(scene.project.id), headers=headers_of(scene.user), params={"limit": limit}
+    )
     assert response.status_code == 422

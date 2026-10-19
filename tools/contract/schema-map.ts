@@ -101,9 +101,11 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   settings_read_settings: object('@/api/schemas/projectSettings', 'ProjectSettingsSchema'), // N5
   settings_replace_settings: object('@/api/schemas/projectSettings', 'ProjectSettingsSchema'), // N6
   drawings_list_latest_uploads: object('@/api/schemas/uploads', 'LatestFloorUploadPageSchema'), // N7
+  drawings_list_pipeline_runs: object('@/api/schemas/pipelineRuns', 'PipelineRunPageSchema'), // N7b (UIFIX-B7)
   auth_request_password_reset: EMPTY, // N8 (luôn 204)
   auth_confirm_password_reset: EMPTY, // N9 (204)
   auth_accept_invitation: EMPTY, // N10 (204 + cookie)
+  auth_preview_invitation: object('@/api/schemas/auth', 'InvitationPreviewSchema'), // N10b (UIFIX-B2)
   me_read_profile: object('@/api/schemas/me', 'MeSchema'), // N11
   me_update_profile: object('@/api/schemas/me', 'MeSchema'), // N12
   me_change_password: EMPTY, // N13 (204)
