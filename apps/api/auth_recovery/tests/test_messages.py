@@ -28,12 +28,41 @@ def test_build_token_mail_invite_link_and_subject() -> None:
     message = build_token_mail(purpose="invite", to="a@b.test", name="Nguyễn Văn A", token=TOKEN, expires_at=EXPIRES_AT)
 
     assert message.to == "a@b.test"
-    assert message.subject == "Lời mời tham gia AppBack"
+    assert message.subject == "Lời mời tham gia AppFront"
     assert "Nguyễn Văn A" not in message.subject
     link = f"{PUBLIC_BASE_URL}/login/invitation#token={TOKEN}"
     assert link in message.text
     assert link in message.html
-    assert "03:04 02/01/2026" in message.text
+    assert "10:04 ngày 02/01/2026 (giờ Việt Nam)" in message.text  # 03:04 UTC + 7
+    assert "UTC" not in message.text
+    assert "AppBack" not in message.text + message.html
+    assert "Bạn được mời tham gia AppFront." in message.text
+    assert "liên kết trong thư cũ không còn dùng được" in message.text
+
+
+def test_build_token_mail_invite_names_role_and_inviter() -> None:
+    """Thư mời nêu người mời và vai (G2-11); tên người mời escape trong html."""
+    message = build_token_mail(
+        purpose="invite",
+        to="a@b.test",
+        name="a",
+        token=TOKEN,
+        expires_at=EXPIRES_AT,
+        role="engineer",
+        inviter="Lê <Minh>",
+    )
+
+    assert "Lê <Minh> đã mời bạn tham gia AppFront với vai Kỹ sư." in message.text
+    assert "Lê &lt;Minh&gt; đã mời bạn" in message.html
+
+
+def test_build_token_mail_invite_role_without_inviter() -> None:
+    """Không biết người mời (đã xoá) → câu vô danh, vẫn nêu vai."""
+    message = build_token_mail(
+        purpose="invite", to="a@b.test", name="a", token=TOKEN, expires_at=EXPIRES_AT, role="viewer"
+    )
+
+    assert "Bạn được mời tham gia AppFront với vai Người xem." in message.text
 
 
 def test_build_token_mail_password_reset_link() -> None:
@@ -42,7 +71,27 @@ def test_build_token_mail_password_reset_link() -> None:
     link = f"{PUBLIC_BASE_URL}/login/reset-password#token={TOKEN}"
     assert link in message.text
     assert link in message.html
-    assert message.subject == "Yêu cầu đặt lại mật khẩu AppBack"
+    assert message.subject == "Yêu cầu đặt lại mật khẩu AppFront"
+    assert "Có yêu cầu đặt lại mật khẩu cho tài khoản AppFront của bạn." in message.text
+    assert "Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua thư này" in message.text
+    assert "10:04 ngày 02/01/2026 (giờ Việt Nam)" in message.text
+    assert "đã mời bạn" not in message.text
+
+
+def test_build_token_mail_password_reset_ignores_invite_fields() -> None:
+    """`role`/`inviter` truyền nhầm vào thư đặt lại mật khẩu không lọt vào thư."""
+    message = build_token_mail(
+        purpose="password_reset",
+        to="a@b.test",
+        name="A",
+        token=TOKEN,
+        expires_at=EXPIRES_AT,
+        role="admin",
+        inviter="X",
+    )
+
+    assert "Quản trị viên" not in message.text
+    assert "X đã mời" not in message.text
 
 
 def test_build_token_mail_escapes_name_in_html_only() -> None:

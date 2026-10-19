@@ -89,9 +89,11 @@
 | N5 | `GET /api/projects/{project_id}/settings` | `settings_read_settings` | `projectSettings.ts` | Đ | thành viên | — | B2-02 | F-07 |
 | N6 | `PUT /api/projects/{project_id}/settings` | `settings_replace_settings` | `projectSettings.ts` | GV | `project.settings.edit` | có | B2-02 | F-07 |
 | N7 | `GET /api/projects/{project_id}/drawings/uploads/latest` | `drawings_list_latest_uploads` | `uploads.ts` | Đ | thành viên | — | B2-04 | F-05b |
+| N7b | `GET /api/projects/{project_id}/pipeline-runs` | `drawings_list_pipeline_runs` | `pipelineRuns.ts` | Đ | thành viên | — | UIFIX-B7 | F-05b |
 | N8 | `POST /api/auth/password-reset` | `auth_request_password_reset` | `auth.ts` | C | — | — | B1-03 | F-09a |
 | N9 | `POST /api/auth/password-reset/confirm` | `auth_confirm_password_reset` | `auth.ts` | C | — | — | B1-03 | F-09a |
 | N10 | `POST /api/auth/invitations/accept` | `auth_accept_invitation` | `auth.ts` | C | — | — | B1-03 | F-09a |
+| N10b | `POST /api/auth/invitations/preview` | `auth_preview_invitation` | `auth.ts` | C | — | — | UIFIX-B2 | F-09a |
 | N11 | `GET /api/me` | `me_read_profile` | `me.ts` | Đ\* | — | — | B1-04 | F-09b |
 | N12 | `PATCH /api/me` | `me_update_profile` | `me.ts` | G\* | — | — | B1-04 | F-09b |
 | N13 | `POST /api/me/password` | `me_change_password` | `me.ts` | G\* | — | — | B1-04 | F-09b |

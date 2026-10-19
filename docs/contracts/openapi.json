@@ -153,9 +153,68 @@
         "title": "AdminUserOut",
         "type": "object"
       },
+      "Axis": {
+        "additionalProperties": false,
+        "description": "Trục định vị của màn Trục; #35 ghi, N15/N16 trả lại (G4b-17).",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "line": {
+            "$ref": "#/components/schemas/Segment"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "label",
+          "direction",
+          "line"
+        ],
+        "title": "Axis",
+        "type": "object"
+      },
       "AxisOut": {
         "additionalProperties": false,
-        "description": "`AxisSchema` — trục định vị; v1 danh sách luôn rỗng nhưng hình dạng vẫn phải đúng.",
+        "description": "`AxisSchema` — trục định vị đã lưu qua #35 (G4b-17).",
         "properties": {
           "confidence": {
             "maximum": 1.0,
@@ -484,8 +543,8 @@
             "type": "string"
           },
           "epochs": {
-            "maximum": 300.0,
-            "minimum": 1.0,
+            "ge": 1,
+            "le": 300,
             "title": "Epochs",
             "type": "integer"
           },
@@ -673,6 +732,34 @@
           "items"
         ],
         "title": "CursorPage[ModelVersionOut]",
+        "type": "object"
+      },
+      "CursorPage_PipelineRunOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineRunOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[PipelineRunOut]",
         "type": "object"
       },
       "CursorPage_ProjectSummaryOut_": {
@@ -1353,6 +1440,16 @@
           "level": {
             "$ref": "#/components/schemas/LevelOut"
           },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PointOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "revision": {
             "minimum": 0.0,
             "title": "Revision",
@@ -1383,8 +1480,22 @@
       },
       "FloorLayerWriteBodySchema": {
         "additionalProperties": false,
-        "description": "`body` của #35: lớp, tỉ lệ, hay cả hai — nhưng không được rỗng (FE `refine` ≥ 1 khoá).",
+        "description": "`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).\n\n`axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).",
         "properties": {
+          "axes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Axis"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axes"
+          },
           "dimensions": {
             "anyOf": [
               {
@@ -1403,6 +1514,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SpatialLayer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Point"
               },
               {
                 "type": "null"
@@ -2166,6 +2287,65 @@
           "sizeBytes"
         ],
         "title": "InitUploadBody",
+        "type": "object"
+      },
+      "InvitationPreviewBody": {
+        "additionalProperties": false,
+        "description": "Thân xem trước lời mời: `{token}` — token đi trong thân, không lên URL/log truy cập (K11).",
+        "properties": {
+          "token": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "InvitationPreviewBody",
+        "type": "object"
+      },
+      "InvitationPreviewOut": {
+        "additionalProperties": false,
+        "description": "Lời mời còn dùng được: đủ để màn nhận lời mời nói \"mời ai, vai gì, ai mời, đến bao giờ\".",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "inviterName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitername"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "status": {
+            "const": "valid",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "email",
+          "role",
+          "expiresAt"
+        ],
+        "title": "InvitationPreviewOut",
         "type": "object"
       },
       "InviteBody": {
@@ -3335,6 +3515,115 @@
           "email"
         ],
         "title": "PasswordResetRequestBody",
+        "type": "object"
+      },
+      "PipelineRunOut": {
+        "additionalProperties": false,
+        "description": "Mục N7b: một lượt chạy pipeline của một tầng (màn Nhật ký lượt xử lý, UIFIX-B7).\n\n`step` + `progressPercent` cùng nghĩa với `Progress` (BE-BIND §4): FE tự dựng các giai\nđoạn từ chúng. `startedAt`/`endedAt`/`errorCode`/`supersededBy` vắng khoá khi chưa có (W2).\nLượt `failed` **không** có `endedAt` (K33): giờ dừng của nó là `updatedAt`.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endedat"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "floorId": {
+            "title": "Floorid",
+            "type": "string"
+          },
+          "floorName": {
+            "title": "Floorname",
+            "type": "string"
+          },
+          "progressPercent": {
+            "title": "Progresspercent",
+            "type": "integer"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededby"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "uploadId": {
+            "title": "Uploadid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "uploadId",
+          "floorId",
+          "floorName",
+          "status",
+          "step",
+          "progressPercent",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "PipelineRunOut",
         "type": "object"
       },
       "Point": {
@@ -6401,6 +6690,7 @@
             "required": false,
             "schema": {
               "default": -1,
+              "maximum": 2147483647,
               "minimum": -1,
               "title": "Since",
               "type": "integer"
@@ -6467,6 +6757,7 @@
             "required": false,
             "schema": {
               "default": -1,
+              "maximum": 2147483647,
               "minimum": -1,
               "title": "Since",
               "type": "integer"
@@ -6543,6 +6834,48 @@
           }
         },
         "summary": "Auth Accept Invitation",
+        "tags": [
+          "auth-recovery"
+        ]
+      }
+    },
+    "/api/auth/invitations/preview": {
+      "post": {
+        "description": "Xem trước lời mời trước khi điền form (G2-9, G2-10); chỉ đọc, không tiêu token.\n\nBa mã 422 tách \"link sai\" / \"đã dùng\" / \"hết hạn hoặc đã gửi lại\" (G1-10). Chỉ trả email,\nvai, tên người mời, hạn — không id, không trạng thái nội bộ.",
+        "operationId": "auth_preview_invitation_api_auth_invitations_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationPreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Preview Invitation",
         "tags": [
           "auth-recovery"
         ]
@@ -7069,8 +7402,44 @@
     },
     "/api/notifications": {
       "get": {
-        "description": "#19 — mảng trần các thông báo còn hiện của người gọi, mới nhất trước.",
+        "description": "#19 — mảng trần các thông báo còn hiện của người gọi, mới nhất trước.\n\nKhông tham số → y như cũ (tối đa `NOTIFICATIONS_LIST_MAX`). \"Xem cũ hơn\" (UIFIX-B7): còn dòng cũ hơn thì\nheader `X-Next-Cursor` mang cursor cho lượt gọi sau; thân vẫn là mảng trần để FE cũ không vỡ.",
         "operationId": "notifications_list_api_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7084,7 +7453,25 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Next-Cursor": {
+                "description": "Cursor cho lượt gọi sau; vắng khi không còn thông báo cũ hơn.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Notifications List",
@@ -8531,6 +8918,77 @@
         "summary": "Members Remove Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/pipeline-runs": {
+      "get": {
+        "description": "N7b — các lượt chạy pipeline của dự án, mới nhất trước (thành viên đọc được).",
+        "operationId": "drawings_list_pipeline_runs_api_projects__project_id__pipeline_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_PipelineRunOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings List Pipeline Runs",
+        "tags": [
+          "drawings"
         ]
       }
     },

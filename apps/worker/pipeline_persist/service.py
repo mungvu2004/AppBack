@@ -169,7 +169,7 @@ async def _settle(db: AsyncSession, ctx: PersistContext, clock: Clock, *, replay
             project_id=ctx.project_id,
             project_name=ctx.project_name,
             object_label=ctx.floor_name,
-            message=ai_completed(),
+            message=ai_completed(ctx.project_name),
             dedupe_key=f"aiCompleted:{ctx.run_id}:{ctx.uploader_id}",
             clock=clock,
             floor_level_id=ctx.level_id,

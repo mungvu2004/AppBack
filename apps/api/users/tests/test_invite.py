@@ -193,21 +193,47 @@ async def test_users_invite_users_rejects_non_wire_emails(
 async def test_users_invite_users__C16(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, fake_clock: FakeClock
 ) -> None:
-    """Email khác hoa thường trùng người `pending` có sẵn: giữ người đó, đổi vai, thay token, thư mới khác token."""
+    """Email khác hoa thường trùng người `pending` còn chờ → 409 `USER_INVITE_PENDING` (G2-8).
+
+    Không đổi vai, không token mới, không thư; lời mời cũ vẫn còn hiệu lực.
+    """
     admin = await make_admin(db_session)
     pending = await make_user(db_session, status="pending", password=None, email="Mai.Lan@example.com", role="viewer")
-    old, _ = await seed_token(db_session, user_id=pending.id, purpose="invite", clock=fake_clock)
+    await seed_token(db_session, user_id=pending.id, purpose="invite", clock=fake_clock)
     batches = capture_mail_batches(monkeypatch)
     response = await send(api_client, admin, "POST", INVITE, json=_body(["mai.lan@EXAMPLE.com"], "engineer"))
-    assert response.status_code == 201
-    assert response.json()[0]["id"] == pending.id
+    assert (response.status_code, response.json()["code"], response.json()["field"]) == (
+        409,
+        "USER_INVITE_PENDING",
+        "emails.0",
+    )
     stored = await reload(db_session, pending.id)
-    assert (stored.role, stored.token_version) == ("engineer", 1)
+    assert (stored.role, stored.token_version) == ("viewer", 0)
     assert len(await _users_by_email(db_session, "MAI.LAN@example.com")) == 1
-    assert await count_tokens(db_session, pending.id) == 2
+    assert await count_tokens(db_session, pending.id) == 1
     assert await count_tokens(db_session, pending.id, live_only=True) == 1
-    assert len(batches) == 1
-    assert old.id not in batches[0]
+    assert batches == []
+
+
+async def test_users_invite_users_pending_in_batch_fails_whole_batch(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lô có một email đang chờ → 409, không tạo ai khác, không thư; lô có cả email đã `active` → 422 xét trước."""
+    admin = await make_admin(db_session)
+    await make_user(db_session, status="pending", password=None, email="cho@example.com")
+    await make_user(db_session, email="da-co@example.com")
+    batches = capture_mail_batches(monkeypatch)
+    pending_only = await send(api_client, admin, "POST", INVITE, json=_body(["moi@example.com", "cho@example.com"]))
+    both = await send(api_client, admin, "POST", INVITE, json=_body(["cho@example.com", "da-co@example.com"]))
+    # `field` chỉ đúng email vướng theo thứ tự đầu vào, để màn nêu tên email đó.
+    assert (pending_only.status_code, pending_only.json()["code"], pending_only.json()["field"]) == (
+        409,
+        "USER_INVITE_PENDING",
+        "emails.1",
+    )
+    assert (both.status_code, both.json()["code"], both.json()["field"]) == (422, "USER_EMAIL_TAKEN", "emails.1")
+    assert await _users_by_email(db_session, "moi@example.com") == []
+    assert batches == []
 
 
 async def test_users_invite_users_dedupes_by_normalized_email(
@@ -246,7 +272,7 @@ async def test_users_invite_users_taken_email_fails_whole_batch(
     assert (response.status_code, response.json()["code"], response.json()["field"]) == (
         422,
         "USER_EMAIL_TAKEN",
-        "emails",
+        "emails.1",
     )
     assert await _users_by_email(db_session, "moi1@example.com", "moi2@example.com") == []
     assert batches == []
@@ -280,7 +306,7 @@ async def test_users_invite_users_actor_demoted_in_db_is_forbidden(
 async def test_users_invite_users_parallel_batches_in_opposite_order(
     api_client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Hai lô `[a,b]` và `[b,a]` song song từ hai admin: cả hai 201 (không 503, không 500), mỗi email đúng một người.
+    """Hai lô `[a,b]` và `[b,a]` song song từ hai admin: một 201, lô sau 409 (không 503/500), mỗi email một người.
 
     Catalog: B08U-G-055.
     """
@@ -290,15 +316,14 @@ async def test_users_invite_users_parallel_batches_in_opposite_order(
         send(api_client, first, "POST", INVITE, json=_body(forward)),
         send(api_client, second, "POST", INVITE, json=_body(backward)),
     )
-    assert [r.status_code for r in responses] == [201, 201]
+    assert sorted(r.status_code for r in responses) == [201, 409]
     assert len(await _users_by_email(db_session, *forward)) == 2
-    assert {row["id"] for row in responses[0].json()} == {row["id"] for row in responses[1].json()}
 
 
 async def test_users_invite_users_lost_race_reuses_pending(
     api_client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Thua tranh chấp `uq_users_email`: `ON CONFLICT` bỏ dòng, đọc lại thấy người `pending` → dùng lại, 201.
+    """Thua tranh chấp `uq_users_email`: `ON CONFLICT` bỏ dòng, đọc lại thấy người `pending` → 409, không 500.
 
     Catalog: B08U-G-056.
     """
@@ -306,7 +331,8 @@ async def test_users_invite_users_lost_race_reuses_pending(
     winner = await make_user(db_session, status="pending", password=None, email="thang@example.com")
     _stale_first_lookup(monkeypatch)
     response = await send(api_client, admin, "POST", INVITE, json=_body(["thang@example.com"]))
-    assert (response.status_code, response.json()[0]["id"]) == (201, winner.id)
+    assert (response.status_code, response.json()["code"]) == (409, "USER_INVITE_PENDING")
+    assert [user.id for user in await _users_by_email(db_session, "thang@example.com")] == [winner.id]
 
 
 async def test_users_invite_users_lost_race_to_active_is_taken(

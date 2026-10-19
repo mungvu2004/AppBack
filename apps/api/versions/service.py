@@ -288,7 +288,9 @@ async def _apply_restore(
         db,
         floor_pk=version.floor_pk,
         base_revision=base_version,
-        body=LayerWrite(layer=layer, scale_mm_per_px=None, dimensions=dimensions),
+        body=LayerWrite(
+            layer=layer, scale_mm_per_px=None, dimensions=dimensions, axes=decoded.axes, origin=decoded.origin
+        ),
         actor_id=actor_id,
         actor_name=actor_name,
         clock=clock,

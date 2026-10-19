@@ -47,11 +47,13 @@ from packages.db.models.spatial import FloorChangeLogRow, FloorDocumentRow
 from packages.domain.scale import RescaleError, rescale_dimensions, rescale_unreviewed
 from packages.domain.spatial import (
     DELETED,
+    Axis,
     ChangeEntityType,
     Dimension,
     FieldChange,
     Furniture,
     Opening,
+    Point,
     Room,
     SpatialLayer,
     Wall,
@@ -121,11 +123,16 @@ class MergeOutcome(Protocol):
 
 @dataclass(frozen=True)
 class LayerWrite:
-    """Thân một lượt ghi. `dimensions`: thay nguyên danh sách (người gửi qua #35, hay N19/pipeline)."""
+    """Thân một lượt ghi. `dimensions`/`axes`: thay nguyên danh sách; `None` = giữ như cũ.
+
+    `axes` và `origin` (gốc toạ độ mm) là dữ liệu màn Trục (G4b-17), chỉ người gửi qua #35.
+    """
 
     layer: SpatialLayer | None
     scale_mm_per_px: Decimal | None
     dimensions: tuple[Dimension, ...] | None = None
+    axes: tuple[Axis, ...] | None = None
+    origin: Point | None = None
 
 
 @dataclass(frozen=True)
@@ -173,7 +180,7 @@ class _Next:
     id_map: Mapping[str, str]
 
 
-def _wire(model: SpatialLayer | Dimension) -> dict[str, object]:
+def _wire(model: SpatialLayer | Dimension | Axis | Point) -> dict[str, object]:
     """Dạng dây của một mô hình miền, đúng luật xuất của `codec` (camelCase, vắng khoá thay `null`)."""
     return model.model_dump(mode="json", by_alias=True, exclude_none=True)
 
@@ -196,6 +203,11 @@ def body_sha256(body: LayerWrite) -> str:
         "dimensions": None if body.dimensions is None else [_wire(item) for item in body.dimensions],
         "scaleMillimetresPerPixel": None if body.scale_mm_per_px is None else str(body.scale_mm_per_px),
     }
+    # Hai khoá G4b-17 chỉ vào vân tay khi có mặt: thân cũ giữ đúng vân tay đã lưu (C09b).
+    if body.axes is not None:
+        payload["axes"] = [_wire(item) for item in body.axes]
+    if body.origin is not None:
+        payload["origin"] = _wire(body.origin)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256(canonical.encode()).hexdigest()
 
@@ -230,7 +242,9 @@ async def write_layer(
     if body.layer is not None:
         _check_candidate(body.layer, level_id=floor.level_id)
     if body.dimensions is not None and actor_id != SYSTEM_PIPELINE:
-        _check_human_dimensions(body.dimensions, level_id=floor.level_id)
+        _check_human_items(body.dimensions, key="dimensions", level_id=floor.level_id)
+    if body.axes is not None:
+        _check_human_items(body.axes, key="axes", level_id=floor.level_id)
     request = _Request(
         floor_pk=floor_pk,
         base_revision=base_revision,
@@ -287,19 +301,19 @@ def _check_arguments(
             raise ValueError(f"kích thước {dimension.id} phải là mục AI chưa duyệt của tầng đang ghi")
 
 
-def _check_human_dimensions(dimensions: Sequence[Dimension], *, level_id: str) -> None:
-    """Kích thước do người gửi qua #35: `id` trùng, A5, rồi `levelId` (mã lỗi như `layer`)."""
+def _check_human_items(items: Sequence[Dimension | Axis], *, key: str, level_id: str) -> None:
+    """Kích thước hay trục do người gửi qua #35 (`key` là khoá thân): `id` trùng, A5, rồi `levelId`."""
     seen: set[str] = set()
-    for index, item in enumerate(dimensions):
+    for index, item in enumerate(items):
         if item.id in seen:
-            raise VALIDATION.error(field=f"body.dimensions.{index}.id")
+            raise VALIDATION.error(field=f"body.{key}.{index}.id")
         seen.add(item.id)
-    for index, item in enumerate(dimensions):
+    for index, item in enumerate(items):
         if item.source == "ai" and item.reviewed:
-            raise REVIEW_BY_AI_FORBIDDEN.error(field=f"body.dimensions.{index}.reviewed")
-    for index, item in enumerate(dimensions):
+            raise REVIEW_BY_AI_FORBIDDEN.error(field=f"body.{key}.{index}.reviewed")
+    for index, item in enumerate(items):
         if item.level_id != level_id:
-            raise LAYER_LEVEL_MISMATCH.error(field=f"body.dimensions.{index}.levelId")
+            raise LAYER_LEVEL_MISMATCH.error(field=f"body.{key}.{index}.levelId")
 
 
 def _positions(layer: SpatialLayer) -> Iterator[tuple[str, int, object]]:
@@ -368,11 +382,14 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     scale = await _target_scale(db, request, current)
     nxt = _next_layer(request, current, scale)
     dimensions = _next_dimensions(request, current, scale, nxt)
+    # ponytail: trục không đổi theo tỉ lệ (chưa có `rescale_axes`); thêm khi màn Trục cho đổi tỉ lệ sau khi vẽ trục.
+    axes = current.axes if request.body.axes is None else request.body.axes
+    origin = current.origin if request.body.origin is None else request.body.origin
     if not request.may_approve and _approves(
-        (*current.layer.entities(), *current.dimensions), (*nxt.layer.entities(), *dimensions)
+        (*current.layer.entities(), *current.dimensions, *current.axes), (*nxt.layer.entities(), *dimensions, *axes)
     ):
         raise FORBIDDEN.error()
-    document = document_to_json(nxt.layer, (), dimensions)
+    document = document_to_json(nxt.layer, axes, dimensions, origin)
     if _unchanged(current, document, scale):
         return WriteResult(current.revision, current.layer, applied=False)
     return await _commit(
@@ -380,7 +397,7 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     )
 
 
-type _Reviewable = Wall | Opening | Room | Furniture | Dimension
+type _Reviewable = Wall | Opening | Room | Furniture | Dimension | Axis
 """Mục mang dấu duyệt và `id` trong một tài liệu tầng."""
 
 
@@ -534,7 +551,7 @@ def _drop_missing_refs(dimensions: tuple[Dimension, ...], live: frozenset[str]) 
 def _unchanged(current: FloorDocument, document: Mapping[str, object], scale: _Scale) -> bool:
     """Bước 10: jsonb, tỉ lệ, nguồn và trang đều như cũ → không `UPDATE`, không nhật ký, không đếm."""
     return (
-        document == document_to_json(current.layer, (), current.dimensions)
+        document == document_to_json(current.layer, current.axes, current.dimensions, current.origin)
         and scale.value == current.scale_mm_per_px
         and scale.source == current.scale_source
         and scale.page_key == current.scale_page_key

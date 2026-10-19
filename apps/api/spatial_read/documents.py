@@ -21,10 +21,10 @@ from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.spatial_read.codec import DocumentCorruptError, document_from_json, document_to_json
+from apps.api.spatial_read.codec import DocumentCorruptError, decode_document, document_to_json
 from packages.core.clock import Clock
 from packages.db.models.spatial import FloorDocumentRow
-from packages.domain.spatial import Axis, Dimension, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
 
 _log: Final = logging.getLogger(__name__)
 
@@ -56,6 +56,8 @@ class FloorDocument:
     last_body_sha256: str | None
     last_base_revision: int | None
     updated_at: datetime | None
+    origin: Point | None = None
+    """Gốc toạ độ màn Trục (mm, G4b-17); `None` = chưa đặt."""
 
 
 def empty_document(floor_pk: int) -> FloorDocument:
@@ -91,16 +93,17 @@ def document_from_row(row: FloorDocumentRow) -> FloorDocument:
         _log.error("tài liệu không gian sai lược đồ", extra={"floor_pk": row.floor_pk})
         raise DocumentCorruptError(f"floor_pk={row.floor_pk} có schema_version={row.schema_version}")
     try:
-        layer, axes, dimensions = document_from_json(row.document)
+        envelope = decode_document(row.document)
     except DocumentCorruptError:
         _log.error("tài liệu không gian hỏng", extra={"floor_pk": row.floor_pk})
         raise
     return FloorDocument(
         floor_pk=row.floor_pk,
         revision=row.revision,
-        layer=layer,
-        axes=axes,
-        dimensions=dimensions,
+        layer=envelope.layer,
+        axes=envelope.axes,
+        dimensions=envelope.dimensions,
+        origin=envelope.origin,
         scale_mm_per_px=row.scale_mm_per_px,
         scale_source=scale_source_of(row.scale_source),
         scale_page_key=row.scale_page_key,

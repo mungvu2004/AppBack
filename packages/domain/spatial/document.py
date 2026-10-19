@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from packages.domain.spatial.area import total_area_m2
-from packages.domain.spatial.model import Axis, Dimension, SpatialLayer
+from packages.domain.spatial.model import Axis, Dimension, Point, SpatialLayer
 
 
 @dataclass(frozen=True)
@@ -23,13 +23,22 @@ class LayerCounts:
     area_m2: Decimal | None
 
 
-def document_to_json(layer: SpatialLayer, axes: Sequence[Axis], dimensions: Sequence[Dimension]) -> dict[str, object]:
-    """Dạng dây của một tài liệu. `axes` được nhận để chữ ký ổn định nhưng v1 luôn ghi `[]`."""
-    return {
+def document_to_json(
+    layer: SpatialLayer, axes: Sequence[Axis], dimensions: Sequence[Dimension], origin: Point | None = None
+) -> dict[str, object]:
+    """Dạng dây của một tài liệu (G4b-17): trục và gốc toạ độ (mm) của màn Trục được lưu thật.
+
+    `origin=None` → **vắng khoá** `origin` (không `null`), nên tài liệu cũ chưa đặt gốc vẫn ra
+    đúng jsonb như trước và phép so "không đổi" (C09b bước 10) không lệch.
+    """
+    document: dict[str, object] = {
         "layer": layer.model_dump(mode="json", by_alias=True, exclude_none=True),
-        "axes": [],
+        "axes": [axis.model_dump(mode="json", by_alias=True, exclude_none=True) for axis in axes],
         "dimensions": [dimension.model_dump(mode="json", by_alias=True, exclude_none=True) for dimension in dimensions],
     }
+    if origin is not None:
+        document["origin"] = origin.model_dump(mode="json", by_alias=True)
+    return document
 
 
 def entity_ids(layer: SpatialLayer) -> frozenset[str]:

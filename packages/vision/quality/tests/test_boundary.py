@@ -32,7 +32,7 @@ from packages.vision.preprocess import sniff_kind
 from packages.vision.quality import QUALITY_CODES, assess
 
 assert sniff_kind(b"") == "unknown"
-assert len(QUALITY_CODES) == 5
+assert len(QUALITY_CODES) == 7
 assert callable(assess)
 print("ok")
 """

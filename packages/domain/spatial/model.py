@@ -206,7 +206,7 @@ class Room(Reviewed):
 
 
 class Axis(Reviewed):
-    """Trục định vị; v1 `axes` luôn rỗng trên dây nhưng mẫu A14 có bốn trục."""
+    """Trục định vị của màn Trục; #35 ghi, N15/N16 trả lại (G4b-17)."""
 
     id: AxisIdStr
     level_id: LevelIdStr

@@ -238,6 +238,11 @@ F-07: hộp thoại A9 khi gỡ; ánh xạ `MEMBER_*`.
 - **N6 `PUT …/settings`** (GV): `UpdateProjectSettingsSchema = VersionedWriteSchema(ProjectSettingsBodySchema)`; 409 với `remoteChanges: []`.
 - Tên, mã, địa chỉ vẫn đi #26. F-07 gửi hai request và báo lỗi phần hỏng.
 
+### N7b — `GET /api/projects/{project_id}/pipeline-runs` → `pipelineRuns.ts` *(UIFIX-B7)*
+
+- Lượt xử lý của dự án, mới nhất trước; `limit` + `cursor` (`CursorPage`); thành viên dự án đọc được, người ngoài/dự án không có → 404. Mỗi mục một lượt của một tầng: trạng thái, bước, %, `createdAt`/`startedAt`/`endedAt`/`updatedAt`, mã lỗi. Màn: tab Nhật ký của màn Xử lý (N5-08).
+- `GET /api/notifications` nhận thêm `limit`, `cursor` tuỳ chọn; thân vẫn là mảng; còn trang sau thì header `X-Next-Cursor` (G1-15).
+
 ### N7 — `GET /api/projects/{project_id}/drawings/uploads/latest` → `uploads.ts`
 
 - **Màn:** `S:screens/pipeline/ProcessingScreen/useProcessingScreen.ts:254-269,550-563`.
@@ -263,6 +268,7 @@ F-07: hộp thoại A9 khi gỡ; ánh xạ `MEMBER_*`.
 | N8 | `POST /api/auth/password-reset` | `PasswordResetRequestSchema {email: .min(1).email()}` | **luôn 204** (C27) | — |
 | N9 | `POST /api/auth/password-reset/confirm` | `PasswordResetConfirmSchema {token: 1–512, newPassword: .min(1).min(8)}` | 204; thu hồi mọi phiên và cookie luồng; không đặt cookie | `PASSWORD_RESET_TOKEN_INVALID` 422 |
 | N10 | `POST /api/auth/invitations/accept` | `AcceptInvitationSchema {token: 1–512, fullName: trim min 1, password: .min(1).min(8)}` | 204; đặt cookie refresh + cookie luồng; `pending` → `active` | `INVITATION_TOKEN_INVALID` 422 |
+| N10b | `POST /api/auth/invitations/preview` *(UIFIX-B2)* | `InvitationPreviewRequestSchema {token: 1–512}` | 200 `{status: "valid", email, role, inviterName?, expiresAt}`; chỉ đọc, không tiêu token | `INVITATION_TOKEN_INVALID` / `INVITATION_TOKEN_EXPIRED` / `INVITATION_TOKEN_USED` 422 |
 
 - **K7 = B:** không có đăng ký công khai; N10 là đường vào duy nhất cho người mới.
 - **Link trong thư** (B1-03 dựng từ `PUBLIC_BASE_URL`): lời mời `{PUBLIC_BASE_URL}/login/invitation#token=<token>`; đặt lại `{PUBLIC_BASE_URL}/login/reset-password#token=<token>`.
@@ -369,14 +375,15 @@ Xoá tài khoản và danh sách phiên để v2.
 | `level` | `LevelSchema` | có | H1 ngữ cảnh: `id === {floor_id}` |
 | `scaleStatus` | literal `unresolved` | không | refine: có ⇒ có tỉ lệ |
 | `layer` | `SpatialLayerSchema` | có | H1 ngữ cảnh: mọi `levelId` bằng `level.id` |
-| `axes` | `AxisSchema[]` | có | v1 `[]` |
+| `axes` | `AxisSchema[]` | có | trục đã lưu của tầng *(UIFIX-B4; trước là luôn `[]`)* |
+| `origin` | `{x, y}` mm nguyên | không | `null`/vắng khi chưa đặt gốc *(UIFIX-B4)* |
 | `dimensions` | `DimensionSchema[]` | có | ghi qua #35 `dimensions?` (bản 11) |
 
 ### Ghi lớp — `PUT /api/projects/{project_id}/floors/{floor_id}/spatial/layer` (#35) → `spatialLayer.ts`
 
 | schema | hình dạng |
 |---|---|
-| `FloorLayerWriteBodySchema` | `{layer?: SpatialLayerSchema, scaleMillimetresPerPixel?: number > 0 hữu hạn, dimensions?: DimensionSchema[]}` strict, refine ≥ 1 khoá |
+| `FloorLayerWriteBodySchema` | `{layer?: SpatialLayerSchema, scaleMillimetresPerPixel?: number > 0 hữu hạn, dimensions?: DimensionSchema[], axes?: AxisSchema[], origin?: {x, y}}` strict, refine ≥ 1 khoá *(axes/origin: UIFIX-B4 — `axes` thay trọn danh sách, cùng luật `REVIEW_BY_AI_FORBIDDEN`/`LAYER_LEVEL_MISMATCH`/id trùng như `dimensions`)* |
 | `FloorLayerWriteSchema` | `VersionedWriteSchema(FloorLayerWriteBodySchema)` |
 | `FloorLayerWriteResultSchema` | `{revision: int ≥ 0, layer: SpatialLayerSchema}` strict |
 
@@ -515,9 +522,9 @@ Gắn nhãn **không** sinh phiên bản. `note` của bản khôi phục do ser
 
 Nguồn: `S:lib/telemetry/flags.ts:86-93`. Schema này **chỉ H1 và test dùng**; client cố ý không giải mã (`flags.ts:60-72`).
 
-### 7.4 Năm mã chất lượng ảnh — thêm vào `quality.ts`
+### 7.4 Bảy mã chất lượng ảnh — thêm vào `quality.ts`
 
-- Thêm `IMAGE_QUALITY_FINDING_CODES = ['RESOLUTION_TOO_LOW','SKEW_DETECTED','FRAME_NOT_FOUND','LOW_CONTRAST','HIGH_NOISE'] as const` và `ImageQualityFindingCodeSchema = z.enum(IMAGE_QUALITY_FINDING_CODES)`.
+- Thêm `IMAGE_QUALITY_FINDING_CODES = ['RESOLUTION_TOO_LOW','SKEW_DETECTED','FRAME_NOT_FOUND','LOW_CONTRAST','HIGH_NOISE','SKEW_NOT_MEASURED','PERSPECTIVE_DETECTED'] as const` (hai mã cuối: UIFIX-B6 — không đủ đoạn để đo nghiêng; méo phối cảnh/hình thang) và `ImageQualityFindingCodeSchema = z.enum(IMAGE_QUALITY_FINDING_CODES)`.
 - Nguồn: `S:screens/upload/InputQualityGate/useInputQualityGate.ts:275-351`.
 - **Không** siết `ImageQualityFindingSchema.code`.
 

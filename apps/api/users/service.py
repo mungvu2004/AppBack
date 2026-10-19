@@ -12,10 +12,10 @@ Mọi thư đi qua `issue_token` (sau commit, K17); module này không chạm SM
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cache
-from typing import Final, cast
+from typing import Final, NoReturn, cast
 
 from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,7 +28,9 @@ from apps.api.access.kinds import ActivityKind
 from apps.api.auth.sessions import bump_token_version, revoke_sessions
 from apps.api.auth_recovery.tokens import InvitationWindow, issue_token, latest_invitations, revoke_tokens
 from apps.api.me.avatar import avatar_urls
+from apps.api.project_members.service import require_editors_left
 from apps.api.projects.memberships import (
+    EDITOR_ROLES,
     count_projects_of_users,
     list_projects_of_user,
     remove_user_from_all_projects,
@@ -36,6 +38,7 @@ from apps.api.projects.memberships import (
 from apps.api.users.errors import (
     USER_CONFIRM_EMAIL_MISMATCH,
     USER_EMAIL_TAKEN,
+    USER_INVITE_PENDING,
     USER_LAST_ADMIN,
     USER_NOT_PENDING,
     USER_SELF_MODIFICATION,
@@ -120,21 +123,35 @@ def _require_batch_size(emails: Sequence[str]) -> None:
         raise VALIDATION.error(field="emails")
 
 
-def _require_none_taken(existing: dict[str, User]) -> None:
-    """#44: mọi email có sẵn phải là người `pending`; `active`/`disabled` → `USER_EMAIL_TAKEN`."""
+def _require_none_taken(existing: dict[str, User], emails: Sequence[str] = ()) -> None:
+    """#44: email đã có người → lỗi; `active`/`disabled` (422 `USER_EMAIL_TAKEN`) xét trước `pending` (409).
+
+    Người `pending` còn chờ → 409 `USER_INVITE_PENDING`: không tạo lời mời thứ hai, không gửi thư
+    trùng (G2-8); gửi lại là việc của #45. `field` là `emails.<i>` của email đầu tiên vướng trong
+    lô (thứ tự đầu vào) để màn chỉ ra đúng email; không biết lô thì `emails`.
+    """
+
+    def field_of(blocked: Callable[[User], bool]) -> str:
+        for index, email in enumerate(emails):
+            user = existing.get(normalize_email(email))
+            if user is not None and blocked(user):
+                return f"emails.{index}"
+        return "emails"
+
     if any(user.status != "pending" for user in existing.values()):
-        raise USER_EMAIL_TAKEN.error(field="emails")
+        raise USER_EMAIL_TAKEN.error(field=field_of(lambda user: user.status != "pending"))
+    if existing:
+        raise USER_INVITE_PENDING.error(field=field_of(lambda _user: True))
 
 
-def _pending_or_taken(found: User | None) -> User:
-    """Sau tranh chấp `uq_users_email`: người vừa đọc lại phải là `pending`, không thì `USER_EMAIL_TAKEN`.
+def _raise_lost_race(found: User | None) -> NoReturn:
+    """Thua tranh chấp `uq_users_email`: người vừa đọc lại `pending` → 409, còn lại → `USER_EMAIL_TAKEN`.
 
     `None` (người biến mất giữa hai lệnh) chỉ có thể do một lượt xoá song song, mà lượt ấy
     cũng phải qua khoá tập admin ta đang giữ — coi như "đã bị chiếm" chứ không 500.
     """
-    if found is None or found.status != "pending":
-        raise USER_EMAIL_TAKEN.error(field="emails")
-    return found
+    _require_none_taken({} if found is None else {found.email_normalized: found})
+    raise USER_EMAIL_TAKEN.error(field="emails")
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,10 +301,15 @@ async def list_activity(db: AsyncSession, user_id: str) -> list[UserActivityOut]
 async def change_role(
     db: AsyncSession, storage: ObjectStorage, *, actor_id: str, user_id: str, role: UserRole, clock: Clock
 ) -> AdminUserOut:
-    """#41: đổi vai; token cũ của người đó mất giá trị (`bump_token_version`). Không đổi → 200, không ghi gì."""
+    """#41: đổi vai; token cũ của người đó mất giá trị (`bump_token_version`). Không đổi → 200, không ghi gì.
+
+    Hạ xuống vai không sửa được mà người này là người sửa cuối của một dự án → 422 `MEMBER_LAST_EDITOR` (G3-13).
+    """
     scope = await open_scope(db, actor_id, user_id)
     scope.forbid_self()
     if scope.target.role != role:
+        if role not in EDITOR_ROLES:
+            await require_editors_left(db, user_id)
         scope.target.role = role
         await bump_token_version(db, user_id)
         await _log_activity(db, scope, ActivityKind.USER_ROLE_CHANGE, clock)
@@ -297,10 +319,14 @@ async def change_role(
 async def disable_user(
     db: AsyncSession, storage: ObjectStorage, *, actor_id: str, user_id: str, clock: Clock
 ) -> AdminUserOut:
-    """#42: `disabled`, thu hồi mọi phiên và lời mời đang chờ. Đã `disabled` → 200, không ghi gì."""
+    """#42: `disabled`, thu hồi mọi phiên và lời mời đang chờ. Đã `disabled` → 200, không ghi gì.
+
+    Người này là người sửa cuối của một dự án → 422 `MEMBER_LAST_EDITOR` (G3-13).
+    """
     scope = await open_scope(db, actor_id, user_id)
     scope.forbid_self()
     if scope.target.status != "disabled":
+        await require_editors_left(db, user_id)
         scope.target.status = "disabled"
         await revoke_sessions(db, user_id=user_id, reason="disabled", clock=clock)
         await bump_token_version(db, user_id)
@@ -363,24 +389,17 @@ async def _insert_pending(db: AsyncSession, *, email: str, key: str, role: UserR
     return (await db.execute(stmt)).scalars().first()
 
 
-async def _create_or_reuse(db: AsyncSession, *, email: str, key: str, role: UserRole, clock: Clock) -> User:
-    """Người `pending` mới, hoặc — nếu thua tranh chấp email — người `pending` đã có (đọc lại `FOR UPDATE`)."""
+async def _create(db: AsyncSession, *, email: str, key: str, role: UserRole, clock: Clock) -> User:
+    """Người `pending` mới; thua tranh chấp email → đọc lại `FOR UPDATE` rồi ném lỗi đúng trạng thái."""
     created = await _insert_pending(db, email=email, key=key, role=role, clock=clock)
     if created is not None:
         return created
-    return _pending_or_taken((await _lock_by_emails(db, [key])).get(key))
+    _raise_lost_race((await _lock_by_emails(db, [key])).get(key))
 
 
-async def _invite_one(
-    db: AsyncSession, *, actor_id: str, email: str, key: str, role: UserRole, existing: User | None, clock: Clock
-) -> User:
-    """Mời một email: giữ/tạo người `pending`, đổi vai nếu khác, phát token `invite`, ghi `USER_INVITE`."""
-    user = (
-        existing if existing is not None else await _create_or_reuse(db, email=email, key=key, role=role, clock=clock)
-    )
-    if user.role != role:
-        user.role = role
-        await bump_token_version(db, user.id)
+async def _invite_one(db: AsyncSession, *, actor_id: str, email: str, key: str, role: UserRole, clock: Clock) -> User:
+    """Mời một email chưa có ai: tạo người `pending`, phát token `invite`, ghi `USER_INVITE`."""
+    user = await _create(db, email=email, key=key, role=role, clock=clock)
     await issue_token(db, user_id=user.id, purpose="invite", clock=clock)
     scope = WriteScope(actor_id=actor_id, target=user, admins=())
     await _log_activity(db, scope, ActivityKind.USER_INVITE, clock)
@@ -409,12 +428,10 @@ async def invite_users(
         first_seen.setdefault(normalize_email(email), email)  # bỏ trùng theo K20, giữ thứ tự đầu
     keys = {email: key for key, email in first_seen.items()}
     existing = await _lock_by_emails(db, list(keys.values()))
-    _require_none_taken(existing)
+    _require_none_taken(existing, emails)
     invited: dict[str, User] = {}
     for email, key in sorted(keys.items(), key=lambda pair: pair[1]):
-        invited[key] = await _invite_one(
-            db, actor_id=actor_id, email=email, key=key, role=role, existing=existing.get(key), clock=clock
-        )
+        invited[key] = await _invite_one(db, actor_id=actor_id, email=email, key=key, role=role, clock=clock)
     return await admin_views(db, storage, [invited[key] for key in first_seen])
 
 

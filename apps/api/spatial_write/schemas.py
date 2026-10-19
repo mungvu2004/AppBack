@@ -20,7 +20,7 @@ from pydantic import BeforeValidator, Field, model_validator
 
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.spatial_read.wire import SpatialLayerOut
-from packages.domain.spatial import Dimension, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
 
 SCALE_PLACES: Final = 6
 """Số chữ số thập phân của `floor_documents.scale_mm_per_px` (`Numeric(12,6)`, B3-02)."""
@@ -59,17 +59,23 @@ type LayerScaleMmPerPx = Annotated[Decimal, BeforeValidator(_scale), Field(gt=0,
 
 
 class FloorLayerWriteBodySchema(WireRequest):
-    """`body` của #35: lớp, tỉ lệ, hay cả hai — nhưng không được rỗng (FE `refine` ≥ 1 khoá)."""
+    """`body` của #35: lớp, tỉ lệ, kích thước, trục, gốc toạ độ — ít nhất một khoá (FE `refine` ≥ 1 khoá).
+
+    `axes` thay nguyên danh sách trục như `dimensions`; `origin` là gốc toạ độ màn Trục (mm, G4b-17).
+    """
 
     layer: SpatialLayer | None = None
     scale_millimetres_per_pixel: LayerScaleMmPerPx | None = None
     dimensions: list[Dimension] | None = None
+    axes: list[Axis] | None = None
+    origin: Point | None = None
 
     @model_validator(mode="after")
     def _at_least_one_key(self) -> Self:
         """`body: {}` là lượt ghi không nói gì → 422 `field:"body"`, không phải 200 im lặng."""
-        if self.layer is None and self.scale_millimetres_per_pixel is None and self.dimensions is None:
-            raise ValueError("body phải có layer, dimensions hoặc scaleMillimetresPerPixel")
+        keys = (self.layer, self.scale_millimetres_per_pixel, self.dimensions, self.axes, self.origin)
+        if all(key is None for key in keys):
+            raise ValueError("body phải có layer, dimensions, axes, origin hoặc scaleMillimetresPerPixel")
         return self
 
 

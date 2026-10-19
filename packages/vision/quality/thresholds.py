@@ -16,6 +16,13 @@ CONTRAST_GOOD_SCORE: Final = 0.75
 CONTRAST_ATTENTION_SCORE: Final = 0.45
 NOISE_GOOD_SCORE: Final = 0.2
 NOISE_ATTENTION_SCORE: Final = 0.4
+PERSPECTIVE_GOOD_DEG: Final = 1.0
+PERSPECTIVE_ATTENTION_DEG: Final = 5.0
+"""Ngưỡng hội tụ (G3-35), chỉ ở BE: FE chưa có số đo này nên không có bản gương.
+
+Xoay và nhiễu Hough cho chênh ≤ ~0,4° (bước góc 0,2°), nên 1° vẫn chừa biên; hình
+thang ±0,5° mỗi mép (1° chênh) mắt thường đã thấy trên bản vẽ khổ lớn.
+"""
 
 Level = Literal["good", "attention", "poor"]
 
@@ -35,6 +42,13 @@ def classify_skew(skew_deg: float) -> Level:
     if magnitude <= SKEW_GOOD_DEG:
         return "good"
     return "attention" if magnitude < SKEW_ATTENTION_DEG else "poor"
+
+
+def classify_perspective(spread_deg: float | None) -> Level:
+    """Độ hội tụ (độ) → mức; `None` (không đủ đoạn hai nửa để so) → `"good"`, không kết luận méo."""
+    if spread_deg is None or spread_deg <= PERSPECTIVE_GOOD_DEG:
+        return "good"
+    return "attention" if spread_deg < PERSPECTIVE_ATTENTION_DEG else "poor"
 
 
 def classify_contrast(score: float) -> Level:

@@ -28,9 +28,11 @@ def project_invite(actor_name: str | None) -> str:
     return f"{name} đã thêm bạn vào dự án" if name else "Bạn vừa được thêm vào dự án"
 
 
-def ai_completed() -> str:
-    """AI xong bản vẽ; FE nối tên tầng."""
-    return "Hệ thống AI đã xử lý xong bản vẽ"
+def ai_completed(project_name: str | None = None) -> str:
+    """AI xong bản vẽ; FE nối tên tầng. Có tên dự án (sau làm sạch) → mở câu bằng `Dự án <tên>:` (G1-13)."""
+    name = clean_label(project_name) if project_name else ""
+    sentence = "Hệ thống AI đã xử lý xong bản vẽ"
+    return f"Dự án {name}: {sentence}" if name else sentence
 
 
 def violation_found(count: int) -> str:

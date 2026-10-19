@@ -265,7 +265,20 @@ async def test_decode_snapshot__valid_roundtrip_and_absent(
     assert decoded is not None
     assert (decoded.layer, decoded.dimensions) == (document.layer, document.dimensions)
     assert decoded.scale_mm_per_px == document.scale_mm_per_px
+    assert (decoded.axes, decoded.origin) == (document.axes, document.origin)
     assert caplog.records == []
+
+
+async def test_decode_snapshot__legacy_without_axes_keeps_current_axes(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Ảnh chụp cũ (trước G4b-17, không có `axesRecorded`) → `axes`/`origin` là `None`: phục hồi giữ trục hiện tại."""
+    vs = await make_version_scene(db_session, fake_clock)
+    raw = snapshot_of(await _document(db_session, vs.floor.pk))
+    del raw["axesRecorded"]
+    decoded = decode_snapshot(raw, version_id="ver_old")
+    assert decoded is not None
+    assert (decoded.axes, decoded.origin) == (None, None)
 
 
 async def test_decode_snapshot__without_scale_key_gives_none_scale(

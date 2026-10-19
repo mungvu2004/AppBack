@@ -8,14 +8,18 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.notifications.kinds import FLOOR_PLACES, PLACES
+from apps.api.notifications.router import NEXT_CURSOR_HEADER
 from apps.api.notifications.tests.support import (
     FLOOR,
+    LIST_PATH,
     commit_notify,
     get_list,
+    headers_of,
     remove_member,
     seed_project,
     settings_env,
 )
+from packages.db.models.auth import User
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.notifications import make_notification
 from packages.testing.fixtures.clock import FakeClock
@@ -180,3 +184,75 @@ async def test_notifications_list__hidden_when_removed_or_project_deleted(
     await remove_member(db_session, removed, user)
 
     assert [item["id"] for item in (await get_list(api_client, user)).json()] == [visible.id]
+
+
+async def _page(client: httpx.AsyncClient, user: User, **params: str | int) -> httpx.Response:
+    """#19 với `limit`/`cursor` ("Xem cũ hơn", UIFIX-B7)."""
+    return await client.get(LIST_PATH, headers=headers_of(user), params=params)
+
+
+async def test_notifications_list__C15_older_pages(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """5 dòng, `limit=2` → 2 + 2 + 1, mỗi trang mới nhất trước; trang cuối không có `X-Next-Cursor`."""
+    user = await make_user(db_session)
+    project = await seed_project(db_session, owner=user)
+    base = fake_clock.now()
+    rows = [
+        await make_notification(db_session, user=user, project=project, created_at=base + timedelta(minutes=n))
+        for n in range(5)
+    ]
+    await db_session.commit()
+    newest_first = [row.id for row in reversed(rows)]
+
+    seen: list[str] = []
+    cursor: str | None = None
+    for expected in (newest_first[:2], newest_first[2:4], newest_first[4:]):
+        response = await _page(api_client, user, limit=2, **({"cursor": cursor} if cursor else {}))
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()] == expected
+        seen += expected
+        cursor = response.headers.get(NEXT_CURSOR_HEADER)
+    assert cursor is None
+    assert seen == newest_first
+
+
+async def test_notifications_list__C15_no_params_no_header(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Không tham số, số dòng ≤ trần → mảng như cũ, không `X-Next-Cursor`; rỗng với `limit` → `[]`."""
+    user = await make_user(db_session)
+    project = await seed_project(db_session, owner=user)
+    assert (await _page(api_client, user, limit=5)).json() == []
+    await commit_notify(db_session, fake_clock, user_id=user.id, project_id=project.id, project_name="Dự án")
+    response = await get_list(api_client, user)
+    assert len(response.json()) == 1
+    assert NEXT_CURSOR_HEADER not in response.headers
+
+
+async def test_notifications_list__C15_cursor_of_other_user(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Cursor của người khác hay cursor bịa → 422 `CURSOR_INVALID` (cursor ký kèm `user`)."""
+    mine, other = await make_user(db_session), await make_user(db_session)
+    project = await seed_project(db_session, owner=other)
+    base = fake_clock.now()
+    for n in range(2):
+        await make_notification(db_session, user=other, project=project, created_at=base + timedelta(minutes=n))
+    await db_session.commit()
+    foreign = (await _page(api_client, other, limit=1)).headers[NEXT_CURSOR_HEADER]
+
+    for cursor in (foreign, "khong-phai-cursor"):
+        response = await _page(api_client, mine, cursor=cursor)
+        assert response.status_code == 422
+        assert response.json()["code"] == "CURSOR_INVALID"
+
+
+@pytest.mark.parametrize("limit", [0, 201])
+async def test_notifications_list__C15_limit_out_of_range(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, limit: int
+) -> None:
+    """`limit` ngoài `1…200` → 422."""
+    user = await make_user(db_session)
+    await db_session.commit()
+    assert (await _page(api_client, user, limit=limit)).status_code == 422

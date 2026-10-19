@@ -24,6 +24,7 @@ def test_messages__table() -> None:
     assert messages.project_invite("Lê Minh") == "Lê Minh đã thêm bạn vào dự án"
     assert messages.project_invite(None) == "Bạn vừa được thêm vào dự án"
     assert messages.ai_completed() == "Hệ thống AI đã xử lý xong bản vẽ"
+    assert messages.ai_completed("Chung cư Sông Hàn") == "Dự án Chung cư Sông Hàn: Hệ thống AI đã xử lý xong bản vẽ"
     assert messages.violation_found(3) == "Phát hiện 3 vi phạm luật ở"
 
 
@@ -61,6 +62,17 @@ def test_messages__no_sentence_ends_with_a_label() -> None:
     assert not any(
         sentence.endswith(label) for sentence in sentences for label in ("Chung cư Sông Hàn", "tầng trệt", "tầng 2")
     )
+
+
+@pytest.mark.parametrize("name", ["", "   ", ZWSP, RLO + BEL])
+def test_messages__ai_completed_blank_project_falls_back(name: str) -> None:
+    """Tên dự án rỗng sau làm sạch → câu không nêu dự án (G1-13)."""
+    assert messages.ai_completed(name) == "Hệ thống AI đã xử lý xong bản vẽ"
+
+
+def test_messages__ai_completed_cleans_project_name() -> None:
+    """Tên dự án qua `clean_label`: bỏ ký tự đảo chiều, gộp khoảng trắng."""
+    assert messages.ai_completed(f" Nhà  {RLO}A ") == "Dự án Nhà A: Hệ thống AI đã xử lý xong bản vẽ"
 
 
 def test_messages__fixed_sentences_start_uppercase() -> None:

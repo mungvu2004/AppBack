@@ -110,3 +110,30 @@ class LatestFloorUploadOut(WireModel):
 
 LatestFloorUploadPage = CursorPage[LatestFloorUploadOut]
 """Response N7: `{items, nextCursor?}` (W22), mục sắp theo `Floor.order`."""
+
+
+class PipelineRunOut(WireModel):
+    """Mục N7b: một lượt chạy pipeline của một tầng (màn Nhật ký lượt xử lý, UIFIX-B7).
+
+    `step` + `progressPercent` cùng nghĩa với `Progress` (BE-BIND §4): FE tự dựng các giai
+    đoạn từ chúng. `startedAt`/`endedAt`/`errorCode`/`supersededBy` vắng khoá khi chưa có (W2).
+    Lượt `failed` **không** có `endedAt` (K33): giờ dừng của nó là `updatedAt`.
+    """
+
+    run_id: str
+    upload_id: str
+    floor_id: str
+    floor_name: str
+    status: Literal["pending", "running", "completed", "failed"]
+    step: str
+    progress_percent: int
+    error_code: str | None = None
+    created_at: WireDatetime
+    updated_at: WireDatetime
+    started_at: WireDatetime | None = None
+    ended_at: WireDatetime | None = None
+    superseded_by: str | None = None
+
+
+PipelineRunPage = CursorPage[PipelineRunOut]
+"""Response N7b: `{items, nextCursor?}` (W22), lượt mới nhất trước."""

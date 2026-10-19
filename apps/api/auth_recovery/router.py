@@ -1,6 +1,7 @@
-"""`POST /api/auth/password-reset`, `/password-reset/confirm`, `/invitations/accept` (B1-03 [2], HOP-DONG-MOI §3).
+"""`POST /api/auth/password-reset`, `/password-reset/confirm`, `/invitations/accept` (B1-03 [2], HOP-DONG-MOI §3),
+`/invitations/preview` (UIFIX-B2: G2-9, G2-10, G1-10).
 
-Ba route **công khai**, đều đòi `Origin` khớp `PUBLIC_BASE_URL` (case_gate áp C24 cho cả
+Bốn route **công khai**, đều đòi `Origin` khớp `PUBLIC_BASE_URL` (case_gate áp C24 cho cả
 nhóm C, kể cả N8 dù N8 không đặt/đọc cookie) và cùng chung một hạn mức `recovery_ip`.
 
 - **N8** luôn 204 dù email có tồn tại hay không (C27, chống dò): tra người và tra token còn
@@ -27,24 +28,35 @@ from fastapi import Depends
 from pydantic import Field, field_validator
 from sqlalchemy import Row, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from starlette.requests import Request
 from starlette.responses import Response
 
+from apps.api.access.kinds import ActivityKind
 from apps.api.auth.cookies import clear_auth_cookies, refresh_cookie_of
 from apps.api.auth.emails import validate_wire_email
 from apps.api.auth.passwords import NewPassword, hash_password
 from apps.api.auth.sessions import revoke_sessions, start_session
 from apps.api.auth_recovery.settings import get_recovery_settings
-from apps.api.auth_recovery.tokens import active_clause, consume_token, find_active_token, issue_token, revoke_tokens
+from apps.api.auth_recovery.tokens import (
+    active_clause,
+    consume_token,
+    find_active_token,
+    hash_token,
+    issue_token,
+    revoke_tokens,
+)
 from apps.api.core.deps import ClockDep, DbSession
 from apps.api.core.origin import require_origin
 from apps.api.core.ratelimit import key_ip, rate_limit
 from apps.api.core.routing import public_router
-from apps.api.core.wire import WireRequest
+from apps.api.core.wire import WireDatetime, WireModel, WireRequest
+from apps.api.users.schemas import UserRole
 from packages.core.clock import Clock
 from packages.core.errors import ERRORS, ErrorCode
 from packages.core.text import clean_text, normalize_email
 from packages.db.hooks import on_after_commit
+from packages.db.models.access import ActivityLog
 from packages.db.models.auth import User
 from packages.db.models.auth_recovery import OneTimeToken
 from packages.messaging.redis import ProcessLocal, SyncRedis, broker_redis_sync
@@ -54,6 +66,8 @@ ROUTERS: Final = (router,)
 
 PASSWORD_RESET_TOKEN_INVALID: Final = ERRORS.define("PASSWORD_RESET_TOKEN_INVALID", 422)
 INVITATION_TOKEN_INVALID: Final = ERRORS.define("INVITATION_TOKEN_INVALID", 422)
+INVITATION_TOKEN_EXPIRED: Final = ERRORS.define("INVITATION_TOKEN_EXPIRED", 422)
+INVITATION_TOKEN_USED: Final = ERRORS.define("INVITATION_TOKEN_USED", 422)
 
 TOKEN_MAX_LEN: Final = 512
 FULL_NAME_MAX: Final = 120
@@ -363,3 +377,116 @@ async def auth_accept_invitation(
         replaced_cookie=refresh_cookie_of(request),
     )
     return None
+
+
+class InvitationPreviewBody(WireRequest):
+    """Thân xem trước lời mời: `{token}` — token đi trong thân, không lên URL/log truy cập (K11)."""
+
+    token: Annotated[str, Field(min_length=1, max_length=TOKEN_MAX_LEN)]
+
+
+class InvitationPreviewOut(WireModel):
+    """Lời mời còn dùng được: đủ để màn nhận lời mời nói "mời ai, vai gì, ai mời, đến bao giờ"."""
+
+    status: Literal["valid"]
+    email: str
+    role: UserRole
+    inviter_name: str | None = None
+    expires_at: WireDatetime
+
+
+@dataclass(frozen=True, slots=True)
+class _InvitationRow:
+    """Token `invite` tra theo bản rõ (mọi trạng thái) cùng người được mời."""
+
+    expires_at: datetime
+    used_at: datetime | None
+    superseded_at: datetime | None
+    user_id: str
+    email: str
+    role: UserRole  # CHECK `role` của DB giữ đúng tập này
+    status: str
+
+
+async def _find_invitation(db: AsyncSession, token: str) -> _InvitationRow | None:
+    """Token `invite` khớp `token` (kể cả đã dùng/hết hạn/bị thay) và người chưa xoá mềm, hay `None`."""
+    row = (
+        await db.execute(
+            select(
+                OneTimeToken.expires_at,
+                OneTimeToken.used_at,
+                OneTimeToken.superseded_at,
+                User.id,
+                User.email,
+                User.role,
+                User.status,
+            )
+            .join(User, User.id == OneTimeToken.user_id)
+            .where(
+                OneTimeToken.token_hash == hash_token(token),
+                OneTimeToken.purpose == "invite",
+                User.deleted_at.is_(None),
+            )
+        )
+    ).one_or_none()
+    return _InvitationRow(*row) if row is not None else None
+
+
+def _usable_invitation(row: _InvitationRow | None, now: datetime) -> _InvitationRow:
+    """Phân loại lời mời — hàm thuần, gọi ngay sau `await` (NO-130).
+
+    Không thấy, hoặc người nhận đã bị vô hiệu → `INVITATION_TOKEN_INVALID` (đăng nhập cũng không
+    được, nên không mời "hãy đăng nhập"); đã dùng hoặc người đã kích hoạt → `INVITATION_TOKEN_USED`;
+    bị thay (đã gửi lại) hoặc quá hạn → `INVITATION_TOKEN_EXPIRED`.
+    """
+    if row is None or row.status == "disabled":
+        raise INVITATION_TOKEN_INVALID.error()
+    if row.used_at is not None or row.status != "pending":
+        raise INVITATION_TOKEN_USED.error()
+    if row.superseded_at is not None or row.expires_at <= now:
+        raise INVITATION_TOKEN_EXPIRED.error()
+    return row
+
+
+async def _inviter_name(db: AsyncSession, user_id: str) -> str | None:
+    """Tên người mời gần nhất (`user.invite`/`user.invite_resend` trong nhật ký), hay `None`.
+
+    Cùng luật với `jobs._inviter_name` (thư mời): người mời đã xoá mềm → `None`.
+    """
+    actor = aliased(User)
+    stmt = (
+        select(actor.name)
+        .join(ActivityLog, ActivityLog.actor_id == actor.id)
+        .where(
+            ActivityLog.object_code == user_id,
+            ActivityLog.kind.in_((ActivityKind.USER_INVITE, ActivityKind.USER_INVITE_RESEND)),
+            actor.deleted_at.is_(None),
+        )
+        .order_by(ActivityLog.at.desc(), ActivityLog.id.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+@router.post(
+    "/invitations/preview",
+    status_code=200,
+    response_model=InvitationPreviewOut,
+    dependencies=[Depends(require_origin), Depends(_recovery_ip_limit)],
+)
+async def auth_preview_invitation(body: InvitationPreviewBody, db: DbSession, clock: ClockDep) -> InvitationPreviewOut:
+    """Xem trước lời mời trước khi điền form (G2-9, G2-10); chỉ đọc, không tiêu token.
+
+    Ba mã 422 tách "link sai" / "đã dùng" / "hết hạn hoặc đã gửi lại" (G1-10). Chỉ trả email,
+    vai, tên người mời, hạn — không id, không trạng thái nội bộ.
+    """
+    found = await _find_invitation(db, body.token)
+    invitation = _usable_invitation(found, clock.now())
+    inviter = await _inviter_name(db, invitation.user_id)
+    return InvitationPreviewOut(
+        status="valid",
+        email=invitation.email,
+        role=invitation.role,
+        inviter_name=inviter,
+        expires_at=invitation.expires_at,
+    )

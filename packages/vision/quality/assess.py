@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal
 
-from packages.vision.preprocess.geometry import WorkingImage, estimate_skew, find_frame_working, working_gray
+from packages.vision.preprocess.geometry import (
+    SkewEstimate,
+    WorkingImage,
+    estimate_skew,
+    find_frame_working,
+    working_gray,
+)
 from packages.vision.preprocess.types import Quad, RgbImage
 from packages.vision.quality.metrics import (
     WHOLE_IMAGE,
@@ -27,6 +33,7 @@ from packages.vision.quality.thresholds import (
     Level,
     classify_contrast,
     classify_noise,
+    classify_perspective,
     classify_resolution,
     classify_skew,
     worst_level,
@@ -38,8 +45,17 @@ QUALITY_CODES: Final = (
     "FRAME_NOT_FOUND",
     "LOW_CONTRAST",
     "HIGH_NOISE",
+    "SKEW_NOT_MEASURED",
+    "PERSPECTIVE_DETECTED",
 )
-"""Năm mã chất lượng của HOP-DONG-MOI §7.4, cũng là **thứ tự** phát hiện trong báo cáo."""
+"""Mã chất lượng, cũng là **thứ tự** phát hiện trong báo cáo.
+
+Năm mã đầu của HOP-DONG-MOI §7.4; hai mã cuối thêm cho G3-35 và nối **sau** để chỉ số
+của năm mã cũ (dùng để sắp phát hiện ở `apps/api/quality`) không đổi:
+`SKEW_NOT_MEASURED` = quá ít đoạn để đo nghiêng (`skewDeg` 0 lúc đó không có nghĩa
+"thẳng"); `PERSPECTIVE_DETECTED` = méo hình thang, "Tự động nắn" (chỉ xoay) không sửa
+được, phải chọn bốn góc (#31). FE nhận mã lạ mà không hỏng (`code` là chuỗi tự do).
+"""
 
 Severity = Literal["attention", "poor"]
 
@@ -80,10 +96,11 @@ class QualityReport:
         return worst_level([finding.severity for finding in self.findings])
 
 
-def _measure_working(img: RgbImage, work: WorkingImage) -> tuple[Measurement, tuple[float, float, float, float] | None]:
-    """Số đo trên bản làm việc đã dựng sẵn, kèm hộp bao các đoạn của bước đo nghiêng.
+def _measure_working(img: RgbImage, work: WorkingImage) -> tuple[Measurement, SkewEstimate]:
+    """Số đo trên bản làm việc đã dựng sẵn, kèm kết quả thô của bước đo nghiêng.
 
-    Tách khỏi `measure` để `assess` dùng lại cả bản làm việc lẫn hộp bao mà không đo
+    Tách khỏi `measure` để `assess` dùng lại cả bản làm việc lẫn hộp bao, cờ đã đo và
+    độ hội tụ mà không đo
     hai lần. Kích thước lấy của ảnh **gốc**, ba số còn lại của bản làm việc; cả ba đã
     làm tròn đúng số chữ số lên dây vì phân loại chạy trên chính số đã làm tròn.
     """
@@ -95,7 +112,7 @@ def _measure_working(img: RgbImage, work: WorkingImage) -> tuple[Measurement, tu
         contrast_score=round_score(contrast_score(work.gray)),
         noise_score=round_score(noise_score(work.gray)),
     )
-    return measurement, skew.segments_bbox
+    return measurement, skew
 
 
 def measure(img: RgbImage) -> Measurement:
@@ -121,10 +138,13 @@ def assess(img: RgbImage) -> QualityReport:
 
     Dựng bản làm việc **một lần** rồi truyền cho cả phần đo lẫn `find_frame_working`.
     Mỗi mã tối đa một phát hiện và chỉ sinh khi mức khác `good`, nên ảnh sạch, thẳng,
-    có khung, đủ phân giải cho `findings` rỗng và `level == "good"`.
+    có khung, đủ phân giải cho `findings` rỗng và `level == "good"`. Không đo được
+    nghiêng (`SKEW_NOT_MEASURED`) hay méo hình thang (`PERSPECTIVE_DETECTED`) kéo mức
+    xuống khỏi `good` (G3-35).
     """
     work = working_gray(img)
-    measurement, bbox = _measure_working(img, work)
+    measurement, estimate = _measure_working(img, work)
+    bbox = estimate.segments_bbox
     frame = find_frame_working(work)
     findings: list[Finding] = []
 
@@ -150,5 +170,14 @@ def assess(img: RgbImage) -> QualityReport:
     if noise != "good":
         region = densest_noise_region(work.gray)
         findings.append(Finding(QUALITY_CODES[4], noise, region, {"noiseScore": measurement.noise_score}))
+
+    if not estimate.is_measured:
+        findings.append(Finding(QUALITY_CODES[5], "attention", WHOLE_IMAGE, {}))
+
+    perspective = classify_perspective(estimate.perspective_deg)
+    if perspective != "good" and estimate.perspective_deg is not None:
+        region = _bbox_region(bbox, measurement.width_px, measurement.height_px)
+        metrics = {"perspectiveDeg": round_skew(estimate.perspective_deg)}
+        findings.append(Finding(QUALITY_CODES[6], perspective, region, metrics))
 
     return QualityReport(measurement, tuple(findings), frame)
