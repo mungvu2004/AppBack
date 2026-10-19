@@ -435,10 +435,11 @@ async def _find_invitation(db: AsyncSession, token: str) -> _InvitationRow | Non
 def _usable_invitation(row: _InvitationRow | None, now: datetime) -> _InvitationRow:
     """Phân loại lời mời — hàm thuần, gọi ngay sau `await` (NO-130).
 
-    Không thấy → `INVITATION_TOKEN_INVALID` (link sai); đã dùng hoặc người không còn `pending`
-    → `INVITATION_TOKEN_USED`; bị thay (đã gửi lại) hoặc quá hạn → `INVITATION_TOKEN_EXPIRED`.
+    Không thấy, hoặc người nhận đã bị vô hiệu → `INVITATION_TOKEN_INVALID` (đăng nhập cũng không
+    được, nên không mời "hãy đăng nhập"); đã dùng hoặc người đã kích hoạt → `INVITATION_TOKEN_USED`;
+    bị thay (đã gửi lại) hoặc quá hạn → `INVITATION_TOKEN_EXPIRED`.
     """
-    if row is None:
+    if row is None or row.status == "disabled":
         raise INVITATION_TOKEN_INVALID.error()
     if row.used_at is not None or row.status != "pending":
         raise INVITATION_TOKEN_USED.error()
@@ -448,7 +449,10 @@ def _usable_invitation(row: _InvitationRow | None, now: datetime) -> _Invitation
 
 
 async def _inviter_name(db: AsyncSession, user_id: str) -> str | None:
-    """Tên người mời gần nhất (`user.invite`/`user.invite_resend` trong nhật ký), hay `None`."""
+    """Tên người mời gần nhất (`user.invite`/`user.invite_resend` trong nhật ký), hay `None`.
+
+    Cùng luật với `jobs._inviter_name` (thư mời): người mời đã xoá mềm → `None`.
+    """
     actor = aliased(User)
     stmt = (
         select(actor.name)
@@ -456,6 +460,7 @@ async def _inviter_name(db: AsyncSession, user_id: str) -> str | None:
         .where(
             ActivityLog.object_code == user_id,
             ActivityLog.kind.in_((ActivityKind.USER_INVITE, ActivityKind.USER_INVITE_RESEND)),
+            actor.deleted_at.is_(None),
         )
         .order_by(ActivityLog.at.desc(), ActivityLog.id.desc())
         .limit(1)

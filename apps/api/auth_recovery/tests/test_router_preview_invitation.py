@@ -157,3 +157,12 @@ async def test_auth_preview_invitation__C26_already_active(
     user = await make_user(db_session)
     _, plain = await seed_token(db_session, user_id=user.id, purpose="invite", clock=fake_clock)
     assert (await _preview(auth_client, plain)).json()["code"] == "INVITATION_TOKEN_USED"
+
+
+async def test_auth_preview_invitation__C26_disabled(
+    auth_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Người chờ bị vô hiệu → 422 `INVITATION_TOKEN_INVALID`, không mời "hãy đăng nhập" (đăng nhập cũng hỏng)."""
+    user = await make_user(db_session, status="disabled", password=None)
+    _, plain = await seed_token(db_session, user_id=user.id, purpose="invite", clock=fake_clock)
+    assert (await _preview(auth_client, plain)).json()["code"] == "INVITATION_TOKEN_INVALID"
