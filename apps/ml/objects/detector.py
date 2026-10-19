@@ -1,14 +1,16 @@
 """Bộ nhận ô mở và đồ đạc chạy qua ONNX YOLO xuất kiểu ultralytics (B5-03 §B, khối [2]).
 
-Lát trang bằng `tiles.tile_windows` (A), decode mỗi lát rồi nối NMS + ghép hộp bị lát cắt
-(khối [6]). Không vòng Python theo điểm ảnh hay theo anchor (K28): decode/NMS/ghép hộp là
-thao tác mảng numpy trên toàn bộ ứng viên một lượt, vòng Python còn lại chỉ theo lát (vài
-chục) hay theo phát hiện cuối (≤ `MAX_DETECTIONS`). Suy luận luôn CPU qua phiên `load_onnx`
-đã nạp sẵn (M04): module này không gọi `resolve_device`.
+Lát trang bằng `tiles.tile_windows` (A), decode mỗi lát, bỏ mảnh bị lát cắt khi lát khác đã thấy
+trọn vật, NMS, rồi nối hộp vắt qua ranh lát (khối [6], luật nối sửa 2026-10-19). Không vòng Python
+theo điểm ảnh hay theo anchor (K28): decode/NMS/ghép hộp là thao tác mảng numpy trên toàn bộ ứng
+viên một lượt, vòng Python còn lại chỉ theo lát (vài chục) hay theo phát hiện cuối
+(≤ `MAX_DETECTIONS`). Suy luận luôn CPU qua phiên `load_onnx` đã nạp sẵn (M04): module này
+không gọi `resolve_device`.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Final, cast
 
 import numpy as np
@@ -26,18 +28,30 @@ from packages.ml_contracts.ports import RgbImage
 __all__ = [
     "COCO_CONFIDENCE_MIN",
     "CONFIDENCE_MIN",
+    "CUT_COVER_MIN",
+    "JOIN_SPAN_MIN",
+    "LABEL_CONFIDENCE_MIN",
     "MAX_DETECTIONS",
     "MERGE_OVERLAP",
     "NMS_IOU",
     "YoloOnnxDetector",
     "decode_tile",
+    "label_thresholds",
     "merge_candidates",
 ]
 
 CONFIDENCE_MIN: Final = 0.25
 COCO_CONFIDENCE_MIN: Final = 0.5
+LABEL_CONFIDENCE_MIN: Final[Mapping[str, float]] = MappingProxyType(
+    {"door": 0.45, "sanitary_fixture": 0.4, "wardrobe": 0.7, "window": 0.45}
+)
+"""Ngưỡng hiển thị riêng từng nhãn của model miền: F1 cao nhất trên 400 trang validation CubiCasa
+(yolo11m, 2026-10-19), làm tròn 0,05. Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng
+`COCO_CONFIDENCE_MIN` cho mọi nhãn."""
 NMS_IOU: Final = 0.5
 MERGE_OVERLAP: Final = 0.7
+CUT_COVER_MIN: Final = 0.7
+JOIN_SPAN_MIN: Final = 0.5
 MAX_DETECTIONS: Final = 2000
 
 _PAD_VALUE: Final = 114
@@ -124,16 +138,37 @@ def _preprocess_tile(image: RgbImage, window: Window, input_px: int) -> NDArray[
     return chw[np.newaxis, ...]
 
 
+def label_thresholds(labels: Labels, min_confidence: float | Mapping[str, float] | None = None) -> NDArray[np.float64]:
+    """Ngưỡng điểm theo chỉ số lớp của `labels`: số → mọi nhãn; dict → đè lên bảng mặc định.
+
+    Mặc định: `COCO_CONFIDENCE_MIN` cho mọi nhãn khi `labels is COCO_LABELS`, khác thì
+    `LABEL_CONFIDENCE_MIN` (vắng → `CONFIDENCE_MIN`). Đánh giá mAP truyền ngưỡng thấp (0,05)
+    để tính trên gần trọn đường precision-recall. Ngưỡng ngoài `[0, 1]` → `ValueError`.
+    """
+    coco = labels is COCO_LABELS
+    default = COCO_CONFIDENCE_MIN if coco else CONFIDENCE_MIN
+    if isinstance(min_confidence, (int, float)):
+        table: Mapping[str, float] = {}
+        default = float(min_confidence)
+    else:
+        table = {**({} if coco else LABEL_CONFIDENCE_MIN), **(min_confidence or {})}
+    values = np.array([table.get(label, default) if label is not None else 1.0 for label in labels], dtype=np.float64)
+    if not np.all((values >= 0.0) & (values <= 1.0)):
+        raise ValueError(f"ngưỡng điểm ngoài [0, 1]: {min_confidence}")
+    return values
+
+
 def decode_tile(
     output: NDArray[np.float32],
     window: Window,
     labels: Labels,
     input_px: int,
+    thresholds: NDArray[np.float64] | None = None,
 ) -> _Candidates:
     """`(1, 4+nc, A)` ultralytics → ứng viên trang, mảng hoá toàn bộ anchor cùng lúc (khối [6] bước 1-2, K28).
 
-    `score = max` lớp, `cls = argmax` (hoà chỉ số nhỏ, `np.argmax` đã vậy); ngưỡng
-    `COCO_CONFIDENCE_MIN` khi `labels is COCO_LABELS`, `CONFIDENCE_MIN` khác. Lớp `None`,
+    `score = max` lớp, `cls = argmax` (hoà chỉ số nhỏ, `np.argmax` đã vậy); ngưỡng theo lớp
+    `thresholds` (vắng → `label_thresholds(labels)` mặc định). Lớp `None`,
     NaN/vô cực, cạnh < 2px sau kẹp vào phần thật của lát đều bị bỏ (mặt nạ boolean, không vòng anchor).
 
     `input_px` giữ trong chữ ký vì khối [5] khai vậy cho mọi hàm hậu xử lý của bước, nhưng
@@ -144,9 +179,9 @@ def decode_tile(
     class_scores = arr[:, 4:]
     classes = class_scores.argmax(axis=1)
     scores = class_scores[np.arange(classes.shape[0]), classes]
-    threshold = COCO_CONFIDENCE_MIN if labels is COCO_LABELS else CONFIDENCE_MIN
+    per_class = label_thresholds(labels) if thresholds is None else thresholds
     none_mask = np.array([label is None for label in labels], dtype=bool)
-    keep = (scores >= threshold) & ~none_mask[classes]
+    keep = (scores >= per_class[classes]) & ~none_mask[classes]
     if not np.any(keep):
         return _EMPTY_CANDIDATES
     cx, cy, w, h = arr[keep, 0], arr[keep, 1], arr[keep, 2], arr[keep, 3]
@@ -228,8 +263,18 @@ def _nms(candidates: _Candidates) -> _Candidates:
     )
 
 
+def _select(candidates: _Candidates, mask: NDArray[np.bool_]) -> _Candidates:
+    """Ứng viên theo mặt nạ boolean (giữ nguyên lát nguồn)."""
+    return _Candidates(
+        boxes=candidates.boxes[mask],
+        scores=candidates.scores[mask],
+        classes=candidates.classes[mask],
+        tiles=candidates.tiles[mask],
+    )
+
+
 def _pairwise_area_overlap(boxes: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Ma trận `(n,n)` giao/diện tích hộp nhỏ, cho điều kiện (a) của bước 4 (một lượt numpy)."""
+    """Ma trận `(n,n)` giao/diện tích hộp nhỏ hơn của mỗi cặp (một lượt numpy)."""
     x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
     ix1 = np.maximum(x1[:, None], x1[None, :])
     iy1 = np.maximum(y1[:, None], y1[None, :])
@@ -267,35 +312,56 @@ def _cut_edge_touches(
     }
 
 
-def _merge_adjacency(candidates: _Candidates, *, page_w: int, page_h: int) -> NDArray[np.bool_]:
-    """Ma trận kề `(n,n)` của điều kiện nối (khối [6] bước 4a/4b), toàn bộ cặp một lượt numpy."""
-    n = len(candidates)
-    same_label = candidates.classes[:, None] == candidates.classes[None, :]
-    diff_tile = np.any(candidates.tiles[:, None, :] != candidates.tiles[None, :, :], axis=2)
-    area_cond = _pairwise_area_overlap(candidates.boxes) >= MERGE_OVERLAP
+def _drop_cut_fragments(candidates: _Candidates, *, page_w: int, page_h: int) -> _Candidates:
+    """Bỏ mảnh bị lát cắt khi một lát khác đã thấy trọn vật — chạy **trước** NMS.
+
+    Mảnh = ứng viên chạm mép trong của lát mình (`_cut_edge_touches`). Mảnh `i` bị bỏ khi có `j`
+    cùng nhãn, khác lát, không chạm mép trong, diện tích ≥ `i` và phủ ≥ `CUT_COVER_MIN` diện tích
+    `i`. Vật ≤ độ chồng lát (160 px ở 640) luôn có một lát chứa trọn, nên mảnh của nó không còn
+    đè (NMS) hay ghép nhầm với hộp trọn. Ma trận `(m,m)` theo từng nhãn, như NMS.
+    """
     touch = _cut_edge_touches(candidates.boxes, candidates.tiles, page_w, page_h)
-    horizontal_pair = (touch["right"][:, None] & touch["left"][None, :]) | (
-        touch["left"][:, None] & touch["right"][None, :]
-    )
-    vertical_pair = (touch["bottom"][:, None] & touch["top"][None, :]) | (
-        touch["top"][:, None] & touch["bottom"][None, :]
-    )
-    y1, y2 = candidates.boxes[:, 1], candidates.boxes[:, 3]
-    x1, x2 = candidates.boxes[:, 0], candidates.boxes[:, 2]
-    horizontal_cond = horizontal_pair & (_interval_iou_matrix(y1, y2) >= MERGE_OVERLAP)
-    vertical_cond = vertical_pair & (_interval_iou_matrix(x1, x2) >= MERGE_OVERLAP)
-    adjacency = same_label & diff_tile & (area_cond | horizontal_cond | vertical_cond)
-    np.fill_diagonal(adjacency, False)
-    return cast(NDArray[np.bool_], adjacency[:n, :n])
+    cut = touch["left"] | touch["right"] | touch["top"] | touch["bottom"]
+    keep = np.ones(len(candidates), dtype=bool)
+    for label in np.unique(candidates.classes[cut]):
+        idx = np.nonzero(candidates.classes == label)[0]
+        boxes, tiles = candidates.boxes[idx], candidates.tiles[idx]
+        area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        diff_tile = np.any(tiles[:, None, :] != tiles[None, :, :], axis=2)
+        covered = (_pairwise_area_overlap(boxes) >= CUT_COVER_MIN) & (area[None, :] >= area[:, None])
+        cover = diff_tile & covered & ~cut[idx][None, :]
+        keep[idx] = ~(cut[idx] & cover.any(axis=1))
+    return _select(candidates, keep)
+
+
+def _cut_pairs(
+    boxes: NDArray[np.float64],
+    tiles: NDArray[np.float64],
+    end_cut: NDArray[np.bool_],
+    start_cut: NDArray[np.bool_],
+    axis: int,
+) -> NDArray[np.bool_]:
+    """Ma trận `(m,m)` cặp nối theo trục `axis` (0 = x, 1 = y): hai nửa của một vật vắt qua ranh lát.
+
+    Hàng `i` chạm mép cuối lát mình, cột `j` chạm mép đầu lát mình; lát `j` bắt đầu **bên trong**
+    lát `i` (hai lát kề, chồng nhau); hai hộp cùng phủ ≥ `JOIN_SPAN_MIN` dải chồng của hai lát;
+    khoảng chiếu trên trục kia IoU ≥ `MERGE_OVERLAP`. Hai hộp ở xa nhau không bao giờ đạt.
+    """
+    lo, hi = boxes[:, axis], boxes[:, axis + 2]
+    start, end = tiles[:, axis], tiles[:, axis] + tiles[:, axis + 2]
+    inside = (start[None, :] > start[:, None]) & (start[None, :] < end[:, None])
+    strip = end[:, None] - start[None, :]
+    span = np.minimum(hi[:, None], hi[None, :]) - np.maximum(lo[:, None], lo[None, :])
+    other = 1 - axis
+    cross = _interval_iou_matrix(boxes[:, other], boxes[:, other + 2]) >= MERGE_OVERLAP
+    return end_cut[:, None] & start_cut[None, :] & inside & (span >= JOIN_SPAN_MIN * strip) & cross
 
 
 def _connected_components(n: int, edges: NDArray[np.int64]) -> NDArray[np.int64]:
     """Nhãn thành phần liên thông của `n` đỉnh theo `edges (m,2)` — union-find, chỉ lặp trên cạnh thật.
 
-    Một lượt của `_merge_cut_boxes`: bao đóng bắc cầu của cặp thoả điều kiện nối trên **ma
-    trận kề của lượt này**. Hộp bao sau khi nối có diện tích khác hộp gốc, nên một lượt không
-    đủ bắt hết chuỗi nối gián tiếp (ví dụ #2 review lượt 1) — `_merge_cut_boxes` gọi lại hàm
-    này ở mỗi lượt cho tới điểm bất động, không phải hàm này tự lặp.
+    Bao đóng bắc cầu của các cặp nối (`_join_cut_boxes`): vật dài vắt qua nhiều ranh lát liền
+    nhau thành một nhóm. Chỉ một lượt — hộp đã nối không được nối tiếp, nên không còn xâu chuỗi.
     """
     parent = np.arange(n)
 
@@ -313,19 +379,10 @@ def _connected_components(n: int, edges: NDArray[np.int64]) -> NDArray[np.int64]
     return np.array([find(i) for i in range(n)])
 
 
-def _union_round(candidates: _Candidates, groups: NDArray[np.int64]) -> _Candidates:
-    """Gộp mỗi thành phần liên thông thành một ứng viên: hộp bao, điểm max, nhãn chung.
-
-    Lát nguồn (`tiles`) của một nhóm giữ nguyên **chỉ khi nhóm đó chỉ có một ứng viên** (chưa
-    nối lượt nào) — vòng sau vẫn cần lát thật để loại cặp cùng lát (NMS đã xử trong-lát rồi).
-    Nhóm đã nối (≥ 2 ứng viên) không còn thuộc một lát duy nhất: đặt `NaN`, để `!=` trong
-    `_merge_adjacency` luôn coi nó "khác lát" với bất kỳ ứng viên nào ở vòng sau — quyết định
-    này là phần "định nghĩa rõ lát nguồn của hộp nối" mà review lượt 1 yêu cầu.
-    `NaN` cũng làm `_cut_edge_touches` trả `False` ở cả bốn mép (so sánh với `NaN` luôn sai), nên
-    điều kiện (b) tắt cho hộp đã nối: ở các vòng sau nó chỉ còn nối được qua điều kiện (a).
-    """
-    unique_groups, inverse, counts = np.unique(groups, return_inverse=True, return_counts=True)
-    g = unique_groups.shape[0]
+def _union_groups(candidates: _Candidates, groups: NDArray[np.int64]) -> _Detections:
+    """Gộp mỗi nhóm thành một phát hiện: hộp bao, điểm max, nhãn chung (lát nguồn bỏ đi)."""
+    _, inverse = np.unique(groups, return_inverse=True)
+    g = int(inverse.max()) + 1
     merged_x1 = np.full(g, np.inf)
     merged_y1 = np.full(g, np.inf)
     merged_x2 = np.full(g, -np.inf)
@@ -338,59 +395,30 @@ def _union_round(candidates: _Candidates, groups: NDArray[np.int64]) -> _Candida
     np.maximum.at(merged_y2, inverse, candidates.boxes[:, 3])
     np.maximum.at(merged_score, inverse, candidates.scores)
     merged_label[inverse] = candidates.classes
-    merged_tiles = np.empty((g, 4))
-    merged_tiles[inverse] = candidates.tiles
-    merged_tiles[counts > 1] = np.nan
     boxes = np.stack([merged_x1, merged_y1, merged_x2, merged_y2], axis=1)
-    return _Candidates(boxes=boxes, scores=merged_score, classes=merged_label, tiles=merged_tiles)
+    return _Detections(boxes=boxes, scores=merged_score, classes=merged_label)
 
 
-def _merge_cut_boxes_to_fixed_point(state: _Candidates, *, page_w: int, page_h: int) -> _Candidates:
-    """Một nhãn: ma trận kề → thành phần liên thông → gộp, lặp tới khi không còn cặp kề (khối [6] bước 4).
+def _join_cut_boxes(candidates: _Candidates, *, page_w: int, page_h: int) -> _Detections:
+    """Nối hai nửa của vật dài hơn độ chồng lát (`_cut_pairs` ngang + dọc), theo từng nhãn, một lượt.
 
-    Mỗi vòng dùng ứng viên **hiện tại** (gồm cả hộp đã nối ở vòng trước). Dừng khi ma trận kề
-    rỗng. Số vòng bị chặn trên bởi số ứng viên của nhãn này (mỗi vòng giảm ít nhất một nhóm);
-    dữ liệu thật (chuỗi nối vắt vài ranh lát liền kề) hội tụ sau vài vòng, không phải `O(n)`.
-    """
-    while len(state) > 0:
-        adjacency = _merge_adjacency(state, page_w=page_w, page_h=page_h)
-        edges = np.argwhere(np.triu(adjacency, k=1))
-        if edges.shape[0] == 0:
-            break
-        groups = _connected_components(len(state), edges)
-        state = _union_round(state, groups)
-    return state
-
-
-def _merge_cut_boxes(candidates: _Candidates, *, page_w: int, page_h: int) -> _Detections:
-    """Nối hộp bị lát cắt, theo từng nhãn riêng (khối [6] bước 4: điều kiện luôn đòi cùng nhãn,
-    nên hai nhóm nhãn khác nhau không bao giờ ảnh hưởng nhau).
-
-    Tách nhóm trước khi lặp: chi phí ma trận kề đổi từ `O(n²)` (một nhãn giả định) xuống
-    `O(Σ mᵢ²)` với `mᵢ` là số ứng viên mỗi nhãn — cùng số phép so sánh hợp lệ (same-label vẫn
-    là điều kiện bắt buộc trong `_merge_adjacency`) nhưng không tính phí cho cặp khác nhãn,
-    đáng kể khi `n` lớn nhiều nhãn (trần hiệu năng `test_perf.py`).
+    Thay luật cũ (khối [6] bước 4): luật cũ nối cả hai hộp chạm mép ở hai lát xa nhau, rồi điều
+    kiện "chứa" nuốt tiếp các hộp nằm giữa — dãy cửa sổ thành một hộp dài (đo 2026-10-19).
     """
     if len(candidates) == 0:
         return _Detections(boxes=candidates.boxes, scores=candidates.scores, classes=candidates.classes)
-    merged_groups = [
-        _merge_cut_boxes_to_fixed_point(
-            _Candidates(
-                boxes=candidates.boxes[mask],
-                scores=candidates.scores[mask],
-                classes=candidates.classes[mask],
-                tiles=candidates.tiles[mask],
-            ),
-            page_w=page_w,
-            page_h=page_h,
-        )
-        for mask in (candidates.classes == label for label in np.unique(candidates.classes))
-    ]
-    return _Detections(
-        boxes=np.concatenate([g.boxes for g in merged_groups]),
-        scores=np.concatenate([g.scores for g in merged_groups]),
-        classes=np.concatenate([g.classes for g in merged_groups]),
-    )
+    touch = _cut_edge_touches(candidates.boxes, candidates.tiles, page_w, page_h)
+    edges = [np.zeros((0, 2), dtype=np.int64)]
+    for label in np.unique(candidates.classes):
+        idx = np.nonzero(candidates.classes == label)[0]
+        boxes, tiles = candidates.boxes[idx], candidates.tiles[idx]
+        horizontal = _cut_pairs(boxes, tiles, touch["right"][idx], touch["left"][idx], 0)
+        vertical = _cut_pairs(boxes, tiles, touch["bottom"][idx], touch["top"][idx], 1)
+        edges.append(idx[np.argwhere(horizontal | vertical)])
+    all_edges = np.concatenate(edges)
+    if all_edges.shape[0] == 0:
+        return _Detections(boxes=candidates.boxes, scores=candidates.scores, classes=candidates.classes)
+    return _union_groups(candidates, _connected_components(len(candidates), all_edges))
 
 
 def _cap_and_sort(detections: _Detections) -> _Detections:
@@ -408,13 +436,17 @@ def _cap_and_sort(detections: _Detections) -> _Detections:
 
 
 def merge_candidates(candidates: _Candidates, *, page_w: int, page_h: int) -> _Detections:
-    """NMS theo nhãn rồi nối hộp bị lát cắt, giữ tối đa `MAX_DETECTIONS` theo điểm (khối [6] bước 3-5).
+    """Bỏ mảnh bị lát cắt, NMS theo nhãn, nối vật vắt ranh lát, giữ tối đa `MAX_DETECTIONS` theo điểm.
+
+    Bỏ mảnh **trước** NMS là cố ý: mảnh điểm cao hơn hộp trọn sẽ khiến NMS bỏ hộp trọn (đo trên
+    400 trang test và 400 trang validation CubiCasa, 2026-10-19).
 
     Lệch khỏi prompt: khổ trang (`page_w`, `page_h`) truyền tường minh (kích thước ảnh thật ở
     `detect`) thay vì suy từ hợp các lát, để không phụ thuộc việc lát cuối có còn trong ứng
     viên hay không.
     """
-    return _cap_and_sort(_merge_cut_boxes(_nms(candidates), page_w=page_w, page_h=page_h))
+    kept = _nms(_drop_cut_fragments(candidates, page_w=page_w, page_h=page_h))
+    return _cap_and_sort(_join_cut_boxes(kept, page_w=page_w, page_h=page_h))
 
 
 def _finalize(detections: _Detections, labels: Labels) -> tuple[DetectionPx, ...]:
@@ -434,13 +466,21 @@ def _finalize(detections: _Detections, labels: Labels) -> tuple[DetectionPx, ...
 class YoloOnnxDetector:
     """`ObjectDetector` (B5-01) chạy trên phiên ONNX YOLO xuất kiểu ultralytics (khối [1])."""
 
-    def __init__(self, session: ort.InferenceSession, labels: Labels) -> None:
+    def __init__(
+        self,
+        session: ort.InferenceSession,
+        labels: Labels,
+        *,
+        min_confidence: float | Mapping[str, float] | None = None,
+    ) -> None:
         """Kiểm hình dạng và nhãn ngay lúc dựng (K12, M02); sai → `PermanentError(MODEL_FORMAT_UNSUPPORTED)`.
 
         Không đọc `names`/metadata khác của ONNX (khối [2]); nhãn ngoài `ARTIFACT_LABELS`
-        và khác `None` → `ValueError` qua `check_labels`.
+        và khác `None` → `ValueError` qua `check_labels`. `min_confidence`: xem `label_thresholds`
+        (vắng → ngưỡng hiển thị mặc định; đánh giá mAP truyền 0,05).
         """
         check_labels(labels)
+        self._thresholds = label_thresholds(labels, min_confidence)
         inputs, outputs = session.get_inputs(), session.get_outputs()
         self.input_px = _checked_input_shape(inputs)
         _checked_output_shape(outputs, expected_channels=4 + len(labels))
@@ -465,7 +505,7 @@ class YoloOnnxDetector:
                 output = self._session.run([self._output_name], {self._input_name: tile_input})[0]
             except ORT_ERRORS as exc:
                 raise _unsupported() from exc
-            per_tile.append(decode_tile(output, window, self._labels, self.input_px))
+            per_tile.append(decode_tile(output, window, self._labels, self.input_px, self._thresholds))
         candidates = _concat_candidates(per_tile)
         detections = merge_candidates(candidates, page_w=width, page_h=height)
         return _finalize(detections, self._labels)
