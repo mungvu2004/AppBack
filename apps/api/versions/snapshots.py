@@ -25,7 +25,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import RowMapping, Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.spatial_read.codec import DocumentCorruptError, document_from_json, document_to_json
+from apps.api.spatial_read.codec import DocumentCorruptError, decode_document, document_to_json
 from apps.api.spatial_read.documents import (
     DOCUMENT_SCHEMA_VERSION,
     FloorDocument,
@@ -39,7 +39,7 @@ from packages.core.text import nfc
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import CHANGED_BY_RE
 from packages.db.models.versions import VersionRecord
-from packages.domain.spatial import Dimension, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, Point, SpatialLayer
 
 _log: Final = logging.getLogger(__name__)
 _CREATOR_RE: Final = re.compile(CHANGED_BY_RE)
@@ -83,11 +83,17 @@ class VersionRow:
 
 @dataclass(frozen=True)
 class DecodedSnapshot:
-    """Ảnh chụp đã giải mã: lớp, kích thước và tỉ lệ mm/px lúc chụp (`None` khi chưa hiệu chỉnh)."""
+    """Ảnh chụp đã giải mã: lớp, kích thước và tỉ lệ mm/px lúc chụp (`None` khi chưa hiệu chỉnh).
+
+    `axes`/`origin` là `None` khi ảnh chụp có từ trước lúc trục được lưu thật (G4b-17): phục hồi
+    khi đó giữ trục/gốc hiện tại thay vì xoá chúng.
+    """
 
     layer: SpatialLayer
     dimensions: tuple[Dimension, ...]
     scale_mm_per_px: Decimal | None
+    axes: tuple[Axis, ...] | None = None
+    origin: Point | None = None
 
 
 class _SnapshotMismatchError(ValueError):
@@ -99,7 +105,9 @@ def snapshot_of(doc: FloorDocument) -> dict[str, object]:
     snapshot: dict[str, object] = {"schemaVersion": DOCUMENT_SCHEMA_VERSION}
     if doc.scale_mm_per_px is not None:
         snapshot["scaleMmPerPx"] = str(doc.scale_mm_per_px)
-    snapshot["document"] = document_to_json(doc.layer, (), doc.dimensions)
+    snapshot["document"] = document_to_json(doc.layer, doc.axes, doc.dimensions, doc.origin)
+    # Ảnh chụp cũ ghi `axes: []` dù tầng có trục: khoá này phân biệt "không trục" với "chưa chụp trục".
+    snapshot["axesRecorded"] = True
     return snapshot
 
 
@@ -125,8 +133,15 @@ def _decode(raw: Mapping[str, object]) -> DecodedSnapshot:
     document = raw.get("document")
     if not isinstance(document, Mapping):
         raise _SnapshotMismatchError("thiếu document")
-    layer, _axes, dimensions = document_from_json(document)
-    return DecodedSnapshot(layer=layer, dimensions=dimensions, scale_mm_per_px=_scale_of(raw.get("scaleMmPerPx")))
+    envelope = decode_document(document)
+    recorded = raw.get("axesRecorded") is True
+    return DecodedSnapshot(
+        layer=envelope.layer,
+        dimensions=envelope.dimensions,
+        scale_mm_per_px=_scale_of(raw.get("scaleMmPerPx")),
+        axes=envelope.axes if recorded else None,
+        origin=envelope.origin if recorded else None,
+    )
 
 
 def decode_snapshot(raw: Mapping[str, object] | None, *, version_id: str) -> DecodedSnapshot | None:
