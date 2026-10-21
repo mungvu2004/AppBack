@@ -1,13 +1,24 @@
-"""Test `decode_tile`/`merge_candidates` bằng tensor tay: ngưỡng, kẹp, NMS, nối lát (khối [8])."""
+"""Test `decode_tile`/`merge_candidates` bằng tensor tay: ngưỡng, kẹp, bỏ mảnh lát cắt, NMS, nối lát (khối [8])."""
 
 from collections.abc import Sequence
 
 import numpy as np
+import pytest
 
-from apps.ml.objects.detector import CONFIDENCE_MIN, MAX_DETECTIONS, _Candidates, decode_tile, merge_candidates
+from apps.ml.objects.detector import (
+    COCO_CONFIDENCE_MIN,
+    CONFIDENCE_MIN,
+    LABEL_CONFIDENCE_MIN,
+    MAX_DETECTIONS,
+    _Candidates,
+    decode_tile,
+    label_thresholds,
+    merge_candidates,
+)
 from apps.ml.objects.labels import COCO_LABELS
 from apps.ml.objects.tests.onnx_models import yolo_output
 from apps.ml.objects.tiles import Window
+from packages.ml_contracts.labels import DetectionLabel
 
 
 def _candidates(
@@ -21,10 +32,39 @@ def _candidates(
     return _Candidates(boxes=boxes, scores=scores, classes=classes, tiles=tiles)
 
 
-def test_decode_tile__drops_below_confidence_min() -> None:
-    """Điểm dưới `CONFIDENCE_MIN` bị bỏ, không sinh ứng viên."""
-    output = yolo_output([(50, 50, 20, 20, 0, CONFIDENCE_MIN - 0.05)], nc=1)
+def test_decode_tile__drops_below_label_threshold() -> None:
+    """Điểm dưới ngưỡng riêng của nhãn (`LABEL_CONFIDENCE_MIN`) bị bỏ, không sinh ứng viên."""
+    output = yolo_output([(50, 50, 20, 20, 0, LABEL_CONFIDENCE_MIN["door"] - 0.05)], nc=1)
     assert len(decode_tile(output, Window(0, 0, 640, 640), ("door",), 640)) == 0
+
+
+def test_decode_tile__explicit_thresholds_override_default() -> None:
+    """`thresholds` truyền vào thay ngưỡng mặc định (đánh giá mAP hạ xuống 0,05)."""
+    output = yolo_output([(50, 50, 20, 20, 0, 0.1)], nc=1)
+    window = Window(0, 0, 640, 640)
+    assert len(decode_tile(output, window, ("door",), 640)) == 0
+    assert len(decode_tile(output, window, ("door",), 640, label_thresholds(("door",), 0.05))) == 1
+
+
+def test_label_thresholds__defaults_per_label_and_overrides() -> None:
+    """Nhãn có ngưỡng riêng dùng nó, nhãn vắng dùng `CONFIDENCE_MIN`, COCO dùng `COCO_CONFIDENCE_MIN`;
+    số đè mọi nhãn, dict chỉ đè nhãn có trong dict, nhãn `None` không bao giờ qua (1,0)."""
+    labels: tuple[DetectionLabel, ...] = ("door", "other")
+    assert list(label_thresholds(labels)) == [LABEL_CONFIDENCE_MIN["door"], CONFIDENCE_MIN]
+    assert list(label_thresholds(labels, 0.05)) == [0.05, 0.05]
+    assert list(label_thresholds(labels, {"other": 0.6})) == [LABEL_CONFIDENCE_MIN["door"], 0.6]
+    coco = label_thresholds(COCO_LABELS)
+    mapped = [i for i, label in enumerate(COCO_LABELS) if label is not None]
+    unmapped = [i for i, label in enumerate(COCO_LABELS) if label is None]
+    assert set(coco[mapped]) == {COCO_CONFIDENCE_MIN}
+    assert set(coco[unmapped]) == {1.0}
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.5, {"door": 2.0}])
+def test_label_thresholds__rejects_out_of_range(bad: float | dict[str, float]) -> None:
+    """Ngưỡng ngoài `[0, 1]` là lỗi cấu hình → `ValueError` (không âm thầm bỏ hết/giữ hết)."""
+    with pytest.raises(ValueError, match="ngưỡng"):
+        label_thresholds(("door",), bad)
 
 
 def test_decode_tile__coco_threshold_stricter_than_default() -> None:
@@ -67,19 +107,36 @@ def test_decode_tile__drops_box_below_minimum_side() -> None:
     assert len(decode_tile(output, Window(0, 0, 640, 640), ("door",), 640)) == 0
 
 
-def test_merge_candidates__joins_overlapping_boxes_from_different_tiles() -> None:
-    """Điều kiện (a) khối [6] bước 4: giao/diện tích hộp nhỏ ≥ `MERGE_OVERLAP` (IoU thấp nên NMS không bỏ)."""
-    tile_a, tile_b = (0.0, 0.0, 640.0, 640.0), (0.0, 0.0, 100.0, 100.0)
+def test_merge_candidates__drops_cut_fragment_before_nms() -> None:
+    """Mảnh chạm mép trong lát A (điểm 0,9) bị bỏ vì lát B thấy trọn vật (điểm 0,6) — **trước** NMS.
+
+    Nếu NMS chạy trước, IoU mảnh/hộp trọn 0,67 ≥ `NMS_IOU` sẽ bỏ hộp trọn và giữ mảnh cụt
+    (lỗi đo được trên CubiCasa 2026-10-19).
+    """
+    tile_a, tile_b = (0.0, 0.0, 640.0, 640.0), (480.0, 0.0, 640.0, 640.0)
     candidates = _candidates(
         [
-            ((0.0, 0.0, 100.0, 100.0), 0, 0.9, tile_a),
-            ((10.0, 10.0, 40.0, 40.0), 0, 0.6, tile_b),
+            ((600.0, 100.0, 640.0, 140.0), 0, 0.9, tile_a),
+            ((600.0, 100.0, 660.0, 140.0), 0, 0.6, tile_b),
         ]
     )
-    result = merge_candidates(candidates, page_w=1280, page_h=640)
+    result = merge_candidates(candidates, page_w=1120, page_h=640)
     assert len(result) == 1
-    assert tuple(result.boxes[0]) == (0.0, 0.0, 100.0, 100.0)
-    assert result.scores[0] == 0.9
+    assert tuple(result.boxes[0]) == (600.0, 100.0, 660.0, 140.0)
+    assert result.scores[0] == 0.6
+
+
+def test_merge_candidates__keeps_fragment_covered_by_other_label() -> None:
+    """Hộp trọn khác nhãn không bỏ được mảnh: luật bỏ mảnh chỉ so cùng nhãn."""
+    tile_a, tile_b = (0.0, 0.0, 640.0, 640.0), (480.0, 0.0, 640.0, 640.0)
+    candidates = _candidates(
+        [
+            ((600.0, 100.0, 640.0, 140.0), 0, 0.9, tile_a),
+            ((600.0, 100.0, 660.0, 140.0), 1, 0.6, tile_b),
+        ]
+    )
+    result = merge_candidates(candidates, page_w=1120, page_h=640)
+    assert sorted(int(c) for c in result.classes) == [0, 1]
 
 
 def test_merge_candidates__nms_drops_same_label_keeps_different_label() -> None:
@@ -98,41 +155,47 @@ def test_merge_candidates__nms_drops_same_label_keeps_different_label() -> None:
 
 
 def test_merge_candidates__joins_chain_across_three_tiles() -> None:
-    """Nối dây chuyền: ba mảnh vắt hai ranh lát → một hộp bao (thành phần liên thông một lượt)."""
-    tile_a, tile_b, tile_c = (0.0, 0.0, 640.0, 640.0), (640.0, 0.0, 640.0, 640.0), (1280.0, 0.0, 640.0, 640.0)
+    """Vật dài 1000px vắt ba lát chồng nhau (lưới 640/160): ba mảnh → một hộp bao, điểm max."""
+    tile_a, tile_b, tile_c = (0.0, 0.0, 640.0, 640.0), (480.0, 0.0, 640.0, 640.0), (960.0, 0.0, 640.0, 640.0)
     candidates = _candidates(
         [
             ((500.0, 100.0, 640.0, 300.0), 0, 0.8, tile_a),
-            ((640.0, 100.0, 1280.0, 300.0), 0, 0.7, tile_b),
-            ((1280.0, 100.0, 1400.0, 300.0), 0, 0.6, tile_c),
+            ((480.0, 100.0, 1120.0, 300.0), 0, 0.7, tile_b),
+            ((960.0, 100.0, 1500.0, 300.0), 0, 0.6, tile_c),
         ]
     )
-    result = merge_candidates(candidates, page_w=1920, page_h=640)
+    result = merge_candidates(candidates, page_w=1600, page_h=640)
     assert len(result) == 1
-    assert tuple(result.boxes[0]) == (500.0, 100.0, 1400.0, 300.0)
+    assert tuple(result.boxes[0]) == (480.0, 100.0, 1500.0, 300.0)
     assert result.scores[0] == 0.8
 
 
-def test_merge_candidates__joins_indirect_chain_through_intermediate_merge() -> None:
-    """Phản ví dụ review lượt 1 (#2): C chỉ thoả điều kiện (a) với hộp **đã nối** AB (giao/dt-nhỏ = 1,0),
-    không với A hay B riêng lẻ (0,5 mỗi cặp, dưới `MERGE_OVERLAP`) — vẫn phải ra **một** hộp, nghĩa là
-    `merge_candidates` phải lặp tới điểm bất động chứ không dừng ở một lượt trên ma trận kề gốc.
-
-    A `[100,0,500,100]` (tile phải khớp mép `x=500`) + B `[500,0,900,100]` (tile trái khớp mép `x=500`)
-    nối qua điều kiện (b) (chạm mép trong, chiếu y IoU 1,0) → AB `[100,0,900,100]`; C `[400,0,600,100]`
-    (tile thứ ba, không chạm mép A hay B) chỉ nối được với AB ở vòng thứ hai.
-    """
-    tile_a, tile_b, tile_c = (0.0, 0.0, 500.0, 640.0), (500.0, 0.0, 500.0, 640.0), (350.0, 0.0, 350.0, 640.0)
+def test_merge_candidates__does_not_join_far_apart_cut_boxes() -> None:
+    """Hồi quy `high_quality_architectural-1217`: hai cửa sổ chạm mép ở hai lát cách ~2000px cùng
+    hàng ngang **không** nối; cửa sổ ở giữa không bị nuốt (luật cũ ra một hộp dài 2047px)."""
     candidates = _candidates(
         [
-            ((100.0, 0.0, 500.0, 100.0), 0, 0.9, tile_a),
-            ((500.0, 0.0, 900.0, 100.0), 0, 0.8, tile_b),
-            ((400.0, 0.0, 600.0, 100.0), 0, 0.7, tile_c),
+            ((587.0, 593.0, 640.0, 626.0), 0, 0.8, (0.0, 480.0, 640.0, 640.0)),
+            ((1200.0, 594.0, 1260.0, 625.0), 0, 0.8, (960.0, 480.0, 640.0, 640.0)),
+            ((2606.0, 595.0, 2629.0, 625.0), 0, 0.7, (2606.0, 480.0, 640.0, 640.0)),
         ]
     )
-    result = merge_candidates(candidates, page_w=1000, page_h=640)
-    assert len(result) == 1
-    assert tuple(result.boxes[0]) == (100.0, 0.0, 900.0, 100.0)
+    result = merge_candidates(candidates, page_w=4000, page_h=2000)
+    assert len(result) == 3
+    assert max(float(b[2] - b[0]) for b in result.boxes) == 60.0
+
+
+def test_merge_candidates__does_not_join_pieces_not_spanning_overlap_strip() -> None:
+    """Hai hộp chạm mép ở hai lát kề nhưng không cùng phủ dải chồng (hai vật sát ranh) → không nối."""
+    tile_a, tile_b = (0.0, 0.0, 640.0, 640.0), (480.0, 0.0, 640.0, 640.0)
+    candidates = _candidates(
+        [
+            ((620.0, 100.0, 640.0, 200.0), 0, 0.8, tile_a),
+            ((480.0, 100.0, 500.0, 200.0), 0, 0.7, tile_b),
+        ]
+    )
+    result = merge_candidates(candidates, page_w=1120, page_h=640)
+    assert len(result) == 2
 
 
 def test_merge_candidates__does_not_join_within_same_tile() -> None:
