@@ -91,6 +91,7 @@ async def test_read_settings__default_when_no_row(db_session: AsyncSession) -> N
         {"confidence_threshold": Decimal("1.001")},
         {"default_scale_mm_per_px": Decimal("0.009")},
         {"last_body_sha256": "abc"},
+        {"scene_style": "neon"},
     ],
 )
 async def test_model__check_constraints_hold(db_session: AsyncSession, override: dict[str, Any]) -> None:

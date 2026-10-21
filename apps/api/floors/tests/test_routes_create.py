@@ -292,7 +292,9 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
         .where(ProjectFloorSummary.project_id == project.id, ProjectFloorSummary.floor_level_id == level_id)
         .values(walls_total=5, hidden=True)
     )
-    await db_session.execute(update(FloorRow).where(FloorRow.pk == floor.pk).values(deleted_at=fake_clock.now()))
+    await db_session.execute(
+        update(FloorRow).where(FloorRow.pk == floor.pk).values(deleted_at=fake_clock.now(), hidden_in_3d=True)
+    )
     await db_session.commit()
     fake_clock.advance(timedelta(minutes=9))
 
@@ -320,10 +322,11 @@ async def test_floors_create_floor__restore_within_window_keeps_pk_and_counts(
     assert response.status_code == 201
     out = response.json()
     assert len(out["drawings"]) == 1
+    assert out["hiddenIn3d"] is False
 
     row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=level_id)
     assert row is not None
-    assert row.pk == floor.pk
+    assert (row.pk, row.hidden_in_3d) == (floor.pk, False)
 
     summary = await summary_row(db_sessionmaker, project_id=project.id, floor_level_id=level_id)
     assert summary is not None

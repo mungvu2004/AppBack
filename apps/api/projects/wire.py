@@ -63,7 +63,10 @@ class DrawingOut(WireModel):
 
 
 class FloorOut(WireModel):
-    """`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`)."""
+    """`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).
+
+    `hiddenIn3d` (FE3D-B3) luôn có trên dây; mặc định `false` chỉ cho chỗ dựng tay (test, fake).
+    """
 
     id: str
     name: str
@@ -72,6 +75,7 @@ class FloorOut(WireModel):
     height_mm: int
     area_m2: float | None = None
     drawings: list[DrawingOut]
+    hidden_in_3d: bool = Field(default=False, alias="hiddenIn3d")
 
 
 class ProjectOut(WireModel):

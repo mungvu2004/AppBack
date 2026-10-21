@@ -18,10 +18,10 @@ DELETED: Final = "__deleted__"
 """`field` của mục xoá thực thể; mục đó không có `value` (trên dây: vắng khoá)."""
 
 _TRACKED_FIELDS: Final[dict[type[Wall | Opening | Room | Furniture], tuple[str, ...]]] = {
-    Wall: ("thickness_mm", "height_mm", "kind"),
+    Wall: ("thickness_mm", "height_mm", "kind", "paint"),
     Opening: ("width_mm", "height_mm", "sill_height_mm", "offset_mm", "swing", "wall_id"),
-    Room: ("name", "usage", "outline"),
-    Furniture: ("kind", "centre", "rotation_deg", "room_id"),
+    Room: ("name", "usage", "outline", "finish", "floor_material"),
+    Furniture: ("kind", "centre", "rotation_deg", "room_id", "variant", "height_mm", "lift_mm", "model", "slots"),
 }
 
 _Snapshot = dict[tuple[ChangeEntityType, str], dict[str, object]]

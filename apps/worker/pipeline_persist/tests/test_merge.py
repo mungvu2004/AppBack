@@ -7,7 +7,7 @@ Hàm trộn chỉ được `write_layer` gọi dưới khoá, nên nhánh `targe
 from decimal import Decimal
 from typing import Final
 
-from apps.worker.pipeline_persist.merge import make_merge
+from apps.worker.pipeline_persist.merge import make_merge, with_floor_height
 from apps.worker.pipeline_persist.tests.helpers import ai_layer
 from packages.domain.rules_ai.merge import merge_pipeline_result
 from packages.domain.spatial.model import SpatialLayer
@@ -39,3 +39,16 @@ def test_make_merge_rescales_ai_to_target_scale() -> None:
 
     assert at_six.layer != at_twelve.layer
     assert len(at_six.layer.walls) == len(at_twelve.layer.walls)
+
+
+def test_with_floor_height_overrides_only_default_height_walls() -> None:
+    """Tường 3600 giữ chỗ → 2700 của tầng; tường thấp (lan can 1100) giữ nguyên chiều cao."""
+    _, ai = _layers()
+    railing = ai.walls[0].model_copy(update={"height_mm": 1100})
+    layer = ai.model_copy(update={"walls": (railing, *ai.walls[1:])})
+
+    got = with_floor_height(layer, 2700)
+
+    assert got.walls[0] == railing
+    assert {wall.height_mm for wall in got.walls[1:]} == {2700}
+    assert got.openings == layer.openings

@@ -7,7 +7,7 @@ R-07): kiểm lại đúng luật tên/mm mà không tin bên gọi (kể cả B
 import math
 from typing import Annotated, Any, Final
 
-from pydantic import BeforeValidator, JsonValue, field_validator
+from pydantic import BeforeValidator, Field, JsonValue, StrictBool, field_validator
 
 from apps.api.core.wire import WireRequest
 from packages.core.ids import is_spatial_id
@@ -94,10 +94,14 @@ class FloorPatchIn(WireRequest):
     order: OrderField | None = None
     elevation_mm: ElevationField | None = None
     height_mm: HeightField | None = None
+    # FE3D-B3: alias tay vì `to_camel("hidden_in_3d")` ra `hiddenIn3D` (chữ sau số bị viết hoa).
+    hidden_in_3d: StrictBool | None = Field(default=None, alias="hiddenIn3d")
     drawings: JsonValue = None
     area_m2: JsonValue = None
 
-    @field_validator("id", "name", "order", "elevation_mm", "height_mm", mode="before", check_fields=False)
+    @field_validator(
+        "id", "name", "order", "elevation_mm", "height_mm", "hidden_in_3d", mode="before", check_fields=False
+    )
     @classmethod
     def _no_explicit_null(cls, value: Any) -> Any:
         """`null` tường minh cho một khoá bất kỳ ở trên → 422 kèm đúng `field`."""

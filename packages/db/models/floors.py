@@ -7,11 +7,12 @@ nên id có thể tái dùng sau khi tầng cũ đã xoá mềm quá cửa sổ 
 
 CHECK ở đây là tầng phòng thủ cuối (như `project_floor_summaries`, B2-01) — nơi báo lỗi
 cho người dùng là `apps/api/floors` (422 theo [2]), không phải DB.
+`hidden_in_3d` (FE3D-B3): tầng bị ẩn khỏi cảnh 3D, mặc định `false`.
 """
 
 from typing import Final
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Identity, Index, Integer, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Identity, Index, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from packages.db.base import Base, SoftDeleteMixin, TimestampMixin, mm_column, unique_active
@@ -32,6 +33,7 @@ class FloorRow(Base, TimestampMixin, SoftDeleteMixin):
     floor_order: Mapped[int] = mapped_column(Integer)
     elevation_mm: Mapped[int] = mm_column()
     height_mm: Mapped[int] = mm_column()
+    hidden_in_3d: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_by: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (

@@ -236,3 +236,25 @@ def sample_layer(level_index: int) -> SpatialLayer:
         rooms=tuple(room for room in graph.rooms if room.level_id == level_id),
         furniture=tuple(item for item in graph.furniture if item.level_id == level_id),
     )
+
+
+PASCAL_FIELDS: Final[dict[str, dict[str, object]]] = {
+    "walls": {"paint": {"interior": "library:paint_white", "exterior": "scene:brick-02"}},
+    "rooms": {"finish": "tile", "floorMaterial": "library:oak_floor"},
+    "furniture": {
+        "variant": "sofa",
+        "heightMm": 850,
+        "liftMm": 0,
+        "model": {"id": "sofa-modern", "src": "/items/sofa_modern/model.glb"},
+        "slots": {"fabric": "library:linen", "legs": "scene:walnut"},
+    },
+}
+"""Trường Pascal FE3D-B (J-v3) đủ mọi khoá, đặt lên phần tử đầu mỗi danh sách bởi `with_pascal_fields`."""
+
+
+def with_pascal_fields(layer: SpatialLayer) -> SpatialLayer:
+    """Bản `layer` có trường Pascal trên tường, phòng, đồ đạc đầu tiên (khứ hồi PUT/N16, diff)."""
+    raw = layer.model_dump(mode="json", by_alias=True, exclude_none=True)
+    for name, extra in PASCAL_FIELDS.items():
+        raw[name][0] = {**raw[name][0], **extra}
+    return SpatialLayer.model_validate(raw)

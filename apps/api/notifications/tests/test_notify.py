@@ -263,8 +263,10 @@ async def test_notify__row_trimmed_between_insert_and_select_returns_none(
     fired: list[str] = []
 
     def _trim_before_select(conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
-        """Ngay trước câu `SELECT` đọc lại: xoá dòng đang xung đột (như lượt dọn đồng thời)."""
-        if statement.lstrip().upper().startswith("SELECT") and not fired:
+        """Ngay trước câu `SELECT` đọc lại (không phải câu kiểm `inApp` trên `users`): xoá dòng đang xung đột."""
+        table = f"FROM {NotificationRow.__tablename__}"
+        reads_back = statement.lstrip().upper().startswith("SELECT") and table in statement
+        if reads_back and not fired:
             fired.append(statement)
             conn.execute(delete(NotificationRow).where(NotificationRow.dedupe_key == KEY))
 
@@ -278,3 +280,22 @@ async def test_notify__row_trimmed_between_insert_and_select_returns_none(
     assert second is None
     assert await rows_of(db_session, user.id) == []
     assert await streams_client.xlen(user_stream(user.id)) == 1
+
+
+@pytest.mark.parametrize(("in_app", "created"), [(False, False), (True, True)])
+async def test_notify__in_app_preference(
+    db_session: AsyncSession, fake_clock: FakeClock, streams_client: AsyncRedis, in_app: bool, created: bool
+) -> None:
+    """FE3D-B4: người nhận tắt `inApp` cho đúng loại → không dòng, không XADD; bật, hay tắt loại khác → vẫn nhận."""
+    user, project = await _fixture_pair(db_session)
+    user.preferences = {
+        "notifications": {
+            "aiCompleted": {"inApp": in_app, "email": True},
+            "projectInvite": {"inApp": False, "email": False},
+        }
+    }
+    await db_session.commit()
+    row = await commit_notify(db_session, fake_clock, user_id=user.id, project_id=project.id, project_name="A")
+    assert (row is not None) is created
+    assert len(await rows_of(db_session, user.id)) == int(created)
+    assert await streams_client.xlen(user_stream(user.id)) == int(created)

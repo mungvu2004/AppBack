@@ -41,7 +41,7 @@ from apps.worker.pipeline_orchestrate.pins import load_pins, mark_persisted
 from apps.worker.pipeline_persist.constants import LAYER_ARTIFACT, QUALITY_TASK, STEP, SYSTEM_PIPELINE_NAME
 from apps.worker.pipeline_persist.context import PersistContext, load_context
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
-from apps.worker.pipeline_persist.merge import make_merge
+from apps.worker.pipeline_persist.merge import make_merge, with_floor_height
 from packages.core.clock import Clock
 from packages.core.error_codes import VALIDATION
 from packages.core.errors import SYSTEM_PIPELINE, AppError
@@ -113,6 +113,7 @@ async def _write_ai_layer(db: AsyncSession, ctx: PersistContext, built: BuiltLay
     `mark_persisted`/`create_version` vẫn lan nguyên (lỗi lập trình → `INTERNAL` kèm stack).
     `base_revision=0` hợp lệ vì có `merge`: `write_layer` bỏ qua nó và tự đọc revision dưới
     khoá, nên không có vòng 409. Tầng chưa có bản vẽ → `page_key=None` (tỉ lệ không gắn trang).
+    Tường AI cao theo `floors.height_mm` đọc dưới khoá (`with_floor_height`).
     """
     drawing = await current_drawing(db, ctx.floor_pk)
     try:
@@ -124,7 +125,7 @@ async def _write_ai_layer(db: AsyncSession, ctx: PersistContext, built: BuiltLay
             actor_id=SYSTEM_PIPELINE,
             actor_name=SYSTEM_PIPELINE_NAME,
             clock=clock,
-            merge=make_merge(built.layer, built.scale_mm_per_px),
+            merge=make_merge(with_floor_height(built.layer, ctx.floor_height_mm), built.scale_mm_per_px),
             scale_source=built.scale_source,
             page_key=None if drawing is None else drawing.page_key,
         )

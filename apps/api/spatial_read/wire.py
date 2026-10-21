@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from apps.api.core.wire import WireDatetime, WireModel
 from packages.domain.spatial import Axis, Dimension, SpatialLayer
+from packages.domain.spatial.model import FurnitureVariant, RoomFinish
 
 Millimetres = int
 """Mọi toạ độ và kích thước hình học là **số nguyên** milimét (`S:domain/spatial/types.ts`)."""
@@ -66,6 +67,20 @@ class BoundingBoxOut(WireModel):
     max: PointOut
 
 
+class WallPaintOut(WireModel):
+    """Sơn hai mặt tường (`MaterialRef`); miền đã kiểm mẫu, dây chỉ chép lại."""
+
+    interior: str | None = None
+    exterior: str | None = None
+
+
+class FurnitureModelOut(WireModel):
+    """Mô hình catalogue của món đồ: `{id, src}`."""
+
+    id: str
+    src: str
+
+
 class WallOut(_ReviewedOut):
     """`WallSchema` — một đoạn tường đo theo đường tim."""
 
@@ -76,6 +91,7 @@ class WallOut(_ReviewedOut):
     height_mm: Millimetres
     kind: Literal["loadBearing", "partition", "envelope"]
     opening_ids: list[str]
+    paint: WallPaintOut | None = None
 
 
 class OpeningOut(_ReviewedOut):
@@ -101,6 +117,8 @@ class RoomOut(_ReviewedOut):
     outline: Annotated[list[PointOut], Field(min_length=3)]
     area_m2: SquareMetres
     wall_ids: list[str]
+    finish: RoomFinish | None = None
+    floor_material: str | None = None
 
 
 class FurnitureOut(_ReviewedOut):
@@ -113,6 +131,11 @@ class FurnitureOut(_ReviewedOut):
     centre: PointOut
     bounding_box: BoundingBoxOut
     rotation_deg: Annotated[float, Field(ge=0, lt=360)]
+    variant: FurnitureVariant | None = None
+    height_mm: Millimetres | None = None
+    lift_mm: Millimetres | None = None
+    model: FurnitureModelOut | None = None
+    slots: dict[str, str] | None = None
 
 
 class LevelOut(_ReviewedOut):

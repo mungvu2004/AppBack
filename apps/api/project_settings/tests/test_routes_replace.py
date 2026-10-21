@@ -92,6 +92,8 @@ async def test_settings_replace_settings__rounding_and_writer(
         {"notes": "a‮b"},
         {"notes": "a\x07b"},
         {"notes": 5},
+        {"sceneStyle": "neon"},
+        {"sceneStyle": 1},
     ],
 )
 async def test_settings_replace_settings__C02(
@@ -103,6 +105,29 @@ async def test_settings_replace_settings__C02(
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION"
     assert response.json()["field"].startswith("body.")
+
+
+async def test_settings_replace_settings__C01_scene_style(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """FE3D-B2: `sceneStyle` lưu và trả lại; PUT vắng khoá giữ giá trị cũ (client cũ); `null` xoá về vắng."""
+    owner, project = await seed_engineer_project(db_session)
+    first = await put_settings(api_client, project.id, owner, replace_body(0, sceneStyle="go-am"))
+    assert first.status_code == 200
+    assert first.json()["sceneStyle"] == "go-am"
+
+    kept = await put_settings(api_client, project.id, owner, replace_body(1, snapToleranceMm=41))
+    assert kept.status_code == 200
+    assert kept.json()["sceneStyle"] == "go-am"
+    read = await api_client.get(settings_path(project.id), headers=headers_of(owner))
+    assert read.json() == kept.json()
+
+    payload = replace_body(2)
+    payload["body"]["sceneStyle"] = None
+    cleared = await put_settings(api_client, project.id, owner, payload)
+    assert cleared.status_code == 200
+    assert "sceneStyle" not in cleared.json()
+    assert (await read_settings(db_session, project.id)).scene_style is None
 
 
 async def test_settings_replace_settings__C02_missing_field(

@@ -24,6 +24,7 @@ class ProjectSettingsValue:
     snap_tolerance_mm: int
     confidence_threshold: Decimal
     default_scale_mm_per_px: Decimal
+    scene_style: str | None = None
 
 
 DEFAULT_SETTINGS: Final = ProjectSettingsValue(
@@ -48,6 +49,7 @@ def value_of(row: ProjectSettingsRow) -> ProjectSettingsValue:
         snap_tolerance_mm=row.snap_tolerance_mm,
         confidence_threshold=row.confidence_threshold,
         default_scale_mm_per_px=row.default_scale_mm_per_px,
+        scene_style=row.scene_style,
     )
 
 

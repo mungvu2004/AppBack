@@ -4,6 +4,8 @@
   chưa xoá mềm** (B1-05 xoá mềm, người cũ không chặn email của người mới). Người `pending`
   chưa có mật khẩu (`password_hash` rỗng) cho tới khi nhận lời mời (B1-03). Cột hồ sơ
   (`job_title`, `phone`, `language`, `avatar_key`) tạo sẵn cho B1-04; B1-01 không ghi.
+  `preferences` (FE3D-B4): tuỳ chọn tài khoản dạng dây camelCase, mặc định `{}`; hình dạng do
+  `apps/api/me/schemas.py` kiểm, DB chỉ giữ "là object".
 - `refresh_sessions`: một dòng một phiên, `id` là `sid` trong cookie và trong access token.
   Không lưu token bản rõ: chỉ SHA-256 của token hiện hành và token ngay trước (ân hạn
   30 s); token kế tiếp tính lại bằng HMAC khoá `refresh` (BE-00 §5, §6, K35).
@@ -62,6 +64,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     phone: Mapped[str | None] = mapped_column(Text, default=None)
     language: Mapped[str] = mapped_column(Text, default="vi", server_default=text("'vi'"))
     avatar_key: Mapped[str | None] = mapped_column(Text, default=None)
+    preferences: Mapped[dict[str, object]] = mapped_column(
+        postgresql.JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
 
     __table_args__ = (
         unique_active("uq_users_email", "email_normalized"),
@@ -70,6 +75,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
         CheckConstraint(one_of("language", LANGUAGES), name="language"),
         CheckConstraint(f"char_length(name) BETWEEN 1 AND {NAME_MAX}", name="name_length"),
         CheckConstraint("token_version >= 0", name="token_version"),
+        CheckConstraint("jsonb_typeof(preferences) = 'object'", name="preferences_object"),
     )
 
 

@@ -2,6 +2,7 @@
 
 from packages.core.errors import MISSING
 from packages.domain.spatial import FieldChange, Point, diff_layers, has_untracked_changes, sample_layer
+from packages.domain.spatial.samples import with_pascal_fields
 
 LAYER = sample_layer(0)
 WALL = LAYER.walls[0]
@@ -124,3 +125,20 @@ def test_order_is_new_layer_order_then_deletions_in_old_order() -> None:
         FieldChange(LAYER.furniture[-1].id, "furniture", "__deleted__", MISSING),
     ]
     assert diff_layers(LAYER, new) == changes
+
+
+def test_pascal_fields_are_tracked() -> None:
+    """FE3D-B J-v3: đặt trường Pascal → một mục mỗi trường (snake_case, giá trị JSON); gỡ → `MISSING`."""
+    dressed = with_pascal_fields(LAYER)
+    added = diff_layers(LAYER, dressed)
+    assert added == [
+        FieldChange(WALL.id, "wall", "paint", {"interior": "library:paint_white", "exterior": "scene:brick-02"}),
+        FieldChange(ROOM.id, "room", "finish", "tile"),
+        FieldChange(ROOM.id, "room", "floor_material", "library:oak_floor"),
+        FieldChange(ITEM.id, "furniture", "variant", "sofa"),
+        FieldChange(ITEM.id, "furniture", "height_mm", 850),
+        FieldChange(ITEM.id, "furniture", "lift_mm", 0),
+        FieldChange(ITEM.id, "furniture", "model", {"id": "sofa-modern", "src": "/items/sofa_modern/model.glb"}),
+        FieldChange(ITEM.id, "furniture", "slots", {"fabric": "library:linen", "legs": "scene:walnut"}),
+    ]
+    assert diff_layers(dressed, LAYER) == [FieldChange(c.entity_id, c.entity_type, c.field, MISSING) for c in added]

@@ -25,9 +25,11 @@ from apps.worker.pipeline_orchestrate.pins import load_pins, pin_models
 from apps.worker.pipeline_persist import service
 from apps.worker.pipeline_persist.context import PersistContext, load_context
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
+from apps.worker.pipeline_persist.merge import with_floor_height
 from apps.worker.pipeline_persist.service import run_persist
 from apps.worker.pipeline_persist.tests.helpers import (
     DONE_STEPS,
+    FLOOR_HEIGHT_MM,
     Arranged,
     arrange,
     broken_layer,
@@ -142,7 +144,7 @@ async def test_persist_keeps_human_scale_on_same_page(
         document = await load_document(db, arranged.floor_pk)
     assert document is not None
     assert (document.scale_mm_per_px, document.scale_source) == (Decimal("10"), "human")
-    expected = rescale_unreviewed(sample_built(arranged.level_id).layer, 12.0, 10.0)
+    expected = rescale_unreviewed(with_floor_height(sample_built(arranged.level_id).layer, FLOOR_HEIGHT_MM), 12.0, 10.0)
     stored = {wall.id: wall for wall in document.layer.walls}
     for wall in expected.walls:
         assert stored[wall.id] == wall
@@ -583,3 +585,21 @@ async def test_persist_skips_when_context_vanishes_under_lock(
 
     async with db_sessionmaker() as db:
         assert await load_document(db, arranged.floor_pk) is None
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_persist_sets_ai_wall_height_from_floor(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+) -> None:
+    """Tầng cao 2700 mm → mọi tường AI (dựng ở 3600 giữ chỗ) ghi xong cao 2700 (FE3D-FIX-003 B5)."""
+    arranged = await arrange(db_sessionmaker, local_storage, fake_clock, floor_height_mm=2700)
+
+    assert await persist_once(db_sessionmaker, local_storage, arranged, fake_clock) == "persisted"
+
+    async with db_sessionmaker() as db:
+        document = await load_document(db, arranged.floor_pk)
+    assert document is not None
+    assert document.layer.walls
+    assert {wall.height_mm for wall in document.layer.walls} == {2700}

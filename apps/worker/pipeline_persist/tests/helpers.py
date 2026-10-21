@@ -50,6 +50,9 @@ PAGE_BYTES: Final = b"%PDF-1.4 fake page for uploads"
 DONE_STEPS: Final = ("preprocess", "wallSegmentation", "openingAndFurnitureDetection", "dimensionReading")
 """Bốn bước trước `spatialDataBuild`; ghi `completed` lần lượt để lượt đứng đúng chỗ ([8])."""
 
+FLOOR_HEIGHT_MM: Final = 3000
+"""Chiều cao tầng mặc định của cảnh; tường AI ghi xong mang đúng số này (FE3D-FIX-003 B5)."""
+
 _TEMP_BASE_URL: Final = "http://localhost/objects"
 """URL nền của kho tạm; không ai ký URL trong các test này nên giá trị chỉ cần hợp lệ."""
 
@@ -73,15 +76,19 @@ class Arranged:
     payload: RunStepPayload
 
 
-async def _scene(db: AsyncSession) -> tuple[Project, FloorRow]:
-    """Chủ dự án, dự án, một tầng — nền tối thiểu của cảnh."""
+async def _scene(db: AsyncSession, floor_height_mm: int) -> tuple[Project, FloorRow]:
+    """Chủ dự án, dự án, một tầng cao `floor_height_mm` — nền tối thiểu của cảnh."""
     owner = await make_user(db)
     project = await make_project(db, owner=owner)
-    return project, await make_floor(db, project=project)
+    return project, await make_floor(db, project=project, height_mm=floor_height_mm)
 
 
 async def open_run_at_build(
-    maker: async_sessionmaker[AsyncSession], clock: Clock, *, storage: ObjectStorage | None = None
+    maker: async_sessionmaker[AsyncSession],
+    clock: Clock,
+    *,
+    storage: ObjectStorage | None = None,
+    floor_height_mm: int = FLOOR_HEIGHT_MM,
 ) -> Arranged:
     """Dựng cảnh và commit: lượt chạy đứng ở `spatialDataBuild`, model đã ghim, chưa có lớp nào.
 
@@ -90,7 +97,7 @@ async def open_run_at_build(
     """
     store = storage if storage is not None else LocalDiskStorage(Path(mkdtemp()), clock, _TEMP_BASE_URL)
     async with maker() as db:
-        project, floor = await _scene(db)
+        project, floor = await _scene(db, floor_height_mm)
         upload = await make_complete_upload(
             db, store, project=project, floor=floor, data=PAGE_BYTES, file_name="plan.pdf"
         )
@@ -178,14 +185,16 @@ async def arrange(
     build: Callable[[str], BuiltLayer] | None = None,
     with_document: bool = False,
     clear_queue: bool = False,
+    floor_height_mm: int = FLOOR_HEIGHT_MM,
 ) -> Arranged:
     """Cảnh đầy đủ: lượt đứng ở `spatialDataBuild` và `layer.json` đã nằm trong kho.
 
     `build=None` → `sample_built`. `with_document` dựng trước dòng `floor_documents` đã commit (để
     bên chờ khoá gặp một dòng thật mà chờ `FOR UPDATE`); `clear_queue` dọn `pipeline.orchestrate.start`
     mà `start_run` xếp lên hàng `pipeline.cpu`, để chỉ còn việc của lõi.
+    `floor_height_mm` là chiều cao của tầng dựng mới.
     """
-    arranged = await open_run_at_build(maker, clock, storage=storage)
+    arranged = await open_run_at_build(maker, clock, storage=storage, floor_height_mm=floor_height_mm)
     if with_document:
         async with maker() as db:
             await make_floor_document(db, floor_pk=arranged.floor_pk, clock=clock)

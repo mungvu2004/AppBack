@@ -153,6 +153,150 @@
         "title": "AdminUserOut",
         "type": "object"
       },
+      "AppearancePatch": {
+        "additionalProperties": false,
+        "description": "Vá `appearance`: khoá có giá trị → ghi; `null` → xoá khoá; vắng → giữ.",
+        "properties": {
+          "density": {
+            "anyOf": [
+              {
+                "enum": [
+                  "comfortable",
+                  "compact"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Density"
+          },
+          "reducedMotion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reducedmotion"
+          },
+          "showGrid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showgrid"
+          },
+          "themeChoice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "dark",
+                  "system"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Themechoice"
+          },
+          "viewportDark": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewportdark"
+          }
+        },
+        "title": "AppearancePatch",
+        "type": "object"
+      },
+      "AppearancePrefs": {
+        "additionalProperties": false,
+        "description": "`preferences.appearance` — khoá vắng = FE dùng mặc định của nó.",
+        "properties": {
+          "density": {
+            "anyOf": [
+              {
+                "enum": [
+                  "comfortable",
+                  "compact"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Density"
+          },
+          "reducedMotion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reducedmotion"
+          },
+          "showGrid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showgrid"
+          },
+          "themeChoice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "light",
+                  "dark",
+                  "system"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Themechoice"
+          },
+          "viewportDark": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewportdark"
+          }
+        },
+        "title": "AppearancePrefs",
+        "type": "object"
+      },
       "Axis": {
         "additionalProperties": false,
         "description": "Trục định vị của màn Trục; #35 ghi, N15/N16 trả lại (G4b-17).",
@@ -1589,7 +1733,7 @@
       },
       "FloorOut": {
         "additionalProperties": false,
-        "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).",
+        "description": "`FloorSchema` — chỉ khai ở đây, B2-03 là nơi dựng (cổng `project.floors`).\n\n`hiddenIn3d` (FE3D-B3) luôn có trên dây; mặc định `false` chỉ cho chỗ dựng tay (test, fake).",
         "properties": {
           "areaM2": {
             "anyOf": [
@@ -1616,6 +1760,11 @@
           "heightMm": {
             "title": "Heightmm",
             "type": "integer"
+          },
+          "hiddenIn3d": {
+            "default": false,
+            "title": "Hiddenin3D",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -1670,6 +1819,17 @@
                 "type": "null"
               }
             ]
+          },
+          "hiddenIn3d": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hiddenin3D"
           },
           "id": {
             "anyOf": [
@@ -1949,6 +2109,20 @@
             "title": "Confidence",
             "type": "number"
           },
+          "heightMm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1971,6 +2145,29 @@
             "title": "Levelid",
             "type": "string"
           },
+          "liftMm": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liftmm"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FurnitureModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reviewed": {
             "title": "Reviewed",
             "type": "boolean"
@@ -1992,6 +2189,24 @@
             "title": "Rotationdeg",
             "type": "number"
           },
+          "slots": {
+            "anyOf": [
+              {
+                "maxProperties": 8,
+                "patternProperties": {
+                  "^[a-z][a-z0-9_]{0,23}$": {
+                    "pattern": "^(library|scene):[a-z0-9_-]{1,64}$",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slots"
+          },
           "source": {
             "enum": [
               "ai",
@@ -1999,6 +2214,54 @@
             ],
             "title": "Source",
             "type": "string"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "enum": [
+                  "bed",
+                  "nightstand",
+                  "tableLamp",
+                  "wardrobe",
+                  "rug",
+                  "plant",
+                  "shower",
+                  "wc",
+                  "basin",
+                  "mirror",
+                  "artwork",
+                  "shelves",
+                  "table",
+                  "chair",
+                  "baseRun",
+                  "upperRun",
+                  "hood",
+                  "hob",
+                  "sink",
+                  "fridge",
+                  "stool",
+                  "cabinet",
+                  "sofa",
+                  "sconce",
+                  "tv",
+                  "armchair",
+                  "sideTable",
+                  "floorLamp",
+                  "bench",
+                  "pendant",
+                  "vase",
+                  "lounger",
+                  "planter",
+                  "bamboo",
+                  "shrub"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
           }
         },
         "required": [
@@ -2082,6 +2345,49 @@
         "title": "FurnitureFields",
         "type": "object"
       },
+      "FurnitureModel": {
+        "additionalProperties": false,
+        "description": "Mô hình catalogue chọn cho món đồ (Pascal \"replace all\"); `src` là đường dẫn `/items/<id>/model.glb`.",
+        "properties": {
+          "id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "src": {
+            "pattern": "^/items/[a-z0-9_-]+/model\\.glb$",
+            "title": "Src",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "src"
+        ],
+        "title": "FurnitureModel",
+        "type": "object"
+      },
+      "FurnitureModelOut": {
+        "additionalProperties": false,
+        "description": "Mô hình catalogue của món đồ: `{id, src}`.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "src": {
+            "title": "Src",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "src"
+        ],
+        "title": "FurnitureModelOut",
+        "type": "object"
+      },
       "FurnitureOut": {
         "additionalProperties": false,
         "description": "`FurnitureSchema` — `roomId` **vắng khoá** khi món đồ chưa gắn phòng (C17).",
@@ -2097,6 +2403,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "heightMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightmm"
           },
           "id": {
             "title": "Id",
@@ -2120,6 +2437,27 @@
             "title": "Levelid",
             "type": "string"
           },
+          "liftMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liftmm"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FurnitureModelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reviewed": {
             "title": "Reviewed",
             "type": "boolean"
@@ -2141,6 +2479,20 @@
             "title": "Rotationdeg",
             "type": "number"
           },
+          "slots": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slots"
+          },
           "source": {
             "enum": [
               "ai",
@@ -2148,6 +2500,54 @@
             ],
             "title": "Source",
             "type": "string"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "enum": [
+                  "bed",
+                  "nightstand",
+                  "tableLamp",
+                  "wardrobe",
+                  "rug",
+                  "plant",
+                  "shower",
+                  "wc",
+                  "basin",
+                  "mirror",
+                  "artwork",
+                  "shelves",
+                  "table",
+                  "chair",
+                  "baseRun",
+                  "upperRun",
+                  "hood",
+                  "hob",
+                  "sink",
+                  "fridge",
+                  "stool",
+                  "cabinet",
+                  "sofa",
+                  "sconce",
+                  "tv",
+                  "armchair",
+                  "sideTable",
+                  "floorLamp",
+                  "bench",
+                  "pendant",
+                  "vase",
+                  "lounger",
+                  "planter",
+                  "bamboo",
+                  "shrub"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
           }
         },
         "required": [
@@ -2642,12 +3042,16 @@
               }
             ],
             "title": "Phone"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/UserPreferences"
           }
         },
         "required": [
           "email",
           "fullName",
-          "language"
+          "language",
+          "preferences"
         ],
         "title": "MeSchema",
         "type": "object"
@@ -3044,6 +3448,46 @@
         "maxLength": 500,
         "minLength": 1,
         "type": "string"
+      },
+      "NotificationChannels": {
+        "additionalProperties": false,
+        "description": "Kênh của một loại thông báo: `{inApp, email}` (cả hai luôn có).",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "boolean"
+          },
+          "inApp": {
+            "title": "Inapp",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inApp",
+          "email"
+        ],
+        "title": "NotificationChannels",
+        "type": "object"
+      },
+      "NotificationChannelsPatch": {
+        "additionalProperties": false,
+        "description": "Một ô của ma trận thông báo: thay cả cặp `{inApp, email}` (boolean JSON thật).",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "boolean"
+          },
+          "inApp": {
+            "title": "Inapp",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inApp",
+          "email"
+        ],
+        "title": "NotificationChannelsPatch",
+        "type": "object"
       },
       "NotificationEmptyBody": {
         "additionalProperties": false,
@@ -3670,6 +4114,62 @@
         "title": "PointOut",
         "type": "object"
       },
+      "PreferencesPatch": {
+        "additionalProperties": false,
+        "description": "Vá `preferences` của N12 (gộp sâu, xem `apps.api.me.router.merge_preferences`).\n\nLoại thông báo lạ trong `notifications` → 422 `VALIDATION`.",
+        "properties": {
+          "appearance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppearancePatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notifications": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NotificationChannelsPatch"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "enum": [
+                    "aiCompleted",
+                    "violationFound",
+                    "projectInvite"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notifications"
+          },
+          "seen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeenPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PreferencesPatch",
+        "type": "object"
+      },
       "ProgressOut": {
         "additionalProperties": false,
         "description": "`ProgressSchema` của FE (`src/api/schemas/index.ts:165-184`); luật giá trị ở `progress.py`.\n\n`endedAt` chỉ đi kèm `completed`, `error` là mã UPPER_SNAKE — hai bất biến ấy là việc của\n`progress_of`, ở đây chỉ khai trường tuỳ chọn để W2 bỏ chúng khi vắng.",
@@ -3917,7 +4417,7 @@
       },
       "ProjectSettingsBodyIn": {
         "additionalProperties": false,
-        "description": "Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế).",
+        "description": "Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế) và `sceneStyle`.\n\n`sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này\nkhông xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.",
         "properties": {
           "buildingType": {
             "enum": [
@@ -3954,6 +4454,24 @@
               }
             ]
           },
+          "sceneStyle": {
+            "anyOf": [
+              {
+                "enum": [
+                  "am-ap",
+                  "hien-dai-sang",
+                  "go-am",
+                  "toi-gian",
+                  "sang-trong-toi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenestyle"
+          },
           "snapToleranceMm": {
             "maximum": 120.0,
             "minimum": 1.0,
@@ -3973,7 +4491,7 @@
       },
       "ProjectSettingsOut": {
         "additionalProperties": false,
-        "description": "Cài đặt đã lưu kèm `revision`; `notes` NULL → vắng (W2).",
+        "description": "Cài đặt đã lưu kèm `revision`; `notes`, `sceneStyle` NULL → vắng (W2).",
         "properties": {
           "buildingType": {
             "title": "Buildingtype",
@@ -4005,6 +4523,17 @@
           "revision": {
             "title": "Revision",
             "type": "integer"
+          },
+          "sceneStyle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenestyle"
           },
           "snapToleranceMm": {
             "title": "Snaptolerancemm",
@@ -4373,6 +4902,36 @@
             "title": "Confidence",
             "type": "number"
           },
+          "finish": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wood",
+                  "tile",
+                  "mosaic",
+                  "decking",
+                  "concrete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish"
+          },
+          "floorMaterial": {
+            "anyOf": [
+              {
+                "pattern": "^(library|scene):[a-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floormaterial"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -4510,6 +5069,35 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "finish": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wood",
+                  "tile",
+                  "mosaic",
+                  "decking",
+                  "concrete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish"
+          },
+          "floorMaterial": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floormaterial"
           },
           "id": {
             "title": "Id",
@@ -4782,6 +5370,74 @@
         ],
         "ge": "0.01",
         "le": 1000
+      },
+      "SeenPatch": {
+        "additionalProperties": false,
+        "description": "Vá `seen`: `tours` thay cả danh sách (≤ 64 id), không nối thêm.",
+        "properties": {
+          "tours": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tours"
+          },
+          "welcome": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Welcome"
+          }
+        },
+        "title": "SeenPatch",
+        "type": "object"
+      },
+      "SeenPrefs": {
+        "additionalProperties": false,
+        "description": "`preferences.seen` — cờ đã xem màn chào và các tour.",
+        "properties": {
+          "tours": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tours"
+          },
+          "welcome": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Welcome"
+          }
+        },
+        "title": "SeenPrefs",
+        "type": "object"
       },
       "Segment": {
         "additionalProperties": false,
@@ -5416,6 +6072,16 @@
               }
             ],
             "title": "Phone"
+          },
+          "preferences": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreferencesPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "UpdateMeBody",
@@ -5547,6 +6213,55 @@
           "role"
         ],
         "title": "UserOut",
+        "type": "object"
+      },
+      "UserPreferences": {
+        "additionalProperties": false,
+        "description": "`users.preferences` trên dây (FE `UserPreferencesSchema`, FE3D-B4); `{}` khi chưa lưu gì.\n\nKhoá của `notifications` là loại thông báo server gửi (`NotificationKind`: `aiCompleted`,\n`violationFound`, `projectInvite`).",
+        "properties": {
+          "appearance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppearancePrefs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notifications": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/NotificationChannels"
+                },
+                "propertyNames": {
+                  "enum": [
+                    "aiCompleted",
+                    "violationFound",
+                    "projectInvite"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notifications"
+          },
+          "seen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeenPrefs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "UserPreferences",
         "type": "object"
       },
       "UserRole": {
@@ -5748,6 +6463,16 @@
             "title": "Openingids",
             "type": "array"
           },
+          "paint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WallPaint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reviewed": {
             "title": "Reviewed",
             "type": "boolean"
@@ -5897,6 +6622,16 @@
             "title": "Openingids",
             "type": "array"
           },
+          "paint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WallPaintOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reviewed": {
             "title": "Reviewed",
             "type": "boolean"
@@ -5927,6 +6662,68 @@
           "openingIds"
         ],
         "title": "WallOut",
+        "type": "object"
+      },
+      "WallPaint": {
+        "additionalProperties": false,
+        "description": "Sơn hai mặt tường; mặt vắng khoá là màu mặc định.",
+        "properties": {
+          "exterior": {
+            "anyOf": [
+              {
+                "pattern": "^(library|scene):[a-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exterior"
+          },
+          "interior": {
+            "anyOf": [
+              {
+                "pattern": "^(library|scene):[a-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interior"
+          }
+        },
+        "title": "WallPaint",
+        "type": "object"
+      },
+      "WallPaintOut": {
+        "additionalProperties": false,
+        "description": "Sơn hai mặt tường (`MaterialRef`); miền đã kiểm mẫu, dây chỉ chép lại.",
+        "properties": {
+          "exterior": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exterior"
+          },
+          "interior": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interior"
+          }
+        },
+        "title": "WallPaintOut",
         "type": "object"
       },
       "WallTemplate": {
@@ -7283,7 +8080,7 @@
         ]
       },
       "patch": {
-        "description": "N12: ghi các cột có mặt trong thân, trả `MeSchema` đọc lại sau khi ghi (K22).",
+        "description": "N12: ghi các cột có mặt trong thân, trả `MeSchema` đọc lại sau khi ghi (K22).\n\n`preferences` là bản vá gộp sâu (`merge_preferences`), không thay cả object; `preferences: null` xoá hết.",
         "operationId": "me_update_profile_api_me_patch",
         "requestBody": {
           "content": {

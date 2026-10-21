@@ -25,6 +25,7 @@ from packages.core.error_codes import NOT_FOUND
 from packages.core.errors import AppError
 from packages.core.ids import is_id, new_id
 from packages.db.hooks import on_after_commit
+from packages.db.models.auth import User
 from packages.db.models.notifications import INVITE_PLACE, NotificationRow
 from packages.db.models.projects import Project, ProjectMembership
 from packages.messaging.redis import streams_redis_sync
@@ -103,6 +104,12 @@ def _publish_after_commit(db: AsyncSession, row: NotificationRow) -> None:
     on_after_commit(db, publish)
 
 
+async def _in_app_muted(db: AsyncSession, *, user_id: str, kind: str) -> bool:
+    """Người nhận đã tắt `inApp` cho `kind` (FE3D-B4); không có khoá nào = vẫn nhận (mặc định bật)."""
+    muted = User.preferences.contains({"notifications": {kind: {"inApp": False}}})
+    return bool(await db.scalar(select(exists().where(User.id == user_id, muted))))
+
+
 async def notify(
     db: AsyncSession,
     *,
@@ -120,9 +127,14 @@ async def notify(
 ) -> NotificationRow | None:
     """Tạo một thông báo trong giao dịch của người gọi; trả dòng mới, hoặc `None` khi `dedupe_key` đã có.
 
+    Người nhận đã tắt kênh trong ứng dụng cho loại này (`preferences.notifications.<kind>.inApp = false`,
+    FE3D-B4) → không ghi dòng, không phát, trả `None`.
+
     Dòng đã có mà chưa có `stream_id` (task giao lại sau khi commit mà chưa kịp phát) vẫn được đăng ký phát.
     """
     _check(kind=kind, place=place, floor_level_id=floor_level_id, dedupe_key=dedupe_key, message=message)
+    if await _in_app_muted(db, user_id=user_id, kind=kind):
+        return None
     now = clock.now()
     stmt = (
         pg_insert(NotificationRow)

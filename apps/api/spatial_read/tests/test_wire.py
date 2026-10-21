@@ -20,6 +20,7 @@ from apps.api.spatial_read.wire import (
     dimensions_out,
     layer_out,
 )
+from packages.domain.spatial.samples import PASCAL_FIELDS, with_pascal_fields
 from packages.testing.factories.spatial import sample_floor_dimensions, sample_floor_layer
 
 LEVEL_ID = "L-LEVEL000000"
@@ -166,3 +167,13 @@ def test_floor_revision_rejects_negative() -> None:
     """`revision` là số nguyên ≥ 0 (`FloorRevisionSchema`)."""
     with pytest.raises(ValidationError):
         FloorRevisionOut(floor_id=LEVEL_ID, revision=-1)
+
+
+def test_layer_out_emits_pascal_fields() -> None:
+    """FE3D-B J-v3: N16/N15 trả trường Pascal đúng khoá camelCase; phần tử không có thì vắng khoá."""
+    body = layer_out(with_pascal_fields(sample_floor_layer(0, level_id=LEVEL_ID))).model_dump(
+        mode="json", by_alias=True, exclude_none=True
+    )
+    for name, extra in PASCAL_FIELDS.items():
+        assert body[name][0].items() >= extra.items()
+        assert not body[name][1].keys() & extra.keys()

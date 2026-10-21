@@ -65,8 +65,9 @@ def _restorable(rows: Sequence[FloorRow], clock: Clock) -> FloorRow | None:
 
 
 def _apply_restore(row: FloorRow, body: FloorCreateIn) -> None:
-    """Khôi phục một dòng xoá mềm: bỏ ẩn, ghi lại nội dung theo thân, giữ nguyên `pk`."""
+    """Khôi phục một dòng xoá mềm: bỏ ẩn (cả ẩn 3D, như tầng mới), ghi lại nội dung theo thân, giữ `pk`."""
     row.deleted_at = None
+    row.hidden_in_3d = False
     row.name = body.name
     row.floor_order = body.order
     row.elevation_mm = body.elevation_mm
@@ -273,12 +274,14 @@ def _changed_fields(row: FloorRow, body: FloorPatchIn) -> dict[str, object]:
         "order": body.order,
         "elevation_mm": body.elevation_mm,
         "height_mm": body.height_mm,
+        "hidden_in_3d": body.hidden_in_3d,
     }
     current = {
         "name": row.name,
         "order": row.floor_order,
         "elevation_mm": row.elevation_mm,
         "height_mm": row.height_mm,
+        "hidden_in_3d": row.hidden_in_3d,
     }
     return {field: value for field, value in candidates.items() if value is not None and value != current[field]}
 

@@ -6,16 +6,59 @@
 
 from typing import Annotated, Final, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, StrictBool, StringConstraints, field_validator, model_validator
 
 from apps.api.auth.passwords import MIN_PASSWORD_LENGTH
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.me.avatar import MAX_BASE64_LEN
 from packages.core.text import clean_text, nfc
+from packages.db.models.notifications import NotificationKind
 
 FULL_NAME_MAX: Final = 120
 PHONE_MAX: Final = 32
-_UPDATE_KEYS: Final = frozenset({"full_name", "job_title", "phone", "language"})
+_UPDATE_KEYS: Final = frozenset({"full_name", "job_title", "phone", "language", "preferences"})
+TOURS_MAX: Final = 64
+
+ThemeChoice = Literal["light", "dark", "system"]
+Density = Literal["comfortable", "compact"]
+TourId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_.:-]{1,64}$")]
+"""Id của một tour hướng dẫn đã xem: ký tự định danh, không ký tự điều khiển (NUL làm JSONB lỗi 500)."""
+
+
+class NotificationChannels(WireModel):
+    """Kênh của một loại thông báo: `{inApp, email}` (cả hai luôn có)."""
+
+    in_app: bool
+    email: bool
+
+
+class AppearancePrefs(WireModel):
+    """`preferences.appearance` — khoá vắng = FE dùng mặc định của nó."""
+
+    theme_choice: ThemeChoice | None = None
+    viewport_dark: bool | None = None
+    reduced_motion: bool | None = None
+    show_grid: bool | None = None
+    density: Density | None = None
+
+
+class SeenPrefs(WireModel):
+    """`preferences.seen` — cờ đã xem màn chào và các tour."""
+
+    welcome: bool | None = None
+    tours: list[str] | None = None
+
+
+class UserPreferences(WireModel):
+    """`users.preferences` trên dây (FE `UserPreferencesSchema`, FE3D-B4); `{}` khi chưa lưu gì.
+
+    Khoá của `notifications` là loại thông báo server gửi (`NotificationKind`: `aiCompleted`,
+    `violationFound`, `projectInvite`).
+    """
+
+    appearance: AppearancePrefs | None = None
+    notifications: dict[NotificationKind, NotificationChannels] | None = None
+    seen: SeenPrefs | None = None
 
 
 class MeSchema(WireModel):
@@ -27,6 +70,42 @@ class MeSchema(WireModel):
     phone: str | None = None
     language: Literal["vi", "en"]
     avatar_url: str | None = None
+    preferences: UserPreferences
+
+
+class NotificationChannelsPatch(WireRequest):
+    """Một ô của ma trận thông báo: thay cả cặp `{inApp, email}` (boolean JSON thật)."""
+
+    in_app: StrictBool
+    email: StrictBool
+
+
+class AppearancePatch(WireRequest):
+    """Vá `appearance`: khoá có giá trị → ghi; `null` → xoá khoá; vắng → giữ."""
+
+    theme_choice: ThemeChoice | None = None
+    viewport_dark: StrictBool | None = None
+    reduced_motion: StrictBool | None = None
+    show_grid: StrictBool | None = None
+    density: Density | None = None
+
+
+class SeenPatch(WireRequest):
+    """Vá `seen`: `tours` thay cả danh sách (≤ 64 id), không nối thêm."""
+
+    welcome: StrictBool | None = None
+    tours: Annotated[list[TourId], Field(max_length=TOURS_MAX)] | None = None
+
+
+class PreferencesPatch(WireRequest):
+    """Vá `preferences` của N12 (gộp sâu, xem `apps.api.me.router.merge_preferences`).
+
+    Loại thông báo lạ trong `notifications` → 422 `VALIDATION`.
+    """
+
+    appearance: AppearancePatch | None = None
+    notifications: dict[NotificationKind, NotificationChannelsPatch | None] | None = None
+    seen: SeenPatch | None = None
 
 
 class UpdateMeBody(WireRequest):
@@ -36,6 +115,7 @@ class UpdateMeBody(WireRequest):
     job_title: str | None = None
     phone: str | None = None
     language: Literal["vi", "en"] | None = None
+    preferences: PreferencesPatch | None = None
 
     @field_validator("full_name")
     @classmethod

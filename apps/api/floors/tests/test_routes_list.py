@@ -41,8 +41,9 @@ async def test_floors_list_floors__C01(api_client: httpx.AsyncClient, db_session
     assert response.status_code == 200
     items = response.json()
     assert len(items) == 1
-    assert set(items[0]) >= {"id", "name", "order", "elevationMm", "heightMm", "drawings"}
+    assert set(items[0]) >= {"id", "name", "order", "elevationMm", "heightMm", "drawings", "hiddenIn3d"}
     assert items[0]["id"] == floor.level_id
+    assert items[0]["hiddenIn3d"] is False
 
 
 async def test_floors_list_floors__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

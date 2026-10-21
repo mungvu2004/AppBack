@@ -90,6 +90,49 @@ FurnitureIdStr = Annotated[StrictStr, _spatial_id("furniture")]
 RoomIdStr = Annotated[StrictStr, _spatial_id("room")]
 AxisIdStr = Annotated[StrictStr, _spatial_id("axis")]
 DimensionIdStr = Annotated[StrictStr, _spatial_id("dimension")]
+MaterialRef = Annotated[StrictStr, Field(pattern=r"^(library|scene):[a-z0-9_-]{1,64}$")]
+"""Vật liệu Pascal (FE3D-B J-v3): `library:<id>` trong thư viện hoặc `scene:<id>` của cảnh."""
+SlotName = Annotated[StrictStr, Field(pattern=r"^[a-z][a-z0-9_]{0,23}$")]
+RoomFinish = Literal["wood", "tile", "mosaic", "decking", "concrete"]
+"""`RoomFinish` của FE `src/domain/spatial/types.ts`."""
+FurnitureVariant = Literal[
+    "bed",
+    "nightstand",
+    "tableLamp",
+    "wardrobe",
+    "rug",
+    "plant",
+    "shower",
+    "wc",
+    "basin",
+    "mirror",
+    "artwork",
+    "shelves",
+    "table",
+    "chair",
+    "baseRun",
+    "upperRun",
+    "hood",
+    "hob",
+    "sink",
+    "fridge",
+    "stool",
+    "cabinet",
+    "sofa",
+    "sconce",
+    "tv",
+    "armchair",
+    "sideTable",
+    "floorLamp",
+    "bench",
+    "pendant",
+    "vase",
+    "lounger",
+    "planter",
+    "bamboo",
+    "shrub",
+]
+"""35 `FURNITURE_VARIANTS` của FE `src/domain/spatial/types.ts`, đúng thứ tự."""
 
 
 class Reviewed(DomainModel):
@@ -156,6 +199,20 @@ class Level(Reviewed):
     scale_millimetres_per_pixel: Annotated[StrictFloat, Field(gt=0, allow_inf_nan=False)] | None = None
 
 
+class WallPaint(DomainModel):
+    """Sơn hai mặt tường; mặt vắng khoá là màu mặc định."""
+
+    interior: MaterialRef | None = None
+    exterior: MaterialRef | None = None
+
+
+class FurnitureModel(DomainModel):
+    """Mô hình catalogue chọn cho món đồ (Pascal "replace all"); `src` là đường dẫn `/items/<id>/model.glb`."""
+
+    id: Annotated[NonEmptyStr, Field(max_length=120)]
+    src: Annotated[StrictStr, Field(pattern=r"^/items/[a-z0-9_-]+/model\.glb$")]
+
+
 class Wall(Reviewed):
     """Một đoạn tường trên một tầng, đo theo đường tim."""
 
@@ -166,6 +223,7 @@ class Wall(Reviewed):
     height_mm: PositiveMm
     kind: Literal["loadBearing", "partition", "envelope"]
     opening_ids: tuple[OpeningIdStr, ...]
+    paint: WallPaint | None = None
 
 
 class Opening(Reviewed):
@@ -191,6 +249,11 @@ class Furniture(Reviewed):
     centre: Point
     bounding_box: BoundingBox
     rotation_deg: Degrees
+    variant: FurnitureVariant | None = None
+    height_mm: PositiveMm | None = None
+    lift_mm: NonNegativeMm | None = None
+    model: FurnitureModel | None = None
+    slots: Annotated[dict[SlotName, MaterialRef], Field(max_length=8)] | None = None
 
 
 class Room(Reviewed):
@@ -203,6 +266,8 @@ class Room(Reviewed):
     outline: Annotated[tuple[Point, ...], Field(min_length=3)]
     area_m2: SquareMetres
     wall_ids: tuple[WallIdStr, ...]
+    finish: RoomFinish | None = None
+    floor_material: MaterialRef | None = None
 
 
 class Axis(Reviewed):

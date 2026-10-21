@@ -28,7 +28,7 @@ from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.ratelimit import key_user, rate_limit
 from apps.api.core.routing import protected_router
 from apps.api.me.avatar import MAX_STORED_BYTES, ProcessedAvatar, avatar_url, process_avatar
-from apps.api.me.schemas import ChangePasswordBody, MeSchema, ReplaceAvatarBody, UpdateMeBody
+from apps.api.me.schemas import ChangePasswordBody, MeSchema, ReplaceAvatarBody, UpdateMeBody, UserPreferences
 from packages.core.clock import Clock
 from packages.core.error_codes import SESSION_REVOKED
 from packages.core.errors import ERRORS, ErrorCode
@@ -67,6 +67,7 @@ class _ProfileRow:
     phone: str | None
     language: str
     avatar_key: str | None
+    preferences: dict[str, object]
 
 
 def _profile_row_of(row: object) -> _ProfileRow | None:
@@ -78,9 +79,9 @@ async def _load_profile(db: AsyncSession, user_id: str) -> _ProfileRow | None:
     """Hồ sơ của người chưa xoá mềm, hay `None` (phiên còn nhưng người đã bị xoá — K30)."""
     row = (
         await db.execute(
-            select(User.email, User.name, User.job_title, User.phone, User.language, User.avatar_key).where(
-                User.id == user_id, User.deleted_at.is_(None)
-            )
+            select(
+                User.email, User.name, User.job_title, User.phone, User.language, User.avatar_key, User.preferences
+            ).where(User.id == user_id, User.deleted_at.is_(None))
         )
     ).one_or_none()
     return _profile_row_of(row)
@@ -103,6 +104,7 @@ async def _me_schema(db: AsyncSession, storage: ObjectStorage, user_id: str) -> 
         phone=row.phone,
         language=cast("Literal['vi', 'en']", row.language),
         avatar_url=await avatar_url(storage, row.avatar_key),
+        preferences=UserPreferences.model_validate(row.preferences),
     )
 
 
@@ -110,6 +112,48 @@ async def _me_schema(db: AsyncSession, storage: ObjectStorage, user_id: str) -> 
 async def me_read_profile(principal: CurrentPrincipal, db: DbSession, storage: Storage) -> MeSchema:
     """N11: đọc hồ sơ của chính người gọi."""
     return await _me_schema(db, storage, principal.user_id)
+
+
+def merge_preferences(current: dict[str, object], patch: dict[str, object]) -> dict[str, object]:
+    """Gộp sâu `patch` vào `current` (N12 `preferences`, FE3D-B4), trả bản mới; không sửa đầu vào.
+
+    Khoá vắng giữ nguyên; `null` xoá khoá đó; object gộp tiếp vào object cũ cùng khoá (cũ vắng hay
+    không phải object → gộp vào `{}`, nên `null` bên trong vẫn là xoá); giá trị khác (boolean, chuỗi,
+    danh sách `seen.tours`) thay hẳn. Một ô thông báo `{inApp, email}` luôn đủ hai
+    khoá nên gộp cũng là thay.
+    """
+    merged = dict(current)
+    for key, value in patch.items():
+        old = merged.get(key)
+        if value is None:
+            merged.pop(key, None)
+        elif isinstance(value, dict):
+            merged[key] = merge_preferences(old if isinstance(old, dict) else {}, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _preferences_patch(body: UpdateMeBody) -> dict[str, object] | None:
+    """Bản vá dạng dây (camelCase, `null` giữ lại để xoá); `preferences: null` → `None` (xoá hết)."""
+    if body.preferences is None:
+        return None
+    return body.preferences.model_dump(by_alias=True, exclude_unset=True)
+
+
+def _next_preferences(current: dict[str, object] | None, patch: dict[str, object] | None) -> dict[str, object]:
+    """Giá trị mới của cột; người không thấy → 401 `SESSION_REVOKED` — hàm thuần, gọi ngay sau `await` (NO-130)."""
+    if current is None:
+        raise SESSION_REVOKED.error()
+    return {} if patch is None else merge_preferences(current, patch)
+
+
+async def _load_preferences_for_update(db: AsyncSession, user_id: str) -> dict[str, object] | None:
+    """`users.preferences` của người chưa xoá, khoá dòng `FOR UPDATE` (hai PATCH song song không mất bản vá)."""
+    value = await db.scalar(
+        select(User.preferences).where(User.id == user_id, User.deleted_at.is_(None)).with_for_update()
+    )
+    return value
 
 
 def _profile_values(body: UpdateMeBody) -> dict[str, object]:
@@ -122,12 +166,12 @@ def _profile_values(body: UpdateMeBody) -> dict[str, object]:
     return values
 
 
-async def _apply_profile_update(db: AsyncSession, *, user_id: str, body: UpdateMeBody) -> None:
+async def _apply_profile_update(db: AsyncSession, *, user_id: str, values: dict[str, object]) -> None:
     """`UPDATE users` chỉ các cột có mặt; không thấy người chưa xoá → 401 `SESSION_REVOKED`."""
     result = await db.execute(
         update(User)
         .where(User.id == user_id, User.deleted_at.is_(None))
-        .values(_profile_values(body))
+        .values(values)
         .returning(User.id)
         .execution_options(synchronize_session=False)
     )
@@ -138,8 +182,15 @@ async def _apply_profile_update(db: AsyncSession, *, user_id: str, body: UpdateM
 async def me_update_profile(
     body: UpdateMeBody, principal: CurrentPrincipal, db: DbSession, storage: Storage
 ) -> MeSchema:
-    """N12: ghi các cột có mặt trong thân, trả `MeSchema` đọc lại sau khi ghi (K22)."""
-    await _apply_profile_update(db, user_id=principal.user_id, body=body)
+    """N12: ghi các cột có mặt trong thân, trả `MeSchema` đọc lại sau khi ghi (K22).
+
+    `preferences` là bản vá gộp sâu (`merge_preferences`), không thay cả object; `preferences: null` xoá hết.
+    """
+    values = _profile_values(body)
+    if "preferences" in body.model_fields_set:
+        current = await _load_preferences_for_update(db, principal.user_id)
+        values["preferences"] = _next_preferences(current, _preferences_patch(body))
+    await _apply_profile_update(db, user_id=principal.user_id, values=values)
     return await _me_schema(db, storage, principal.user_id)
 
 

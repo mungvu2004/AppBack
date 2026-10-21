@@ -3,6 +3,7 @@
 Không dòng nào tồn tại cho tới lần ghi đầu (`revision = 1`); `apps/api/project_settings/read.py`
 trả mặc định `revision 0` khi chưa có dòng. `last_writer_id` (`sub` người ghi, K05, không FK vì
 người có thể bị xoá) và `last_body_sha256` cho phép nhận ra một lượt ghi lặp (C09b).
+`scene_style` (FE3D-B2): phong cách cảnh 3D của dự án, NULL = FE dùng mặc định của nó.
 
 CHECK ở đây là tầng phòng thủ cuối; nơi báo lỗi cho người dùng là `apps/api/project_settings` (422).
 """
@@ -32,6 +33,7 @@ class ProjectSettingsRow(Base, TimestampMixin):
     snap_tolerance_mm: Mapped[int] = mapped_column(Integer)
     confidence_threshold: Mapped[Decimal] = mapped_column(Numeric(4, 3))
     default_scale_mm_per_px: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    scene_style: Mapped[str | None] = mapped_column(Text, default=None)
     last_writer_id: Mapped[str] = mapped_column(Text)
     last_body_sha256: Mapped[str] = mapped_column(Text)
 
@@ -47,4 +49,8 @@ class ProjectSettingsRow(Base, TimestampMixin):
         CheckConstraint("confidence_threshold BETWEEN 0 AND 1", name="confidence_threshold_range"),
         CheckConstraint("default_scale_mm_per_px BETWEEN 0.01 AND 1000", name="default_scale_mm_per_px_range"),
         CheckConstraint("char_length(last_body_sha256) = 64", name="last_body_sha256_length"),
+        CheckConstraint(
+            "scene_style IS NULL OR scene_style IN ('am-ap', 'hien-dai-sang', 'go-am', 'toi-gian', 'sang-trong-toi')",
+            name="scene_style_values",
+        ),
     )

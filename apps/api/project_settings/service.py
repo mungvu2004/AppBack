@@ -33,8 +33,12 @@ async def get_settings(db: AsyncSession, project_id: str) -> ProjectSettingsOut:
 
 
 def _columns(body: ProjectSettingsBodyIn) -> dict[str, Any]:
-    """Các cột dữ liệu của body đã chuẩn hoá (NFC, trim, làm tròn đã làm ở schema)."""
-    return {
+    """Các cột dữ liệu của body đã chuẩn hoá (NFC, trim, làm tròn đã làm ở schema).
+
+    `scene_style` chỉ có mặt khi thân gửi khoá `sceneStyle` (kể cả `null`): vắng thì `UPDATE` không đụng cột
+    và băm của thân cũ không đổi.
+    """
+    columns: dict[str, Any] = {
         "building_type": body.building_type,
         "notes": body.notes,
         "length_unit": body.length_unit,
@@ -42,6 +46,9 @@ def _columns(body: ProjectSettingsBodyIn) -> dict[str, Any]:
         "confidence_threshold": body.confidence_threshold,
         "default_scale_mm_per_px": body.default_scale_mm_per_px,
     }
+    if "scene_style" in body.model_fields_set:
+        columns["scene_style"] = body.scene_style
+    return columns
 
 
 def body_digest(columns: dict[str, Any]) -> str:

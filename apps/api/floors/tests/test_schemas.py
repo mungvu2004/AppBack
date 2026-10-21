@@ -164,7 +164,7 @@ def test_patch_accepts_empty_body() -> None:
     assert body.model_fields_set == set()
 
 
-@pytest.mark.parametrize("key", ["id", "name", "order", "elevationMm", "heightMm"])
+@pytest.mark.parametrize("key", ["id", "name", "order", "elevationMm", "heightMm", "hiddenIn3d"])
 def test_patch_rejects_explicit_null(key: str) -> None:
     """`null` tường minh cho một khoá tuỳ chọn → 422 kèm đúng `field`; vắng khoá mới là "không đổi"."""
     with pytest.raises(ValidationError) as caught:

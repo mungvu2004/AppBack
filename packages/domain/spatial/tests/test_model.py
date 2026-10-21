@@ -21,10 +21,13 @@ from packages.domain.spatial import (
     Room,
     Segment,
     SpatialGraph,
+    SpatialLayer,
     Wall,
     model,
     sample_building,
+    sample_layer,
 )
+from packages.domain.spatial.samples import PASCAL_FIELDS, with_pascal_fields
 
 MAX_SAFE = 2**53 - 1
 GRAPH = sample_building()
@@ -77,6 +80,17 @@ ACCEPTED = [
     (Dimension, "valueMm", 1),
     (Note, "id", "note-1"),
     (Note, "entityId", "R-ROOM0000000"),
+    (Wall, "paint", {}),
+    (Wall, "paint", {"interior": "library:paint_white", "exterior": "scene:a"}),
+    (Wall, "paint", {"interior": "library:" + "a" * 64}),
+    (Room, "finish", "concrete"),
+    (Room, "floorMaterial", "scene:oak-01"),
+    (Furniture, "variant", "shrub"),
+    (Furniture, "heightMm", 1),
+    (Furniture, "liftMm", 0),
+    (Furniture, "model", {"id": "x" * 120, "src": "/items/sofa_01/model.glb"}),
+    (Furniture, "slots", {f"s{i}": "library:wood" for i in range(8)}),
+    (Furniture, "slots", {"a" + "b" * 23: "scene:x"}),
 ]
 
 # (model, khoá dây, giá trị): mỗi dòng một ràng buộc bị phá.
@@ -141,6 +155,27 @@ REJECTED = [
     (Note, "id", ""),
     (Note, "authorId", ""),
     (Note, "entityId", "note-1"),
+    (Wall, "paint", {"interior": "paint:white"}),
+    (Wall, "paint", {"interior": "library:" + "a" * 65}),
+    (Wall, "paint", {"interior": "library:White"}),
+    (Wall, "paint", {"interior": "library:"}),
+    (Wall, "paint", {"side": "library:a"}),
+    (Wall, "paint", {"interior": "library:a\n"}),
+    (Room, "finish", "marble"),
+    (Room, "floorMaterial", "library"),
+    (Furniture, "variant", "lamp"),
+    (Furniture, "heightMm", 0),
+    (Furniture, "heightMm", 1.5),
+    (Furniture, "liftMm", -1),
+    (Furniture, "model", {"id": "x" * 121, "src": "/items/a/model.glb"}),
+    (Furniture, "model", {"id": "", "src": "/items/a/model.glb"}),
+    (Furniture, "model", {"id": "a", "src": "https://evil/items/a/model.glb"}),
+    (Furniture, "model", {"id": "a", "src": "/items/../model.glb"}),
+    (Furniture, "model", {"id": "a"}),
+    (Furniture, "slots", {f"s{i}": "library:wood" for i in range(9)}),
+    (Furniture, "slots", {"Seat": "library:wood"}),
+    (Furniture, "slots", {"a" + "b" * 24: "library:wood"}),
+    (Furniture, "slots", {"seat": "wood"}),
 ]
 
 
@@ -230,3 +265,13 @@ def test_spatial_model__forbidden_chars_come_from_core_text() -> None:
     source = inspect.getsource(model)
     assert "0x202A" not in source
     assert "\u202a" not in source
+
+
+def test_pascal_fields_wire_round_trip() -> None:
+    """FE3D-B J-v3: tường/phòng/đồ đạc mang trường Pascal khứ hồi dây nguyên vẹn, khoá camelCase."""
+    layer = with_pascal_fields(sample_layer(0))
+    payload = json.loads(json.dumps(wire(layer)))
+    for name, extra in PASCAL_FIELDS.items():
+        assert payload[name][0].items() >= extra.items()
+        assert not payload[name][1].keys() & extra.keys()
+    assert SpatialLayer.model_validate(payload) == layer

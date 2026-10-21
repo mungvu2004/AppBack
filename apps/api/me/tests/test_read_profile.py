@@ -24,7 +24,8 @@ async def test_me_read_profile__C01(api_client: httpx.AsyncClient, db_session: A
     assert body["email"] == user.email
     assert body["fullName"] == "Nguyễn Văn A"
     assert body["language"] == "vi"
-    assert set(body) == {"email", "fullName", "language"}  # jobTitle/phone/avatarUrl vắng
+    assert set(body) == {"email", "fullName", "language", "preferences"}  # jobTitle/phone/avatarUrl vắng
+    assert body["preferences"] == {}  # FE3D-B4: luôn có, `{}` khi chưa lưu
 
 
 async def test_me_read_profile__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

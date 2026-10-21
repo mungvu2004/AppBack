@@ -16,6 +16,7 @@ from apps.api.floors.tests._bodies import (
     FORBIDDEN_ROLE,
     floor_body,
     floor_path,
+    floors_path,
     headers_of,
     live_floor_row,
     project_path,
@@ -52,7 +53,45 @@ async def test_floors_patch_spatial_floor__C01(
     assert (row.name, row.floor_order) == ("Mới", 1)
 
 
-@pytest.mark.parametrize("bad_overrides", [{"order": "0"}, {"elevationMm": True}, {"heightMm": "3000"}, {"name": None}])
+async def test_floors_patch_spatial_floor__C01_hidden_in_3d(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    """FE3D-B3: `hiddenIn3d` lưu và trả lại (cả ở #12); gửi lại cùng giá trị = không ghi; `false` hiện lại."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    floor = await make_floor(db_session, project=project, order=0)
+    await db_session.commit()
+    path = spatial_path(project.id, floor.level_id)
+
+    hidden = await api_client.patch(path, json={"hiddenIn3d": True}, headers=headers_of(owner))
+    assert hidden.status_code == 200
+    assert hidden.json()["hiddenIn3d"] is True
+    listed = await api_client.get(floors_path(project.id), headers=headers_of(owner))
+    assert [item["hiddenIn3d"] for item in listed.json()] == [True]
+
+    again = await api_client.patch(path, json={"hiddenIn3d": True}, headers=headers_of(owner))
+    assert again.json() == hidden.json()
+    assert len(await activity_rows(db_sessionmaker, actor_id=owner.id, kind=ActivityKind.FLOOR_EDIT)) == 1
+
+    shown = await api_client.patch(path, json={"hiddenIn3d": False}, headers=headers_of(owner))
+    assert shown.json()["hiddenIn3d"] is False
+    row = await live_floor_row(db_sessionmaker, project_id=project.id, level_id=floor.level_id)
+    assert row is not None
+    assert row.hidden_in_3d is False
+
+
+@pytest.mark.parametrize(
+    "bad_overrides",
+    [
+        {"order": "0"},
+        {"elevationMm": True},
+        {"heightMm": "3000"},
+        {"name": None},
+        {"hiddenIn3d": "true"},
+        {"hiddenIn3d": 1},
+        {"hiddenIn3d": None},
+    ],
+)
 async def test_floors_patch_spatial_floor__C02(
     api_client: httpx.AsyncClient, db_session: AsyncSession, bad_overrides: dict[str, Any]
 ) -> None:

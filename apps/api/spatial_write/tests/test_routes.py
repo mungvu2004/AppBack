@@ -28,6 +28,7 @@ from apps.api.spatial_write.tests._route_helpers import (
     write_body,
 )
 from packages.db.models.floors import FloorRow
+from packages.domain.spatial.samples import PASCAL_FIELDS, with_pascal_fields
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.spatial import sample_floor_layer
 from packages.testing.fixtures.clock import FakeClock
@@ -85,6 +86,22 @@ async def test_spatial_write_layer__C01(api_client: httpx.AsyncClient, db_sessio
     assert read.status_code == 200
     assert read.json()["revision"] == 1
     assert read.json()["layer"] == body["layer"]
+
+
+async def test_spatial_write_layer__C01_pascal_fields(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """FE3D-B J-v3: PUT nhận sơn tường, mặt sàn phòng, biến thể/mô hình/ô vật liệu đồ đạc; N16 trả lại đúng."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    layer = with_pascal_fields(sample_floor_layer(0, level_id=floor.level_id))
+
+    response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=layer))
+
+    assert response.status_code == 200
+    read = await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))
+    stored = read.json()["layer"]
+    for name, extra in PASCAL_FIELDS.items():
+        assert stored[name][0].items() >= extra.items()
+    assert stored == response.json()["layer"]
 
 
 async def test_spatial_write_layer__C01_scale(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

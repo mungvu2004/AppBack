@@ -24,6 +24,7 @@ class PersistContext:
 
     `uploader_id` là `uploads.created_by` (K05, [7]): chỉ người tải lên mới được báo.
     `floor_deleted_at`/`project_deleted` nguyên trạng — cửa sổ khôi phục do lõi so.
+    `floor_height_mm` là `floors.height_mm`: chiều cao tường AI dựng theo tầng (FE3D-FIX-003 B5).
     """
 
     run_id: str
@@ -33,6 +34,7 @@ class PersistContext:
     project_name: str
     level_id: str
     floor_name: str
+    floor_height_mm: int
     uploader_id: str
     floor_deleted_at: datetime | None
     project_deleted: bool
@@ -49,6 +51,7 @@ async def load_context(db: AsyncSession, run_id: str) -> PersistContext | None:
             Project.name,
             FloorRow.level_id,
             FloorRow.name,
+            FloorRow.height_mm,
             UploadRow.created_by,
             FloorRow.deleted_at,
             Project.deleted_at,
@@ -69,7 +72,8 @@ async def load_context(db: AsyncSession, run_id: str) -> PersistContext | None:
         project_name=row[4],
         level_id=row[5],
         floor_name=row[6],
-        uploader_id=row[7],
-        floor_deleted_at=row[8],
-        project_deleted=row[9] is not None,
+        floor_height_mm=row[7],
+        uploader_id=row[8],
+        floor_deleted_at=row[9],
+        project_deleted=row[10] is not None,
     )

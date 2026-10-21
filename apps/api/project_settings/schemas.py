@@ -16,6 +16,7 @@ from packages.core.text import clean_text
 
 BuildingType = Literal["residential", "commercial", "industrial", "mixed", "other"]
 LengthUnit = Literal["mm", "m"]
+SceneStyle = Literal["am-ap", "hien-dai-sang", "go-am", "toi-gian", "sang-trong-toi"]
 
 NOTES_MAX: Final = 500
 _ALLOWED_CONTROLS: Final = "\n\t"
@@ -62,7 +63,11 @@ type ScaleMmPerPx = Annotated[Decimal, BeforeValidator(_to_decimal), Field(ge=De
 
 
 class ProjectSettingsBodyIn(WireRequest):
-    """Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế)."""
+    """Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế) và `sceneStyle`.
+
+    `sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này
+    không xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.
+    """
 
     building_type: BuildingType
     notes: Notes | None = None
@@ -70,6 +75,7 @@ class ProjectSettingsBodyIn(WireRequest):
     snap_tolerance_mm: Annotated[int, Field(strict=True, ge=1, le=120)]
     confidence_threshold: Confidence
     default_scale_mm_per_px: ScaleMmPerPx
+    scene_style: SceneStyle | None = None
 
 
 class ProjectSettingsWriteIn(WireRequest):
@@ -83,7 +89,7 @@ class ProjectSettingsWriteIn(WireRequest):
 
 
 class ProjectSettingsOut(WireModel):
-    """Cài đặt đã lưu kèm `revision`; `notes` NULL → vắng (W2)."""
+    """Cài đặt đã lưu kèm `revision`; `notes`, `sceneStyle` NULL → vắng (W2)."""
 
     revision: int
     building_type: str
@@ -92,6 +98,7 @@ class ProjectSettingsOut(WireModel):
     snap_tolerance_mm: int
     confidence_threshold: float
     default_scale_mm_per_px: float
+    scene_style: str | None = None
 
     @classmethod
     def of(cls, value: ProjectSettingsValue) -> "ProjectSettingsOut":
@@ -104,4 +111,5 @@ class ProjectSettingsOut(WireModel):
             snap_tolerance_mm=value.snap_tolerance_mm,
             confidence_threshold=float(value.confidence_threshold),
             default_scale_mm_per_px=float(value.default_scale_mm_per_px),
+            scene_style=value.scene_style,
         )
