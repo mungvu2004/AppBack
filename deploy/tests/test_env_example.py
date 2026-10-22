@@ -136,12 +136,12 @@ def test_env_example_secrets_use_distinct_placeholders() -> None:
 
 
 def test_env_example_worker_and_ml_default_sizes() -> None:
-    """`WORKER_CONCURRENCY=2`, `WORKER_MEM_LIMIT=3g`, `ML_MEM_LIMIT=6g` (mặc định
+    """`WORKER_CONCURRENCY=2`, `WORKER_MEM_LIMIT=3g`, `ML_MEM_LIMIT=8g` (mặc định
     dùng lại trong `${…:-…}` của compose)."""
     values = _load_env_lines()
     assert values["WORKER_CONCURRENCY"].strip("\"'") == "2"
     assert values["WORKER_MEM_LIMIT"].strip("\"'") == "3g"
-    assert values["ML_MEM_LIMIT"].strip("\"'") == "6g"
+    assert values["ML_MEM_LIMIT"].strip("\"'") == "8g"
 
 
 _MAIL_SETTINGS_PY = "packages/mail/settings.py"
