@@ -11,12 +11,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __all__ = ["DEFAULT_MAX_BYTES", "DEFAULT_TIMEOUT_S", "MlEvalSettings", "get_eval_settings"]
 
-DEFAULT_MAX_BYTES: Final = 4 * 1024**3
-DEFAULT_TIMEOUT_S: Final = 1800.0
+DEFAULT_MAX_BYTES: Final = 10 * 1024**3
+DEFAULT_TIMEOUT_S: Final = 3000.0
 
 
 class MlEvalSettings(BaseSettings):
-    """`ML_EVAL_MAX_BYTES` 4 GiB, `ML_EVAL_TIMEOUT_S` 1800 (khối [2]); test hạ cả hai."""
+    """`ML_EVAL_MAX_BYTES` 10 GiB, `ML_EVAL_TIMEOUT_S` 3000 (khối [2] đặt 4 GiB / 1800); test hạ cả hai.
+
+    Nâng vì SegFormer-B2 (105 MB ONNX, 2026-10-22): ORT cấp một khối 768 MiB → hỏng dưới
+    `RLIMIT_AS` 4 GiB; lượt chấm đủ mất ~21 phút CPU 4 luồng (đỉnh ~5,2 GiB cả container).
+    3000 s vẫn dưới `TASK_SOFT_TIME_LIMIT_S` 3300 của task cha.
+    """
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 

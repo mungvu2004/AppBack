@@ -193,7 +193,7 @@ services:
     command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer,ml.training", "--concurrency", "1"]
     init: true
     shm_size: "1gb"
-    mem_limit: ${ML_MEM_LIMIT:-6g}
+    mem_limit: ${ML_MEM_LIMIT:-8g}
     environment:
       # create_celery("ml") đọc CELERY_VISIBILITY_TIMEOUT_S/TASK_*/STREAM_MAXLEN
       # như worker (BE-00 §7: giá trị NHỎ NHẤT giữa các app dùng chung broker
@@ -220,7 +220,7 @@ services:
     command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer,ml.training", "--concurrency", "1"]
     init: true
     shm_size: "1gb"
-    mem_limit: ${ML_MEM_LIMIT:-6g}
+    mem_limit: ${ML_MEM_LIMIT:-8g}
     environment:
       <<: *celery-task-env
       APP_ENV: ${APP_ENV:?bắt buộc — không mặc định}
