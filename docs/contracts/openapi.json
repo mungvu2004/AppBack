@@ -4887,6 +4887,112 @@
         "title": "RoleChangeBody",
         "type": "object"
       },
+      "Roof": {
+        "additionalProperties": false,
+        "description": "Mái Pascal: `nodes[0]` là node `roof`, các node sau là `roof-segment` con của nó.\n\nBE không đọc bên trong `nodes` (hình học do FE giữ); chỉ kiểm số node, là object JSON,\nvà cỡ JSON của cả mái. `JsonValue` giữ nguyên giá trị và thứ tự khoá khi khứ hồi.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "maxItems": 33,
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "nodes"
+        ],
+        "title": "Roof",
+        "type": "object"
+      },
+      "RoofOut": {
+        "additionalProperties": false,
+        "description": "`RoofSchema` — mái Pascal; `nodes` là blob FE tự đọc, BE trả nguyên (roof-contract.md).",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "levelId": {
+            "title": "Levelid",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "source",
+          "reviewed",
+          "id",
+          "levelId",
+          "nodes"
+        ],
+        "title": "RoofOut",
+        "type": "object"
+      },
       "Room": {
         "additionalProperties": false,
         "description": "Phòng khép kín; điểm đầu không lặp ở cuối nên ít nhất ba điểm.",
@@ -5634,6 +5740,20 @@
             "title": "Openings",
             "type": "array"
           },
+          "roofs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RoofOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roofs"
+          },
           "rooms": {
             "items": {
               "$ref": "#/components/schemas/RoomOut"
@@ -5665,7 +5785,7 @@
       },
       "SpatialLayer": {
         "additionalProperties": false,
-        "description": "Bốn danh sách của một tầng, đúng `SpatialLayerSchema` (N16, #35).",
+        "description": "Danh sách thực thể của một tầng, đúng `SpatialLayerSchema` (N16, #35); `roofs` tuỳ chọn.",
         "properties": {
           "furniture": {
             "items": {
@@ -5679,6 +5799,14 @@
               "$ref": "#/components/schemas/Opening"
             },
             "title": "Openings",
+            "type": "array"
+          },
+          "roofs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Roof"
+            },
+            "title": "Roofs",
             "type": "array"
           },
           "rooms": {
@@ -5707,7 +5835,7 @@
       },
       "SpatialLayerOut": {
         "additionalProperties": false,
-        "description": "`SpatialLayerSchema` — bốn danh sách của **một** tầng.",
+        "description": "`SpatialLayerSchema` — danh sách thực thể của **một** tầng; `roofs` vắng khoá khi tầng không có mái.",
         "properties": {
           "furniture": {
             "items": {
@@ -5722,6 +5850,20 @@
             },
             "title": "Openings",
             "type": "array"
+          },
+          "roofs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RoofOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roofs"
           },
           "rooms": {
             "items": {
