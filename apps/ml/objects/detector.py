@@ -29,6 +29,7 @@ __all__ = [
     "COCO_CONFIDENCE_MIN",
     "CONFIDENCE_MIN",
     "CUT_COVER_MIN",
+    "CUT_SLIVER_AREA_RATIO",
     "JOIN_SPAN_MIN",
     "LABEL_CONFIDENCE_MIN",
     "MAX_DETECTIONS",
@@ -51,6 +52,10 @@ LABEL_CONFIDENCE_MIN: Final[Mapping[str, float]] = MappingProxyType(
 NMS_IOU: Final = 0.5
 MERGE_OVERLAP: Final = 0.7
 CUT_COVER_MIN: Final = 0.7
+CUT_SLIVER_AREA_RATIO: Final = 2.0
+"""Mảnh chạm mép trong bị bỏ khi một hộp cùng nhãn (kể cả hộp cũng chạm mép, cùng lát hay khác lát)
+lớn ≥ chừng này lần, phủ ≥ `CUT_COVER_MIN` và điểm ≥ mảnh: vật rộng hơn độ chồng lát không lát nào
+thấy trọn, mảnh mỏng còn sót qua NMS vì IoU với hộp lớn chỉ ~3% (BUG-IT-002, CubiCasa G5)."""
 JOIN_SPAN_MIN: Final = 0.5
 MAX_DETECTIONS: Final = 2000
 
@@ -313,23 +318,29 @@ def _cut_edge_touches(
 
 
 def _drop_cut_fragments(candidates: _Candidates, *, page_w: int, page_h: int) -> _Candidates:
-    """Bỏ mảnh bị lát cắt khi một lát khác đã thấy trọn vật — chạy **trước** NMS.
+    """Bỏ mảnh bị lát cắt khi lát khác thấy trọn vật hay hộp lớn hơn hẳn phủ nó — chạy **trước** NMS.
 
     Mảnh = ứng viên chạm mép trong của lát mình (`_cut_edge_touches`). Mảnh `i` bị bỏ khi có `j`
     cùng nhãn, khác lát, không chạm mép trong, diện tích ≥ `i` và phủ ≥ `CUT_COVER_MIN` diện tích
     `i`. Vật ≤ độ chồng lát (160 px ở 640) luôn có một lát chứa trọn, nên mảnh của nó không còn
-    đè (NMS) hay ghép nhầm với hộp trọn. Ma trận `(m,m)` theo từng nhãn, như NMS.
+    đè (NMS) hay ghép nhầm với hộp trọn. Vật rộng hơn thì mọi hộp phủ đều chạm mép, nên mảnh `i`
+    cũng bị bỏ khi có `j` cùng nhãn (lát bất kỳ, chạm mép cũng được) lớn ≥ `CUT_SLIVER_AREA_RATIO`
+    lần, phủ ≥ `CUT_COVER_MIN` diện tích `i` và điểm ≥ `i`; tỉ lệ diện tích > 1 nên không cặp nào
+    bỏ lẫn nhau. Hai vật riêng chỉ chạm nhau không phủ đủ nên giữ cả hai. Ma trận `(m,m)` theo từng
+    nhãn, như NMS.
     """
     touch = _cut_edge_touches(candidates.boxes, candidates.tiles, page_w, page_h)
     cut = touch["left"] | touch["right"] | touch["top"] | touch["bottom"]
     keep = np.ones(len(candidates), dtype=bool)
     for label in np.unique(candidates.classes[cut]):
         idx = np.nonzero(candidates.classes == label)[0]
-        boxes, tiles = candidates.boxes[idx], candidates.tiles[idx]
+        boxes, tiles, scores = candidates.boxes[idx], candidates.tiles[idx], candidates.scores[idx]
         area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
         diff_tile = np.any(tiles[:, None, :] != tiles[None, :, :], axis=2)
-        covered = (_pairwise_area_overlap(boxes) >= CUT_COVER_MIN) & (area[None, :] >= area[:, None])
-        cover = diff_tile & covered & ~cut[idx][None, :]
+        overlaps = _pairwise_area_overlap(boxes) >= CUT_COVER_MIN
+        whole = diff_tile & overlaps & (area[None, :] >= area[:, None]) & ~cut[idx][None, :]
+        larger = overlaps & (area[None, :] >= CUT_SLIVER_AREA_RATIO * area[:, None])
+        cover = whole | (larger & (scores[None, :] >= scores[:, None]))
         keep[idx] = ~(cut[idx] & cover.any(axis=1))
     return _select(candidates, keep)
 
