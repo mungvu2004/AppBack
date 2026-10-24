@@ -17,7 +17,7 @@ from apps.worker.pipeline_build.constants import (
     ROOM_GAP_CLOSE_MM,
     ROOM_SNAP_MM,
 )
-from apps.worker.pipeline_build.geometry import Scaling
+from apps.worker.pipeline_build.geometry import Geoms, Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.core.clock import Clock
 from packages.domain.rules_ai import LOW_CONFIDENCE_CAP, outline_contains
@@ -31,6 +31,7 @@ _OPENING_LABELS = frozenset({"door", "double_door", "window"})
 
 _CLOSER_TRIM_MM = 1.0
 """Cắt bớt mỗi đầu đoạn nối khe khi xét cắt tường: chạm đúng đầu mút (chân chữ T) không tính là cắt."""
+
 
 def _extend(wall: Wall, amount: float) -> shapely.LineString:
     """Đường tim `wall` kéo dài `amount` mm về mỗi đầu, theo hướng tường (bước 5)."""
@@ -55,13 +56,14 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
         return []
     starts = np.array([(w.centreline.start.x, w.centreline.start.y) for w in walls], dtype=float)
     ends = np.array([(w.centreline.end.x, w.centreline.end.y) for w in walls], dtype=float)
-    centrelines = shapely.linestrings(np.stack([starts, ends], axis=1))
-    obstacles = [*centrelines, *(shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges)]
+    centrelines: Geoms = np.asarray(shapely.linestrings(np.stack([starts, ends], axis=1)), dtype=object)
+    bridge_lines = [shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges]
+    obstacles: Geoms = np.asarray([*centrelines.tolist(), *bridge_lines], dtype=object)
     obstacle_tree = shapely.STRtree(obstacles)
-    tips = shapely.points(np.concatenate([starts, ends]))
+    tips: Geoms = np.asarray(shapely.points(np.concatenate([starts, ends])), dtype=object)
     owner = np.tile(np.arange(len(walls)), 2)
     tip_idx, near = obstacle_tree.query(tips, predicate="dwithin", distance=ROOM_SNAP_MM)
-    touching = np.zeros(len(tips), dtype=bool)
+    touching = np.zeros(len(tips), dtype=np.bool_)
     touching[tip_idx[near != owner[tip_idx]]] = True
     free = np.flatnonzero(~touching)
     free_idx, target = shapely.STRtree(centrelines).query(tips[free], predicate="dwithin", distance=ROOM_GAP_CLOSE_MM)
@@ -74,7 +76,10 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     head, foot = coords[:, 0], coords[:, 1]
     length = np.hypot(*(foot - head).T)
     unit = (foot - head) / length[:, None]
-    trimmed = shapely.linestrings(np.stack([head + unit * _CLOSER_TRIM_MM, foot - unit * _CLOSER_TRIM_MM], axis=1))
+    trimmed: Geoms = np.asarray(
+        shapely.linestrings(np.stack([head + unit * _CLOSER_TRIM_MM, foot - unit * _CLOSER_TRIM_MM], axis=1)),
+        dtype=object,
+    )
     seg_idx, blocker = obstacle_tree.query(trimmed, predicate="intersects")
     outward = np.concatenate([starts - ends, ends - starts])[tip]
     outward /= np.hypot(*outward.T)[:, None]
@@ -85,7 +90,8 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     _, first = np.unique(tip[order], return_index=True)
     chosen = order[first]
     tails = foot[chosen] + unit[chosen] * _CLOSER_TRIM_MM
-    return list(shapely.linestrings(np.stack([head[chosen], tails], axis=1)))
+    closers: Geoms = np.asarray(shapely.linestrings(np.stack([head[chosen], tails], axis=1)), dtype=object)
+    return [shapely.LineString(line) for line in closers.tolist()]
 
 
 def _outline_points(polygon: shapely.Polygon) -> list[Point]:
@@ -101,7 +107,7 @@ def _outline_points(polygon: shapely.Polygon) -> list[Point]:
 
 
 def _room_outlines(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[list[Point]]:
-    """Mọi vành ngoài khép được từ tường kéo dài `ROOM_SNAP_MM`, `bridges`, `_gap_closers` (`unary_union`, `polygonize`)."""
+    """Mọi vành ngoài khép được từ tường kéo dài `ROOM_SNAP_MM`, `bridges` và `_gap_closers` (`polygonize`)."""
     lines: list[shapely.LineString] = [_extend(wall, ROOM_SNAP_MM) for wall in walls]
     lines.extend(shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges)
     lines.extend(_gap_closers(walls, bridges))
