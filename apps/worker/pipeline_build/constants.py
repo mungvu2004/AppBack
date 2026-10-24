@@ -22,6 +22,13 @@ CORNER_OVERSHOOT_MM: Final = 150
 """Kéo đầu tường tới vách vuông góc (3b-b) khi chỗ giao lố ra ngoài đầu vách tối đa
 `max(bề dày vách, 150)`; vách được kéo theo tới chân để góc khép (BUG-IT-001: G2 lố 29 mm)."""
 
+DIAGONAL_ALIGN_DEG: Final = 5.0
+"""Sai số góc của 3b (thẳng hàng, vuông góc) khi **cả hai** tường lệch trục > 5° (BUG-IT-007).
+
+Bản vẽ xoay chéo (CubiCasa G5, 45°) cho tim tường nhiễu vài độ hai bên khe cửa: 2° của B5-05 [6] 3b
+không gộp được, cửa gắn vào mẩu tường ngắn rồi rơi `openingTooWide`. Tường thẳng trục giữ 2°.
+"""
+
 OPENING_GAP_MAX_MM: Final = 2400
 """Khe tường dài nhất còn coi là chỗ khoét ô mở (B5-05 [6] bước 3b)."""
 
@@ -33,6 +40,13 @@ ROOM_SNAP_MM: Final = 150
 
 MIN_ROOM_AREA_M2: Final = 1.0
 """Mảnh polygonize nhỏ hơn 1 m² là rác hình học, không phải phòng (B5-05 [6] bước 5)."""
+
+ROOM_GAP_CLOSE_MM: Final = 1000
+"""Đầu tường tự do (không chạm tường/`bridges` nào trong `ROOM_SNAP_MM`) được nối thẳng tới tim tường khác gần nhất
+≤ 1000 mm khi khép phòng, nếu đoạn nối không cắt tường nào khác (BUG-IT-008: khe góc/chữ T không có hộp ô mở)."""
+
+ROOM_GAP_CLOSE_MIN_COS: Final = 0.5
+"""Đoạn nối khe phải lệch ≤ 60° so với hướng ra của đầu tường (cos ≥ 0,5): bỏ nối ngang từ vách cụt chẻ đôi phòng."""
 
 DROPPED_KEYS: Final = (
     "wallZeroLength",
