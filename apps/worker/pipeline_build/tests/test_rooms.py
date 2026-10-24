@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import shapely
 
+from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
 from apps.worker.pipeline_build.geometry import Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.rooms import _outline_points, build_furniture, build_rooms
@@ -77,17 +78,55 @@ def test_corner_gap_150_still_closes(fake_clock: FakeClock) -> None:
     assert len(rooms) == 1
 
 
-def test_corner_gap_400_gives_no_room(fake_clock: FakeClock) -> None:
-    """Khe góc 400 mm > `ROOM_SNAP_MM` x 2 hướng → không khép, không phòng."""
-    walls = [
-        _wall(fake_clock, (0, 0), (4000, 0)),
-        _wall(fake_clock, (4000, 0), (4000, 4000)),
-        _wall(fake_clock, (4000, 4000), (0, 4000)),
-        _wall(fake_clock, (0, 4000), (0, 400)),  # thiếu 400 mm tới góc (0, 0)
+def _square_with_corner_gap(clock: FakeClock, gap: float) -> list[Wall]:
+    """Phòng 4 m x 4 m, tường trái dừng cách góc (0, 0) `gap` mm, không hộp ô mở (BUG-IT-008)."""
+    return [
+        _wall(clock, (0, 0), (4000, 0)),
+        _wall(clock, (4000, 0), (4000, 4000)),
+        _wall(clock, (4000, 4000), (0, 4000)),
+        _wall(clock, (0, 4000), (0, gap)),
     ]
+
+
+def test_build_rooms__corner_gap_400_closes(fake_clock: FakeClock) -> None:
+    """Khe góc chữ L 400 mm (> `ROOM_SNAP_MM`, ≤ `ROOM_GAP_CLOSE_MM`), không hộp → nối đầu tự do, 1 phòng 16 m²."""
+    walls = _square_with_corner_gap(fake_clock, 400)
+    dropped: Counter[str] = Counter()
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
+    assert len(rooms) == 1
+    assert abs(rooms[0].area_m2 - 16.0) < 0.01
+
+
+def test_build_rooms__corner_gap_over_limit_gives_no_room(fake_clock: FakeClock) -> None:
+    """Khe góc `ROOM_GAP_CLOSE_MM` + 100 → không nối, không phòng."""
+    walls = _square_with_corner_gap(fake_clock, ROOM_GAP_CLOSE_MM + 100)
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert rooms == ()
+
+
+def test_build_rooms__t_junction_gap_closes(fake_clock: FakeClock) -> None:
+    """Tường giữa dừng cách tường trên 500 mm (khe chữ T, không hộp) → nối tới tim tường trên, 2 phòng."""
+    walls = [*_grid_walls(fake_clock)[:4], _wall(fake_clock, (3000, 500), (3000, 3000))]
+    dropped: Counter[str] = Counter()
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
+    assert len(rooms) == 2
+
+
+def test_build_rooms__closer_crossing_other_wall_not_added(fake_clock: FakeClock) -> None:
+    """Đoạn nối khe góc 400 mm cắt tim một tường khác (y = 200) → bỏ, không phòng."""
+    walls = [*_square_with_corner_gap(fake_clock, 400), _wall(fake_clock, (-500, 200), (200, 200))]
+    dropped: Counter[str] = Counter()
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
+    assert rooms == ()
+
+
+def test_build_rooms__sideways_stub_does_not_split_room(fake_clock: FakeClock) -> None:
+    """Vách cụt song song tường trên, cách 800 mm: nối ngang lệch 90° (< `ROOM_GAP_CLOSE_MIN_COS`) → vẫn 1 phòng."""
+    walls = [*_grid_walls(fake_clock)[:4], _wall(fake_clock, (1500, 800), (4500, 800))]
+    dropped: Counter[str] = Counter()
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
+    assert len(rooms) == 1
 
 
 def test_door_gap_with_bridge_keeps_two_rooms(fake_clock: FakeClock) -> None:

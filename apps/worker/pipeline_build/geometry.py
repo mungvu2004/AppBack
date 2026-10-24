@@ -21,6 +21,7 @@ from shapely import LineString, STRtree
 from apps.worker.pipeline_build.constants import (
     CORNER_OVERSHOOT_MM,
     DEFAULT_WALL_HEIGHT_MM,
+    DIAGONAL_ALIGN_DEG,
     OPENING_GAP_MAX_MM,
     OPENING_MIN_WIDTH_MM,
     OPENING_WALL_REACH_MM,
@@ -39,6 +40,12 @@ _ALIGN_SIN: Final = math.sin(math.radians(2.0))
 """Lệch góc tối đa của cặp tường thẳng hàng (2°, B5-05 [6] 3b) đo bằng `|sin|` để khỏi `atan2`."""
 _PERPENDICULAR_COS: Final = math.cos(math.radians(88.0))
 """Cặp tường vuông góc: `|cos|` của góc giữa hai hướng ≤ cos(88°), tức lệch 90° không quá 2°."""
+_DIAGONAL_ALIGN_SIN: Final = math.sin(math.radians(DIAGONAL_ALIGN_DEG))
+"""`_ALIGN_SIN` cho cặp tường chéo (`DIAGONAL_ALIGN_DEG`, BUG-IT-007)."""
+_DIAGONAL_PERPENDICULAR_COS: Final = math.cos(math.radians(90.0 - DIAGONAL_ALIGN_DEG))
+"""`_PERPENDICULAR_COS` cho cặp tường chéo (`DIAGONAL_ALIGN_DEG`, BUG-IT-007)."""
+_DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
+"""Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
 """Cửa đôi hẹp hơn 600 mm là hộp bám sai tường, không phải cửa (B5-05 [6] bước 4)."""
 _OPENING_LABELS: Final[frozenset[str]] = frozenset({"door", "double_door", "window"})
@@ -253,21 +260,41 @@ def _near_ends(a: _Seg, b: _Seg) -> tuple[Point, Point] | None:
     return best if 0 < gap <= OPENING_GAP_MAX_MM else None
 
 
+def _diagonal(ua: tuple[float, float], ub: tuple[float, float]) -> bool:
+    """Cả hai hướng lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` (bản vẽ xoay chéo, BUG-IT-007)."""
+    return min(abs(2 * ua[0] * ua[1]), abs(2 * ub[0] * ub[1])) > _DIAGONAL_MIN_SIN2
+
+
 def _aligned(a: _Seg, b: _Seg) -> bool:
-    """Thẳng hàng: lệch góc ≤ 2° **và** hai đầu của `b` lệch ngang ≤ ½ bề dày lớn hơn."""
+    """Thẳng hàng: lệch góc ≤ 2° (cặp chéo ≤ `DIAGONAL_ALIGN_DEG`) **và** lệch ngang ≤ ½ bề dày lớn hơn.
+
+    Cặp thẳng trục đo hai đầu của `b` tới tim `a` (B5-05 [6] 3b). Cặp chéo đo khoảng lệch ngang giữa
+    hai đầu mút gần nhau **vuông góc với hướng trung bình**: tim nhiễu 5° qua khe 900 đã lệch 78 mm
+    nếu đo tới tim `a` kéo dài, còn hai đầu mút của một tường thật vẫn cùng một đường.
+    """
     ua, ub = _unit(a), _unit(b)
-    if abs(ua[0] * ub[1] - ua[1] * ub[0]) > _ALIGN_SIN:
+    diagonal = _diagonal(ua, ub)
+    if abs(ua[0] * ub[1] - ua[1] * ub[0]) > (_DIAGONAL_ALIGN_SIN if diagonal else _ALIGN_SIN):
         return False
     limit = max(a.thickness_mm, b.thickness_mm) / 2
-    return all(
-        abs((point.x - a.start.x) * ua[1] - (point.y - a.start.y) * ua[0]) <= limit for point in (b.start, b.end)
-    )
+    if not diagonal:
+        return all(
+            abs((point.x - a.start.x) * ua[1] - (point.y - a.start.y) * ua[0]) <= limit for point in (b.start, b.end)
+        )
+    ends = _near_ends(a, b)
+    if ends is None:
+        return False
+    sign = 1.0 if ua[0] * ub[0] + ua[1] * ub[1] >= 0 else -1.0
+    mx, my = ua[0] + sign * ub[0], ua[1] + sign * ub[1]
+    dx, dy = ends[1].x - ends[0].x, ends[1].y - ends[0].y
+    return abs(dx * my - dy * mx) / math.hypot(mx, my) <= limit
 
 
 def _perpendicular(a: _Seg, b: _Seg) -> bool:
-    """Vuông góc trong sai số 2° (dùng cho 3b-b: đầu mút chạm tim vách ngang)."""
+    """Vuông góc trong sai số 2° (cặp chéo `DIAGONAL_ALIGN_DEG`; dùng cho 3b-b: đầu mút chạm tim vách ngang)."""
     ua, ub = _unit(a), _unit(b)
-    return abs(ua[0] * ub[0] + ua[1] * ub[1]) <= _PERPENDICULAR_COS
+    limit = _DIAGONAL_PERPENDICULAR_COS if _diagonal(ua, ub) else _PERPENDICULAR_COS
+    return abs(ua[0] * ub[0] + ua[1] * ub[1]) <= limit
 
 
 def _absorb(keep: _Seg, drop: _Seg) -> None:
@@ -455,7 +482,8 @@ def _candidate(
 
     Rộng lấy từ hộp, kẹp ≤ `L` (BUG-IT-004: rộng cố định làm rơi ô mở trên tường ngắn và chồng cửa
     sổ kề nhau); hình chiếu < `OPENING_MIN_WIDTH_MM` là suy biến → rộng mặc định của `LABEL_TARGETS`
-    (có thể `openingTooWide`). Cửa đôi không có mặc định: hẹp hơn 600 mm là `openingUnattached`.
+    kẹp về `L` khi `L ≥ OPENING_MIN_WIDTH_MM`, tường ngắn hơn → `openingTooWide` (BUG-IT-009).
+    Cửa đôi không có mặc định: hẹp hơn 600 mm là `openingUnattached`.
     """
     target = LABEL_TARGETS[detection.label]
     if target.height_mm is None or target.sill_mm is None or target.swing is None:
@@ -470,10 +498,14 @@ def _candidate(
         return None
     width = target.width_mm if target.width_mm is not None and measured < OPENING_MIN_WIDTH_MM else measured
     if length < width:
-        dropped["openingTooWide"] += 1
-        return None
+        # BUG-IT-009: tường đủ chỗ cho một ô mở thật (≥ OPENING_MIN_WIDTH_MM) → kẹp rộng mặc định về chiều dài.
+        if length < OPENING_MIN_WIDTH_MM:
+            dropped["openingTooWide"] += 1
+            return None
+        width = math.floor(length)
     kind: Literal["door", "window"] = "window" if detection.label == "window" else "door"
-    offset = min(max(js_round((low + high) / 2 - width / 2), 0), js_round(length - width))
+    # Trần `floor`, không `js_round`: rộng kẹp `floor(L)` + làm tròn lên lố đầu tường 1 mm (review 2 P2 LOG-02).
+    offset = min(max(js_round((low + high) / 2 - width / 2), 0), math.floor(length - width))
     return _Cand(wall, order, kind, offset, width, target.height_mm, target.sill_mm, target.swing, detection.confidence)
 
 
