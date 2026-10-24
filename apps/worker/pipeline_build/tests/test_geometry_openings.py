@@ -6,6 +6,8 @@ ra mong đợi; tường đặt ở `y = 1000` để mọi toạ độ không â
 
 from collections import Counter
 
+import pytest
+
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
@@ -147,12 +149,113 @@ def test_build_walls__box_far_from_wall_unattached(fake_clock: FakeClock) -> Non
     assert dropped["openingUnattached"] == 1
 
 
-def test_build_walls__wall_shorter_than_door_too_wide(fake_clock: FakeClock) -> None:
-    """Tường 800 mm không chứa nổi cửa 900 → `openingTooWide`."""
+def test_build_walls__short_wall_keeps_door_clamped_to_length(fake_clock: FakeClock) -> None:
+    """Tường 800 mm, hộp cửa 1.000 phủ quá hai đầu: rộng = hình chiếu kẹp về 800, không `openingTooWide`."""
     dropped: Counter[str] = Counter()
-    result = run([wall_px(0, 1000, 800, 1000)], [det("door", 0, 950, 800, 1050)], fake_clock, dropped)
+    result = run([wall_px(100, 1000, 900, 1000)], [det("door", 0, 950, 1000, 1050)], fake_clock, dropped)
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.offset_mm) == (800, 0)
+    assert dropped["openingTooWide"] == 0
+
+
+def test_build_walls__degenerate_projection_falls_back_too_wide(fake_clock: FakeClock) -> None:
+    """Hộp gần hết ra ngoài đầu tường 800: hình chiếu 100 < 300 → rộng mặc định 900 > 800 → `openingTooWide`."""
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(0, 1000, 800, 1000)], [det("door", 700, 950, 1700, 1050)], fake_clock, dropped)
     assert result.openings == ()
     assert dropped["openingTooWide"] == 1
+
+
+def test_build_walls__width_from_box_projection(fake_clock: FakeClock) -> None:
+    """Rộng ô mở lấy từ hộp chiếu lên tim, không phải `LABEL_TARGETS`: cửa 800, cửa sổ 600."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000)],
+        [det("door", 1000, 950, 1800, 1050), det("window", 2500, 950, 3100, 1050)],
+        fake_clock,
+        dropped,
+    )
+    door, window = result.openings
+    assert (door.width_mm, door.offset_mm, door.height_mm) == (800, 1000, 2200)
+    assert (window.width_mm, window.offset_mm, window.sill_height_mm) == (600, 2500, 900)
+
+
+def test_build_walls__adjacent_windows_do_not_overlap(fake_clock: FakeClock) -> None:
+    """Hai cửa sổ 600 cách nhau 100 mm: rộng theo hộp nên không chồng (trước đây 1.200 mỗi cái → `openingOverlap`)."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000)],
+        [det("window", 1000, 950, 1600, 1050), det("window", 1700, 950, 2300, 1050)],
+        fake_clock,
+        dropped,
+    )
+    assert [(o.offset_mm, o.width_mm) for o in result.openings] == [(1000, 600), (1700, 600)]
+    assert dropped["openingOverlap"] == 0
+
+
+@pytest.mark.parametrize(
+    ("cross", "expected_cross"),
+    [
+        ((3855, 2900, 7000, 2900), (Point(x=3826, y=2900), Point(x=7000, y=2900))),
+        ((1000, 2900, 3797, 2900), (Point(x=1000, y=2900), Point(x=3826, y=2900))),
+    ],
+)
+def test_build_walls__corner_gap_closed_when_crossing_just_outside(
+    cross: tuple[float, float, float, float], expected_cross: tuple[Point, Point], fake_clock: FakeClock
+) -> None:
+    """BUG-IT-001 (G2): chỗ giao lố đầu vách ngang 29 mm (≤ 150) → kéo tường tới chân, vách kéo theo, cửa gắn."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(3826, 0, 3826, 2000), wall_px(*cross)],
+        [det("door", 3776, 2000, 3876, 2900)],
+        fake_clock,
+        dropped,
+    )
+    assert dropped["wallGapBridged"] == 1
+    assert result.walls[0].centreline.end == Point(x=3826, y=2900)
+    assert (result.walls[1].centreline.start, result.walls[1].centreline.end) == expected_cross
+    (opening,) = result.openings
+    assert (opening.wall_id, opening.offset_mm, opening.width_mm) == (result.walls[0].id, 2000, 900)
+
+
+def test_build_walls__crossing_far_outside_cross_wall_not_pulled(fake_clock: FakeClock) -> None:
+    """Chỗ giao cách đầu vách ngang 274 mm > `max(bề dày, 150)` → không kéo, cả hai tường giữ nguyên."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(3826, 0, 3826, 2000), wall_px(4100, 2900, 7000, 2900)],
+        [det("door", 3776, 2000, 3876, 2900)],
+        fake_clock,
+        dropped,
+    )
+    assert dropped["wallGapBridged"] == 0
+    assert result.walls[0].centreline.end == Point(x=3826, y=2000)
+    assert result.walls[1].centreline.start == Point(x=4100, y=2900)
+
+
+def test_build_walls__diagonal_wall_attaches_axis_aligned_box(fake_clock: FakeClock) -> None:
+    """BUG-IT-003: tường 45°, hộp thẳng trục có tâm cách tim 354 mm > 200 nhưng tim cắt hộp → gắn.
+
+    Rộng = hình chiếu 4 góc lên tim chéo: `(5400 - 3600) / √2 ≈ 1273`; `offsetMm` = mép thấp ≈ 2545.
+    """
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(0, 0, 4000, 4000)], [det("door", 1700, 1900, 2300, 3100)], fake_clock, dropped)
+    (opening,) = result.openings
+    assert (opening.wall_id, opening.width_mm, opening.offset_mm) == (result.walls[0].id, 1273, 2545)
+    assert dropped["openingUnattached"] == 0
+
+
+def test_build_walls__corner_box_touching_two_walls_picks_centre_nearest(fake_clock: FakeClock) -> None:
+    """Hộp cửa sát góc chạm cả vách vuông góc (đứng trước): cùng khoảng cách hộp 0 → chọn tường gần tâm."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(2000, 1000, 2000, 4000), wall_px(0, 1000, 4000, 1000)],
+        [det("door", 2000, 950, 2900, 1050)],
+        fake_clock,
+        dropped,
+    )
+    (opening,) = result.openings
+    assert (opening.wall_id, opening.offset_mm, opening.width_mm) == (result.walls[1].id, 2000, 900)
+    assert result.walls[0].opening_ids == ()
 
 
 def test_build_walls__overlapping_openings_keep_higher_confidence(fake_clock: FakeClock) -> None:
