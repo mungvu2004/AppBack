@@ -504,7 +504,8 @@ def _candidate(
             return None
         width = math.floor(length)
     kind: Literal["door", "window"] = "window" if detection.label == "window" else "door"
-    offset = min(max(js_round((low + high) / 2 - width / 2), 0), js_round(length - width))
+    # Trần `floor`, không `js_round`: rộng kẹp `floor(L)` + làm tròn lên lố đầu tường 1 mm (review 2 P2 LOG-02).
+    offset = min(max(js_round((low + high) / 2 - width / 2), 0), math.floor(length - width))
     return _Cand(wall, order, kind, offset, width, target.height_mm, target.sill_mm, target.swing, detection.confidence)
 
 

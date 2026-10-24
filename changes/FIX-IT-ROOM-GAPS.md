@@ -7,3 +7,7 @@
 - Replay G2..G5 (khớp GT IoU ≥ 0,5 / phòng giả): G2 4/1 → 5/2, G3 8/3 → 12/4, G4 12/2 → 17/6, G5 4/0 → 13/0.
 - Test: `apps/worker/pipeline_build/tests/test_rooms.py`; `test_corner_gap_400_gives_no_room` đổi thành
   `test_build_rooms__corner_gap_400_closes` (khe 400 mm nay khép, đúng BUG-IT-008). Không đổi API, migration, hợp đồng FE.
+- Lệch khỏi B5-05 [6] bước 5 (người dùng yêu cầu sửa BUG-IT-007..009, 2026-10-24): phòng khép thêm bằng `_gap_closers`.
+  Cạnh khép bằng đoạn nối không có tường → luật FE `ROOM-NOT-CLOSED` gắn cờ (đúng: tường thiếu). Replay gộp 007+008
+  (review 2): khớp/giả G2 5/2, G3 12/4, G4 17/6, G5 13/1 — tổng 47/13 so với main 28/6 trên 100 phòng GT. Các test mới
+  đỏ trên main (10/61), xanh trên nhánh.

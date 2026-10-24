@@ -10,3 +10,4 @@
 - Test: `apps/worker/pipeline_build/tests/test_geometry_openings.py`; `degenerate_projection_falls_back_too_wide` viết lại
   thành `degenerate_projection_clamped_to_short_wall` (tường 800 nay giữ cửa 800), nhánh rơi chuyển sang
   `wall_under_min_width_too_wide`. Không đổi API, migration, hợp đồng FE.
+- Review 2 P2: trần `offsetMm` dùng `floor(L - rộng)` để ô mở kẹp không lố đầu tường chéo (test tường 476,6 mm).

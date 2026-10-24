@@ -175,7 +175,11 @@ def build_rooms(
     clock: Clock,
     dropped: Counter[str],
 ) -> tuple[Room, ...]:
-    """Phòng từ khép kín của tường + `bridges` (B5-05 [6] bước 5); mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`."""
+    """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
+
+    Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE
+    `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
+    """
     kept: list[tuple[list[Point], float]] = []
     for outline in _room_outlines(walls, bridges):
         area_m2 = float(polygon_area_m2(outline)) if len(outline) >= 3 else 0.0

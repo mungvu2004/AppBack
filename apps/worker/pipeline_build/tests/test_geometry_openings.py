@@ -170,6 +170,15 @@ def test_build_walls__degenerate_projection_clamped_to_short_wall(length: int, f
     assert dropped["openingTooWide"] == 0
 
 
+def test_build_walls__clamped_opening_stays_inside_diagonal_wall(fake_clock: FakeClock) -> None:
+    """Review 2 P2: tường chéo L ≈ 476,6 → rộng kẹp 476; `offsetMm` trần `floor(L - 476) = 0` để không lố đầu tường."""
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(0, 0, 337, 337)], [det("door", 300, 300, 700, 700)], fake_clock, dropped)
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.offset_mm) == (476, 0)
+    assert opening.offset_mm + opening.width_mm <= math.hypot(337, 337)
+
+
 def test_build_walls__wall_under_min_width_too_wide(fake_clock: FakeClock) -> None:
     """Tường 250 < `OPENING_MIN_WIDTH_MM`: không đủ chỗ cho ô mở thật → vẫn `openingTooWide`."""
     dropped: Counter[str] = Counter()
