@@ -201,6 +201,15 @@ def test_merge_candidates__keeps_sliver_inside_larger_box_of_other_label() -> No
     assert sorted(int(c) for c in result.classes) == [0, 1]
 
 
+def test_merge_candidates__keeps_whole_small_box_inside_larger_cut_box() -> None:
+    """Review P2 M06: hộp nhỏ không chạm mép trong (vật riêng, lát thấy trọn) trong hộp cắt lớn > 3 lần → giữ cả hai."""
+    big = (1440.4, 1351.1, 1697.8, 1522.5)
+    small = (1500.0, 1400.0, 1540.0, 1440.0)
+    candidates = _candidates([(small, 0, 0.5, _G5_TILE), (big, 0, 0.917, _G5_TILE)])
+    result = merge_candidates(candidates, page_w=_G5_PAGE[0], page_h=_G5_PAGE[1])
+    assert len(result.classes) == 2
+
+
 def test_merge_candidates__nms_drops_same_label_keeps_different_label() -> None:
     """NMS bỏ hộp cùng nhãn IoU cao (điểm thấp hơn); giữ nhãn khác dù cùng vị trí."""
     tile = (0.0, 0.0, 640.0, 640.0)

@@ -4,6 +4,7 @@ Mỗi ca dựng tay `WallPx`/`DetectionPx` với `Scaling(1.0, 1.0)` nên px = m
 ra mong đợi; tường đặt ở `y = 1000` để mọi toạ độ không âm.
 """
 
+import math
 from collections import Counter
 
 import pytest
@@ -235,13 +236,33 @@ def test_build_walls__crossing_far_outside_cross_wall_not_pulled(fake_clock: Fak
 def test_build_walls__diagonal_wall_attaches_axis_aligned_box(fake_clock: FakeClock) -> None:
     """BUG-IT-003: tường 45°, hộp thẳng trục có tâm cách tim 354 mm > 200 nhưng tim cắt hộp → gắn.
 
-    Rộng = hình chiếu 4 góc lên tim chéo: `(5400 - 3600) / √2 ≈ 1273`; `offsetMm` = mép thấp ≈ 2545.
+    Hình chiếu 4 góc lên tim chéo: `(5400 - 3600) / √2 ≈ 1272,8`, trừ phần bề dày chiếu thêm `100 · |sin 90°|`
+    → rộng 1173; `offsetMm` = tâm hình chiếu 3181,9 - 586,5 ≈ 2595.
     """
     dropped: Counter[str] = Counter()
     result = run([wall_px(0, 0, 4000, 4000)], [det("door", 1700, 1900, 2300, 3100)], fake_clock, dropped)
     (opening,) = result.openings
-    assert (opening.wall_id, opening.width_mm, opening.offset_mm) == (result.walls[0].id, 1273, 2545)
+    assert (opening.wall_id, opening.width_mm, opening.offset_mm) == (result.walls[0].id, 1173, 2595)
     assert dropped["openingUnattached"] == 0
+
+
+def test_build_walls__diagonal_adjacent_windows_keep_true_width(fake_clock: FakeClock) -> None:
+    """Review P2 LOG-02: hai cửa sổ thật 900 cách 100 mm trên tường 45° (bề dày 100).
+
+    Hộp thẳng trục của mỗi cửa sổ là tâm ± 500/√2; hình chiếu dài 1.000 = 900 + bề dày → trừ lại còn 900,
+    nên không chồng nhau (trước đó 1.000 mỗi cái → cái sau `openingOverlap`).
+    """
+    half = 500 / math.sqrt(2)
+    centres = [2000 / math.sqrt(2), 3000 / math.sqrt(2)]
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 0, 4000, 4000)],
+        [det("window", c - half, c - half, c + half, c + half) for c in centres],
+        fake_clock,
+        dropped,
+    )
+    assert [(o.offset_mm, o.width_mm) for o in result.openings] == [(1550, 900), (2550, 900)]
+    assert dropped["openingOverlap"] == 0
 
 
 def test_build_walls__corner_box_touching_two_walls_picks_centre_nearest(fake_clock: FakeClock) -> None:

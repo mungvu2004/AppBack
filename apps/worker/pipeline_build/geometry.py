@@ -2,7 +2,7 @@
 
 Hình học chạy bằng `shapely` 2.x vector hoá: một `linestrings` cho mọi đường tim và một
 `STRtree` **mỗi pha** (lọc khối cô lập, 3b, bước 4, hộp ô mở — 3b sửa hình học tại chỗ nên
-cây của pha trước hết đúng), truy vấn theo lô (`dwithin`, `query_nearest`) — trần B5-01 là
+cây của pha trước hết đúng), truy vấn theo lô (`dwithin`) — trần B5-01 là
 20.000 tường và 5.000 hộp nên vòng Python qua mọi cặp tường là không chạy nổi.
 Toạ độ mm: gốc trên-trái, y hướng xuống.
 """
@@ -462,7 +462,9 @@ def _candidate(
         return None
     low, high = span
     length = _length(seg)
-    measured = min(js_round(high - low), math.floor(length))
+    # Hộp thẳng trục của ô mở trên tường lệch góc θ chiếu dài thêm bề dày · |sin 2θ| (review P2 LOG-02).
+    ux, uy = _unit(seg)
+    measured = min(js_round(high - low - seg.thickness_mm * abs(2 * ux * uy)), math.floor(length))
     if target.width_mm is None and measured < _MIN_DOUBLE_DOOR_MM:
         dropped["openingUnattached"] += 1
         return None
