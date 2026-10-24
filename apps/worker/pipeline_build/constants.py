@@ -9,7 +9,18 @@ DEFAULT_WALL_HEIGHT_MM: Final = 3600
 """Chiều cao tường mặc định của bộ mẫu FE (`src/domain/spatial/__fixtures__/sampleBuilding.ts:49-56`)."""
 
 OPENING_WALL_REACH_MM: Final = 150
-"""Tâm hộp ô mở được xa đường tim tối đa `thicknessMm / 2 + 150` (B5-05 [6] bước 4)."""
+"""Hộp ô mở (không phải tâm hộp) được xa đường tim tối đa `thicknessMm / 2 + 150` (B5-05 [6] bước 4).
+
+Đo tới hộp vì bản vẽ xoay chéo cho hộp thẳng trục vuông lớn, tâm xa tim 250-670 mm (BUG-IT-003).
+"""
+
+OPENING_MIN_WIDTH_MM: Final = 300
+"""Hình chiếu hộp cửa đi/cửa sổ lên tim hẹp hơn 300 mm là suy biến (hộp gần hết ra ngoài đầu
+tường): dùng rộng mặc định của `LABEL_TARGETS` (BUG-IT-004); ô mở thật hẹp nhất ~400 mm."""
+
+CORNER_OVERSHOOT_MM: Final = 150
+"""Kéo đầu tường tới vách vuông góc (3b-b) khi chỗ giao lố ra ngoài đầu vách tối đa
+`max(bề dày vách, 150)`; vách được kéo theo tới chân để góc khép (BUG-IT-001: G2 lố 29 mm)."""
 
 OPENING_GAP_MAX_MM: Final = 2400
 """Khe tường dài nhất còn coi là chỗ khoét ô mở (B5-05 [6] bước 3b)."""

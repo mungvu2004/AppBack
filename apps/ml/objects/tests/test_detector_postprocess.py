@@ -139,6 +139,77 @@ def test_merge_candidates__keeps_fragment_covered_by_other_label() -> None:
     assert sorted(int(c) for c in result.classes) == [0, 1]
 
 
+_G5_PAGE: tuple[int, int] = (2080, 1600)
+_G5_TILE: tuple[float, float, float, float] = (1440.0, 960.0, 640.0, 640.0)
+_G5_SLIVER: tuple[float, float, float, float] = (1440.0, 1358.5, 1458.4, 1424.5)
+
+
+def test_merge_candidates__drops_sliver_inside_larger_cut_box_same_tile() -> None:
+    """BUG-IT-002 (CubiCasa G5): mảnh mỏng chạm mép trái lát nằm trong hộp tủ lớn cùng lát (cũng
+    chạm mép, điểm 0,917) bị bỏ; trước đây NMS giữ nó vì IoU mảnh/hộp lớn chỉ ~3%."""
+    big = (1440.4, 1351.1, 1697.8, 1522.5)
+    candidates = _candidates([(_G5_SLIVER, 0, 0.338, _G5_TILE), (big, 0, 0.917, _G5_TILE)])
+    result = merge_candidates(candidates, page_w=_G5_PAGE[0], page_h=_G5_PAGE[1])
+    assert len(result) == 1
+    assert tuple(result.boxes[0]) == big
+
+
+def test_merge_candidates__drops_sliver_inside_larger_cut_box_other_tile() -> None:
+    """Hộp phủ ở lát khác, chính nó chạm mép phải lát mình (vật rộng hơn độ chồng lát) vẫn bỏ được mảnh."""
+    big = (1431.0, 1359.0, 1600.0, 1524.0)
+    candidates = _candidates([(_G5_SLIVER, 0, 0.338, _G5_TILE), (big, 0, 0.885, (960.0, 960.0, 640.0, 640.0))])
+    result = merge_candidates(candidates, page_w=_G5_PAGE[0], page_h=_G5_PAGE[1])
+    assert len(result) == 1
+    assert tuple(result.boxes[0]) == big
+
+
+@pytest.mark.parametrize(("right", "kept"), [(556.0, 2), (560.0, 1)])
+def test_merge_candidates__sliver_rule_needs_area_ratio(right: float, kept: int) -> None:
+    """Hộp phủ 72% mảnh, cùng lát, chạm mép: lớn 1,9 lần thì giữ cả hai, đúng `CUT_SLIVER_AREA_RATIO`
+    (2 lần) thì bỏ mảnh. IoU hai hộp ~0,33 < `NMS_IOU` nên NMS không xen vào."""
+    tile = (480.0, 0.0, 640.0, 640.0)
+    candidates = _candidates(
+        [((480.0, 100.0, 520.0, 200.0), 0, 0.5, tile), ((480.0, 128.0, right, 228.0), 0, 0.9, tile)]
+    )
+    result = merge_candidates(candidates, page_w=1120, page_h=640)
+    assert len(result) == kept
+
+
+def test_merge_candidates__keeps_sliver_with_low_cover() -> None:
+    """Hộp lớn 2,5 lần nhưng chỉ phủ 60% mảnh (< `CUT_COVER_MIN`) — hai vật kề nhau, giữ cả hai."""
+    tile = (480.0, 0.0, 640.0, 640.0)
+    candidates = _candidates(
+        [((480.0, 100.0, 520.0, 200.0), 0, 0.5, tile), ((480.0, 140.0, 580.0, 240.0), 0, 0.9, tile)]
+    )
+    result = merge_candidates(candidates, page_w=1120, page_h=640)
+    assert len(result) == 2
+
+
+def test_merge_candidates__keeps_sliver_scored_above_larger_box() -> None:
+    """Hộp lớn điểm thấp hơn mảnh không bỏ được mảnh (luật mới đòi điểm `j` ≥ `i`)."""
+    big = (1440.4, 1351.1, 1697.8, 1522.5)
+    candidates = _candidates([(_G5_SLIVER, 0, 0.9, _G5_TILE), (big, 0, 0.5, _G5_TILE)])
+    result = merge_candidates(candidates, page_w=_G5_PAGE[0], page_h=_G5_PAGE[1])
+    assert len(result) == 2
+
+
+def test_merge_candidates__keeps_sliver_inside_larger_box_of_other_label() -> None:
+    """Hộp lớn khác nhãn không bỏ mảnh: luật mảnh mỏng cũng chỉ so cùng nhãn."""
+    big = (1440.4, 1351.1, 1697.8, 1522.5)
+    candidates = _candidates([(_G5_SLIVER, 0, 0.338, _G5_TILE), (big, 1, 0.917, _G5_TILE)])
+    result = merge_candidates(candidates, page_w=_G5_PAGE[0], page_h=_G5_PAGE[1])
+    assert sorted(int(c) for c in result.classes) == [0, 1]
+
+
+def test_merge_candidates__keeps_whole_small_box_inside_larger_cut_box() -> None:
+    """Review P2 M06: hộp nhỏ không chạm mép trong (vật riêng, lát thấy trọn) trong hộp cắt lớn > 3 lần → giữ cả hai."""
+    big = (1440.4, 1351.1, 1697.8, 1522.5)
+    small = (1500.0, 1400.0, 1540.0, 1440.0)
+    candidates = _candidates([(small, 0, 0.5, _G5_TILE), (big, 0, 0.917, _G5_TILE)])
+    result = merge_candidates(candidates, page_w=_G5_PAGE[0], page_h=_G5_PAGE[1])
+    assert len(result.classes) == 2
+
+
 def test_merge_candidates__nms_drops_same_label_keeps_different_label() -> None:
     """NMS bỏ hộp cùng nhãn IoU cao (điểm thấp hơn); giữ nhãn khác dù cùng vị trí."""
     tile = (0.0, 0.0, 640.0, 640.0)

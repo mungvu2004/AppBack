@@ -2,7 +2,7 @@
 
 Hình học chạy bằng `shapely` 2.x vector hoá: một `linestrings` cho mọi đường tim và một
 `STRtree` **mỗi pha** (lọc khối cô lập, 3b, bước 4, hộp ô mở — 3b sửa hình học tại chỗ nên
-cây của pha trước hết đúng), truy vấn theo lô (`dwithin`, `query_nearest`) — trần B5-01 là
+cây của pha trước hết đúng), truy vấn theo lô (`dwithin`) — trần B5-01 là
 20.000 tường và 5.000 hộp nên vòng Python qua mọi cặp tường là không chạy nổi.
 Toạ độ mm: gốc trên-trái, y hướng xuống.
 """
@@ -19,8 +19,10 @@ from numpy.typing import NDArray
 from shapely import LineString, STRtree
 
 from apps.worker.pipeline_build.constants import (
+    CORNER_OVERSHOOT_MM,
     DEFAULT_WALL_HEIGHT_MM,
     OPENING_GAP_MAX_MM,
+    OPENING_MIN_WIDTH_MM,
     OPENING_WALL_REACH_MM,
     STANDARD_THICKNESSES_MM,
     WALL_JOIN_MM,
@@ -316,19 +318,19 @@ def _merge_aligned(
         dropped["wallGapBridged"] += 1
 
 
-def _within(seg: _Seg, point: tuple[float, float]) -> bool:
-    """Điểm nằm trong đoạn `seg` theo tham số dọc tim (`[0, L]`)."""
+def _along(seg: _Seg, point: tuple[float, float]) -> float:
+    """Tham số dọc tim `seg` của điểm (mm, 0 tại `start`, `L` tại `end`)."""
     unit = _unit(seg)
-    along = (point[0] - seg.start.x) * unit[0] + (point[1] - seg.start.y) * unit[1]
-    return 0 <= along <= _length(seg)
+    return (point[0] - seg.start.x) * unit[0] + (point[1] - seg.start.y) * unit[1]
 
 
 def _foot_on_other(seg: _Seg, other: _Seg) -> tuple[bool, Point] | None:
     """Đầu mút của `seg` cần kéo và chân trên tim `other`: `(là đầu end, chân)` hoặc `None`.
 
     Chỉ xét cặp vuông góc, nên hai đường không song song và định thức không bằng 0. Chân phải nằm
-    trong đoạn `other` và **ngoài** `seg`, cách đầu mút `0 < g ≤ OPENING_GAP_MAX_MM`, và không trùng
-    đầu mút còn lại (`Segment` cấm tường dài 0).
+    trong đoạn `other` nới mỗi đầu `max(bề dày other, CORNER_OVERSHOOT_MM)` (tường lệch 0,75° hụt
+    vách 29 mm, BUG-IT-001) và **ngoài** `seg`, cách đầu mút `0 < g ≤ OPENING_GAP_MAX_MM`, và không
+    trùng đầu mút còn lại (`Segment` cấm tường dài 0).
     """
     if not _perpendicular(seg, other):
         return None
@@ -336,7 +338,8 @@ def _foot_on_other(seg: _Seg, other: _Seg) -> tuple[bool, Point] | None:
     dx, dy = other.start.x - seg.start.x, other.start.y - seg.start.y
     step = (dx * other_unit[1] - dy * other_unit[0]) / (unit[0] * other_unit[1] - unit[1] * other_unit[0])
     crossing = (seg.start.x + unit[0] * step, seg.start.y + unit[1] * step)
-    if not _within(other, crossing):
+    slack = max(other.thickness_mm, CORNER_OVERSHOOT_MM)
+    if not -slack <= _along(other, crossing) <= _length(other) + slack:
         return None
     foot = Point(x=js_round(crossing[0]), y=js_round(crossing[1]))
     if -OPENING_GAP_MAX_MM <= step < 0 and foot != seg.end:
@@ -359,8 +362,21 @@ def _extend_once(seg: _Seg, others: Sequence[_Seg], boxes: _Boxes) -> bool:
             seg.end = foot
         else:
             seg.start = foot
+        _stretch_to(other, foot)
         return True
     return False
+
+
+def _stretch_to(seg: _Seg, foot: Point) -> None:
+    """Chân lố ra ngoài đoạn `seg` (trong dung sai của `_foot_on_other`) → kéo đầu gần chân tới chân.
+
+    Góc khép kín thay vì hở vài chục mm; chân ở ngoài `[0, L]` nên cách đầu xa > 0, không thành dài 0.
+    """
+    along = _along(seg, (foot.x, foot.y))
+    if along < 0:
+        seg.start = foot
+    elif along > _length(seg):
+        seg.end = foot
 
 
 def _extend_all(segs: list[_Seg], neighbours: list[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
@@ -396,16 +412,28 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
     return _bridge_segments(segs, neighbours)
 
 
-def _nearest_walls(tree: STRtree, points: Geoms) -> list[tuple[int, float] | None]:
-    """Một `query_nearest` theo lô: `(tường gần nhất, khoảng cách)` mỗi tâm hộp, hoà lấy chỉ số nhỏ."""
-    best: list[tuple[int, float] | None] = [None] * len(points)
-    if not len(points):
+def _attach_walls(
+    segs: Sequence[_Seg], geoms: Geoms, rects: Sequence[tuple[float, float, float, float]]
+) -> list[int | None]:
+    """Tường gắn cho mỗi hộp ô mở, `None` khi không tường nào với tới (bước 4).
+
+    Ứng viên: tường mà **hộp** (không phải tâm) cách tim ≤ `thicknessMm / 2 + OPENING_WALL_REACH_MM`,
+    0 khi tim cắt hộp — hộp thẳng trục của cửa xoay chéo là hộp vuông lớn, tâm xa tim (BUG-IT-003).
+    Trong ứng viên chọn tường gần **tâm** hộp nhất, hoà lấy chỉ số nhỏ: cửa sát góc chạm cả vách
+    vuông góc vẫn về tường nó nằm trên. Một truy vấn `dwithin` theo lô, khoảng cách vector hoá.
+    """
+    best: list[int | None] = [None] * len(rects)
+    if not rects or not len(geoms):
         return best
-    pairs, distances = tree.query_nearest(points, all_matches=True, return_distance=True)
-    for source, wall, distance in zip(pairs[0].tolist(), pairs[1].tolist(), distances.tolist(), strict=True):
-        current = best[source]
-        if current is None or wall < current[0]:
-            best[source] = (wall, distance)
+    boxes = np.asarray(shapely.box(*np.asarray(rects).T), dtype=object)
+    reach = np.asarray([seg.thickness_mm / 2 + OPENING_WALL_REACH_MM for seg in segs])
+    sources, walls = STRtree(geoms).query(boxes, predicate="dwithin", distance=float(reach.max()))
+    inside = shapely.distance(boxes[sources], geoms[walls]) <= reach[walls]
+    centre = shapely.distance(shapely.centroid(boxes[sources]), geoms[walls])
+    ranked = zip(centre[inside].tolist(), walls[inside].tolist(), sources[inside].tolist(), strict=True)
+    for _, wall, source in sorted(ranked):
+        if best[source] is None:
+            best[source] = wall
     return best
 
 
@@ -423,16 +451,24 @@ def _candidate(
     span: tuple[float, float],
     dropped: Counter[str],
 ) -> _Cand | None:
-    """Bước 4 cho một hộp đã biết tường: kích thước theo `LABEL_TARGETS`, `offsetMm` kẹp trong tường."""
+    """Bước 4 cho một hộp đã biết tường: rộng = hình chiếu hộp lên tim, `offsetMm` kẹp trong tường.
+
+    Rộng lấy từ hộp, kẹp ≤ `L` (BUG-IT-004: rộng cố định làm rơi ô mở trên tường ngắn và chồng cửa
+    sổ kề nhau); hình chiếu < `OPENING_MIN_WIDTH_MM` là suy biến → rộng mặc định của `LABEL_TARGETS`
+    (có thể `openingTooWide`). Cửa đôi không có mặc định: hẹp hơn 600 mm là `openingUnattached`.
+    """
     target = LABEL_TARGETS[detection.label]
     if target.height_mm is None or target.sill_mm is None or target.swing is None:
         return None
     low, high = span
-    width = target.width_mm if target.width_mm is not None else js_round(high - low)
-    if width < _MIN_DOUBLE_DOOR_MM:
+    length = _length(seg)
+    # Hộp thẳng trục của ô mở trên tường lệch góc θ chiếu dài thêm bề dày · |sin 2θ| (review P2 LOG-02).
+    ux, uy = _unit(seg)
+    measured = min(js_round(high - low - seg.thickness_mm * abs(2 * ux * uy)), math.floor(length))
+    if target.width_mm is None and measured < _MIN_DOUBLE_DOOR_MM:
         dropped["openingUnattached"] += 1
         return None
-    length = _length(seg)
+    width = target.width_mm if target.width_mm is not None and measured < OPENING_MIN_WIDTH_MM else measured
     if length < width:
         dropped["openingTooWide"] += 1
         return None
@@ -448,30 +484,21 @@ def _opening_candidates(
     scaling: Scaling,
     dropped: Counter[str],
 ) -> list[_Cand]:
-    """Bước 4: mỗi hộp ô mở → tường gần nhất theo tâm; ngoài tầm với → `openingUnattached`."""
+    """Bước 4: mỗi hộp ô mở → tường của `_attach_walls`; không tường nào với tới → `openingUnattached`."""
     chosen = [(order, det) for order, det in enumerate(detections) if det.label in _OPENING_LABELS]
     rects = [_rect(det.box, scaling) for _, det in chosen]
-    centres = _centres(rects)
-    nearest = _nearest_walls(STRtree(geoms), centres) if len(geoms) else [None] * len(rects)
+    attached = _attach_walls(segs, geoms, rects)
     cands: list[_Cand] = []
     for position, (order, detection) in enumerate(chosen):
-        found = nearest[position]
-        if found is None or found[1] > segs[found[0]].thickness_mm / 2 + OPENING_WALL_REACH_MM:
+        wall = attached[position]
+        if wall is None:
             dropped["openingUnattached"] += 1
             continue
-        span = _span_on_wall(rects[position], geoms[found[0]])
-        cand = _candidate(order, detection, found[0], segs[found[0]], span, dropped)
+        span = _span_on_wall(rects[position], geoms[wall])
+        cand = _candidate(order, detection, wall, segs[wall], span, dropped)
         if cand is not None:
             cands.append(cand)
     return cands
-
-
-def _centres(rects: Sequence[tuple[float, float, float, float]]) -> Geoms:
-    """Tâm mọi hộp thành mảng `Point` trong một lần gọi (vector hoá cho `query_nearest`)."""
-    if not rects:
-        return np.asarray([], dtype=object)
-    coords = [[(rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2] for rect in rects]
-    return np.asarray(shapely.points(coords), dtype=object)
 
 
 def _overlaps(a: _Cand, b: _Cand) -> bool:
