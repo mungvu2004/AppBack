@@ -8,9 +8,15 @@ import math
 from collections import Counter
 from collections.abc import Sequence
 
+import numpy as np
 import shapely
 
-from apps.worker.pipeline_build.constants import MIN_ROOM_AREA_M2, ROOM_SNAP_MM
+from apps.worker.pipeline_build.constants import (
+    MIN_ROOM_AREA_M2,
+    ROOM_GAP_CLOSE_MIN_COS,
+    ROOM_GAP_CLOSE_MM,
+    ROOM_SNAP_MM,
+)
 from apps.worker.pipeline_build.geometry import Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.core.clock import Clock
@@ -23,6 +29,8 @@ from packages.vision.dimensions.rooms import RoomLabel, match_room_label, name_r
 _OPENING_LABELS = frozenset({"door", "double_door", "window"})
 """Nhãn ô mở: bỏ qua ở `build_furniture`, không đếm vào `dropped` (đã dựng ở bước 4)."""
 
+_CLOSER_TRIM_MM = 1.0
+"""Cắt bớt mỗi đầu đoạn nối khe khi xét cắt tường: chạm đúng đầu mút (chân chữ T) không tính là cắt."""
 
 def _extend(wall: Wall, amount: float) -> shapely.LineString:
     """Đường tim `wall` kéo dài `amount` mm về mỗi đầu, theo hướng tường (bước 5)."""
@@ -33,6 +41,51 @@ def _extend(wall: Wall, amount: float) -> shapely.LineString:
     return shapely.LineString(
         [(start.x - ux * amount, start.y - uy * amount), (end.x + ux * amount, end.y + uy * amount)]
     )
+
+
+def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
+    """Đoạn nối khe góc/chữ T không có hộp ô mở (BUG-IT-008), để khép phòng; tường không đổi.
+
+    Đầu tường tự do = không chạm tim tường khác hay `bridges` trong `ROOM_SNAP_MM`. Mỗi đầu tự do nối tới điểm gần nhất
+    trên tim tường khác cách ≤ `ROOM_GAP_CLOSE_MM`, lệch hướng ra của đầu tường không quá `ROOM_GAP_CLOSE_MIN_COS`;
+    bỏ đoạn cắt tim tường/`bridges` khác, giữ đoạn ngắn nhất. Tra theo
+    lô bằng `STRtree` (không O(n²), trần B5-01 20 000 tường); đoạn chọn lố 1 mm qua tim đích để `unary_union` cắt nút.
+    """
+    if len(walls) < 2:
+        return []
+    starts = np.array([(w.centreline.start.x, w.centreline.start.y) for w in walls], dtype=float)
+    ends = np.array([(w.centreline.end.x, w.centreline.end.y) for w in walls], dtype=float)
+    centrelines = shapely.linestrings(np.stack([starts, ends], axis=1))
+    obstacles = [*centrelines, *(shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges)]
+    obstacle_tree = shapely.STRtree(obstacles)
+    tips = shapely.points(np.concatenate([starts, ends]))
+    owner = np.tile(np.arange(len(walls)), 2)
+    tip_idx, near = obstacle_tree.query(tips, predicate="dwithin", distance=ROOM_SNAP_MM)
+    touching = np.zeros(len(tips), dtype=bool)
+    touching[tip_idx[near != owner[tip_idx]]] = True
+    free = np.flatnonzero(~touching)
+    free_idx, target = shapely.STRtree(centrelines).query(tips[free], predicate="dwithin", distance=ROOM_GAP_CLOSE_MM)
+    tip = free[free_idx]
+    other = target != owner[tip]
+    tip, target = tip[other], target[other]
+    if tip.size == 0:
+        return []
+    coords = shapely.get_coordinates(shapely.shortest_line(tips[tip], centrelines[target])).reshape(-1, 2, 2)
+    head, foot = coords[:, 0], coords[:, 1]
+    length = np.hypot(*(foot - head).T)
+    unit = (foot - head) / length[:, None]
+    trimmed = shapely.linestrings(np.stack([head + unit * _CLOSER_TRIM_MM, foot - unit * _CLOSER_TRIM_MM], axis=1))
+    seg_idx, blocker = obstacle_tree.query(trimmed, predicate="intersects")
+    outward = np.concatenate([starts - ends, ends - starts])[tip]
+    outward /= np.hypot(*outward.T)[:, None]
+    blocked = np.einsum("ij,ij->i", unit, outward) < ROOM_GAP_CLOSE_MIN_COS
+    blocked[seg_idx[blocker != target[seg_idx]]] = True
+    valid = np.flatnonzero(~blocked)
+    order = valid[np.lexsort((length[valid], tip[valid]))]
+    _, first = np.unique(tip[order], return_index=True)
+    chosen = order[first]
+    tails = foot[chosen] + unit[chosen] * _CLOSER_TRIM_MM
+    return list(shapely.linestrings(np.stack([head[chosen], tails], axis=1)))
 
 
 def _outline_points(polygon: shapely.Polygon) -> list[Point]:
@@ -48,9 +101,10 @@ def _outline_points(polygon: shapely.Polygon) -> list[Point]:
 
 
 def _room_outlines(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[list[Point]]:
-    """Mọi vành ngoài khép được từ tường kéo dài `ROOM_SNAP_MM` + `bridges` (`unary_union`, `polygonize`)."""
+    """Mọi vành ngoài khép được từ tường kéo dài `ROOM_SNAP_MM`, `bridges`, `_gap_closers` (`unary_union`, `polygonize`)."""
     lines: list[shapely.LineString] = [_extend(wall, ROOM_SNAP_MM) for wall in walls]
     lines.extend(shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges)
+    lines.extend(_gap_closers(walls, bridges))
     if not lines:
         return []
     merged = shapely.unary_union(lines)
