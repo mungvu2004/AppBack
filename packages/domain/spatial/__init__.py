@@ -27,13 +27,14 @@ from packages.domain.spatial.model import (
     Note,
     Opening,
     Point,
+    Roof,
     Room,
     Segment,
     SpatialGraph,
     SpatialLayer,
     Wall,
 )
-from packages.domain.spatial.samples import sample_building, sample_layer
+from packages.domain.spatial.samples import sample_building, sample_layer, sample_roof
 
 __all__ = [
     "DELETED",
@@ -52,6 +53,7 @@ __all__ = [
     "Note",
     "Opening",
     "Point",
+    "Roof",
     "Room",
     "Segment",
     "SpatialGraph",
@@ -71,6 +73,7 @@ __all__ = [
     "polygon_area_m2",
     "sample_building",
     "sample_layer",
+    "sample_roof",
     "signed_area_mm2",
     "total_area_m2",
     "vertex_id",

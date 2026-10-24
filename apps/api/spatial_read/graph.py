@@ -85,6 +85,7 @@ async def spatial_graph(db: AsyncSession, project_id: str, *, app: object | None
         axes=[item for doc in docs for item in axes_out(doc.axes)],
         dimensions=[item for doc in docs for item in dimensions_out(doc.dimensions)],
         notes=[],
+        roofs=[roof for layer in layers for roof in layer.roofs or ()] or None,
     )
     revisions = [
         FloorRevisionOut(floor_id=level.id, revision=doc.revision) for level, doc in zip(levels, docs, strict=True)

@@ -101,6 +101,8 @@ def rescale_unreviewed(layer: SpatialLayer, old: float, new: float) -> SpatialLa
         openings=tuple(_rescaled(opening, k, _opening) for opening in layer.openings),
         rooms=tuple(_rescaled(room, k, _room) for room in layer.rooms),
         furniture=tuple(_rescaled(item, k, _furniture) for item in layer.furniture),
+        # Mái mang toạ độ mét cục bộ của Pascal, không theo tỉ lệ mm/px: giữ nguyên.
+        roofs=layer.roofs,
     )
 
 

@@ -54,6 +54,7 @@ from packages.domain.spatial import (
     Furniture,
     Opening,
     Point,
+    Roof,
     Room,
     SpatialLayer,
     Wall,
@@ -74,7 +75,7 @@ ScaleWriter = Literal["human", "pipeline", "project_default"]
 _RANK: Final[Mapping[str, int]] = {"human": 3, "pipeline": 2, "project_default": 1, "none": 0}
 """Hạng nguồn tỉ lệ: nguồn hạng thấp không đè được tỉ lệ của nguồn hạng cao (K19)."""
 
-_LISTS: Final = ("walls", "openings", "rooms", "furniture")
+_LISTS: Final = ("walls", "openings", "rooms", "furniture", "roofs")
 """Thứ tự duyệt danh sách khi dựng `field` của lỗi ([6] bước 2)."""
 
 _TOUCH_FIELD: Final[Mapping[ChangeEntityType, str]] = {
@@ -84,6 +85,7 @@ _TOUCH_FIELD: Final[Mapping[ChangeEntityType, str]] = {
     "room": "name",
     "furniture": "kind",
     "dimension": "value_mm",
+    "roof": "nodes",
 }
 """Trường đại diện của dấu chạm (HOP-DONG-MOI §1.3): một dòng cho thay đổi ngoài bảng diff."""
 
@@ -397,7 +399,7 @@ async def _attempt(db: AsyncSession, request: _Request) -> WriteResult | None:
     )
 
 
-type _Reviewable = Wall | Opening | Room | Furniture | Dimension | Axis
+type _Reviewable = Wall | Opening | Room | Furniture | Roof | Dimension | Axis
 """Mục mang dấu duyệt và `id` trong một tài liệu tầng."""
 
 

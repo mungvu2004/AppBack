@@ -2,7 +2,7 @@
 
 - Tài nguyên: `<tiền tố>_<ULID>`. ULID = 48 bit mili giây từ `clock.now()` + 80 bit
   `secrets`, Crockford base32 HOA 26 ký tự.
-- Thực thể không gian (client sinh): `<chữ>-<base36 HOA 10-64>` (`src/domain/spatial/ids.ts:15-43`).
+- Thực thể không gian (client sinh): `<chữ>-<base36 HOA 10-64>` (mái: hai chữ `RF`) (`src/domain/spatial/ids.ts:15-43`).
 - Phép đo (client sinh): `MS-<4-15 chữ số>`.
 
 Mẫu dùng `[0-9]`, không `\\d` (`\\d` của `re` khớp cả chữ số Unicode), và `fullmatch`
@@ -18,7 +18,7 @@ from typing import Final, Literal, get_args
 from packages.core.clock import Clock
 
 IdPrefix = Literal["prj", "usr", "upl", "drw", "ver", "ntf", "tok", "mdl", "dst", "dsv", "job", "run", "tpl"]
-SpatialKind = Literal["level", "wall", "opening", "furniture", "room", "axis", "dimension"]
+SpatialKind = Literal["level", "wall", "opening", "furniture", "room", "axis", "dimension", "roof"]
 
 SPATIAL_PREFIX: Final[Mapping[SpatialKind, str]] = {
     "level": "L",
@@ -28,6 +28,7 @@ SPATIAL_PREFIX: Final[Mapping[SpatialKind, str]] = {
     "room": "R",
     "axis": "A",
     "dimension": "M",
+    "roof": "RF",
 }
 
 _PREFIXES: Final = frozenset(get_args(IdPrefix))

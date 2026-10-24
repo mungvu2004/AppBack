@@ -15,6 +15,7 @@ from packages.domain.spatial.model import (
     Furniture,
     Opening,
     Reviewed,
+    Roof,
     Room,
     SpatialGraph,
     SpatialLayer,
@@ -39,11 +40,12 @@ _CHANGE_TYPE_BY_MODEL: Final[dict[type[object], ChangeEntityType]] = {
     Furniture: "furniture",
     Room: "room",
     Dimension: "dimension",
+    Roof: "roof",
 }
 
 
 @overload
-def change_entity_type(entity: Wall | Opening | Room | Furniture | Dimension) -> ChangeEntityType: ...
+def change_entity_type(entity: Wall | Opening | Room | Furniture | Dimension | Roof) -> ChangeEntityType: ...
 @overload
 def change_entity_type(entity: object) -> ChangeEntityType | None: ...
 def change_entity_type(entity: object) -> ChangeEntityType | None:

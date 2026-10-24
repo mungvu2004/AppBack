@@ -219,4 +219,4 @@ def apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
     """
     furniture = _snap_fixtures(layer)
     walls, openings = _fix_windows(layer)
-    return SpatialLayer(walls=walls, openings=openings, rooms=layer.rooms, furniture=furniture)
+    return SpatialLayer(walls=walls, openings=openings, rooms=layer.rooms, furniture=furniture, roofs=layer.roofs)

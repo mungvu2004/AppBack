@@ -20,7 +20,7 @@ from apps.api.spatial_read.wire import (
     dimensions_out,
     layer_out,
 )
-from packages.domain.spatial.samples import PASCAL_FIELDS, with_pascal_fields
+from packages.domain.spatial.samples import PASCAL_FIELDS, sample_roof, with_pascal_fields
 from packages.testing.factories.spatial import sample_floor_dimensions, sample_floor_layer
 
 LEVEL_ID = "L-LEVEL000000"
@@ -177,3 +177,15 @@ def test_layer_out_emits_pascal_fields() -> None:
     for name, extra in PASCAL_FIELDS.items():
         assert body[name][0].items() >= extra.items()
         assert not body[name][1].keys() & extra.keys()
+
+
+def test_layer_out_roofs_absent_without_roofs_and_nodes_verbatim_with() -> None:
+    """Mái (roof-contract.md): lớp không mái vắng khoá `roofs`; có mái thì `nodes` ra nguyên vẹn, kể cả `null`."""
+    layer = sample_floor_layer(0, level_id=LEVEL_ID)
+    assert "roofs" not in layer_out(layer).model_dump(mode="json", by_alias=True, exclude_none=True)
+    roof = sample_roof(0)
+    body = layer_out(layer.model_copy(update={"roofs": (roof,)})).model_dump(
+        mode="json", by_alias=True, exclude_none=True
+    )
+    assert body["roofs"] == [roof.model_dump(mode="json", by_alias=True)]
+    assert body["roofs"][0]["nodes"][1]["metadata"]["tag"] is None

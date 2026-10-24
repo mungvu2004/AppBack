@@ -8,6 +8,7 @@ A5 (`source="ai"` kèm `reviewed=True`) **không** kiểm ở đây: B3-03 cần
 `REVIEW_BY_AI_FORBIDDEN` thay cho `VALIDATION`, nên dùng `kinds.ai_reviewed_ids`.
 """
 
+import json
 from typing import Annotated, Final, Literal, Self
 
 from pydantic import (
@@ -15,6 +16,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StrictBool,
     StrictFloat,
     StrictInt,
@@ -90,6 +92,7 @@ FurnitureIdStr = Annotated[StrictStr, _spatial_id("furniture")]
 RoomIdStr = Annotated[StrictStr, _spatial_id("room")]
 AxisIdStr = Annotated[StrictStr, _spatial_id("axis")]
 DimensionIdStr = Annotated[StrictStr, _spatial_id("dimension")]
+RoofIdStr = Annotated[StrictStr, _spatial_id("roof")]
 MaterialRef = Annotated[StrictStr, Field(pattern=r"^(library|scene):[a-z0-9_-]{1,64}$")]
 """Vật liệu Pascal (FE3D-B J-v3): `library:<id>` trong thư viện hoặc `scene:<id>` của cảnh."""
 SlotName = Annotated[StrictStr, Field(pattern=r"^[a-z][a-z0-9_]{0,23}$")]
@@ -309,17 +312,53 @@ class Note(Reviewed):
     author_id: NonEmptyStr
 
 
+ROOF_NODES_MAX: Final = 33
+"""Trần số node của một mái: node `roof` + tối đa 32 `roof-segment` (roof-contract.md)."""
+
+ROOF_JSON_MAX_BYTES: Final = 64 * 1024
+"""Trần JSON (UTF-8) của cả một mái trên dây (roof-contract.md)."""
+
+
+class Roof(Reviewed):
+    """Mái Pascal: `nodes[0]` là node `roof`, các node sau là `roof-segment` con của nó.
+
+    BE không đọc bên trong `nodes` (hình học do FE giữ); chỉ kiểm số node, là object JSON,
+    và cỡ JSON của cả mái. `JsonValue` giữ nguyên giá trị và thứ tự khoá khi khứ hồi.
+    """
+
+    id: RoofIdStr
+    level_id: LevelIdStr
+    nodes: Annotated[tuple[dict[str, JsonValue], ...], Field(min_length=1, max_length=ROOF_NODES_MAX)]
+
+    @model_validator(mode="after")
+    def _json_size(self) -> Self:
+        """JSON của cả mái ≤ 64 KB; `NaN`/`Infinity` hỏng ở đây (jsonb không nhận) thay vì 500 lúc ghi."""
+        raw = json.dumps(self.model_dump(mode="json", by_alias=True), ensure_ascii=False, allow_nan=False)
+        if len(raw.encode()) > ROOF_JSON_MAX_BYTES:
+            raise ValueError("JSON của mái vượt 64 KB")
+        return self
+
+
+def _no_roofs(roofs: tuple[Roof, ...]) -> bool:
+    """Không có mái thì vắng khoá `roofs`: tài liệu cũ dump ra đúng jsonb như trước."""
+    return not roofs
+
+
+Roofs = Annotated[tuple[Roof, ...], Field(default=(), exclude_if=_no_roofs)]
+
+
 class SpatialLayer(DomainModel):
-    """Bốn danh sách của một tầng, đúng `SpatialLayerSchema` (N16, #35)."""
+    """Danh sách thực thể của một tầng, đúng `SpatialLayerSchema` (N16, #35); `roofs` tuỳ chọn."""
 
     walls: tuple[Wall, ...]
     openings: tuple[Opening, ...]
     rooms: tuple[Room, ...]
     furniture: tuple[Furniture, ...]
+    roofs: Roofs = ()
 
-    def entities(self) -> tuple[Wall | Opening | Room | Furniture, ...]:
-        """Mọi thực thể theo thứ tự cố định `walls → openings → rooms → furniture` (toàn vẹn, diff)."""
-        return (*self.walls, *self.openings, *self.rooms, *self.furniture)
+    def entities(self) -> tuple[Wall | Opening | Room | Furniture | Roof, ...]:
+        """Mọi thực thể theo thứ tự cố định `walls → openings → rooms → furniture → roofs` (toàn vẹn, diff)."""
+        return (*self.walls, *self.openings, *self.rooms, *self.furniture, *self.roofs)
 
 
 class SpatialGraph(DomainModel):
@@ -334,3 +373,4 @@ class SpatialGraph(DomainModel):
     axes: tuple[Axis, ...]
     dimensions: tuple[Dimension, ...]
     notes: tuple[Note, ...]
+    roofs: Roofs = ()

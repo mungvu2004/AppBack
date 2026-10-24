@@ -12,16 +12,18 @@ from typing import Final
 
 from packages.core.errors import MISSING
 from packages.domain.spatial.kinds import ChangeEntityType, change_entity_type, vertex_id
-from packages.domain.spatial.model import Furniture, Opening, Room, SpatialLayer, Wall
+from packages.domain.spatial.model import Furniture, Opening, Roof, Room, SpatialLayer, Wall
 
 DELETED: Final = "__deleted__"
 """`field` của mục xoá thực thể; mục đó không có `value` (trên dây: vắng khoá)."""
 
-_TRACKED_FIELDS: Final[dict[type[Wall | Opening | Room | Furniture], tuple[str, ...]]] = {
+_TRACKED_FIELDS: Final[dict[type[Wall | Opening | Room | Furniture | Roof], tuple[str, ...]]] = {
     Wall: ("thickness_mm", "height_mm", "kind", "paint"),
     Opening: ("width_mm", "height_mm", "sill_height_mm", "offset_mm", "swing", "wall_id"),
     Room: ("name", "usage", "outline", "finish", "floor_material"),
     Furniture: ("kind", "centre", "rotation_deg", "room_id", "variant", "height_mm", "lift_mm", "model", "slots"),
+    # Mái là một khối: đổi bất kỳ phần nào của `nodes` là đúng một mục `roof` (roof-contract.md).
+    Roof: ("nodes",),
 }
 
 _Snapshot = dict[tuple[ChangeEntityType, str], dict[str, object]]

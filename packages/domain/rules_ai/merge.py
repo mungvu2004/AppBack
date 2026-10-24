@@ -18,13 +18,14 @@ from packages.domain.spatial import (
     Furniture,
     Opening,
     Point,
+    Roof,
     Room,
     SpatialLayer,
     Wall,
     diff_layers,
 )
 
-_Entity = Wall | Opening | Room | Furniture
+_Entity = Wall | Opening | Room | Furniture | Roof
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,14 +62,16 @@ def _check_preconditions(current: SpatialLayer, ai: SpatialLayer) -> None:
 
 
 def _references(entity: _Entity) -> Iterable[str]:
-    """Id mà thực thể trỏ tới: `opening.wallId`, `wall.openingIds`, `room.wallIds`, `furniture.roomId`."""
+    """Id mà thực thể trỏ tới: `opening.wallId`, `wall.openingIds`, `room.wallIds`, `furniture.roomId` (mái: rỗng)."""
     if isinstance(entity, Opening):
         return (entity.wall_id,)
     if isinstance(entity, Wall):
         return entity.opening_ids
     if isinstance(entity, Room):
         return entity.wall_ids
-    return () if entity.room_id is None else (entity.room_id,)
+    if isinstance(entity, Roof) or entity.room_id is None:
+        return ()
+    return (entity.room_id,)
 
 
 def _keep_ids(current: SpatialLayer) -> set[str]:
@@ -282,6 +285,8 @@ def merge_pipeline_result(current: SpatialLayer, ai: SpatialLayer) -> MergeResul
             *(f for f in current.furniture if f.id in keep),
             *(_rewire_furniture(f, left.id_map) for f in left.furniture),
         ),
+        # Pipeline không sinh mái: mái hiện có (người vẽ) giữ nguyên.
+        roofs=current.roofs,
     )
     return MergeResult(
         layer=layer,

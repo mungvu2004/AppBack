@@ -13,7 +13,7 @@ from decimal import Decimal
 from functools import cache
 from typing import Final
 
-from packages.domain.spatial.model import SpatialGraph, SpatialLayer
+from packages.domain.spatial.model import Roof, SpatialGraph, SpatialLayer
 
 SAMPLE_TOTAL_AREA_M2: Final = Decimal("248.60")
 
@@ -258,3 +258,27 @@ def with_pascal_fields(layer: SpatialLayer) -> SpatialLayer:
     for name, extra in PASCAL_FIELDS.items():
         raw[name][0] = {**raw[name][0], **extra}
     return SpatialLayer.model_validate(raw)
+
+
+def sample_roof(level_index: int = 0, index: int = 0) -> Roof:
+    """Mái mẫu (không thuộc A14): node `roof` + hai `roof-segment` dạng Pascal, đã bỏ `parentId`/`children`.
+
+    Có số thực, `null`, mảng lồng và chữ Unicode để test khứ hồi giữ nguyên `nodes`.
+    """
+    roof_id = _id("RF-ROOF", index)
+    segment = {
+        "type": "roof-segment",
+        "roofType": "gable",
+        "width": 8.5,
+        "depth": 6.25,
+        "pitch": 0.5236,
+        "position": [0.0, 3.6, -1.25],
+        "fascia": True,
+        "metadata": {"autoGutter": True, "note": "mái hiên", "tag": None},
+    }
+    nodes = [
+        {"id": f"roof_{roof_id}", "type": "roof", "name": "Mái chính", "position": [0, 0, 0], "rotation": 0},
+        {**segment, "id": f"rseg_{roof_id}_0"},
+        {**segment, "id": f"rseg_{roof_id}_1", "roofType": "hip", "position": [8.5, 3.6, -1.25]},
+    ]
+    return Roof.model_validate({"id": roof_id, "levelId": _id("L-LEVEL", level_index), "nodes": nodes, **_APPROVED})

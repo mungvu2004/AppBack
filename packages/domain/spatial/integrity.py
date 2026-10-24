@@ -1,7 +1,7 @@
 """Toàn vẹn lớp không gian một tầng: gương `src/domain/spatial/integrity.ts` (chỉ đọc, không sửa dữ liệu).
 
 Luật chạy theo thứ tự cố định; trong một luật, theo thứ tự `walls → openings →
-rooms → furniture` rồi thứ tự trong danh sách, nên hai lần gọi cho cùng kết quả.
+rooms → furniture → roofs` rồi thứ tự trong danh sách, nên hai lần gọi cho cùng kết quả.
 Không có câu chữ: `rule` + `severity` + id là đủ cho máy (B3-03 đổi sang
 `LAYER_INTEGRITY_BROKEN`). Tường dài 0 và phòng dưới ba điểm đã bị mô hình chặn,
 nên không có luật riêng như FE.
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Literal
 
-from packages.domain.spatial.model import Furniture, Level, Room, SpatialLayer, Wall
+from packages.domain.spatial.model import Furniture, Level, Roof, Room, SpatialLayer, Wall
 
 IntegrityRule = Literal["duplicateId", "missingReference", "levelMembership", "roomOutline", "levelElevationOrder"]
 IntegritySeverity = Literal["critical", "warning"]
@@ -30,7 +30,7 @@ class IntegrityIssue:
 
 
 def _duplicate_ids(layer: SpatialLayer) -> list[IntegrityIssue]:
-    """Id xuất hiện hơn một lần trên cả bốn danh sách; mỗi id báo một lần, theo lần gặp đầu."""
+    """Id xuất hiện hơn một lần trên mọi danh sách (kể cả `roofs`); mỗi id báo một lần, theo lần gặp đầu."""
     counts = Counter(entity.id for entity in layer.entities())
     return [IntegrityIssue("duplicateId", "critical", entity_id) for entity_id, n in counts.items() if n > 1]
 
@@ -69,8 +69,8 @@ def _missing(entity_id: str, ref_id: str, severity: IntegritySeverity) -> Integr
 
 
 def _level_membership(layer: SpatialLayer, level_id: str | None) -> list[IntegrityIssue]:
-    """Tường, phòng, đồ đạc phải cùng một tầng: `level_id` khi truyền, không thì tầng của thực thể đầu tiên."""
-    members: tuple[Wall | Room | Furniture, ...] = (*layer.walls, *layer.rooms, *layer.furniture)
+    """Tường, phòng, đồ đạc, mái phải cùng một tầng: `level_id` khi truyền, không thì tầng của thực thể đầu tiên."""
+    members: tuple[Wall | Room | Furniture | Roof, ...] = (*layer.walls, *layer.rooms, *layer.furniture, *layer.roofs)
     if not members:
         return []
     expected = members[0].level_id if level_id is None else level_id

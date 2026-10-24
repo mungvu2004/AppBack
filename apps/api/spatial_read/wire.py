@@ -21,7 +21,7 @@ Module này nằm trong nhóm được nhập `fastapi` (B3-02 [2]: trừ `route
 from collections.abc import Sequence
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from apps.api.core.wire import WireDatetime, WireModel
 from packages.domain.spatial import Axis, Dimension, SpatialLayer
@@ -138,6 +138,14 @@ class FurnitureOut(_ReviewedOut):
     slots: dict[str, str] | None = None
 
 
+class RoofOut(_ReviewedOut):
+    """`RoofSchema` — mái Pascal; `nodes` là blob FE tự đọc, BE trả nguyên (roof-contract.md)."""
+
+    id: str
+    level_id: str
+    nodes: list[dict[str, JsonValue]]
+
+
 class LevelOut(_ReviewedOut):
     """`LevelSchema` — một tầng; `id` là `Floor.id` của #12/#33, không phải một mã thứ hai.
 
@@ -196,12 +204,13 @@ class NoteOut(_ReviewedOut):
 
 
 class SpatialLayerOut(WireModel):
-    """`SpatialLayerSchema` — bốn danh sách của **một** tầng."""
+    """`SpatialLayerSchema` — danh sách thực thể của **một** tầng; `roofs` vắng khoá khi tầng không có mái."""
 
     walls: list[WallOut]
     openings: list[OpeningOut]
     rooms: list[RoomOut]
     furniture: list[FurnitureOut]
+    roofs: list[RoofOut] | None = None
 
 
 class SpatialGraphOut(WireModel):
@@ -216,6 +225,8 @@ class SpatialGraphOut(WireModel):
     axes: list[AxisOut]
     dimensions: list[DimensionOut]
     notes: list[NoteOut]
+    roofs: list[RoofOut] | None = None
+    """Vắng khoá khi cả công trình không có mái (đồ thị cũ giữ đúng hình dạng)."""
 
 
 class FloorRevisionOut(WireModel):

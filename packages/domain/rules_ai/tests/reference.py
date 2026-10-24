@@ -8,7 +8,7 @@ Chỉ dùng để đối chiếu: chậm có chủ ý (O(n·m)), viết thẳng 
 import math
 
 from packages.domain.rules_ai.geometry import centroid, nearest_probe, outline_contains, wall_side
-from packages.domain.spatial import BoundingBox, Furniture, Opening, Point, Room, SpatialLayer, Wall, js_round
+from packages.domain.spatial import BoundingBox, Furniture, Opening, Point, Roof, Room, SpatialLayer, Wall, js_round
 
 TOLERANCE = 50
 CAP = 0.5
@@ -102,7 +102,7 @@ def _furniture_match(a: Furniture, k: Furniture) -> bool:
     return a.kind == k.kind and box.min.x <= a.centre.x <= box.max.x and box.min.y <= a.centre.y <= box.max.y
 
 
-def _refs(entity: Wall | Opening | Room | Furniture) -> list[str]:
+def _refs(entity: Wall | Opening | Room | Furniture | Roof) -> list[str]:
     """Các id thực thể trỏ tới."""
     if isinstance(entity, Opening):
         return [entity.wall_id]
@@ -110,7 +110,7 @@ def _refs(entity: Wall | Opening | Room | Furniture) -> list[str]:
         return list(entity.opening_ids)
     if isinstance(entity, Room):
         return list(entity.wall_ids)
-    return [entity.room_id] if entity.room_id else []
+    return [entity.room_id] if isinstance(entity, Furniture) and entity.room_id else []
 
 
 def ref_keep(current: SpatialLayer) -> set[str]:

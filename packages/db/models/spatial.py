@@ -49,7 +49,7 @@ FLOOR_ENTITY_IDS: Final = "floor_entity_ids"
 SCALE_SOURCES: Final = ("human", "pipeline", "project_default", "none")
 """Nguồn của tỉ lệ mm/px — nguồn duy nhất cho CHECK, `ScaleSource` và test (W24)."""
 
-CHANGE_ENTITY_TYPES: Final = ("vertex", "wall", "door", "window", "furniture", "room", "dimension")
+CHANGE_ENTITY_TYPES: Final = ("vertex", "wall", "door", "window", "furniture", "room", "dimension", "roof")
 """`entityType` của nhật ký thay đổi (HOP-DONG-MOI §1.3); ô mở tách theo `kind`."""
 
 CHANGED_BY_RE: Final = r"^(usr_[0-9A-HJKMNP-TV-Z]{26}|system:pipeline)$"

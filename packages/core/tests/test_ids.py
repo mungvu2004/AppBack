@@ -166,6 +166,7 @@ def test_spatial_prefix_matches_fe() -> None:
         "room": "R",
         "axis": "A",
         "dimension": "M",
+        "roof": "RF",
     }
 
 
