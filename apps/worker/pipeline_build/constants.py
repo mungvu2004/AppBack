@@ -22,6 +22,13 @@ CORNER_OVERSHOOT_MM: Final = 150
 """Kéo đầu tường tới vách vuông góc (3b-b) khi chỗ giao lố ra ngoài đầu vách tối đa
 `max(bề dày vách, 150)`; vách được kéo theo tới chân để góc khép (BUG-IT-001: G2 lố 29 mm)."""
 
+DIAGONAL_ALIGN_DEG: Final = 5.0
+"""Sai số góc của 3b (thẳng hàng, vuông góc) khi **cả hai** tường lệch trục > 5° (BUG-IT-007).
+
+Bản vẽ xoay chéo (CubiCasa G5, 45°) cho tim tường nhiễu vài độ hai bên khe cửa: 2° của B5-05 [6] 3b
+không gộp được, cửa gắn vào mẩu tường ngắn rồi rơi `openingTooWide`. Tường thẳng trục giữ 2°.
+"""
+
 OPENING_GAP_MAX_MM: Final = 2400
 """Khe tường dài nhất còn coi là chỗ khoét ô mở (B5-05 [6] bước 3b)."""
 

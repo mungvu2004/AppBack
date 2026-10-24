@@ -159,12 +159,38 @@ def test_build_walls__short_wall_keeps_door_clamped_to_length(fake_clock: FakeCl
     assert dropped["openingTooWide"] == 0
 
 
-def test_build_walls__degenerate_projection_falls_back_too_wide(fake_clock: FakeClock) -> None:
-    """Hộp gần hết ra ngoài đầu tường 800: hình chiếu 100 < 300 → rộng mặc định 900 > 800 → `openingTooWide`."""
+@pytest.mark.parametrize("length", [800, 500, 300])
+def test_build_walls__degenerate_projection_clamped_to_short_wall(length: int, fake_clock: FakeClock) -> None:
+    """BUG-IT-009: hộp gần hết ra ngoài đầu tường: hình chiếu 100 < 300 → mặc định 900 > L ≥ 300 → kẹp về L."""
     dropped: Counter[str] = Counter()
-    result = run([wall_px(0, 1000, 800, 1000)], [det("door", 700, 950, 1700, 1050)], fake_clock, dropped)
+    box = det("door", length - 100, 950, length + 900, 1050)
+    result = run([wall_px(0, 1000, length, 1000)], [box], fake_clock, dropped)
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.offset_mm) == (length, 0)
+    assert dropped["openingTooWide"] == 0
+
+
+def test_build_walls__wall_under_min_width_too_wide(fake_clock: FakeClock) -> None:
+    """Tường 250 < `OPENING_MIN_WIDTH_MM`: không đủ chỗ cho ô mở thật → vẫn `openingTooWide`."""
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(0, 1000, 250, 1000)], [det("door", 150, 950, 1150, 1050)], fake_clock, dropped)
     assert result.openings == ()
     assert dropped["openingTooWide"] == 1
+
+
+def test_build_walls__clamped_openings_on_short_wall_overlap(fake_clock: FakeClock) -> None:
+    """Hai hộp suy biến ở hai đầu tường 500: cả hai kẹp về 500 → chồng nhau, giữ `confidence` cao, `openingOverlap`."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(1000, 1000, 1500, 1000)],
+        [det("door", 1400, 950, 2400, 1050, 0.7), det("door", 100, 950, 1100, 1050, 0.9)],
+        fake_clock,
+        dropped,
+    )
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.offset_mm) == (500, 0)
+    assert dropped["openingOverlap"] == 1
+    assert dropped["openingTooWide"] == 0
 
 
 def test_build_walls__width_from_box_projection(fake_clock: FakeClock) -> None:
@@ -360,3 +386,101 @@ def test_build_walls__equidistant_walls_pick_lowest_index(fake_clock: FakeClock)
     (opening,) = result.openings
     assert opening.wall_id == result.walls[0].id
     assert result.walls[1].opening_ids == ()
+
+
+def _on_diagonal(t: float, angle_deg: float, length: float) -> tuple[float, float, float, float]:
+    """Tường dài `length` theo góc `angle_deg`, bắt đầu tại điểm cách (1000, 1000) một đoạn `t` trên đường 45°."""
+    x0, y0 = 1000 + t / math.sqrt(2), 1000 + t / math.sqrt(2)
+    rad = math.radians(angle_deg)
+    return (x0, y0, x0 + length * math.cos(rad), y0 + length * math.sin(rad))
+
+
+def _reversed(wall: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """Đảo chiều tim tường (đầu ↔ cuối)."""
+    return (wall[2], wall[3], wall[0], wall[1])
+
+
+@pytest.mark.parametrize(("label", "gap", "flip"), [("door", 900, False), ("window", 1200, False), ("door", 900, True)])
+def test_build_walls__diagonal_noisy_gap_joined(
+    label: DetectionLabel, gap: int, flip: bool, fake_clock: FakeClock
+) -> None:
+    """BUG-IT-007 (G5 xoay 45°): hai tường 43° và 47° hai bên khe ô mở trên đường 45° → gộp một tường.
+
+    Lệch nhau 4° > 2° nên trước đây không gộp; hai đầu mút gần cùng nằm trên đường 45° (lệch ngang 0
+    theo hướng trung bình). Hộp thẳng trục của ô mở rộng `gap`, bề dày 100: nửa cạnh `(gap/2 + 50)/√2`;
+    rộng ô mở ≈ `gap` (hình chiếu trừ phần bề dày), `flip` = tường sau vẽ ngược chiều.
+    """
+    a = _reversed(_on_diagonal(1500, 43 + 180, 1500))
+    b = _on_diagonal(1500 + gap, 47, 1500)
+    centre = 1000 + (1500 + gap / 2) / math.sqrt(2)
+    half = (gap / 2 + 50) / math.sqrt(2)
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(*a), wall_px(*(_reversed(b) if flip else b))],
+        [det(label, centre - half, centre - half, centre + half, centre + half)],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 1
+    assert dropped["wallGapBridged"] == 1
+    (opening,) = result.openings
+    assert abs(opening.width_mm - gap) <= 30
+    assert abs(opening.offset_mm - 1500) <= 30
+    assert dropped["openingTooWide"] == 0
+
+
+def test_build_walls__orthogonal_three_degrees_not_joined(fake_clock: FakeClock) -> None:
+    """Bản vẽ thẳng trục giữ 2° của B5-05 [6] 3b: tường 0° và 3° có hộp cửa ở khe → không gộp."""
+    rad = math.radians(3)
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 1550, 1000), wall_px(2450, 1000, 2450 + 1550 * math.cos(rad), 1000 + 1550 * math.sin(rad))],
+        [det("door", 1550, 950, 2450, 1050)],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 2
+    assert dropped["wallGapBridged"] == 0
+
+
+def test_build_walls__diagonal_side_shifted_gap_not_joined(fake_clock: FakeClock) -> None:
+    """Hai tường 45° song song lệch ngang 200 mm (> ½ bề dày) qua khe có hộp → không gộp, không đoạn nối."""
+    shift = 200 / math.sqrt(2)
+    b = _on_diagonal(2400, 45, 1500)
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(*_on_diagonal(0, 45, 1500)), wall_px(b[0] + shift, b[1] - shift, b[2] + shift, b[3] - shift)],
+        [det("door", 1700, 1700, 2500, 2500)],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 2
+    assert dropped["wallGapBridged"] == 0
+    assert result.bridges == ()
+
+
+def test_build_walls__diagonal_touching_walls_no_bridge(fake_clock: FakeClock) -> None:
+    """Hai tường 45° nối đầu chạm đầu (khe 0): không phải cặp khe → không gộp, không đoạn nối."""
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(1000, 1000, 2000, 2000), wall_px(2000, 2000, 3000, 3000)], [], fake_clock, dropped)
+    assert len(result.walls) == 2
+    assert result.bridges == ()
+
+
+def test_build_walls__diagonal_endpoint_pulled_to_near_perpendicular(fake_clock: FakeClock) -> None:
+    """3b-b chéo: tường 42° hụt 100 mm trước vách 135° (lệch 93°, ngoài 2° nhưng trong 5°) có hộp → kéo tới tim vách."""
+    rad = math.radians(42)
+    end = (3000 - 100 * math.cos(rad), 3000 - 100 * math.sin(rad))
+    start = (end[0] - 2000 * math.cos(rad), end[1] - 2000 * math.sin(rad))
+    reach = 1500 / math.sqrt(2)
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(*start, *end), wall_px(3000 + reach, 3000 - reach, 3000 - reach, 3000 + reach)],
+        [det("door", 2900, 2900, 3050, 3050)],
+        fake_clock,
+        dropped,
+    )
+    assert dropped["wallGapBridged"] == 1
+    pulled = result.walls[0].centreline.end
+    assert abs(pulled.x - 3000) <= 2
+    assert abs(pulled.y - 3000) <= 2
