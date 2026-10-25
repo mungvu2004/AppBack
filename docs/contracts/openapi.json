@@ -8805,6 +8805,49 @@
         ]
       }
     },
+    "/api/projects/{project_id}/creation": {
+      "delete": {
+        "description": "Huỷ tạo — Hoàn tác của toast \"Đã tạo\": người tạo, ≤10 phút, chưa có thành viên/hoạt động khác.",
+        "operationId": "projects_cancel_create_project_api_projects__project_id__creation_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Projects Cancel Create Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/projects/{project_id}/drawings/uploads/latest": {
       "get": {
         "description": "N7 — lượt tải mới nhất của từng tầng chưa xoá, sắp theo `Floor.order`.",

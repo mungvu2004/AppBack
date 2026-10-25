@@ -9,12 +9,13 @@ chính `api_app` (khớp cách `request.app` của route thật sẽ resolve). K
 
 import unicodedata
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
@@ -32,6 +33,7 @@ from apps.api.projects.tests.test_routes_common import (
 from apps.api.projects.wire import FloorOut
 from packages.core.clock import Clock
 from packages.core.error_codes import VALIDATION
+from packages.db.models.access import ActivityLog
 from packages.db.models.projects import Project, ProjectMembership
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
@@ -506,3 +508,78 @@ async def test_delete_project_keeps_membership_row_but_revokes_access(
 
     denied = await api_client.get(project_path(project.id), headers=headers_of(owner))
     assert denied.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/projects/{id}/creation — huỷ tạo (Hoàn tác của toast "Đã tạo")
+# ---------------------------------------------------------------------------
+
+
+def _creation_path(project_id: str) -> str:
+    return f"{project_path(project_id)}/creation"
+
+
+async def test_cancel_create_by_engineer_creator_within_window_deletes(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Kỹ sư vừa tạo dự án bấm Hoàn tác → 200, dự án bị xoá mềm (lỗi cũ: 403 vì không phải admin)."""
+    owner = await make_user(db_session, role="engineer")
+    created = await api_client.post(PROJECTS_PATH, json={"name": "Tạo nhầm"}, headers=headers_of(owner))
+    assert created.status_code == 201
+    project_id = created.json()["id"]
+    response = await api_client.delete(_creation_path(project_id), headers=headers_of(owner))
+    assert response.status_code == 200
+    assert (await api_client.get(project_path(project_id), headers=headers_of(owner))).status_code == 404
+
+
+async def test_cancel_create_by_other_member_is_forbidden(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    owner = await make_user(db_session, role="engineer")
+    other = await make_user(db_session, role="admin")
+    project = await seed_project(db_session, owner=owner, members=[other])
+    response = await api_client.delete(_creation_path(project.id), headers=headers_of(other))
+    assert response.status_code == 403
+
+
+async def test_cancel_create_after_window_is_conflict(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    await db_session.execute(
+        update(Project).where(Project.id == project.id).values(created_at=datetime(2020, 1, 1, tzinfo=UTC))
+    )
+    await db_session.commit()
+    response = await api_client.delete(_creation_path(project.id), headers=headers_of(owner))
+    assert (response.status_code, response.json()["code"]) == (409, "CREATE_UNDO_CLOSED")
+    assert (await api_client.get(project_path(project.id), headers=headers_of(owner))).status_code == 200
+
+
+async def test_cancel_create_with_other_member_is_conflict(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    owner = await make_user(db_session, role="engineer")
+    other = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner, members=[other])
+    response = await api_client.delete(_creation_path(project.id), headers=headers_of(owner))
+    assert (response.status_code, response.json()["code"]) == (409, "CREATE_UNDO_CLOSED")
+
+
+async def test_cancel_create_with_later_activity_is_conflict(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Đã có hoạt động sau giao dịch tạo (dữ liệu mới) → 409, dự án còn."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    db_session.add(
+        ActivityLog(
+            actor_id=owner.id,
+            kind="floor.upload",
+            object_code=project.id,
+            object_label="x",
+            project_id=project.id,
+            at=fake_clock.now(),
+        )
+    )
+    await db_session.commit()
+    response = await api_client.delete(_creation_path(project.id), headers=headers_of(owner))
+    assert (response.status_code, response.json()["code"]) == (409, "CREATE_UNDO_CLOSED")
