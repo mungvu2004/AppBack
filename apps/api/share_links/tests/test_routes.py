@@ -6,11 +6,13 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.project_settings.tests.support import headers_of, seed_project
+from packages.db.models.auth import User
+from packages.db.models.projects import Project
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.clock import FakeClock
 
 
-async def _setup(db: AsyncSession):  # noqa: ANN202
+async def _setup(db: AsyncSession) -> tuple[Project, User, User, User, User]:
     """Dự án có admin, engineer, viewer là thành viên + một admin ngoài dự án."""
     admin = await make_user(db, role="admin")
     engineer = await make_user(db, role="engineer")
