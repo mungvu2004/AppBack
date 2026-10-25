@@ -17,7 +17,7 @@ from starlette.requests import Request
 
 from apps.api.core.deps import ClockDep, DbSession
 from apps.api.core.routing import protected_router, public_router
-from apps.api.core.wire import WireModel, WireRequest
+from apps.api.core.wire import WireDatetime, WireModel, WireRequest
 from apps.api.projects.access import ProjectAccess, require_project
 from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.wire import SpatialGraphDocumentOut
@@ -60,9 +60,9 @@ class ShareLinkOut(WireModel):
     url: str
     permission: str
     status: Literal["active", "expired", "revoked"]
-    created_at: datetime
-    expires_at: datetime | None
-    revoked_at: datetime | None
+    created_at: WireDatetime
+    expires_at: WireDatetime | None
+    revoked_at: WireDatetime | None
     password_protected: bool = False
     viewpoint_code: str | None
     label: str | None

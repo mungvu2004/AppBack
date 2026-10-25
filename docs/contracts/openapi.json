@@ -1373,6 +1373,41 @@
       "ElevationField": {
         "type": "integer"
       },
+      "EmbedIn": {
+        "additionalProperties": false,
+        "description": "Bốn khoá embed FE gửi kèm (chỉ lưu ý định, không ảnh hưởng quyền).",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "toolbar": {
+            "default": true,
+            "title": "Toolbar",
+            "type": "boolean"
+          }
+        },
+        "title": "EmbedIn",
+        "type": "object"
+      },
       "EmptyBody": {
         "additionalProperties": false,
         "description": "Thân `{}` của #42, #43, #45: không nhận khoá nào.",
@@ -5643,6 +5678,199 @@
         "title": "SetCornersIn",
         "type": "object"
       },
+      "ShareLinkCreateIn": {
+        "additionalProperties": false,
+        "description": "Thân `POST share-links`; mật khẩu chưa hỗ trợ (bị bỏ qua, `passwordProtected=false`).",
+        "properties": {
+          "embed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmbedIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "permission": {
+            "default": "view",
+            "enum": [
+              "view",
+              "comment"
+            ],
+            "title": "Permission",
+            "type": "string"
+          },
+          "viewpointCode": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewpointcode"
+          }
+        },
+        "title": "ShareLinkCreateIn",
+        "type": "object"
+      },
+      "ShareLinkOut": {
+        "additionalProperties": false,
+        "description": "`ShareLinkWire` của FE (`src/lib/export/shareLink.ts`).",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "passwordProtected": {
+            "default": false,
+            "title": "Passwordprotected",
+            "type": "boolean"
+          },
+          "permission": {
+            "title": "Permission",
+            "type": "string"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revokedat"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "viewpointCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewpointcode"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "permission",
+          "status",
+          "createdAt",
+          "expiresAt",
+          "revokedAt",
+          "viewpointCode",
+          "label"
+        ],
+        "title": "ShareLinkOut",
+        "type": "object"
+      },
+      "SharedModelOut": {
+        "additionalProperties": false,
+        "description": "Trả lời tuyến công khai: liên kết + đồ thị chỉ đọc.",
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/SpatialGraphDocumentOut"
+          },
+          "link": {
+            "$ref": "#/components/schemas/ShareLinkOut"
+          },
+          "projectName": {
+            "title": "Projectname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link",
+          "projectName",
+          "graph"
+        ],
+        "title": "SharedModelOut",
+        "type": "object"
+      },
       "SignInBody": {
         "additionalProperties": false,
         "description": "`SignInSchema` strict của FE (`src/api/schemas/index.ts:74-80`).",
@@ -9095,6 +9323,49 @@
         ]
       }
     },
+    "/api/projects/{project_id}/exports": {
+      "post": {
+        "description": "Xuất mô hình: kiểm `model.export` rồi trả đồ thị N15; FE đóng gói tệp ở client.",
+        "operationId": "share_links_export_api_projects__project_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpatialGraphDocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Links Export",
+        "tags": [
+          "share_links"
+        ]
+      }
+    },
     "/api/projects/{project_id}/floors": {
       "get": {
         "description": "#12 — mọi tầng chưa xoá của dự án, tối đa `FLOORS_MAX`.",
@@ -10328,6 +10599,156 @@
         ]
       }
     },
+    "/api/projects/{project_id}/share-links": {
+      "get": {
+        "description": "#47 — mọi liên kết của dự án, mới trước.",
+        "operationId": "share_links_list_api_projects__project_id__share_links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShareLinkOut"
+                  },
+                  "title": "Response Share Links List Api Projects  Project Id  Share Links Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Links List",
+        "tags": [
+          "share_links"
+        ]
+      },
+      "post": {
+        "description": "#48 — tạo liên kết với token ngẫu nhiên 256 bit.",
+        "operationId": "share_links_create_api_projects__project_id__share_links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareLinkCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Links Create",
+        "tags": [
+          "share_links"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/share-links/{link_id}": {
+      "delete": {
+        "description": "#49 — thu hồi (giữ dòng, đặt `revoked_at`); lặp lại vẫn trả `revoked`.",
+        "operationId": "share_links_revoke_api_projects__project_id__share_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Links Revoke",
+        "tags": [
+          "share_links"
+        ]
+      }
+    },
     "/api/projects/{project_id}/spatial": {
       "get": {
         "description": "N15 — cả đồ thị của dự án kèm `revision` từng tầng; dự án chưa có tầng → danh sách rỗng.",
@@ -10719,6 +11140,49 @@
         "summary": "Health Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/share/{token}": {
+      "get": {
+        "description": "Công khai, chỉ đọc: token còn hiệu lực và dự án chưa xoá → đồ thị; còn lại 404.",
+        "operationId": "share_links_open_api_share__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedModelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Links Open",
+        "tags": [
+          "share_links"
         ]
       }
     },
