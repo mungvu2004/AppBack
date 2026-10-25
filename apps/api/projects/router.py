@@ -85,6 +85,14 @@ async def projects_delete_project(
     return await service.delete_project(db, project_id, principal, clock, app=request.app)
 
 
+@router.delete("/projects/{project_id}/creation", dependencies=[Depends(require_project())])
+async def projects_cancel_create_project(
+    project_id: str, request: Request, db: DbSession, principal: CurrentPrincipal, clock: ClockDep
+) -> ProjectOut:
+    """Huỷ tạo — Hoàn tác của toast "Đã tạo": người tạo, ≤10 phút, chưa có thành viên/hoạt động khác."""
+    return await service.cancel_create_project(db, project_id, principal, clock, app=request.app)
+
+
 @router.get("/project-summaries")
 async def projects_list_summaries(
     page: SummariesPage, db: DbSession, principal: CurrentPrincipal

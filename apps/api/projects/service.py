@@ -17,9 +17,10 @@ không phải đi vòng qua HTTP. Bốn điều dễ sai mà module này gánh t
 """
 
 from collections.abc import Mapping, Sequence
+from datetime import timedelta
 from typing import Any, Final, cast
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.access.activity import record_activity
@@ -41,8 +42,10 @@ from apps.api.projects.wire import (
     user_outs,
 )
 from packages.core.clock import Clock
-from packages.core.error_codes import NOT_FOUND
+from packages.core.error_codes import FORBIDDEN, NOT_FOUND
+from packages.core.errors import ERRORS
 from packages.core.ids import new_id
+from packages.db.models.access import ActivityLog
 from packages.db.models.auth import User
 from packages.db.models.projects import Project, ProjectMembership
 from packages.storage.port import ObjectStorage
@@ -330,6 +333,44 @@ async def delete_project(
     _checked(written)
     await _log(db, principal, ActivityKind.PROJECT_DELETE, project_id, snapshot.name, clock)
     return snapshot
+
+
+CREATE_UNDO_WINDOW: Final = timedelta(minutes=10)
+"""Cửa sổ "huỷ tạo": toast Hoàn tác sống 8 giây nhưng hover/focus giữ nó lâu hơn (BUG-571), nên chừa rộng."""
+
+CREATE_UNDO_CLOSED: Final = ERRORS.define("CREATE_UNDO_CLOSED", 409)
+"""Hết cửa sổ huỷ tạo, hoặc dự án đã có thành viên khác / hoạt động sau lượt tạo."""
+
+
+async def cancel_create_project(
+    db: AsyncSession, project_id: str, principal: Principal, clock: Clock, *, app: object | None
+) -> ProjectOut:
+    """Huỷ tạo (Hoàn tác của toast "Đã tạo"): người tạo xoá mềm dự án **vừa** tạo, không cần vai admin.
+
+    403 nếu không phải người tạo. 409 `CREATE_UNDO_CLOSED` nếu: tạo quá `CREATE_UNDO_WINDOW`,
+    có thành viên khác, hoặc có dòng nhật ký sau giao dịch tạo (đã có ai làm gì trên dự án).
+    Mốc thời gian so trên DB (`created_at` là `now()` của giao dịch tạo), không theo `clock`.
+    """
+    project = await _live_project(db, project_id)
+    if project.created_by != principal.user_id:
+        raise FORBIDDEN.error()
+    other_member = exists().where(
+        ProjectMembership.project_id == project_id, ProjectMembership.user_id != principal.user_id
+    )
+    later_activity = exists().where(ActivityLog.project_id == project_id, ActivityLog.created_at > Project.created_at)
+    still_open = (
+        await db.execute(
+            select(Project.id).where(
+                Project.id == project_id,
+                Project.created_at > func.now() - CREATE_UNDO_WINDOW,
+                ~other_member,
+                ~later_activity,
+            )
+        )
+    ).first()
+    if still_open is None:
+        raise CREATE_UNDO_CLOSED.error()
+    return await delete_project(db, project_id, principal, clock, app=app)
 
 
 async def _log(
