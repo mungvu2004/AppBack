@@ -42,6 +42,7 @@ RESOURCES: Final = frozenset(
         "trainingJob",
         "notification",
         "user",
+        "shareLink",
     }
 )
 _STEP_IDS: Final = frozenset(step for step, _ in PIPELINE_STEPS)

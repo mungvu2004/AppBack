@@ -161,7 +161,7 @@ async def share_links_revoke(
         select(ShareLinkRow).where(ShareLinkRow.id == link_id, ShareLinkRow.project_id == access.project_id)
     )
     if row is None:
-        raise NOT_FOUND.error(resource="share_link")
+        raise NOT_FOUND.error(resource="shareLink")
     if row.revoked_at is None:
         row.revoked_at = clock.now()
         await db.commit()
@@ -181,7 +181,7 @@ async def share_links_open(token: str, request: Request, db: DbSession, clock: C
     ).first()
     now = clock.now()
     if found is None or _status(found[0], now) != "active":
-        raise NOT_FOUND.error(resource="share_link")
+        raise NOT_FOUND.error(resource="shareLink")
     row, name = found
     return SharedModelOut(
         link=_out(row, request, now), project_name=name, graph=await spatial_graph(db, row.project_id, app=request.app)
