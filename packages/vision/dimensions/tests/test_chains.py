@@ -133,9 +133,19 @@ def test_densest_cluster__keeps_tight_group_in_input_order() -> None:
     assert [s.id for s in densest_cluster(samples)] == ["a", "b", "c"]
 
 
-@pytest.mark.parametrize(("samples", "expected"), [((), []), ((sample(10.0, "a"), sample(30.0, "b")), ["a"])])
+@pytest.mark.parametrize(
+    ("samples", "expected"),
+    [
+        ((), []),
+        ((sample(10.0, "a"), sample(30.0, "b")), []),
+        ((sample(10.0, "a"), sample(10.2, "b"), sample(10.45, "c"), sample(10.7, "d")), ["a", "b", "c"]),
+    ],
+)
 def test_densest_cluster__empty_and_tie(samples: tuple[ScaleSample, ...], expected: list[str]) -> None:
-    """Rỗng: rỗng; hoà số mẫu: cụm có tâm nhỏ hơn (tâm thử theo thứ tự tăng)."""
+    """Rỗng: rỗng; hai cụm đông nhất rời nhau: rỗng (K19, không đoán); cụm hoà chồng nhau: tâm nhỏ nhất.
+
+    Ca chồng: tâm 10,2 ôm {a, b, c}, tâm 10,45 ôm {b, c, d}, cùng 3 mẫu, chung b, c → cùng một tỉ lệ.
+    """
     assert [s.id for s in densest_cluster(samples)] == expected
 
 

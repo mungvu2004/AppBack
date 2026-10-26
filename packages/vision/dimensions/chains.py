@@ -91,19 +91,24 @@ def _line_extent(ink: Ink, y: int, cx: int) -> tuple[int, int]:
     return ends[0], ends[1]
 
 
-def _ticks(ink: Ink, y: int, extent: tuple[int, int], reach: int, text: tuple[float, float]) -> list[float]:
+def _near(ink: Ink) -> Ink:
+    """Mặt nạ nở ±1 px theo chiều ngang (cửa sổ dò vạch); dựng một lần mỗi chiều cho cả trang."""
+    padded = np.pad(ink, ((0, 0), (1, 1)))
+    return padded[:, :-2] | padded[:, 1:-1] | padded[:, 2:]
+
+
+def _ticks(near: Ink, y: int, extent: tuple[int, int], reach: int, text: tuple[float, float]) -> list[float]:
     """Toạ độ vạch giới hạn trên đường: nét đứng ra một phía, hay nét xiên 45° cắt qua đường.
 
-    Cột đạt khi >= `_TICK_HIT` số hàng `d = 2..reach` có mực trong cửa sổ ±1 px; cột liền nhau gộp về tâm.
+    `near` là `_near` của mặt nạ dò vạch. Cột đạt khi >= `_TICK_HIT` số hàng `d = 2..reach` có mực trong
+    cửa sổ ±1 px; cột liền nhau gộp về tâm.
     Cột nằm trong thân chữ `text = (x_min, x_max)` không bao giờ là vạch (nét chữ đứng sát đường).
     Nét đứng chỉ lấy ở phía có nhiều nhóm mảnh hơn: vạch giới hạn của một chuỗi cùng kéo về phía
     căn hộ, phía kia chỉ có nét chữ, đồ đạc, thành khối dày.
     """
-    height, width = ink.shape
+    height, width = near.shape
     left, right = extent
     cols = np.arange(left - 2, right + 3)  # vạch ở đúng đầu đường: đủ cửa sổ ±1 px hai bên
-    padded = np.pad(ink, 1)
-    near = (padded[:, :-2] | padded[:, 1:-1] | padded[:, 2:])[1:-1]  # ±1 px theo chiều ngang
     depths = range(2, reach + 1)
 
     def hits(dy: int, dx: int, d: int) -> NDArray[np.int64]:
@@ -143,10 +148,11 @@ def _thin_count(columns: NDArray[np.int64]) -> int:
     return sum(len(g) <= _THIN_TICK_PX for g in _groups(columns))
 
 
-def _span(ink: Ink, bare: Ink, box: tuple[float, float, float, float]) -> float | None:
+def _span(ink: Ink, near: Ink, box: tuple[float, float, float, float]) -> float | None:
     """Độ dài px của đoạn kích thước chứa tâm chữ (đã quy về chữ ngang), hay `None` khi không có đường/vạch.
 
-    Đường dò trên `ink`; vạch dò trên `bare` (thân mọi chữ đã xoá) để nét chữ cạnh vạch không gộp vào vạch.
+    Đường dò trên `ink`; vạch dò trên `near` = `_near(bare)` (thân mọi chữ đã xoá) để nét chữ cạnh vạch
+    không gộp vào vạch.
     Chọn cặp vạch ngắn nhất kẹp chữ mà tâm chữ lệch tâm đoạn <= `_CENTRE_TOLERANCE` đoạn.
     """
     x0, y0, x1, y1 = box
@@ -155,7 +161,7 @@ def _span(ink: Ink, bare: Ink, box: tuple[float, float, float, float]) -> float 
         return None
     cx = (x0 + x1) / 2
     reach = int(max(_TICK_MIN_PX, _TICK_HEIGHTS * (y1 - y0)))
-    ticks = _ticks(bare, y, _line_extent(ink, y, int(cx)), reach, (x0, x1))
+    ticks = _ticks(near, y, _line_extent(ink, y, int(cx)), reach, (x0, x1))
     shortest = _MIN_SPAN_WIDTHS * (x1 - x0)
     pairs = sorted((b - a, a, b) for a in ticks for b in ticks if a < x0 - 1 and b > x1 + 1 and b - a >= shortest)
     for span, a, b in pairs:
@@ -179,24 +185,33 @@ def dimension_spans(gray: NDArray[np.uint8], boxes: Sequence[BoxPx]) -> tuple[fl
         else:
             m = _BODY_MARGIN * (box.y_max - box.y_min)
             bare[int(box.y_min + m) : int(box.y_max - m) + 1, int(box.x_min) : int(box.x_max) + 1] = False
+    near = _near(bare) if not all(vertical) else bare
+    near_t = _near(bare.T) if any(vertical) else bare.T
     spans: list[float | None] = []
     for box, upright in zip(boxes, vertical, strict=True):
         if upright:
-            spans.append(_span(ink.T, bare.T, (box.y_min, box.x_min, box.y_max, box.x_max)))
+            spans.append(_span(ink.T, near_t, (box.y_min, box.x_min, box.y_max, box.x_max)))
         else:
-            spans.append(_span(ink, bare, (box.x_min, box.y_min, box.x_max, box.y_max)))
+            spans.append(_span(ink, near, (box.x_min, box.y_min, box.x_max, box.y_max)))
     return tuple(spans)
 
 
 def densest_cluster(samples: Sequence[ScaleSample]) -> tuple[ScaleSample, ...]:
-    """Mẫu thuộc cụm tỉ số đông nhất (lệch tâm <= `CLUSTER_TOLERANCE`); hoà thì cụm có tâm nhỏ hơn.
+    """Mẫu thuộc cụm tỉ số đông nhất (lệch tâm <= `CLUSTER_TOLERANCE`); hoà mà không quyết được thì rỗng.
 
     Tâm thử là từng tỉ số của mẫu; O(n²) với n <= vài trăm chữ một trang. Thứ tự đầu vào giữ nguyên.
+    Luật hoà (K19, không đoán): các cụm đông nhất từng đôi có chung mẫu là một tỉ lệ nhìn từ tâm thử
+    kề nhau → cụm có tâm nhỏ nhất; có hai cụm đông nhất rời nhau (vd. mặt bằng 1:100 và chi tiết 1:50
+    cùng số mẫu) → `()`, để bước dựng rơi về ghép tường hay `project_default`.
     """
     ratios = [sample.real_length_mm / sample.pixel_length for sample in samples]
-    best: list[int] = []
+    best: list[set[int]] = []
     for centre in sorted(ratios):
-        members = [k for k, r in enumerate(ratios) if abs(r - centre) <= CLUSTER_TOLERANCE * centre]
-        if len(members) > len(best):
-            best = members
-    return tuple(samples[k] for k in best)
+        members = {k for k, r in enumerate(ratios) if abs(r - centre) <= CLUSTER_TOLERANCE * centre}
+        if not best or len(members) > len(best[0]):
+            best = [members]
+        elif len(members) == len(best[0]):
+            best.append(members)
+    if not best or any(a.isdisjoint(b) for a in best for b in best):
+        return ()
+    return tuple(samples[k] for k in sorted(best[0]))
