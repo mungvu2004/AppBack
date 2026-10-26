@@ -41,7 +41,9 @@ class _Reader:
         return (TextPx(text=_TITLE, box=BoxPx(x_min=2, y_min=1, x_max=42, y_max=11), confidence=0.9),)
 
 
-def _payload(storage: LocalDiskStorage, model: ModelRef = _CLASSIC, *, png: bytes | None = None) -> DocumentTitlesPayload:
+def _payload(
+    storage: LocalDiskStorage, model: ModelRef = _CLASSIC, *, png: bytes | None = None
+) -> DocumentTitlesPayload:
     """Payload một trang 400x300 có một vùng; ghi ảnh xem trước (hay `png` cho sẵn) vào kho."""
     project, document = some_id("prj"), some_id("doc")
     key = keys.document_page_preview(project, document, 0)
@@ -130,7 +132,9 @@ def _onnx(tmp_path: Path) -> MlSettings:
     return MlSettings(ml_backend="onnx", ml_models_dir=str(tmp_path), ml_ort_threads=1)
 
 
-def test_model_missing_skipped(local_storage: LocalDiskStorage, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_model_missing_skipped(
+    local_storage: LocalDiskStorage, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Không có bản kích hoạt hoặc model nạp hỏng → không bộ đọc → `skipped`, vẫn gửi trả lời."""
     _context(monkeypatch, local_storage, _onnx(tmp_path))
     data = rec_model().SerializeToString()
