@@ -48,7 +48,14 @@ class UploadRow(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     project_id: Mapped[str] = mapped_column(Text, ForeignKey(f"{PROJECTS}.id", ondelete="CASCADE"))
-    floor_pk: Mapped[int] = mapped_column(BigInteger, ForeignKey(f"{FLOORS}.pk", ondelete="CASCADE"))
+    # Upload tài liệu (Strategy B H1) có `document_pk`, không tầng; upload vùng có tầng và `region_id`.
+    floor_pk: Mapped[int | None] = mapped_column(BigInteger, ForeignKey(f"{FLOORS}.pk", ondelete="CASCADE"))
+    document_pk: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("documents.pk", ondelete="CASCADE"), index=True, default=None
+    )
+    region_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("drawing_regions.pk", ondelete="SET NULL"), index=True, default=None
+    )
     file_name: Mapped[str] = mapped_column(Text)
     declared_size_bytes: Mapped[int] = mapped_column(BigInteger)
     declared_type: Mapped[str] = mapped_column(Text)
@@ -65,6 +72,7 @@ class UploadRow(Base, TimestampMixin):
         CheckConstraint("declared_size_bytes > 0", name="declared_size_bytes_positive"),
         CheckConstraint("chunk_count > 0", name="chunk_count_positive"),
         CheckConstraint("page_index >= 0", name="page_index_non_negative"),
+        CheckConstraint("(floor_pk IS NULL) <> (document_pk IS NULL)", name="floor_or_document"),
         # Khử trùng thử lại của #5 tra "upload `receiving` của tầng này, người này, mới hơn
         # `UPLOAD_INIT_DEDUPE_S`" ở **mỗi** lượt init — câu nóng nhất của module. Index một
         # phần nên chỉ giữ số dòng đang dở (vài dòng mỗi tầng), không phải cả lịch sử tải.
