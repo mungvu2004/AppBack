@@ -304,10 +304,10 @@ def rules_mirror(monkeypatch: pytest.MonkeyPatch, fe: dict[str, Any], **override
     return mirror(monkeypatch, "danh_muc_luat_b0_07", **{**attrs, **overrides})
 
 
-def test_fe_has_25_rules_and_26_thresholds(fe_rules: dict[str, Any]) -> None:
-    """`ALL_RULES` (không phải `BUILT_IN_RULES`) có 25 mã; 26 khoá ngưỡng."""
+def test_fe_has_25_rules_and_27_thresholds(fe_rules: dict[str, Any]) -> None:
+    """`ALL_RULES` (không phải `BUILT_IN_RULES`) có 25 mã; 27 khoá ngưỡng."""
     assert len(fe_rules["codes"]) == 25
-    assert len(fe_rules["thresholds"]) == 26
+    assert len(fe_rules["thresholds"]) == 27
 
 
 def test_h4_without_catalog_is_not_applicable(fe_rules: dict[str, Any]) -> None:

@@ -65,9 +65,10 @@ _ROOM_USAGES: Final = (
     "corridor",
     "stairwell",
     "utility",
+    "loggia",
     "other",
 )
-"""Tám công năng phòng — khoá của `MIN_ROOM_AREA_M2` (`registry.ts:406-415`)."""
+"""Chín công năng phòng — khoá của `MIN_ROOM_AREA_M2` (`registry.ts:406-415`)."""
 
 _SPECS: Final[dict[str, ThresholdSpec]] = {
     "general.parallelAngleDeg": ThresholdSpec(GENERAL_CODE, 0, 30),  # thresholdSpecs.ts:98,107-108
@@ -76,7 +77,7 @@ _SPECS: Final[dict[str, ThresholdSpec]] = {
     "wall.maxThicknessMm": ThresholdSpec("WALL-THICKNESS", 200, 1000),  # thresholdSpecs.ts:144,152-153
     "wall.minLengthMm": ThresholdSpec("WALL-LENGTH", 10, 1000),  # thresholdSpecs.ts:161,167-168
     "door.minWidthMm": ThresholdSpec("DOOR-WIDTH", 600, 1200),  # thresholdSpecs.ts:176,183-184
-    # Tám khoá `room.minArea.<công năng>`: `thresholdSpecs.ts:75-92` (min 0, max 60, dưới ROOM-AREA-BELOW-MINIMUM).
+    # Chín khoá `room.minArea.<công năng>`: `thresholdSpecs.ts:75-92` (min 0, max 60, dưới ROOM-AREA-BELOW-MINIMUM).
     **{f"room.minArea.{usage}": ThresholdSpec("ROOM-AREA-BELOW-MINIMUM", 0, 60) for usage in _ROOM_USAGES},
     "wallOverlap.minOverlapMm": ThresholdSpec("WALL-OVERLAP", 1, 500),  # thresholdSpecs.ts:195,202-203
     "roomClosure.lateralToleranceMm": ThresholdSpec("ROOM-NOT-CLOSED", 0, 500),  # thresholdSpecs.ts:211,218-219
@@ -93,4 +94,4 @@ _SPECS: Final[dict[str, ThresholdSpec]] = {
 }
 
 THRESHOLD_SPECS: Final[Mapping[str, ThresholdSpec]] = MappingProxyType(_SPECS)
-"""26 khoá ngưỡng (`RULE_THRESHOLD_SPECS`, `thresholdSpecs.ts:95-387`), chỉ đọc."""
+"""27 khoá ngưỡng (`RULE_THRESHOLD_SPECS`, `thresholdSpecs.ts:95-387`), chỉ đọc."""

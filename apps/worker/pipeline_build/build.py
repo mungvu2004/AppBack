@@ -412,7 +412,7 @@ def _assembled(
         "dropped": dropped,
     }
     wall_set = build_walls(context.walls_px, context.detections, **shared)
-    rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, **shared)
+    rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
     furniture = build_furniture(context.detections, rooms, **shared)
     layer = SpatialLayer(walls=wall_set.walls, openings=wall_set.openings, rooms=rooms, furniture=furniture)
     return layer, wall_set

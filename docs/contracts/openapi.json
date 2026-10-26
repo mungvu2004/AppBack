@@ -5328,6 +5328,7 @@
               "corridor",
               "stairwell",
               "utility",
+              "loggia",
               "other"
             ],
             "title": "Usage",
@@ -5396,6 +5397,7 @@
                   "corridor",
                   "stairwell",
                   "utility",
+                  "loggia",
                   "other"
                 ],
                 "type": "string"
@@ -5506,6 +5508,7 @@
               "corridor",
               "stairwell",
               "utility",
+              "loggia",
               "other"
             ],
             "title": "Usage",
@@ -11387,7 +11390,7 @@
     },
     "/api/share/{token}": {
       "get": {
-        "description": "Công khai, chỉ đọc: token còn hiệu lực và dự án chưa xoá → đồ thị; còn lại 404.",
+        "description": "Công khai, chỉ đọc: token còn hiệu lực và dự án chưa xoá → đồ thị; còn lại 404.\n\n`Origin` lệch → 403 trước mọi thứ (C24; điều hướng thẳng không gửi `Origin` nên vẫn mở được);\nquá hạn mức theo IP → 429.",
         "operationId": "share_links_open_api_share__token__get",
         "parameters": [
           {

@@ -23,12 +23,12 @@ def test_catalog__rule_codes() -> None:
 
 
 def test_catalog__threshold_specs() -> None:
-    """26 khoá, `min <= max`, mọi `rule_code` hợp lệ, đúng 2 khoá dưới `GENERAL` và 8 khoá `room.minArea.*`."""
-    assert len(THRESHOLD_SPECS) == 26
+    """27 khoá, `min <= max`, mọi `rule_code` hợp lệ, đúng 2 khoá dưới `GENERAL` và 9 khoá `room.minArea.*`."""
+    assert len(THRESHOLD_SPECS) == 27
     assert all(spec.min <= spec.max for spec in THRESHOLD_SPECS.values())
     assert all(spec.rule_code in {*RULE_CODES, GENERAL_CODE} for spec in THRESHOLD_SPECS.values())
     assert sum(spec.rule_code == GENERAL_CODE for spec in THRESHOLD_SPECS.values()) == 2
-    assert sum(key.startswith("room.minArea.") for key in THRESHOLD_SPECS) == 8
+    assert sum(key.startswith("room.minArea.") for key in THRESHOLD_SPECS) == 9
 
 
 def test_catalog__imports_without_fastapi_or_sqlalchemy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -37,4 +37,4 @@ def test_catalog__imports_without_fastapi_or_sqlalchemy(monkeypatch: pytest.Monk
     monkeypatch.setitem(sys.modules, "sqlalchemy", None)
     monkeypatch.delitem(sys.modules, "apps.api.rules.catalog")
     fresh = importlib.import_module("apps.api.rules.catalog")
-    assert (len(fresh.RULE_CODES), len(fresh.THRESHOLD_SPECS)) == (25, 26)
+    assert (len(fresh.RULE_CODES), len(fresh.THRESHOLD_SPECS)) == (25, 27)

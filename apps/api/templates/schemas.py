@@ -38,7 +38,8 @@ class RoomFields(NullFreeModel):
     """`fields` của phòng; không có tên vì mỗi phòng cần tên riêng."""
 
     usage: (
-        Literal["livingRoom", "bedroom", "kitchen", "bathroom", "corridor", "stairwell", "utility", "other"] | None
+        Literal["livingRoom", "bedroom", "kitchen", "bathroom", "corridor", "stairwell", "utility", "loggia", "other"]
+        | None
     ) = None
 
 
