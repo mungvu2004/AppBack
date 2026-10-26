@@ -142,7 +142,8 @@ async def test_versions_read_snapshot__C01(
     body = response.json()
     assert set(body) == {"versionId", "layer", "dimensions"}
     assert body["versionId"] == version.id
-    assert body["layer"]["walls"] == [wire(wall)]
+    # Tường AI đi qua một lượt ghi của người (`put_layer`) nên `write_layer` suy `edited: true` (56c98abe).
+    assert body["layer"]["walls"] == [{**wire(wall), "edited": True}]
     assert [item["id"] for item in body["dimensions"]] == [dimension.id]
 
 
