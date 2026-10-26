@@ -128,10 +128,10 @@ def upgrade() -> None:
             op.f(f"fk_{UPLOADS}_{column}_{referred}"), UPLOADS, referred, [column], ["pk"], ondelete=ondelete
         )
     op.execute(
-        f"ALTER TABLE {UPLOADS} ADD CONSTRAINT {UPLOAD_CHECK} "
+        "ALTER TABLE uploads ADD CONSTRAINT ck_uploads_floor_or_document "
         "CHECK ((floor_pk IS NULL) <> (document_pk IS NULL)) NOT VALID"
     )
-    op.execute(f"ALTER TABLE {UPLOADS} VALIDATE CONSTRAINT {UPLOAD_CHECK}")
+    op.execute("ALTER TABLE uploads VALIDATE CONSTRAINT ck_uploads_floor_or_document")
     with op.get_context().autocommit_block():
         for column, _, _ in UPLOAD_LINKS:
             op.create_index(op.f(f"ix_{UPLOADS}_{column}"), UPLOADS, [column], postgresql_concurrently=True)
