@@ -233,8 +233,10 @@ def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
     """Một mẫu mỗi chữ có `span_px` và đọc ra độ dài mm, tỉ số trong dải 1-200 mm/px; id `t<i>-chain`."""
     samples = []
     for index, text in enumerate(texts):
-        value = parse_length_mm(text.text) if text.span_px else None
-        if value is not None and text.span_px and classify_scale_range(value / text.span_px) == "inRange":
+        if text.span_px is None:
+            continue
+        value = parse_length_mm(text.text)
+        if value is not None and classify_scale_range(value / text.span_px) == "inRange":
             samples.append(ScaleSample(f"t{index}-chain", text.span_px, float(value)))
     return tuple(samples)
 
