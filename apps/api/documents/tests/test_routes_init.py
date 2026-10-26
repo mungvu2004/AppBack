@@ -125,13 +125,13 @@ async def test_documents_init_upload__C11(
 
 
 async def test_documents_init_upload__C21(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    """`projectId` không thuộc thân N39 (dự án lấy từ đường): gửi id dự án khác → 422, không ghi."""
+    """`projectId` trong thân khác đường → 422 `PATH_BODY_MISMATCH` (guard W21 chạy trước schema), không ghi."""
     stage = await make_stage(db_session)
 
     response = await _post(api_client, stage.project.id, stage.headers, projectId="prj_00000000000000000000000000")
 
     assert response.status_code == 422
-    assert response.json()["code"] == "VALIDATION"
+    assert response.json()["code"] == "PATH_BODY_MISMATCH"
 
 
 async def test_documents_init_upload__U05(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
