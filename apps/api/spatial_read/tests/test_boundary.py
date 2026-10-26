@@ -31,6 +31,7 @@ WORKER_SAFE_MODULES: Final = (
     "apps.api.spatial_read.entity_ids",
     "apps.api.spatial_read.jobs",
     "apps.api.spatial_read.pages",
+    "apps.api.spatial_read.readiness",
     "apps.api.spatial_read.settings",
 )
 """Mọi module của gói trừ `router`, `graph`, `wire`, `cli` (B3-02 [2] "Hàm cho prompt sau")."""

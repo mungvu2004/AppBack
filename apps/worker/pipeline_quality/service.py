@@ -26,10 +26,15 @@ from apps.api.drawings.runs import lock_run, publish_progress_after_commit, reco
 from apps.api.project_settings.read import read_settings
 from apps.api.spatial_read.codec import DocumentCorruptError
 from apps.api.spatial_read.documents import FloorDocument, load_document
-from apps.worker.pipeline_orchestrate.pins import load_pins
+from apps.worker.pipeline_orchestrate.pins import load_pins, record_quality_summary
 from apps.worker.pipeline_persist.context import PersistContext, load_context
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
-from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT, QUALITY_REPORT_MAX_BYTES, build_report
+from apps.worker.pipeline_quality.report import (
+    QUALITY_ARTIFACT,
+    QUALITY_REPORT_MAX_BYTES,
+    RunQualityReport,
+    build_report,
+)
 from packages.core.clock import Clock
 from packages.db.engine import session_scope
 from packages.db.hooks import after_commit_idle
@@ -129,6 +134,15 @@ async def _handle_early_exit(
         await _reconcile_stale_progress(sessionmaker, ctx.upload_id)
 
 
+def _summary(report: RunQualityReport) -> dict[str, object]:
+    """Tóm tắt lưu cột `quality_summary` (FIX-P0-09): đủ để tính readiness mà không cần `quality.json`."""
+    return {
+        "hasCritical": report.has_critical,
+        "criticalCount": sum(1 for issue in report.issues if issue.severity == "critical"),
+        "lowConfidence": dict(report.low_confidence),
+    }
+
+
 async def run_quality(
     payload: RunStepPayload,
     *,
@@ -156,6 +170,9 @@ async def run_quality(
         if await lock_run(db, run_id=payload.run_id) is None:
             await db.rollback()
         else:
+            # Ghi trước `record_step` trong cùng giao dịch: lượt `completed` luôn có tóm tắt. Giao
+            # lặp gặp cột đã có nên `record_quality_summary` trả `False` — ghi đúng một lần.
+            await record_quality_summary(db, run_id=payload.run_id, summary=_summary(report))
             step_result = await record_step(db, run_id=payload.run_id, step=STEP, status="completed", clock=clock)
             completed = step_result is not None
             # `record_step` trả `None` sau khi đã tự `_abandon(FLOOR_DELETED)` khi tầng quá cửa sổ:

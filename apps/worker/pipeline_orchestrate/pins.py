@@ -25,7 +25,8 @@ class RunPins:
     """Ảnh chụp một dòng `pipeline_run_models`; đông cứng để không ai ghi qua nó.
 
     `used`: họ → `version_id` | `pinned_name` | `"classic"` (chỉ tường) | `"none"`; họ đã có
-    ở đây thì `queue_infer` không gửi lại bước đó.
+    ở đây thì `queue_infer` không gửi lại bước đó. `quality_summary`: tóm tắt bước quality
+    (FIX-P0-08), `None` khi bước đó chưa ghi.
     """
 
     run_id: str
@@ -33,6 +34,7 @@ class RunPins:
     used: Mapping[ModelFamily, str]
     persisted_revision: int | None
     step_requeue_count: int
+    quality_summary: Mapping[str, object] | None = None
 
 
 async def pin_models(db: AsyncSession, *, run_id: str, models: Mapping[ModelFamily, ModelRef]) -> bool:
@@ -74,6 +76,17 @@ async def mark_persisted(db: AsyncSession, *, run_id: str, revision: int) -> boo
     return result.rowcount > 0
 
 
+async def record_quality_summary(db: AsyncSession, *, run_id: str, summary: Mapping[str, object]) -> bool:
+    """Ghi tóm tắt bước quality chỉ khi còn NULL; đã có hoặc không có dòng → `False`."""
+    stmt = (
+        update(PipelineRunModelsRow)
+        .where(PipelineRunModelsRow.run_id == run_id, PipelineRunModelsRow.quality_summary.is_(None))
+        .values(quality_summary=dict(summary))
+    )
+    result = cast("CursorResult[Any]", await db.execute(stmt))
+    return result.rowcount > 0
+
+
 async def set_step_requeue(db: AsyncSession, *, run_id: str, count: int) -> None:
     """Đặt số lần quét bù gửi lại bước hiện tại; `< 0` → `ValueError`."""
     if count < 0:
@@ -109,4 +122,5 @@ async def load_pins(db: AsyncSession, run_id: str, *, for_update: bool = False) 
         used=used,
         persisted_revision=row.persisted_revision,
         step_requeue_count=row.step_requeue_count,
+        quality_summary=row.quality_summary,
     )
