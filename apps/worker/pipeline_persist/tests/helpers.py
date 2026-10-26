@@ -209,3 +209,18 @@ async def arrange(
 async def persist_once(maker: Maker, storage: ObjectStorage, arranged: Arranged, clock: FakeClock) -> str:
     """Một lượt giao `pipeline.persist.run` cho cảnh đã dựng, gọi thẳng lõi."""
     return await run_persist(arranged.payload, sessionmaker=maker, storage=storage, clock=clock)
+
+
+async def restart_run(maker: Maker, storage: ObjectStorage, arranged: Arranged, clock: FakeClock) -> Arranged:
+    """Mở lượt chạy thứ hai cho cùng lượt tải, đưa nó tới `spatialDataBuild` và ghi `layer.json`."""
+    async with maker() as db:
+        run = await start_run(db, upload_id=arranged.upload_id, clock=clock)
+        await pin_models(db, run_id=run.id, models=await active_versions(db))
+        await record_step(db, run_id=run.id, step="preprocess", status="running", clock=clock)
+        for step in DONE_STEPS:
+            await record_step(db, run_id=run.id, step=step, status="completed", clock=clock)
+        await db.commit()
+    await after_commit_idle(db)
+    later = dataclasses.replace(arranged, run_id=run.id, payload=RunStepPayload(schema_version=1, run_id=run.id))
+    await put_layer(storage, later, sample_built(later.level_id).to_json())
+    return later

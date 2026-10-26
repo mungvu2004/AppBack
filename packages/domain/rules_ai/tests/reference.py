@@ -8,10 +8,23 @@ Chỉ dùng để đối chiếu: chậm có chủ ý (O(n·m)), viết thẳng 
 import math
 
 from packages.domain.rules_ai.geometry import centroid, nearest_probe, outline_contains, wall_side
-from packages.domain.spatial import BoundingBox, Furniture, Opening, Point, Roof, Room, SpatialLayer, Wall, js_round
+from packages.domain.rules_ai.merge import Removed
+from packages.domain.spatial import (
+    BoundingBox,
+    Furniture,
+    Opening,
+    Point,
+    Roof,
+    Room,
+    Segment,
+    SpatialLayer,
+    Wall,
+    js_round,
+)
 
 TOLERANCE = 50
 CAP = 0.5
+NO_REMOVALS = Removed()
 
 
 def _can_edit(entity: Wall | Opening | Furniture) -> bool:
@@ -84,16 +97,16 @@ def _dist_ok(a: Point, b: Point) -> bool:
     return math.hypot(a.x - b.x, a.y - b.y) <= TOLERANCE
 
 
-def _wall_match(a: Wall, k: Wall) -> bool:
+def _wall_match(a: Segment, k: Segment) -> bool:
     """Trùng đầu mút, cả hai chiều."""
-    s, e, ks, ke = a.centreline.start, a.centreline.end, k.centreline.start, k.centreline.end
+    s, e, ks, ke = a.start, a.end, k.start, k.end
     return (_dist_ok(s, ks) and _dist_ok(e, ke)) or (_dist_ok(s, ke) and _dist_ok(e, ks))
 
 
-def _room_match(a: Room, k: Room) -> bool:
+def _room_match(a: tuple[Point, ...], k: tuple[Point, ...]) -> bool:
     """Tâm bên này trong đường bao bên kia (quét đầy đủ, không hộp bao)."""
-    ca, ck = centroid(a.outline), centroid(k.outline)
-    return outline_contains(k.outline, *ca) or outline_contains(a.outline, *ck)
+    ca, ck = centroid(a), centroid(k)
+    return outline_contains(k, *ca) or outline_contains(a, *ck)
 
 
 def _furniture_match(a: Furniture, k: Furniture) -> bool:
@@ -116,7 +129,7 @@ def _refs(entity: Wall | Opening | Room | Furniture | Roof) -> list[str]:
 def ref_keep(current: SpatialLayer) -> set[str]:
     """`K` bằng lặp tới điểm dừng, quét mọi thực thể mỗi vòng."""
     everything = current.entities()
-    keep = {e.id for e in everything if e.reviewed or e.source == "human"}
+    keep = {e.id for e in everything if e.reviewed or e.source == "human" or e.edited}
     changed = True
     while changed:
         changed = False
@@ -129,9 +142,18 @@ def ref_keep(current: SpatialLayer) -> set[str]:
     return keep
 
 
-def ref_merge(current: SpatialLayer, ai: SpatialLayer) -> tuple[SpatialLayer, tuple[str, ...], dict[str, str]]:
-    """Trộn theo chữ của [6] bước 2-7, so mọi cặp; trả `(layer, dropped_ai_ids, id_map)`."""
+def ref_merge(
+    current: SpatialLayer, ai: SpatialLayer, removed: Removed = NO_REMOVALS
+) -> tuple[SpatialLayer, tuple[str, ...], dict[str, str], tuple[str, ...]]:
+    """Trộn theo chữ của [6] bước 2-7 và bia mộ H2, so mọi cặp.
+
+    Trả `(layer, dropped_ai_ids, id_map, suppressed_ids)`.
+    """
     keep = ref_keep(current)
+    live = {e.id for e in current.entities()}
+    gone_walls = [(i, seg) for i, seg in removed.walls if i not in live]
+    gone_rooms = [(i, outline) for i, outline in removed.rooms if i not in live]
+    suppressed: list[str] = []
     k_walls = [w for w in current.walls if w.id in keep]
     k_openings = [o for o in current.openings if o.id in keep]
     k_rooms = [r for r in current.rooms if r.id in keep]
@@ -140,22 +162,28 @@ def ref_merge(current: SpatialLayer, ai: SpatialLayer) -> tuple[SpatialLayer, tu
     dropped: list[str] = []
     new_walls, new_rooms, new_furniture, new_openings = [], [], [], []
     for w in ai.walls:
-        hit = next((k for k in k_walls if k.id == w.id), None) or next((k for k in k_walls if _wall_match(w, k)), None)
+        hit = next((k for k in k_walls if k.id == w.id), None) or next(
+            (k for k in k_walls if _wall_match(w.centreline, k.centreline)), None
+        )
         if hit:
             id_map[w.id] = hit.id
+        elif any(i == w.id or _wall_match(w.centreline, seg) for i, seg in gone_walls):
+            suppressed.append(w.id)
         else:
             new_walls.append(w)
     for o in ai.openings:
-        if any(k.id == o.id for k in k_openings) or o.wall_id in id_map:
+        if any(k.id == o.id for k in k_openings) or o.wall_id in id_map or o.wall_id in suppressed:
             dropped.append(o.id)
         else:
             new_openings.append(o)
     for r in ai.rooms:
         room_hit = next((k for k in k_rooms if k.id == r.id), None) or next(
-            (k for k in k_rooms if _room_match(r, k)), None
+            (k for k in k_rooms if _room_match(r.outline, k.outline)), None
         )
         if room_hit:
             id_map[r.id] = room_hit.id
+        elif any(i == r.id or _room_match(r.outline, outline) for i, outline in gone_rooms):
+            suppressed.append(r.id)
         else:
             new_rooms.append(r)
     for f in ai.furniture:
@@ -163,7 +191,7 @@ def ref_merge(current: SpatialLayer, ai: SpatialLayer) -> tuple[SpatialLayer, tu
             dropped.append(f.id)
         else:
             new_furniture.append(f)
-    gone = set(dropped) | set(id_map)
+    gone = set(dropped) | set(id_map) | set(suppressed)
     layer = SpatialLayer(
         walls=(
             *k_walls,
@@ -175,14 +203,28 @@ def ref_merge(current: SpatialLayer, ai: SpatialLayer) -> tuple[SpatialLayer, tu
         openings=(*k_openings, *new_openings),
         rooms=(
             *k_rooms,
-            *(r.model_copy(update={"wall_ids": tuple(id_map.get(i, i) for i in r.wall_ids)}) for r in new_rooms),
+            *(
+                r.model_copy(update={"wall_ids": tuple(id_map.get(i, i) for i in r.wall_ids if i not in suppressed)})
+                for r in new_rooms
+            ),
         ),
         furniture=(
             *k_furniture,
             *(
-                f.model_copy(update={"room_id": id_map.get(f.room_id, f.room_id) if f.room_id else None})
+                f.model_copy(
+                    update={
+                        "room_id": None
+                        if f.room_id in suppressed
+                        else (id_map.get(f.room_id, f.room_id) if f.room_id else None)
+                    }
+                )
                 for f in new_furniture
             ),
         ),
     )
-    return layer, tuple(e.id for e in ai.entities() if e.id in gone), id_map
+    return (
+        layer,
+        tuple(e.id for e in ai.entities() if e.id in gone),
+        id_map,
+        tuple(e.id for e in ai.entities() if e.id in suppressed),
+    )

@@ -1,11 +1,11 @@
-"""`merge_pipeline_result`: giữ mục đã duyệt, ghim tham chiếu, đối chiếu id/hình học, nối lại, idempotent."""
+"""`merge_pipeline_result`: giữ mục đã duyệt/đã sửa, ghim tham chiếu, đối chiếu id/hình học, bia mộ, nối lại."""
 
 from collections.abc import Mapping
 from typing import Any, Protocol
 
 import pytest
 
-from packages.domain.rules_ai import MergeResult, merge_pipeline_result
+from packages.domain.rules_ai import MergeResult, Removed, merge_pipeline_result
 from packages.domain.rules_ai.tests.builders import (
     box_room,
     fid,
@@ -13,12 +13,13 @@ from packages.domain.rules_ai.tests.builders import (
     layer,
     oid,
     opening,
+    rectangle,
     rid,
     wall,
     wid,
     with_openings,
 )
-from packages.domain.rules_ai.tests.reference import ref_merge
+from packages.domain.rules_ai.tests.reference import NO_REMOVALS, ref_merge
 from packages.domain.spatial import SpatialLayer, ai_reviewed_ids, check_integrity, diff_layers, has_critical
 
 HUMAN: dict[str, Any] = {"source": "human", "reviewed": True}
@@ -39,13 +40,14 @@ class _MergeOutcome(Protocol):
         ...
 
 
-def _merge(current: SpatialLayer, ai: SpatialLayer) -> MergeResult:
+def _merge(current: SpatialLayer, ai: SpatialLayer, removed: Removed = NO_REMOVALS) -> MergeResult:
     """Trộn và đối chiếu ngay với bản tham chiếu so mọi cặp: mọi ca đều được kiểm chéo."""
-    result = merge_pipeline_result(current, ai)
-    expected, dropped, id_map = ref_merge(current, ai)
+    result = merge_pipeline_result(current, ai, removed)
+    expected, dropped, id_map, suppressed = ref_merge(current, ai, removed)
     assert result.layer == expected
     assert result.dropped_ai_ids == dropped
     assert dict(result.id_map) == id_map
+    assert result.suppressed_ids == suppressed
     assert result.changes == tuple(diff_layers(current, result.layer))
     return result
 
@@ -298,3 +300,96 @@ def test_merge_with_no_critical_inputs__output_has_no_critical() -> None:
     assert not has_critical(check_integrity(current))
     assert not has_critical(check_integrity(ai))
     assert not has_critical(check_integrity(_merge(current, ai).layer))
+
+
+EDITED: dict[str, Any] = {"edited": True}
+GONE_WALL = (wid(5), wall(5, (0, 0), (4000, 0)).centreline)  # bia mộ: tường người đã xoá
+GONE_ROOM = (rid(5), rectangle((0, 0), (4000, 4000)))  # bia mộ: phòng người đã xoá
+
+
+def test_edited_ai_entity_is_kept() -> None:
+    """Mục AI người đã sửa (`edited`) mà chưa duyệt vào `K`: giữ nguyên cả khi lớp AI mới rỗng (H1)."""
+    edited_wall = wall(1, (0, 0), (4000, 0), **EDITED)
+    old = wall(2, (0, 500), (4000, 500))
+    result = _merge(layer(walls=(edited_wall, old)), layer())
+    assert result.layer.walls == (edited_wall,)
+
+
+def test_new_ai_wall_matching_edited_is_dropped_and_mapped() -> None:
+    """Tường AI mới trùng đầu mút tường đã sửa → bỏ, ánh xạ về tường đã sửa; phòng AI nối lại theo."""
+    edited_wall = wall(1, (0, 0), (4000, 0), **EDITED)
+    new_wall = wall(9, (10, 5), (4010, -3))
+    new_room = box_room(9, (10_000, 0), (14_000, 4000), wall_ids=(new_wall.id,))
+    result = _merge(layer(walls=(edited_wall,)), layer(walls=(new_wall,), rooms=(new_room,)))
+    assert result.layer.walls == (edited_wall,)
+    assert dict(result.id_map) == {new_wall.id: edited_wall.id}
+    assert result.layer.rooms[0].wall_ids == (edited_wall.id,)
+    assert result.suppressed_ids == ()
+
+
+def test_ai_layer_with_edited_is_refused() -> None:
+    """Lớp AI có mục `edited=True` → `ValueError`: pipeline không được tự gắn cờ người sửa."""
+    with pytest.raises(ValueError, match="source=ai"):
+        merge_pipeline_result(layer(), layer(walls=(wall(1, (0, 0), (4000, 0), **EDITED),)))
+
+
+def test_ai_wall_matching_removed_is_suppressed() -> None:
+    """Tường AI trùng bia mộ (hai đầu trong dung sai, đảo chiều vẫn trùng) → chặn, không ánh xạ id; tường khác giữ."""
+    back = wall(9, (4010, -3), (10, 5))
+    other = wall(8, (0, 6000), (4000, 6000))
+    result = _merge(layer(), layer(walls=(back, other)), Removed(walls=(GONE_WALL,)))
+    assert result.layer.walls == (other,)
+    assert result.suppressed_ids == (back.id,)
+    assert result.dropped_ai_ids == (back.id,)
+    assert dict(result.id_map) == {}
+
+
+def test_ai_room_matching_removed_is_suppressed() -> None:
+    """Phòng AI có tâm trong bia mộ phòng → chặn; đồ AI trỏ phòng đó mất `roomId` thay vì treo."""
+    ai_room = box_room(9, (100, 100), (3900, 3900))
+    far_room = box_room(8, (10_000, 0), (14_000, 4000))
+    chair = furniture(9, (2000, 2000), kind="chair", room_id=ai_room.id)
+    ai = layer(rooms=(ai_room, far_room), furniture_items=(chair,))
+    result = _merge(layer(), ai, Removed(rooms=(GONE_ROOM,)))
+    assert result.layer.rooms == (far_room,)
+    assert result.suppressed_ids == (ai_room.id,)
+    assert [f.room_id for f in result.layer.furniture] == [None]
+    assert dict(result.id_map) == {}
+    assert not has_critical(check_integrity(result.layer))
+
+
+def test_removed_id_still_present_is_ignored() -> None:
+    """Bia mộ có id vẫn còn trong `current` (khôi phục phiên bản) → bỏ qua, tường AI cùng chỗ được thêm."""
+    restored = wall(5, (0, 0), (4000, 0))
+    restored_room = box_room(5, (0, 0), (4000, 4000))
+    fresh = wall(9, (0, 0), (4000, 0))
+    fresh_room = box_room(9, (100, 100), (3900, 3900))
+    current = layer(walls=(restored,), rooms=(restored_room,))
+    removed = Removed(walls=(GONE_WALL,), rooms=(GONE_ROOM,))
+    result = _merge(current, layer(walls=(fresh,), rooms=(fresh_room,)), removed)
+    assert result.layer.walls == (fresh,)
+    assert result.layer.rooms == (fresh_room,)
+    assert result.suppressed_ids == ()
+
+
+def test_room_refs_to_suppressed_wall_are_dropped() -> None:
+    """Phòng AI còn lại trỏ tường bị chặn: gỡ id đó khỏi `wallIds`, giữ tường khác (không tham chiếu treo)."""
+    blocked = wall(9, (0, 0), (4000, 0))
+    kept = wall(8, (10_000, 0), (14_000, 0))
+    ai_room = box_room(9, (10_000, 0), (14_000, 4000), wall_ids=(blocked.id, kept.id))
+    result = _merge(layer(), layer(walls=(blocked, kept), rooms=(ai_room,)), Removed(walls=(GONE_WALL,)))
+    assert result.layer.walls == (kept,)
+    assert result.layer.rooms[0].wall_ids == (kept.id,)
+    assert not has_critical(check_integrity(result.layer))
+
+
+def test_openings_on_suppressed_wall_dropped() -> None:
+    """Ô mở AI trên tường bị chặn bị bỏ theo (trong `dropped_ai_ids`, không trong `suppressed_ids`)."""
+    openings = (opening(9, 9), opening(8, 8))
+    walls = with_openings((wall(9, (0, 0), (4000, 0)), wall(8, (0, 6000), (4000, 6000))), openings)
+    result = _merge(layer(), layer(walls=walls, openings=openings), Removed(walls=(GONE_WALL,)))
+    assert [o.id for o in result.layer.openings] == [oid(8)]
+    assert result.layer.walls == (walls[1],)
+    assert result.suppressed_ids == (wid(9),)
+    assert result.dropped_ai_ids == (wid(9), oid(9))
+    assert not has_critical(check_integrity(result.layer))

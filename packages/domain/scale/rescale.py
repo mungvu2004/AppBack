@@ -3,8 +3,11 @@
 `k = new / old`; mọi độ dài **trên mặt bằng** của thực thể `reviewed=False` (của AI
 lẫn do người vẽ) thành `js_round(v x k)`: toạ độ đường tim, đường bao, tâm, hộp
 bao, `line`; bề dày; `offsetMm`, `widthMm`. Chiều cao, góc, tin cậy giữ nguyên.
-Thực thể đã duyệt giữ nguyên từng trường (K21); gói này không bao giờ đặt
-`reviewed=True`. Kết quả vi phạm mô hình → `RescaleError`, không kẹp giá trị.
+Thực thể đã duyệt giữ nguyên từng trường (K21), trừ khi người gọi truyền
+`include_reviewed=True` vì tỉ lệ cũ chỉ là đoán (H4: nguồn `pipeline` hay
+`project_default`): khi đó mọi thực thể đổi theo cùng `k`, giữ hình học theo pixel
+người đã duyệt. Gói này không bao giờ đổi `reviewed`. Kết quả vi phạm mô hình →
+`RescaleError`, không kẹp giá trị.
 """
 
 import math
@@ -80,10 +83,10 @@ def _dimension(dimension: Dimension, k: float) -> Mapping[str, object]:
 
 
 def _rescaled[E: (Wall, Opening, Room, Furniture, Dimension)](
-    entity: E, k: float, updates: Callable[[E, float], Mapping[str, object]]
+    entity: E, k: float, updates: Callable[[E, float], Mapping[str, object]], include_reviewed: bool
 ) -> E:
-    """Thực thể chưa duyệt sau khi đổi tỉ lệ, kiểm lại trọn mô hình; đã duyệt thì trả nguyên."""
-    if entity.reviewed:
+    """Thực thể sau khi đổi tỉ lệ, kiểm lại trọn mô hình; đã duyệt mà không `include_reviewed` thì trả nguyên."""
+    if entity.reviewed and not include_reviewed:
         return entity
     try:
         return type(entity).model_validate({**dict(entity), **updates(entity, k)})
@@ -91,22 +94,32 @@ def _rescaled[E: (Wall, Opening, Room, Furniture, Dimension)](
         raise RescaleError(entity.id) from exc
 
 
-def rescale_unreviewed(layer: SpatialLayer, old: float, new: float) -> SpatialLayer:
-    """Lớp sau khi đổi tỉ lệ `old → new` (mm/px); `old == new` trả nguyên lớp."""
+def rescale_unreviewed(layer: SpatialLayer, old: float, new: float, *, include_reviewed: bool = False) -> SpatialLayer:
+    """Lớp sau khi đổi tỉ lệ `old → new` (mm/px); `old == new` trả nguyên lớp.
+
+    Mặc định chỉ đổi mục chưa duyệt; `include_reviewed=True` đổi cả mục đã duyệt (H4).
+    """
     k = _factor(old, new)
     if old == new:
         return layer
     return SpatialLayer(
-        walls=tuple(_rescaled(wall, k, _wall) for wall in layer.walls),
-        openings=tuple(_rescaled(opening, k, _opening) for opening in layer.openings),
-        rooms=tuple(_rescaled(room, k, _room) for room in layer.rooms),
-        furniture=tuple(_rescaled(item, k, _furniture) for item in layer.furniture),
+        walls=tuple(_rescaled(wall, k, _wall, include_reviewed) for wall in layer.walls),
+        openings=tuple(_rescaled(opening, k, _opening, include_reviewed) for opening in layer.openings),
+        rooms=tuple(_rescaled(room, k, _room, include_reviewed) for room in layer.rooms),
+        furniture=tuple(_rescaled(item, k, _furniture, include_reviewed) for item in layer.furniture),
         # Mái mang toạ độ mét cục bộ của Pascal, không theo tỉ lệ mm/px: giữ nguyên.
         roofs=layer.roofs,
     )
 
 
-def rescale_dimensions(dimensions: Sequence[Dimension], old: float, new: float) -> tuple[Dimension, ...]:
-    """Kích thước sau khi đổi tỉ lệ, cùng luật với `rescale_unreviewed`; không có bản cho `Axis` (v1 luôn rỗng)."""
+def rescale_dimensions(
+    dimensions: Sequence[Dimension], old: float, new: float, *, include_reviewed: bool = False
+) -> tuple[Dimension, ...]:
+    """Kích thước sau khi đổi tỉ lệ, cùng luật (cả `include_reviewed`) với `rescale_unreviewed`.
+
+    Không có bản cho `Axis` (v1 luôn rỗng).
+    """
     k = _factor(old, new)
-    return tuple(dimensions) if old == new else tuple(_rescaled(item, k, _dimension) for item in dimensions)
+    if old == new:
+        return tuple(dimensions)
+    return tuple(_rescaled(item, k, _dimension, include_reviewed) for item in dimensions)

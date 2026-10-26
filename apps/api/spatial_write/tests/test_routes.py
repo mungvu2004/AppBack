@@ -121,6 +121,32 @@ async def test_spatial_write_layer__C01_scale(api_client: httpx.AsyncClient, db_
     assert read.json()["level"]["scaleMillimetresPerPixel"] == 12.7
 
 
+async def test_spatial_write_layer__C01_edited(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """PUT dời đỉnh một tường AI (thân gửi `edited: false`) → 200; N16 đọc lại thấy `edited: true` (H1).
+
+    Golden H1: tường giữ `source: "ai"`, `reviewed: false` — sửa không phải duyệt. Tầng mồi qua một PUT như
+    các ca route khác (ghi thẳng `db_session` chưa commit làm route thua đua khoá → 503); luật "dời đỉnh mới
+    thành `edited`" do `test_writer.py::test_write_layer_marks_moved_ai_wall_edited` giữ.
+    """
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    first = await put_layer(
+        api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=simple_layer(floor.level_id))
+    )
+    assert first.status_code == 200, first.text
+    moved = simple_layer(floor.level_id, walls=(make_wall(floor.level_id, length=1500),))
+
+    response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(1, layer=moved))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["revision"] == 2
+    read = await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))
+    wall = read.json()["layer"]["walls"][0]
+    assert (wall["edited"], wall["source"], wall["reviewed"]) == (True, "ai", False)
+    assert wall["centreline"]["end"] == {"x": 1500, "y": 0}
+    assert read.json()["layer"] == response.json()["layer"]
+
+
 @pytest.mark.parametrize("case", list(_bad_bodies("L-DUMMYLEVEL")))
 async def test_spatial_write_layer__C02(api_client: httpx.AsyncClient, db_session: AsyncSession, case: str) -> None:
     """mm không nguyên, `baseVersion` âm, tỉ lệ 0 hay quá lớn, `body` rỗng, tên phòng U+202E → 422 kèm `field`.

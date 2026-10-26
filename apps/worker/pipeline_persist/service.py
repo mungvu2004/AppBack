@@ -16,6 +16,7 @@ Giao lặp (J06, J10) rẽ theo `persisted_revision`: không phiên bản, khôn
 
 import logging
 from datetime import datetime
+from decimal import Decimal
 from typing import Final, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -26,6 +27,7 @@ from apps.api.drawings.runs import lock_run, publish_progress_after_commit, reco
 from apps.api.notifications.messages import ai_completed
 from apps.api.notifications.service import notify
 from apps.api.projects.memberships import is_member
+from apps.api.spatial_write.changes import human_removals
 from apps.api.spatial_write.errors import (
     LAYER_INTEGRITY_BROKEN,
     LAYER_LEVEL_MISMATCH,
@@ -47,6 +49,8 @@ from packages.core.error_codes import VALIDATION
 from packages.core.errors import SYSTEM_PIPELINE, AppError
 from packages.db.engine import session_scope
 from packages.db.hooks import after_commit_idle, on_after_commit
+from packages.domain.rules_ai.merge import MergeResult, Removed
+from packages.domain.spatial.model import SpatialLayer
 from packages.messaging.celery_app import send_task
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.messaging.tasks import PermanentError
@@ -105,7 +109,9 @@ def _floor_state(ctx: PersistContext, clock: Clock) -> Literal["live", "deferred
     return "gone" if restore_window_elapsed(deleted_at, clock) else "deferred"
 
 
-async def _write_ai_layer(db: AsyncSession, ctx: PersistContext, built: BuiltLayer, clock: Clock) -> WriteResult:
+async def _write_ai_layer(
+    db: AsyncSession, ctx: PersistContext, built: BuiltLayer, clock: Clock, removed: Removed
+) -> WriteResult:
     """Bước 5: trộn lớp AI vào tài liệu tầng qua `write_layer(merge=…)`, ánh xạ lỗi ([6] "Lỗi").
 
     Chỉ `write_layer` được bọc — `make_merge` chạy bên trong nó, nên `RescaleError` và
@@ -113,9 +119,22 @@ async def _write_ai_layer(db: AsyncSession, ctx: PersistContext, built: BuiltLay
     `mark_persisted`/`create_version` vẫn lan nguyên (lỗi lập trình → `INTERNAL` kèm stack).
     `base_revision=0` hợp lệ vì có `merge`: `write_layer` bỏ qua nó và tự đọc revision dưới
     khoá, nên không có vòng 409. Tầng chưa có bản vẽ → `page_key=None` (tỉ lệ không gắn trang).
-    Tường AI cao theo `floors.height_mm` đọc dưới khoá (`with_floor_height`).
+    Tường AI cao theo `floors.height_mm` đọc dưới khoá (`with_floor_height`). `removed` là bia
+    mộ người đã xoá: mục AI trùng bia mộ bị chặn và đếm vào log `pipeline_suppressed_by_removal`.
     """
     drawing = await current_drawing(db, ctx.floor_pk)
+    merge = make_merge(with_floor_height(built.layer, ctx.floor_height_mm), built.scale_mm_per_px, removed)
+
+    def merge_and_log(base: SpatialLayer, target: Decimal | None) -> MergeResult:
+        """Trộn như `make_merge`, rồi log số mục AI bị chặn vì người đã xoá (FIX-P0-07)."""
+        outcome = merge(base, target)
+        if outcome.suppressed_ids:
+            _log.info(
+                "pipeline_suppressed_by_removal",
+                extra={"run_id": ctx.run_id, "count": len(outcome.suppressed_ids)},
+            )
+        return outcome
+
     try:
         return await write_layer(
             db,
@@ -125,7 +144,7 @@ async def _write_ai_layer(db: AsyncSession, ctx: PersistContext, built: BuiltLay
             actor_id=SYSTEM_PIPELINE,
             actor_name=SYSTEM_PIPELINE_NAME,
             clock=clock,
-            merge=make_merge(with_floor_height(built.layer, ctx.floor_height_mm), built.scale_mm_per_px),
+            merge=merge_and_log,
             scale_source=built.scale_source,
             page_key=None if drawing is None else drawing.page_key,
         )
@@ -181,7 +200,12 @@ async def _settle(db: AsyncSession, ctx: PersistContext, clock: Clock, *, replay
 
 
 async def _persist(db: AsyncSession, ctx: PersistContext, built: BuiltLayer, clock: Clock) -> None:
-    """Bước 4 tới 8: phiên bản "trước", ghi lớp, phiên bản "sau", ghim revision, đẩy bước."""
+    """Bước 4 tới 8: phiên bản "trước", ghi lớp, phiên bản "sau", ghim revision, đẩy bước.
+
+    Bia mộ người xoá đọc trước khi ghi gì, vẫn dưới khoá tầng của `lock_run` nên không người
+    ghi nào chen giữa lượt đọc và lượt trộn (FIX-P0-07).
+    """
+    removed = await human_removals(db, floor_pk=ctx.floor_pk)
     await create_version(
         db,
         floor_pk=ctx.floor_pk,
@@ -190,7 +214,7 @@ async def _persist(db: AsyncSession, ctx: PersistContext, built: BuiltLayer, clo
         note=before_pipeline_note(),
         clock=clock,
     )
-    result = await _write_ai_layer(db, ctx, built, clock)
+    result = await _write_ai_layer(db, ctx, built, clock, removed)
     await create_version(
         db,
         floor_pk=ctx.floor_pk,
