@@ -115,7 +115,9 @@ class RoomOut(_ReviewedOut):
     id: str
     level_id: str
     name: str
-    usage: Literal["livingRoom", "bedroom", "kitchen", "bathroom", "corridor", "stairwell", "utility", "other"]
+    usage: Literal[
+        "livingRoom", "bedroom", "kitchen", "bathroom", "corridor", "stairwell", "utility", "loggia", "other"
+    ]
     outline: Annotated[list[PointOut], Field(min_length=3)]
     area_m2: SquareMetres
     wall_ids: list[str]

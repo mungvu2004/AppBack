@@ -193,3 +193,11 @@ def test_layer_out_roofs_absent_without_roofs_and_nodes_verbatim_with() -> None:
     )
     assert body["roofs"] == [roof.model_dump(mode="json", by_alias=True)]
     assert body["roofs"][0]["nodes"][1]["metadata"]["tag"] is None
+
+
+def test_layer_out_keeps_loggia_usage() -> None:
+    """Công năng `loggia` (lô gia/ban công) đi qua dây nguyên giá trị."""
+    layer = sample_floor_layer(0, level_id=LEVEL_ID)
+    loggia = layer.rooms[0].model_copy(update={"usage": "loggia"})
+    body = layer_out(layer.model_copy(update={"rooms": (loggia,)})).model_dump(mode="json", by_alias=True)
+    assert body["rooms"][0]["usage"] == "loggia"

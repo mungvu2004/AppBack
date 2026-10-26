@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.templates.schemas import RoomDraft
 from apps.api.templates.settings import reset_templates_settings_cache
 from apps.api.templates.tests._helpers import (
     FE_BODIES,
@@ -415,3 +416,9 @@ async def test_templates_create_template__project_cascade(
     await db_session.execute(delete(Project).where(Project.id == project.id))
     await db_session.commit()
     assert await template_rows(db_sessionmaker, project.id) == []
+
+
+def test_templates_room_draft_accepts_loggia() -> None:
+    """Mẫu phòng nhận công năng `loggia` (lô gia/ban công) và trả lại nguyên giá trị."""
+    draft = RoomDraft.model_validate(template_body("room", fields={"usage": "loggia"}))
+    assert draft.model_dump(mode="json", by_alias=True)["fields"]["usage"] == "loggia"

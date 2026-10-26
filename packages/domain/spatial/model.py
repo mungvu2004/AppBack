@@ -277,7 +277,9 @@ class Room(Reviewed):
     id: RoomIdStr
     level_id: LevelIdStr
     name: HumanText
-    usage: Literal["livingRoom", "bedroom", "kitchen", "bathroom", "corridor", "stairwell", "utility", "other"]
+    usage: Literal[
+        "livingRoom", "bedroom", "kitchen", "bathroom", "corridor", "stairwell", "utility", "loggia", "other"
+    ]
     outline: Annotated[tuple[Point, ...], Field(min_length=3)]
     area_m2: SquareMetres
     wall_ids: tuple[WallIdStr, ...]

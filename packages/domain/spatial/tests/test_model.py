@@ -71,6 +71,7 @@ ACCEPTED = [
     (Furniture, "confidence", 1),
     (Room, "outline", [{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 0, "y": 10}]),
     (Room, "areaM2", 0),
+    (Room, "usage", "loggia"),
     (Level, "heightMm", 1),
     (Level, "scaleMillimetresPerPixel", 0.5),
     (Level, "elevationMm", -3000),
