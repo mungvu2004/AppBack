@@ -1,0 +1,6 @@
+# Bảng case bắt buộc thêm của task OCR chữ tiêu đề (FIX-2445, CASE.md §2.3, §6).
+# Cổng tự đòi J01, J06; thêm J10 (ghi artifact xong rồi chết trước khi gửi trả lời).
+
+[[task]]
+fn = "document_titles"
+require = ["J10"]
