@@ -92,6 +92,44 @@ def upload_page_revision(project: str, floor: str, upload: str, index: int, ulid
     return check_key(f"{upload_prefix(project, floor, upload)}pages/{index}-{ulid}.png")
 
 
+def document_prefix(project: str, document: str) -> str:
+    """Tiền tố mọi object của một tài liệu chưa gán tầng: `projects/{prj}/documents/{doc}/` (Strategy B H1).
+
+    Nằm dưới `project_prefix` nên dọn rác dự án phủ cả tài liệu. `doc_` chưa vào `IdPrefix` của lõi,
+    nên id tài liệu chỉ kiểm là **một** đoạn khoá (`_name`).
+    """
+    return check_prefix(f"{project_prefix(project)}documents/{_name(document)}/")
+
+
+def _document_index(index: int) -> int:
+    """Số trang/khúc của tài liệu không âm — cùng luật với `upload_page`."""
+    if index < 0:
+        raise ValueError(f"số trang/khúc không âm: {index}")
+    return index
+
+
+def document_original(project: str, document: str, ext: str) -> str:
+    """Khoá tệp gốc của tài liệu: `<document_prefix>original.{ext}`."""
+    return check_key(f"{document_prefix(project, document)}original.{_extension(ext)}")
+
+
+def document_chunk(project: str, document: str, index: int, sha256: str) -> str:
+    """Khoá một khúc tải của tài liệu: `<document_prefix>chunks/{i}/{sha256}` (luật băm như `upload_chunk`)."""
+    if not _SHA256_RE.fullmatch(sha256):
+        raise ValueError(f"băm khúc phải là 64 ký tự hex thường: {sha256!r}")
+    return check_key(f"{document_prefix(project, document)}chunks/{_document_index(index)}/{sha256}")
+
+
+def document_page_preview(project: str, document: str, index: int) -> str:
+    """Khoá ảnh xem trước một trang tài liệu: `<document_prefix>pages/{i}/preview.png`."""
+    return check_key(f"{document_prefix(project, document)}pages/{_document_index(index)}/preview.png")
+
+
+def document_titles(project: str, document: str, index: int) -> str:
+    """Khoá kết quả OCR chữ tiêu đề một trang tài liệu: `<document_prefix>pages/{i}/titles.json`."""
+    return check_key(f"{document_prefix(project, document)}pages/{_document_index(index)}/titles.json")
+
+
 def run_artifact(project: str, floor: str, upload: str, run: str, step: str, name: str) -> str:
     """Khoá artifact của một bước pipeline trong một lượt chạy (bố cục và luật bước ở lõi, NO-081)."""
     return check_key(f"{run_prefix(upload_prefix(project, floor, upload), run, step)}{_name(name)}")
