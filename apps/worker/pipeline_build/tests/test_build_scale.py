@@ -186,3 +186,27 @@ def test_build_layer__rejects_degenerate_wall(overrides: dict[str, Any], match: 
             clock=fake_clock,
             **SIZE,
         )
+
+
+def _chain_text(value: str, cx: float, span_px: float) -> TextPx:
+    """Chữ kích thước ngoài căn (xa mọi tường) mà bước đọc chữ đã đo `span_px`."""
+    return TextPx(
+        text=value, box=BoxPx(x_min=cx - 15, y_min=1100, x_max=cx + 15, y_max=1114), confidence=0.9, span_px=span_px
+    )
+
+
+def test_build_layer__scale_from_dimension_chains(fake_clock: FakeClock) -> None:
+    """Ba chữ chuỗi ở 20 mm/px + một chữ đọc sai: chuỗi quyết `s` = 20, `pipeline`, dù không ghép được tường nào."""
+    texts = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _chain_text("4000", 800, 200)]
+    texts.append(_chain_text("5.202", 1100, 60))  # nhãn diện tích đọc thành 5202 mm: ngoài cụm
+    built = _run([_wall(100, 100, 1100, 100)], texts, fake_clock)
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
+
+
+def test_build_layer__few_chain_samples_fall_back_to_wall_pairing(fake_clock: FakeClock) -> None:
+    """Hai mẫu chuỗi (< 3) không đủ: tỉ lệ lấy từ ghép chữ-tường của trang tổng hợp, như trước."""
+    plan = render_plan(100)
+    texts = [*plan.texts, _chain_text("3000", 200, 30), _chain_text("2000", 500, 20)]
+    built = _run(plan.walls, texts, fake_clock, detections=plan.detections)
+    assert built.scale_source == "pipeline"
+    assert abs(float(built.scale_mm_per_px) - plan.mm_per_px) / plan.mm_per_px <= 0.02

@@ -39,7 +39,9 @@ def test_step_artifacts_cover_every_family() -> None:
 def test_results_roundtrip_through_json() -> None:
     walls = WallsResult(walls=(WALL,))
     objects = ObjectsResult(detections=(DetectionPx(label="double_door", box=BOX, confidence=0.5),))
-    texts = TextResult(items=(TextPx(text="3.600", box=BOX, confidence=0.25),))
+    texts = TextResult(
+        items=(TextPx(text="3.600", box=BOX, confidence=0.25), TextPx(text="1", box=BOX, confidence=1, span_px=12.5))
+    )
     assert walls_from_json(walls_to_json(walls)) == walls
     assert objects_from_json(objects_to_json(objects)) == objects
     assert text_from_json(text_to_json(texts)) == texts
@@ -62,6 +64,8 @@ def test_results_roundtrip_through_json() -> None:
         lambda: DetectionPx(label="door", box=BOX, confidence=-0.01),
         lambda: TextPx(text="", box=BOX, confidence=1),
         lambda: TextPx(text="x" * 65, box=BOX, confidence=1),
+        lambda: TextPx(text="1", box=BOX, confidence=1, span_px=0),
+        lambda: TextPx(text="1", box=BOX, confidence=1, span_px=float("inf")),
         lambda: WallsResult(walls=(WALL,) * (artifacts.MAX_WALLS + 1)),
         lambda: ObjectsResult(detections=(DetectionPx(label="door", box=BOX, confidence=1),) * 5_001),
         lambda: TextResult(items=(TextPx(text="1", box=BOX, confidence=1),) * 5_001),
@@ -102,3 +106,10 @@ def test_from_json_rejects_oversize_before_parsing(parse: Callable[[bytes], obje
     oversized = b" " * ARTIFACT_JSON_MAX_BYTES + b"{}"
     with pytest.raises(ValueError, match="trần"):
         parse(oversized)
+
+
+def test_text_json_without_span_key_still_parses() -> None:
+    """`text.json` ghi trước khi có `span_px` vẫn giải được, `span_px` về `None`."""
+    item = b'{"text":"3.600","box":{"x_min":0,"y_min":0,"x_max":4,"y_max":2},"confidence":0.5}'
+    data = b'{"schema_version":1,"items":[' + item + b"]}"
+    assert text_from_json(data).items[0].span_px is None

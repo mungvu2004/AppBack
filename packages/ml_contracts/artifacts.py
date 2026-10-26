@@ -124,11 +124,17 @@ class DetectionPx(FrozenModel):
 
 
 class TextPx(FrozenModel):
-    """Một chuỗi đọc được (kích thước, nhãn phòng) và hộp của nó."""
+    """Một chuỗi đọc được (kích thước, nhãn phòng) và hộp của nó.
+
+    `span_px`: độ dài px của đoạn kích thước mà chữ ghi (đường kích thước + hai vạch giới hạn đo
+    trên ảnh, `packages.vision.dimensions.chains`); `None` khi chữ không nằm trên đường kích thước
+    hay `text.json` cũ chưa có khoá này.
+    """
 
     text: Annotated[str, Field(min_length=1, max_length=64)]
     box: BoxPx
     confidence: Confidence
+    span_px: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
 
 
 class WallsResult(FrozenModel):

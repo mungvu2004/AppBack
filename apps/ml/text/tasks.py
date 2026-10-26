@@ -25,6 +25,7 @@ from packages.ml_contracts.artifacts import TextPx, TextResult, text_to_json
 from packages.ml_contracts.fakes import FakeTextReader
 from packages.ml_contracts.payloads import InferStepPayload
 from packages.ml_contracts.ports import RgbImage, TextReader
+from packages.vision.dimensions.chains import dimension_spans
 
 __all__ = ["MODEL_VERSION_FAMILY_MISMATCH", "STEP", "text_read"]
 
@@ -67,7 +68,19 @@ def _read(image: NDArray[np.uint8], payload: InferStepPayload, reader: TextReade
     `prepare`; bước này luôn có nên `cast` thay cho một nhánh chết không test nổi.
     """
     items = cast("TextReader", reader).read(image)
-    return StepOutput({"text.json": text_to_json(TextResult(items=items))})
+    return StepOutput({"text.json": text_to_json(TextResult(items=with_spans(image, items)))})
+
+
+def with_spans(image: NDArray[np.uint8], items: tuple[TextPx, ...]) -> tuple[TextPx, ...]:
+    """Gắn `span_px` (đoạn kích thước đo trên ảnh) cho từng chữ; bước dựng dùng làm mẫu tỉ lệ.
+
+    Ảnh xám theo trọng số BT.601 như `cv2.COLOR_RGB2GRAY`; không có chữ thì khỏi dựng mặt nạ.
+    """
+    if not items:
+        return items
+    gray = np.asarray(image[..., :3] @ np.array([0.299, 0.587, 0.114]), dtype=np.uint8)
+    spans = dimension_spans(gray, [item.box for item in items])
+    return tuple(item.model_copy(update={"span_px": span}) for item, span in zip(items, spans, strict=True))
 
 
 @define_task(name="ml.infer.text.read", payload=InferStepPayload, on_failed=step_failed)

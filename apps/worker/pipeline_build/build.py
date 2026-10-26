@@ -54,7 +54,8 @@ from packages.ml_contracts.artifacts import (
     WallPx,
     WallsResult,
 )
-from packages.vision.dimensions import pair_dimension_lines, wall_spans
+from packages.vision.dimensions import pair_dimension_lines, parse_length_mm, wall_spans
+from packages.vision.dimensions.chains import densest_cluster
 
 _log = logging.getLogger(__name__)
 
@@ -201,11 +202,19 @@ def _resolved_scale(
 ) -> tuple[Decimal, Literal["pipeline", "project_default"], tuple[ScaleSample, ...], tuple[str, ...]]:
     """Bước 2: tỉ lệ dây `s`, nguồn, mẫu và id mẫu bị loại; ngoài khoảng → `scaleOutOfRange`.
 
+    Mẫu chuỗi kích thước (`span_px` đo trên ảnh, cụm tỉ số đông nhất) quyết trước; không đủ
+    thì mới tới mẫu ghép chữ-tường. Trả cả hai loại mẫu: bước 7 chỉ dựng `Dimension` từ mẫu
+    ghép tường (id `t…-w…`), mẫu chuỗi bị `_SAMPLE_ID` bỏ qua.
+
     Không có tỉ lệ suy được, ngoài khoảng, hay `s` về 0 sau quantize → `fallback_mm_per_px`
     và log `SCALE_UNRESOLVED` (K19: không bao giờ đoán một tỉ lệ khác).
     """
-    samples = pair_dimension_lines(texts, walls)
-    result = infer_scale(samples)
+    paired = pair_dimension_lines(texts, walls)
+    chained = densest_cluster(_chain_samples(texts))
+    result = infer_scale(chained)
+    if result.mm_per_px is None:
+        result = infer_scale(paired)
+    samples = (*paired, *chained)
     if result.mm_per_px is not None:
         if classify_scale_range(result.mm_per_px) == "inRange":
             value = Decimal(repr(result.mm_per_px)).quantize(_QUANTUM)
@@ -218,6 +227,16 @@ def _resolved_scale(
         extra={"code": PipelineCode.SCALE_UNRESOLVED.value, "reason": result.reason},
     )
     return fallback_mm_per_px, "project_default", samples, result.rejected_ids
+
+
+def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
+    """Một mẫu mỗi chữ có `span_px` và đọc ra độ dài mm, tỉ số trong dải 1-200 mm/px; id `t<i>-chain`."""
+    samples = []
+    for index, text in enumerate(texts):
+        value = parse_length_mm(text.text) if text.span_px else None
+        if value is not None and text.span_px and classify_scale_range(value / text.span_px) == "inRange":
+            samples.append(ScaleSample(f"t{index}-chain", text.span_px, float(value)))
+    return tuple(samples)
 
 
 def _build_scale(walls: Sequence[WallPx], final: float) -> float:
