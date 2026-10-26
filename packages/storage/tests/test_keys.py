@@ -230,7 +230,7 @@ def test_document_original_key() -> None:
     assert keys.document_original(PROJECT, DOCUMENT, "pdf") == f"{DOCUMENT_PREFIX}original.pdf"
     with pytest.raises(ValueError, match="đuôi tệp"):
         keys.document_original(PROJECT, DOCUMENT, "PDF")
-    with pytest.raises(ValueError, match="một đoạn"):
+    with pytest.raises(ValueError, match="doc"):
         keys.document_original(PROJECT, "doc/../x", "pdf")
 
 

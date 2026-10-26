@@ -9,7 +9,7 @@ from typing import Final
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.clock import SystemClock
-from packages.core.ids import new_id, new_ulid
+from packages.core.ids import new_id
 from packages.db.models.documents import DocumentPageRow, DocumentRow, DrawingRegionRow
 from packages.db.models.drawings import UploadRow
 from packages.db.models.floors import FloorRow
@@ -22,7 +22,7 @@ PAGE_SIZE_PX: Final = (1200, 800)
 
 async def make_document(db: AsyncSession, *, project: Project, status: str = "ready", pages: int = 1) -> DocumentRow:
     """Một tài liệu PDF đã `flush` cùng `pages` trang có ảnh xem trước; `failed` mang sẵn `error_code`."""
-    document_id = f"doc_{new_ulid(SystemClock())}"
+    document_id = new_id("doc", SystemClock())
     document = DocumentRow(
         id=document_id,
         project_id=project.id,
@@ -63,7 +63,7 @@ async def make_region(
     """Một vùng AI đề xuất trên `page`, hộp `(x0, y0, x1, y1)` tỉ lệ; đã `flush`."""
     x0, y0, x1, y1 = box
     region = DrawingRegionRow(
-        id=f"reg_{new_ulid(SystemClock())}",
+        id=new_id("reg", SystemClock()),
         page_pk=page.pk,
         x0=x0,
         y0=y0,

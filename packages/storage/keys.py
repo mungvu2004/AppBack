@@ -95,10 +95,9 @@ def upload_page_revision(project: str, floor: str, upload: str, index: int, ulid
 def document_prefix(project: str, document: str) -> str:
     """Tiền tố mọi object của một tài liệu chưa gán tầng: `projects/{prj}/documents/{doc}/` (Strategy B H1).
 
-    Nằm dưới `project_prefix` nên dọn rác dự án phủ cả tài liệu. `doc_` chưa vào `IdPrefix` của lõi,
-    nên id tài liệu chỉ kiểm là **một** đoạn khoá (`_name`).
+    Nằm dưới `project_prefix` nên dọn rác dự án phủ cả tài liệu; id tài liệu sai mẫu `doc_…` → `ValueError`.
     """
-    return check_prefix(f"{project_prefix(project)}documents/{_name(document)}/")
+    return check_prefix(f"{project_prefix(project)}documents/{check_id('doc', document)}/")
 
 
 def _document_index(index: int) -> int:
