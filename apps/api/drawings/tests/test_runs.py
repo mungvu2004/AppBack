@@ -17,7 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import pytest_asyncio
 from redis.asyncio import Redis as AsyncRedis
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.drawings.errors import FLOOR_DELETED
@@ -35,7 +35,8 @@ from apps.api.projects.summaries import unregister_floor
 from packages.core.pipeline import PipelineCode
 from packages.db.hooks import after_commit_idle
 from packages.db.models.drawings import PipelineRunRow, UploadRow
-from packages.db.models.projects import ProjectFloorSummary
+from packages.db.models.notifications import NotificationRow
+from packages.db.models.projects import ProjectFloorSummary, ProjectMembership
 from packages.messaging.redis import broker_redis_sync
 from packages.messaging.settings import reset_messaging_settings_cache
 from packages.messaging.streams import upload_stream
@@ -551,3 +552,92 @@ async def test_publish_progress_after_commit__a_lost_reply_publishes_one_frame(
 
     assert cutter.cut, "proxy phải đã cắt một phản hồi id sự kiện"
     assert await streams_client.xlen(upload_stream(upload.id)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Thông báo lượt hỏng (FIX-P0-12)
+# ---------------------------------------------------------------------------
+
+
+async def _failed_notifications(db: AsyncSession, user_id: str) -> list[NotificationRow]:
+    """Mọi thông báo `aiFailed` của một người, cũ trước."""
+    stmt = (
+        select(NotificationRow)
+        .where(NotificationRow.user_id == user_id, NotificationRow.kind == "aiFailed")
+        .order_by(NotificationRow.created_at, NotificationRow.id)
+    )
+    return list((await db.execute(stmt)).scalars())
+
+
+async def _fail_step(db: AsyncSession, run_id: str, clock: FakeClock) -> dict[str, object] | None:
+    """Bước đầu chạy rồi hỏng với một mã thường (không phải thay lượt hay xoá tầng)."""
+    await record_step(db, run_id=run_id, step="preprocess", status="running", clock=clock)
+    return await record_step(
+        db, run_id=run_id, step="preprocess", status="failed", clock=clock, error_code="IMAGE_TOO_LARGE"
+    )
+
+
+async def test_record_step_failed_notifies_uploader(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Bước hỏng → người tải nhận đúng một `aiFailed` ở `floors`, dẫn tới tầng, nhãn là tên tầng."""
+    scene, run = await _started_run(db_session, fake_clock)
+    assert await _fail_step(db_session, run.id, fake_clock) is not None
+
+    rows = await _failed_notifications(db_session, scene.user.id)
+    assert [(row.place, row.floor_level_id, row.object_label, row.dedupe_key) for row in rows] == [
+        ("floors", scene.floor.level_id, scene.floor.name, f"aiFailed:{run.id}:{scene.user.id}")
+    ]
+    assert rows[0].message == f"Dự án {scene.project.name}: AI chưa xử lý được bản vẽ"
+
+
+async def test_fail_run_stalled_notifies_uploader(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Lõi quét bù đánh hỏng `PIPELINE_STALLED` → người tải cũng được báo."""
+    scene, run = await _started_run(db_session, fake_clock)
+    assert await fail_run(db_session, run_id=run.id, error_code="PIPELINE_STALLED", clock=fake_clock) is True
+    assert len(await _failed_notifications(db_session, scene.user.id)) == 1
+
+
+async def test_failed_twice_notifies_once(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Bước hỏng rồi quét bù cũng đánh hỏng (giao lặp, chạy song song) → vẫn một thông báo."""
+    scene, run = await _started_run(db_session, fake_clock)
+    await _fail_step(db_session, run.id, fake_clock)
+    await _fail_step(db_session, run.id, fake_clock)
+    await fail_run(db_session, run_id=run.id, error_code="PIPELINE_STALLED", clock=fake_clock)
+    assert len(await _failed_notifications(db_session, scene.user.id)) == 1
+
+
+async def test_superseded_does_not_notify(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Lượt bị lượt mới thay là do người dùng tải lại: không báo."""
+    scene, first = await _started_run(db_session, fake_clock)
+    second_upload = await _complete_upload(db_session, scene)
+    await start_run(db_session, upload_id=second_upload.id, clock=fake_clock)
+
+    assert (await read_run(db_session, first.id)).error_code == PipelineCode.PIPELINE_SUPERSEDED.value
+    assert await _failed_notifications(db_session, scene.user.id) == []
+
+
+async def test_floor_deleted_does_not_notify(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Tầng xoá quá cửa sổ khôi phục → lượt `FLOOR_DELETED` nhưng không báo."""
+    scene, run = await _started_run(db_session, fake_clock)
+    scene.floor.deleted_at = fake_clock.now()
+    await unregister_floor(db_session, project_id=scene.project.id, floor_level_id=scene.floor.level_id)
+    await db_session.flush()
+    fake_clock.advance(timedelta(seconds=get_floors_settings().floor_restore_window_s + 1))
+
+    assert await record_step(db_session, run_id=run.id, step="preprocess", status="running", clock=fake_clock) is None
+    assert (await read_run(db_session, run.id)).error_code == FLOOR_DELETED
+    assert await _failed_notifications(db_session, scene.user.id) == []
+
+
+async def test_uploader_left_project_not_notified(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Người tải đã bị gỡ khỏi dự án → lượt vẫn hỏng, không ai được báo."""
+    scene, run = await _started_run(db_session, fake_clock)
+    await db_session.execute(
+        delete(ProjectMembership).where(
+            ProjectMembership.project_id == scene.project.id, ProjectMembership.user_id == scene.user.id
+        )
+    )
+    await db_session.flush()
+
+    assert await _fail_step(db_session, run.id, fake_clock) is not None
+    assert (await read_run(db_session, run.id)).status == "failed"
+    assert await _failed_notifications(db_session, scene.user.id) == []

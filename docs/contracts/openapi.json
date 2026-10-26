@@ -315,6 +315,11 @@
             "title": "Direction",
             "type": "string"
           },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -373,6 +378,17 @@
             ],
             "title": "Direction",
             "type": "string"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "id": {
             "title": "Id",
@@ -498,6 +514,17 @@
           "datumElevationMm": {
             "title": "Datumelevationmm",
             "type": "integer"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "grossFloorAreaM2": {
             "anyOf": [
@@ -1157,6 +1184,11 @@
             "title": "Confidence",
             "type": "number"
           },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1241,6 +1273,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "id": {
             "title": "Id",
@@ -1597,7 +1640,7 @@
       },
       "FloorLayerDocumentOut": {
         "additionalProperties": false,
-        "description": "N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24).",
+        "description": "N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24).\n\n`readiness` luôn có (FIX-P0-10): \"lượt chạy xong\" chưa có nghĩa \"tầng dùng được\".",
         "properties": {
           "axes": {
             "items": {
@@ -1629,6 +1672,9 @@
               }
             ]
           },
+          "readiness": {
+            "$ref": "#/components/schemas/ReadinessOut"
+          },
           "revision": {
             "minimum": 0.0,
             "title": "Revision",
@@ -1650,6 +1696,7 @@
         "required": [
           "revision",
           "level",
+          "readiness",
           "layer",
           "axes",
           "dimensions"
@@ -2144,6 +2191,11 @@
             "title": "Confidence",
             "type": "number"
           },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
+          },
           "heightMm": {
             "anyOf": [
               {
@@ -2438,6 +2490,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "heightMm": {
             "anyOf": [
@@ -2877,6 +2940,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "elevationMm": {
             "title": "Elevationmm",
@@ -3445,6 +3519,17 @@
             "title": "Createdat",
             "type": "string"
           },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
+          },
           "entityId": {
             "title": "Entityid",
             "type": "string"
@@ -3596,7 +3681,8 @@
             "enum": [
               "aiCompleted",
               "violationFound",
-              "projectInvite"
+              "projectInvite",
+              "aiFailed"
             ],
             "title": "Kind",
             "type": "string"
@@ -3656,6 +3742,11 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
           },
           "heightMm": {
             "exclusiveMinimum": 0.0,
@@ -3835,6 +3926,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "heightMm": {
             "title": "Heightmm",
@@ -4180,7 +4282,8 @@
                   "enum": [
                     "aiCompleted",
                     "violationFound",
-                    "projectInvite"
+                    "projectInvite",
+                    "aiFailed"
                   ]
                 },
                 "type": "object"
@@ -4772,6 +4875,41 @@
         "title": "QualityAssessmentOut",
         "type": "object"
       },
+      "ReadinessOut": {
+        "additionalProperties": false,
+        "description": "Tầng dùng được chưa (FIX-P0-10, thiết kế H5 §2.2): trạng thái kèm lý do, thứ tự cố định.",
+        "properties": {
+          "reasons": {
+            "items": {
+              "enum": [
+                "scaleUnresolved",
+                "criticalIssues",
+                "fallbackWallModel",
+                "fallbackObjectModel",
+                "fallbackTextModel"
+              ],
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "needsReview",
+              "notEvaluated"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reasons"
+        ],
+        "title": "ReadinessOut",
+        "type": "object"
+      },
       "RefreshBody": {
         "additionalProperties": false,
         "description": "Thân W16: `roles` đúng một vai, `expiresAt` = `exp` của access token.",
@@ -4932,6 +5070,11 @@
             "title": "Confidence",
             "type": "number"
           },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -4985,6 +5128,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "id": {
             "title": "Id",
@@ -5042,6 +5196,11 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
           },
           "finish": {
             "anyOf": [
@@ -5210,6 +5369,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "finish": {
             "anyOf": [
@@ -6609,7 +6779,8 @@
                   "enum": [
                     "aiCompleted",
                     "violationFound",
-                    "projectInvite"
+                    "projectInvite",
+                    "aiFailed"
                   ]
                 },
                 "type": "object"
@@ -6802,6 +6973,11 @@
             "title": "Confidence",
             "type": "number"
           },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
+          },
           "heightMm": {
             "exclusiveMinimum": 0.0,
             "maximum": 9007199254740991.0,
@@ -6963,6 +7139,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited"
           },
           "heightMm": {
             "title": "Heightmm",
@@ -9816,7 +10003,7 @@
     },
     "/api/projects/{project_id}/floors/{floor_id}/spatial/layer": {
       "get": {
-        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`, bốn danh sách, trục, kích thước.",
+        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước.",
         "operationId": "spatial_read_layer_api_projects__project_id__floors__floor_id__spatial_layer_get",
         "parameters": [
           {

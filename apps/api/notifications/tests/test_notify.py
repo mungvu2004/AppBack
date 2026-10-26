@@ -130,6 +130,25 @@ async def test_notify__label_is_capped(
     assert len((await rows_of(db_session, user.id))[0].project_name) == 200
 
 
+async def test_notify__ai_failed_kind_is_stored(
+    db_session: AsyncSession, fake_clock: FakeClock, streams_client: AsyncRedis
+) -> None:
+    """`kind='aiFailed'` qua được `_check` và CHECK `kind` của DB (FIX-P0-11: trước revision là lỗi CHECK)."""
+    user, project = await _fixture_pair(db_session)
+    row = await commit_notify(
+        db_session,
+        fake_clock,
+        user_id=user.id,
+        project_id=project.id,
+        project_name="A",
+        kind="aiFailed",
+        place="floors",
+        message="Dự án A: AI chưa xử lý được bản vẽ",
+    )
+    assert row is not None
+    assert [stored.kind for stored in await rows_of(db_session, user.id)] == ["aiFailed"]
+
+
 async def test_notify__same_dedupe_key_returns_none(
     db_session: AsyncSession, fake_clock: FakeClock, streams_client: AsyncRedis
 ) -> None:

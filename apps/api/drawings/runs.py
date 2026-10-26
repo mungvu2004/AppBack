@@ -28,6 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.drawings.errors import FLOOR_DELETED
 from apps.api.drawings.progress import FIRST_STEP, progress_wire
 from apps.api.floors.settings import get_floors_settings
+from apps.api.notifications.messages import ai_failed
+from apps.api.notifications.service import notify
+from apps.api.projects.memberships import is_member
 from apps.api.projects.summaries import set_upload_state, touch_project
 from apps.api.streams.lifecycle import finalize_upload_stream_sync
 from packages.core.clock import Clock
@@ -58,6 +61,8 @@ _STEP_INDEX: Final = {step: index for index, step in enumerate(_STEPS)}
 _WEIGHT_BEFORE: Final = tuple(sum(w for _, w in PIPELINE_STEPS[:index]) for index in range(len(PIPELINE_STEPS)))
 _WEIGHT_THROUGH: Final = tuple(sum(w for _, w in PIPELINE_STEPS[: index + 1]) for index in range(len(PIPELINE_STEPS)))
 _UPPER_SNAKE: Final = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
+_SILENT_FAILURES: Final = frozenset({PipelineCode.PIPELINE_SUPERSEDED.value, FLOOR_DELETED})
+"""Lượt hỏng vì lượt mới thay hay tầng/dự án đã xoá: người tải tự gây ra, không báo (FIX-P0-12)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,9 +373,42 @@ async def _floor_was_recreated(db: AsyncSession, floor: _FloorFacts) -> bool:
     return (await db.execute(stmt)).first() is not None
 
 
-async def _settle(db: AsyncSession, run: PipelineRunRow, floor: _FloorFacts) -> None:
-    """Đồng bộ dòng đếm của tầng rồi hẹn phát `Progress` sau commit (BE-00 §7)."""
+async def _notify_failed(db: AsyncSession, run: PipelineRunRow, floor: _FloorFacts, clock: Clock) -> None:
+    """Báo người tải lên rằng lượt hỏng (FIX-P0-12); người tải đã rời dự án → không báo ai.
+
+    Một câu đọc người tải, tên dự án, tên tầng. `_settle` có thể chạy lại cho cùng lượt: `dedupe_key`
+    theo lượt + người nhận nên `notify` không sinh dòng thứ hai.
+    """
+    stmt = (
+        select(UploadRow.created_by, Project.name, FloorRow.name)
+        .join(FloorRow, FloorRow.pk == UploadRow.floor_pk)
+        .join(Project, Project.id == FloorRow.project_id)
+        .where(UploadRow.id == run.upload_id)
+    )
+    row = (await db.execute(stmt)).first()
+    if row is None or not await is_member(db, floor.project_id, row.created_by):
+        return
+    uploader_id, project_name, floor_name = row
+    await notify(
+        db,
+        user_id=uploader_id,
+        kind="aiFailed",
+        place="floors",
+        project_id=floor.project_id,
+        project_name=project_name,
+        object_label=floor_name,
+        message=ai_failed(project_name),
+        dedupe_key=f"aiFailed:{run.id}:{uploader_id}",
+        clock=clock,
+        floor_level_id=floor.level_id,
+    )
+
+
+async def _settle(db: AsyncSession, run: PipelineRunRow, floor: _FloorFacts, clock: Clock) -> None:
+    """Đồng bộ dòng đếm của tầng, báo người tải nếu lượt hỏng, rồi hẹn phát `Progress` sau commit (BE-00 §7)."""
     await db.flush()
+    if run.status == "failed" and run.error_code not in _SILENT_FAILURES:
+        await _notify_failed(db, run, floor, clock)
     if not await _floor_was_recreated(db, floor):
         await set_upload_state(
             db,
@@ -387,7 +425,7 @@ async def _abandon(db: AsyncSession, run: PipelineRunRow, floor: _FloorFacts, er
     run.status = "failed"
     run.error_code = error_code
     run.updated_at = clock.now()
-    await _settle(db, run, floor)
+    await _settle(db, run, floor, clock)
 
 
 async def fail_run(db: AsyncSession, *, run_id: str, error_code: str, clock: Clock) -> bool:
@@ -436,7 +474,7 @@ async def record_step(
     if not _apply(run, step=step, status=status, error_code=error_code, clock=clock):
         return None
     run.updated_at = clock.now()
-    await _settle(db, run, floor)
+    await _settle(db, run, floor, clock)
     return await progress_wire(db, run.upload_id)
 
 
