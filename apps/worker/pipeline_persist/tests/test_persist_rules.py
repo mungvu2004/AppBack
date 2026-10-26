@@ -15,20 +15,18 @@ import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.admin_ml_registry.registry import active_versions
-from apps.api.drawings.runs import record_step, reset_sync_bus_cache, start_run
+from apps.api.drawings.runs import reset_sync_bus_cache, start_run
 from apps.api.floors.settings import get_floors_settings
 from apps.api.spatial_read.documents import load_document
 from apps.api.spatial_write.errors import LAYER_INTEGRITY_BROKEN
 from apps.worker.pipeline_build.errors import PIPELINE_ARTIFACT_INVALID, PIPELINE_ARTIFACT_MISSING
-from apps.worker.pipeline_orchestrate.pins import load_pins, pin_models
+from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_persist import service
 from apps.worker.pipeline_persist.context import PersistContext, load_context
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.merge import with_floor_height
 from apps.worker.pipeline_persist.service import run_persist
 from apps.worker.pipeline_persist.tests.helpers import (
-    DONE_STEPS,
     FLOOR_HEIGHT_MM,
     Arranged,
     arrange,
@@ -36,6 +34,7 @@ from apps.worker.pipeline_persist.tests.helpers import (
     open_run_at_build,
     persist_once,
     put_layer,
+    restart_run,
     sample_built,
 )
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -342,7 +341,7 @@ async def test_persist_second_run_marks_same_revision(
     """Lượt hai với cùng `layer.json`: `applied=False` nhưng `persisted_revision` vẫn là revision đó."""
     first = await arrange(db_sessionmaker, local_storage, fake_clock)
     assert await persist_once(db_sessionmaker, local_storage, first, fake_clock) == "persisted"
-    second = await _restart(db_sessionmaker, local_storage, first, fake_clock)
+    second = await restart_run(db_sessionmaker, local_storage, first, fake_clock)
 
     assert await persist_once(db_sessionmaker, local_storage, second, fake_clock) == "persisted"
 
@@ -354,33 +353,6 @@ async def test_persist_second_run_marks_same_revision(
     assert pins is not None
     assert pins.persisted_revision == document.revision
     assert notifications == 2
-
-
-async def _restart(
-    maker: async_sessionmaker[AsyncSession], storage: LocalDiskStorage, arranged: Arranged, clock: FakeClock
-) -> Arranged:
-    """Mở lượt chạy thứ hai cho cùng lượt tải, đưa nó tới `spatialDataBuild` và ghi `layer.json`."""
-    async with maker() as db:
-        run = await start_run(db, upload_id=arranged.upload_id, clock=clock)
-        await pin_models(db, run_id=run.id, models=await active_versions(db))
-        await record_step(db, run_id=run.id, step="preprocess", status="running", clock=clock)
-        for step in DONE_STEPS:
-            await record_step(db, run_id=run.id, step=step, status="completed", clock=clock)
-        await db.commit()
-    await after_commit_idle(db)
-    later = Arranged(
-        run_id=run.id,
-        upload_id=arranged.upload_id,
-        floor_pk=arranged.floor_pk,
-        project_id=arranged.project_id,
-        floor_id=arranged.floor_id,
-        level_id=arranged.level_id,
-        floor_name=arranged.floor_name,
-        uploader_id=arranged.uploader_id,
-        payload=RunStepPayload(schema_version=1, run_id=run.id),
-    )
-    await put_layer(storage, later, sample_built(later.level_id).to_json())
-    return later
 
 
 @pytest.mark.asyncio(loop_scope="function")

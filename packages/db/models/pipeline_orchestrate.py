@@ -5,6 +5,8 @@ nhất một dòng ghim và xoá cứng lượt là một lệnh `DELETE` (cùng
 `pinned`, `used` là JSONB theo hợp đồng `RunPins` ([2]); DB không kiểm hình dạng, chỉ CHECK
 hai trần đếm không âm. Chỉ mục một phần `(run_id) WHERE artifacts_purged_at IS NULL` phục vụ
 lịch dọn artifact (B5-06c, W12) tra "lượt chưa dọn" mà không quét dòng đã dọn xong.
+`quality_summary` (FIX-P0-08) giữ tóm tắt bước quality (`hasCritical`, `criticalCount`,
+`lowConfidence`) để N16 tính `readiness` khi `quality.json` ở MinIO đã bị dọn; `NULL` = chưa ghi.
 """
 
 from datetime import datetime
@@ -32,6 +34,7 @@ class PipelineRunModelsRow(Base, TimestampMixin):
     step_requeue_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     last_used_at: Mapped[datetime | None] = mapped_column(default=None)
     artifacts_purged_at: Mapped[datetime | None] = mapped_column(default=None)
+    quality_summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint("persisted_revision IS NULL OR persisted_revision >= 0", name="persisted_revision_min"),

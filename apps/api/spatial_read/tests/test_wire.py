@@ -15,6 +15,7 @@ from apps.api.spatial_read.wire import (
     FloorLayerDocumentOut,
     FloorRevisionOut,
     LevelOut,
+    ReadinessOut,
     SpatialGraphDocumentOut,
     SpatialGraphOut,
     dimensions_out,
@@ -112,11 +113,14 @@ def test_layer_document_omits_scale_status() -> None:
             source="human",
             reviewed=False,
         ),
+        readiness=ReadinessOut(state="notEvaluated", reasons=()),
         layer=layer_out(sample_floor_layer(0, level_id=LEVEL_ID)),
         axes=[],
         dimensions=[],
     ).model_dump(by_alias=True)
     assert "scaleStatus" not in body
+    assert body["readiness"]["state"] == "notEvaluated"
+    assert not body["readiness"]["reasons"]
 
 
 def test_graph_document_is_strict() -> None:

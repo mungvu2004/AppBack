@@ -44,6 +44,8 @@ class _ReviewedOut(WireModel):
     confidence: Annotated[float, Field(ge=0, le=1)]
     source: Literal["ai", "human"]
     reviewed: bool
+    # Chỉ có khi người đã sửa mục AI (FIX-P0-04): miền bỏ khoá khi `False`, dây vắng khoá theo W2.
+    edited: bool | None = None
 
 
 class PointOut(WireModel):
@@ -243,12 +245,29 @@ class SpatialGraphDocumentOut(WireModel):
     floor_revisions: list[FloorRevisionOut]
 
 
+ReadinessState = Literal["ready", "needsReview", "notEvaluated"]
+ReadinessReason = Literal[
+    "scaleUnresolved", "criticalIssues", "fallbackWallModel", "fallbackObjectModel", "fallbackTextModel"
+]
+
+
+class ReadinessOut(WireModel):
+    """Tầng dùng được chưa (FIX-P0-10, thiết kế H5 §2.2): trạng thái kèm lý do, thứ tự cố định."""
+
+    state: ReadinessState
+    reasons: tuple[ReadinessReason, ...]
+
+
 class FloorLayerDocumentOut(WireModel):
-    """N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24)."""
+    """N16 — lớp của một tầng; `scaleStatus` vắng khi tỉ lệ do người đặt hay chưa có (W24).
+
+    `readiness` luôn có (FIX-P0-10): "lượt chạy xong" chưa có nghĩa "tầng dùng được".
+    """
 
     revision: Annotated[int, Field(ge=0)]
     level: LevelOut
     scale_status: Literal["unresolved"] | None = None
+    readiness: ReadinessOut
     layer: SpatialLayerOut
     axes: list[AxisOut]
     dimensions: list[DimensionOut]

@@ -11,13 +11,19 @@ from collections.abc import Callable
 from decimal import Decimal
 
 from apps.worker.pipeline_build.constants import DEFAULT_WALL_HEIGHT_MM
-from packages.domain.rules_ai.merge import MergeResult, merge_pipeline_result
+from packages.domain.rules_ai.merge import MergeResult, Removed, merge_pipeline_result
 from packages.domain.scale.rescale import rescale_unreviewed
 from packages.domain.spatial.model import SpatialLayer
 
 
-def make_merge(ai: SpatialLayer, s_ai: Decimal) -> Callable[[SpatialLayer, Decimal | None], MergeResult]:
-    """Gói lớp AI và tỉ lệ dựng của nó thành hàm trộn cho `write_layer(merge=…)`."""
+def make_merge(
+    ai: SpatialLayer, s_ai: Decimal, removed: Removed
+) -> Callable[[SpatialLayer, Decimal | None], MergeResult]:
+    """Gói lớp AI và tỉ lệ dựng của nó thành hàm trộn cho `write_layer(merge=…)`.
+
+    `removed` là bia mộ người đã xoá (`human_removals`, đọc dưới khoá tầng): mục AI trùng bia
+    mộ bị chặn, để tường người xoá không quay lại sau lượt chạy (FIX-P0-07).
+    """
 
     def merge(base: SpatialLayer, target: Decimal | None) -> MergeResult:
         """Trộn lớp AI vào `base`; `target` là tỉ lệ tầng giữ, `None` = tỉ lệ AI thắng.
@@ -27,8 +33,8 @@ def make_merge(ai: SpatialLayer, s_ai: Decimal) -> Callable[[SpatialLayer, Decim
         khi trộn, để mục người đã duyệt ở tỉ lệ đó không phải đổi (K21).
         """
         if target is None:
-            return merge_pipeline_result(base, ai)
-        return merge_pipeline_result(base, rescale_unreviewed(ai, float(s_ai), float(target)))
+            return merge_pipeline_result(base, ai, removed)
+        return merge_pipeline_result(base, rescale_unreviewed(ai, float(s_ai), float(target)), removed)
 
     return merge
 

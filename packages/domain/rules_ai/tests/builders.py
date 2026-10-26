@@ -33,9 +33,11 @@ def fid(number: int) -> str:
     return eid("F", number)
 
 
-def review(source: SourceName = "ai", *, reviewed: bool = False, confidence: float = 0.82) -> dict[str, Any]:
-    """Ba trường duyệt; mặc định là đầu ra AI chưa duyệt, tin cậy 0,82 như bộ mẫu A14."""
-    return {"source": source, "reviewed": reviewed, "confidence": confidence}
+def review(
+    source: SourceName = "ai", *, reviewed: bool = False, confidence: float = 0.82, edited: bool = False
+) -> dict[str, Any]:
+    """Bốn trường duyệt; mặc định là đầu ra AI chưa duyệt, chưa sửa, tin cậy 0,82 như bộ mẫu A14."""
+    return {"source": source, "reviewed": reviewed, "confidence": confidence, "edited": edited}
 
 
 def wall(

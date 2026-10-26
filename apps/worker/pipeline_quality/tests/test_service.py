@@ -19,6 +19,7 @@ from apps.api.drawings.runs import reset_sync_bus_cache, start_run
 from apps.api.floors.settings import get_floors_settings
 from apps.api.spatial_read.codec import document_to_json
 from apps.api.spatial_read.documents import load_document
+from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
 from apps.worker.pipeline_persist.tests.helpers import open_run_at_build
 from apps.worker.pipeline_quality import service, tasks
@@ -335,3 +336,57 @@ def test_boundary__pipeline_quality_imports_cleanly() -> None:
     assert report.QUALITY_ARTIFACT == "quality.json"
     assert service.STEP == "qualityCheck"
     assert tasks.QUALITY_TASK == "pipeline.quality.run"
+
+
+async def _summary_and_artifact(
+    maker: async_sessionmaker[AsyncSession], storage: ObjectStorage, arranged: Arranged
+) -> tuple[object, dict[str, object]]:
+    """Cột `quality_summary` của lượt và `quality.json` đã ghi, để so hai nguồn cùng một `report`."""
+    async with maker() as db:
+        pins = await load_pins(db, arranged.run_id)
+    assert pins is not None
+    body = bytearray()
+    async for chunk in storage.open_read(_quality_key(arranged)):
+        body += chunk
+    return pins.quality_summary, json.loads(bytes(body))
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_run_quality_records_summary_with_critical(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: ObjectStorage,
+    fake_clock: FakeClock,
+    quality_env: None,
+) -> None:
+    """FIX-P0-09: lỗi `critical` → tóm tắt ghi `hasCritical` true, đếm lỗi; lượt vẫn `completed`."""
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+    await _break_document_by_sql(db_sessionmaker, arranged.floor_pk)
+
+    outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+
+    assert outcome == "completed"
+    summary, artifact = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
+    issues = cast("list[dict[str, object]]", artifact["integrity"])
+    critical = sum(1 for issue in issues if issue["severity"] == "critical")
+    assert critical >= 1
+    assert summary == {"hasCritical": True, "criticalCount": critical, "lowConfidence": artifact["lowConfidence"]}
+    status, _, _ = await _run_row(db_sessionmaker, arranged.run_id)
+    assert status == "completed"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_run_quality_records_summary_clean(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: ObjectStorage,
+    fake_clock: FakeClock,
+    quality_env: None,
+) -> None:
+    """FIX-P0-09: lớp sạch → tóm tắt `hasCritical` false, `criticalCount` 0, đếm tin cậy thấp như `quality.json`."""
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+
+    outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+
+    assert outcome == "completed"
+    summary, artifact = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
+    assert artifact["hasCritical"] is False
+    assert summary == {"hasCritical": False, "criticalCount": 0, "lowConfidence": artifact["lowConfidence"]}

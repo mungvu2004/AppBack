@@ -34,6 +34,7 @@ from packages.domain.spatial.model import (
     SpatialLayer,
     Wall,
 )
+from packages.domain.spatial.provenance import mark_edited, mark_edited_dimensions
 from packages.domain.spatial.samples import sample_building, sample_layer, sample_roof
 
 __all__ = [
@@ -70,6 +71,8 @@ __all__ = [
     "has_untracked_changes",
     "js_round",
     "layer_counts",
+    "mark_edited",
+    "mark_edited_dimensions",
     "polygon_area_m2",
     "sample_building",
     "sample_layer",

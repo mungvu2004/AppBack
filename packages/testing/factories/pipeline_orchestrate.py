@@ -8,7 +8,13 @@ from collections.abc import Mapping
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.worker.pipeline_orchestrate.pins import mark_persisted, pin_models, record_used, set_step_requeue
+from apps.worker.pipeline_orchestrate.pins import (
+    mark_persisted,
+    pin_models,
+    record_quality_summary,
+    record_used,
+    set_step_requeue,
+)
 from packages.ml_contracts.families import MODEL_FAMILIES, ModelFamily
 from packages.ml_contracts.payloads import ModelRef
 
@@ -30,8 +36,9 @@ async def make_run_pins(
     used: Mapping[ModelFamily, str] | None = None,
     persisted_revision: int | None = None,
     step_requeue_count: int = 0,
+    quality_summary: Mapping[str, object] | None = None,
 ) -> None:
-    """Ghim ba họ (mặc định cổ điển) cho `run_id`, rồi áp `used`/`persisted_revision`/số đếm.
+    """Ghim ba họ (mặc định cổ điển) cho `run_id`, rồi áp `used`/`persisted_revision`/số đếm/`quality_summary`.
 
     Không `commit`: người gọi (test) tự quyết định giao dịch, giống mọi hàm `pins`.
     """
@@ -43,3 +50,5 @@ async def make_run_pins(
         await mark_persisted(db, run_id=run_id, revision=persisted_revision)
     if step_requeue_count:
         await set_step_requeue(db, run_id=run_id, count=step_requeue_count)
+    if quality_summary is not None:
+        await record_quality_summary(db, run_id=run_id, summary=quality_summary)

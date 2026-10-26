@@ -1,4 +1,4 @@
-"""`pins`: ghim model, `used`, `persisted_revision`, `step_requeue_count` (B5-06a [8] mục `pins`).
+"""`pins`: ghim model, `used`, `persisted_revision`, `step_requeue_count`, `quality_summary` (B5-06a [8], FIX-P0-08).
 
 Postgres thật (K23): CHECK, FK CASCADE và ngữ nghĩa "một lần" đều là hành vi của DB, không
 mô phỏng được bằng fake. Một lượt chạy thật (`make_complete_upload` + `start_run`, B2-04) làm
@@ -18,6 +18,7 @@ from apps.worker.pipeline_orchestrate.pins import (
     mark_artifacts_purged,
     mark_persisted,
     pin_models,
+    record_quality_summary,
     record_used,
     set_step_requeue,
 )
@@ -114,6 +115,47 @@ async def test_mark_persisted_second_call_returns_false_and_resets_requeue(
     assert (loaded.persisted_revision, loaded.step_requeue_count) == (1, 0)
 
 
+_SUMMARY: dict[str, object] = {
+    "hasCritical": True,
+    "criticalCount": 2,
+    "lowConfidence": {"walls": 1, "openings": 0, "rooms": 0, "furniture": 3},
+}
+
+
+async def test_record_quality_summary_writes_once(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Giao lặp J06: lần đầu ghi, lần hai (bản **khác**) trả `False`; `load_pins` đọc lại bản đầu."""
+    run_id = await _run_id(db_session, local_storage, fake_clock)
+    await pin_models(db_session, run_id=run_id, models=_CLASSIC_MODELS)
+    assert await record_quality_summary(db_session, run_id=run_id, summary=_SUMMARY) is True
+    clean = {"hasCritical": False, "criticalCount": 0, "lowConfidence": {}}
+    assert await record_quality_summary(db_session, run_id=run_id, summary=clean) is False
+    loaded = await load_pins(db_session, run_id)
+    assert loaded is not None
+    assert loaded.quality_summary == _SUMMARY
+
+
+async def test_record_quality_summary_returns_false_without_row(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Lượt chưa ghim (không có dòng `pipeline_run_models`) → `False`, không tạo dòng."""
+    run_id = await _run_id(db_session, local_storage, fake_clock)
+    assert await record_quality_summary(db_session, run_id=run_id, summary=_SUMMARY) is False
+    assert await load_pins(db_session, run_id) is None
+
+
+async def test_load_pins_quality_summary_none_before_quality_step(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Dòng mới ghim chưa qua bước quality → `quality_summary is None` (readiness coi là không có lỗi)."""
+    run_id = await _run_id(db_session, local_storage, fake_clock)
+    await make_run_pins(db_session, run_id=run_id)
+    loaded = await load_pins(db_session, run_id)
+    assert loaded is not None
+    assert loaded.quality_summary is None
+
+
 async def test_mark_persisted_negative_revision_raises(
     db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
@@ -158,7 +200,7 @@ async def test_delete_run_cascades_to_run_models(
 async def test_make_run_pins_applies_used_and_persisted_revision(
     db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
-    """`make_run_pins` (mặc định cổ điển) ghim rồi áp `used`/`persisted_revision`/số đếm."""
+    """`make_run_pins` (mặc định cổ điển) ghim rồi áp `used`/`persisted_revision`/số đếm/tóm tắt."""
     run_id = await _run_id(db_session, local_storage, fake_clock)
     await make_run_pins(
         db_session,
@@ -166,11 +208,13 @@ async def test_make_run_pins_applies_used_and_persisted_revision(
         used={"wallSegmentation": "classic"},
         persisted_revision=3,
         step_requeue_count=1,
+        quality_summary=_SUMMARY,
     )
     loaded = await load_pins(db_session, run_id)
     assert loaded is not None
     assert loaded.used == {"wallSegmentation": "classic"}
     assert (loaded.persisted_revision, loaded.step_requeue_count) == (3, 1)
+    assert loaded.quality_summary == _SUMMARY
 
 
 async def test_load_pins_for_update_locks_the_row(

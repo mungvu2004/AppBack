@@ -17,8 +17,11 @@ from packages.db.models.projects import PROJECTS
 
 NOTIFICATIONS: Final = "notifications"
 
-NotificationKind = Literal["aiCompleted", "violationFound", "projectInvite"]
-"""Ba loại server được gửi; `commentMention` của FE là việc của v2 nên không có ở đây."""
+NotificationKind = Literal["aiCompleted", "violationFound", "projectInvite", "aiFailed"]
+"""Bốn loại server được gửi; `commentMention` của FE là việc của v2 nên không có ở đây.
+
+`aiFailed` đứng cuối: CHECK `kind` dựng theo thứ tự này (`one_of`), revision `r20261026_b4_02_p0_11` chép đúng chuỗi.
+"""
 NotificationPlace = Literal[
     "walls", "objects", "dimensions", "grids", "rooms", "thickness", "floors", "rules", "projectSettings"
 ]

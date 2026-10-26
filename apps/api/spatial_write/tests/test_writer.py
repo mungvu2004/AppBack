@@ -652,3 +652,70 @@ def test_spatial_write_settings_hold_the_limits_of_the_prompt() -> None:
 
     assert (settings.spatial_write_attempts, settings.spatial_conflict_changes_max) == (3, 5000)
     assert (settings.spatial_log_compact_after_days, settings.spatial_log_compact_batch) == (30, 5000)
+
+
+async def _seeded(
+    db: AsyncSession, floor: FloorRow, clock: FakeClock, *, layer: SpatialLayer, scale: Decimal | None = None
+) -> None:
+    """Tầng đã có tài liệu ở bản ghi 1, ghi thẳng vào DB (không qua `write_layer`, nên không suy `edited`)."""
+    await make_floor_document(
+        db,
+        floor_pk=floor.pk,
+        layer=layer,
+        revision=1,
+        scale=scale,
+        scale_source="none" if scale is None else "human",
+        clock=clock,
+    )
+
+
+async def test_write_layer_marks_moved_ai_wall_edited(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Người dời đỉnh một tường AI → tường mang `edited`, `source` vẫn `ai` và chưa duyệt (H1)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _seeded(db_session, floor, fake_clock, layer=simple_layer(floor.level_id))
+    moved = simple_layer(floor.level_id, walls=(make_wall(floor.level_id, length=1500),))
+
+    result = await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, layer=moved)
+
+    wall = (await reread(db_session, floor.pk)).layer.walls[0]
+    assert (wall.edited, wall.source, wall.reviewed) == (True, "ai", False)
+    assert result.layer.walls[0].edited is True
+
+
+async def test_write_layer_does_not_mark_rescale_as_edit(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Thân gửi lại lớp cũ kèm tỉ lệ mới: tường được co giãn nhưng **không** bị coi là đã sửa."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    layer = simple_layer(floor.level_id)
+    await _seeded(db_session, floor, fake_clock, layer=layer, scale=Decimal("10"))
+
+    result = await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        base_revision=1,
+        layer=layer,
+        scale=Decimal("20"),
+    )
+
+    wall = result.layer.walls[0]
+    assert (wall.centreline.end.x, wall.edited) == (2000, False)
+
+
+async def test_write_layer_keeps_edited_when_body_omits(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Client cũ không biết `edited` (gửi `false`): cờ đã có trên tường không bị gỡ."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    edited = make_wall(floor.level_id).model_copy(update={"edited": True})
+    other = make_wall(floor.level_id, entity_id="W-TESTWALL02")
+    await _seeded(db_session, floor, fake_clock, layer=simple_layer(floor.level_id, walls=(edited, other)))
+    sent = simple_layer(
+        floor.level_id,
+        walls=(make_wall(floor.level_id), make_wall(floor.level_id, entity_id="W-TESTWALL02", length=1500)),
+    )
+
+    result = await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, layer=sent)
+
+    assert [wall.edited for wall in result.layer.walls] == [True, True]
