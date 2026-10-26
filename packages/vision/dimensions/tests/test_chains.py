@@ -137,3 +137,12 @@ def test_densest_cluster__keeps_tight_group_in_input_order() -> None:
 def test_densest_cluster__empty_and_tie(samples: tuple[ScaleSample, ...], expected: list[str]) -> None:
     """Rỗng: rỗng; hoà số mẫu: cụm có tâm nhỏ hơn (tâm thử theo thứ tự tăng)."""
     assert [s.id for s in densest_cluster(samples)] == expected
+
+
+def test_dimension_spans__nearest_line_beats_darker_wall_edge() -> None:
+    """Đường kích thước nhạt có chỗ hở (phủ < 100 %) vẫn thắng mép tường đậm phủ kín ở xa chữ hơn."""
+    gray = chain(page(), (50, 150, 350))
+    gray[LINE_Y, 96:99] = 255  # chỗ hở dưới chữ
+    gray[LINE_Y + 20, 0:400] = 0  # mép tường
+    gray[LINE_Y + 21 : LINE_Y + 40, 0:400:6] = 0  # nét gạch tường: thành "vạch" nếu dò nhầm hàng
+    assert dimension_spans(gray, [label(100)]) == (100.0,)

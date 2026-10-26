@@ -74,11 +74,12 @@ def _read(image: NDArray[np.uint8], payload: InferStepPayload, reader: TextReade
 def with_spans(image: NDArray[np.uint8], items: tuple[TextPx, ...]) -> tuple[TextPx, ...]:
     """Gắn `span_px` (đoạn kích thước đo trên ảnh) cho từng chữ; bước dựng dùng làm mẫu tỉ lệ.
 
-    Ảnh xám theo trọng số BT.601 như `cv2.COLOR_RGB2GRAY`; không có chữ thì khỏi dựng mặt nạ.
+    Ảnh xám theo trọng số BT.601, **làm tròn** như `cv2.COLOR_RGB2GRAY` (cắt phần lẻ biến nền 255 thành 254
+    và lệch ngưỡng mực một mức: đo được trên ch-07); không có chữ thì khỏi dựng mặt nạ.
     """
     if not items:
         return items
-    gray = np.asarray(image[..., :3] @ np.array([0.299, 0.587, 0.114]), dtype=np.uint8)
+    gray = np.rint(image[..., :3] @ np.array([0.299, 0.587, 0.114])).astype(np.uint8)
     spans = dimension_spans(gray, [item.box for item in items])
     return tuple(item.model_copy(update={"span_px": span}) for item, span in zip(items, spans, strict=True))
 

@@ -53,21 +53,23 @@ def ink_mask(gray: NDArray[np.uint8]) -> Ink:
 
 
 def _line_row(ink: Ink, box: tuple[float, float, float, float]) -> int | None:
-    """Hàng của đường kích thước nằm ngang sát chữ; nhiều hàng đạt thì lấy phủ nhiều nhất, rồi gần tâm chữ nhất."""
+    """Hàng của đường kích thước nằm ngang sát chữ; nhiều hàng đạt thì lấy hàng gần hộp chữ nhất, rồi phủ nhiều nhất.
+
+    Gần trước phủ sau: mép tường đậm phủ kín hàng nhưng nằm xa chữ hơn đường kích thước nhạt.
+    """
     x0, y0, x1, y1 = box
     height, width = ink.shape
     h = max(y1 - y0, 1.0)
     a, b = max(0, int(x0 - h)), min(width, int(x1 + h))
     if b <= a:
         return None
-    centre = (y0 + y1) / 2
     best: tuple[float, float, int] | None = None
     for y in range(max(1, int(y0 - _SEARCH_ABOVE * h)), min(height - 1, int(y1 + _SEARCH_BELOW * h))):
         if y0 + _BODY_MARGIN * h < y < y1 - _BODY_MARGIN * h:
             continue
         cover = float(ink[y - 1 : y + 2, a:b].any(axis=0).mean())
         if cover >= _LINE_COVER:
-            key = (cover, -abs(y - centre), y)
+            key = (-max(y0 - y, y - y1, 0.0), cover, y)
             best = key if best is None or key > best else best
     return None if best is None else best[2]
 
