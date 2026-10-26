@@ -17,6 +17,7 @@ from apps.api.drawings.settings import get_drawings_settings
 from apps.api.projects.access import require_project
 
 router = protected_router(tags=["documents"])
+ROUTERS: Final = (router,)
 
 _upload_gate: Final = Depends(require_project("floor.upload"))
 
