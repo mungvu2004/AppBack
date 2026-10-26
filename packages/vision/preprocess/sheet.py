@@ -22,6 +22,9 @@ FULL_RATIO: Final = 0.85
 """Đường "chạy suốt" dài >= 85 % cạnh trang (chừa chỗ đường bị chữ, ký hiệu cắt ngang)."""
 _RUN_GAP_PX: Final = 2
 """Đoạn mực nối qua chỗ hở <= 2 px."""
+_THIN_PX: Final = 3
+_THIN_RATIO: Final = 0.004
+"""Nét kẻ khung mảnh: rộng <= max(3 px, 0,4 % cạnh) (nét CAD 1-2 px); tường dày hơn không bao giờ là khung."""
 _STRIP_FROM: Final = 0.65
 _STRIP_TO: Final = 0.97
 """Vạch ngăn khung tên nằm ở 65-97 % bề rộng (cột phải) hay chiều cao (dải dưới)."""
@@ -56,16 +59,22 @@ def _longest_runs(ink: Ink) -> NDArray[np.int64]:
 
 
 def _full_lines(ink: Ink, low: int, high: int, ratio: float) -> list[int]:
-    """Toạ độ (giữa nhóm) các **cột** `low <= x < high` có đoạn mực >= `ratio` chiều cao; cột sát nhau gộp một."""
-    runs = _longest_runs(ink)
-    found = [x for x in range(max(low, 0), min(high, ink.shape[1])) if runs[x] >= ratio * ink.shape[0]]
+    """Toạ độ (giữa nhóm) các **cột** `low <= x < high` có đoạn mực >= `ratio` chiều cao; cột sát nhau gộp một.
+
+    Chỉ giữ nhóm **mảnh** (`_THIN_PX`, `_THIN_RATIO`): tường chạy suốt của mặt bằng cắt sát không là
+    vạch ngăn, ô bảng hay nét viền.
+    """
+    low, high = max(low, 0), min(high, ink.shape[1])
+    runs = _longest_runs(ink[:, low:high])
+    found = [low + x for x in range(high - low) if runs[x] >= ratio * ink.shape[0]]
     groups: list[list[int]] = []
     for x in found:
         if groups and x - groups[-1][-1] <= 2:
             groups[-1].append(x)
         else:
             groups.append([x])
-    return [sum(g) // len(g) for g in groups]
+    thin = max(_THIN_PX, _THIN_RATIO * ink.shape[1])
+    return [sum(g) // len(g) for g in groups if g[-1] - g[0] + 1 <= thin]
 
 
 def _title_divider(ink: Ink) -> int | None:

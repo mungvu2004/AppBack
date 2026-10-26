@@ -51,6 +51,17 @@ def test_drawing_box__strip_without_cells_is_not_a_title_block() -> None:
     assert drawing_box(sheet(cells=1)) == (9, 9, W - 10, H - 10)
 
 
+def test_drawing_box__thick_walls_are_never_frame_lines() -> None:
+    """Mặt bằng cắt sát: tường bao 10 px sát mép, vách dọc chạy suốt ở 76 % và cột phòng có 3 tường ngang: không cắt."""
+    h, w = 800, 1000
+    gray = np.full((h, w), 255, dtype=np.uint8)
+    for y, x0, x1 in ((20, 20, 980), (770, 20, 980), (200, 760, 980), (400, 760, 980), (600, 760, 980), (450, 20, 760)):
+        gray[y : y + 10, x0:x1] = 0
+    for x in (20, 970, 760):
+        gray[20:780, x : x + 10] = 0
+    assert drawing_box(gray) is None
+
+
 def test_drawing_box__nothing_to_trim() -> None:
     """Trang không viền, không khung tên (mặt bằng màu của chủ đầu tư): `None`."""
     assert drawing_box(sheet(frame=False, title=None)) is None
