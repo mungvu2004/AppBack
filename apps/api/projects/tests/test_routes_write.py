@@ -519,9 +519,7 @@ def _creation_path(project_id: str) -> str:
     return f"{project_path(project_id)}/creation"
 
 
-async def test_cancel_create_by_engineer_creator_within_window_deletes(
-    api_client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_projects_cancel_create_project__C01(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Kỹ sư vừa tạo dự án bấm Hoàn tác → 200, dự án bị xoá mềm (lỗi cũ: 403 vì không phải admin)."""
     owner = await make_user(db_session, role="engineer")
     created = await api_client.post(PROJECTS_PATH, json={"name": "Tạo nhầm"}, headers=headers_of(owner))
@@ -529,17 +527,57 @@ async def test_cancel_create_by_engineer_creator_within_window_deletes(
     project_id = created.json()["id"]
     response = await api_client.delete(_creation_path(project_id), headers=headers_of(owner))
     assert response.status_code == 200
+    assert (response.json()["id"], response.json()["name"]) == (project_id, "Tạo nhầm")
     assert (await api_client.get(project_path(project_id), headers=headers_of(owner))).status_code == 404
 
 
-async def test_cancel_create_by_other_member_is_forbidden(
-    api_client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_projects_cancel_create_project__C07(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Thành viên `admin` (vai mạnh nhất) không phải người tạo → 403 `FORBIDDEN`, dự án còn."""
     owner = await make_user(db_session, role="engineer")
     other = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=owner, members=[other])
     response = await api_client.delete(_creation_path(project.id), headers=headers_of(other))
     assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+    assert (await api_client.get(project_path(project.id), headers=headers_of(owner))).status_code == 200
+
+
+async def test_projects_cancel_create_project__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Admin hệ thống ngoài dự án → 404 `resource:"project"` (trước 403), dự án còn."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner)
+    outsider = await make_user(db_session, role="admin")
+    response = await api_client.delete(_creation_path(project.id), headers=headers_of(outsider))
+    assert response.status_code == 404
+    assert response.json()["resource"] == "project"
+    assert (await api_client.get(project_path(project.id), headers=headers_of(owner))).status_code == 200
+
+
+async def test_projects_cancel_create_project__C08(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Dự án đã xoá mềm, kể cả vừa huỷ tạo xong → 404."""
+    owner = await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=owner, deleted_at=fake_clock.now())
+    response = await api_client.delete(_creation_path(project.id), headers=headers_of(owner))
+    assert response.status_code == 404
+    assert response.json()["resource"] == "project"
+    fresh = await api_client.post(PROJECTS_PATH, json={"name": "Huỷ hai lần"}, headers=headers_of(owner))
+    path = _creation_path(fresh.json()["id"])
+    assert (await api_client.delete(path, headers=headers_of(owner))).status_code == 200
+    assert (await api_client.delete(path, headers=headers_of(owner))).status_code == 404
+
+
+async def test_projects_cancel_create_project__C17(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Dự án tạo không mã, không địa chỉ → thân huỷ tạo vắng `code`, `address`; không `null`."""
+    owner = await make_user(db_session, role="engineer")
+    created = await api_client.post(PROJECTS_PATH, json={"name": "Không mã"}, headers=headers_of(owner))
+    response = await api_client.delete(_creation_path(created.json()["id"]), headers=headers_of(owner))
+    assert response.status_code == 200
+    body = response.json()
+    assert "code" not in body
+    assert "address" not in body
+    assert None not in body.values()
 
 
 async def test_cancel_create_after_window_is_conflict(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

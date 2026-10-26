@@ -17,3 +17,7 @@ waive = { C16 = "DELETE không có thân" }
 op = "projects_list_summaries"
 # Đ* không tự đòi C02; N1 có query `cursor`/`limit` nên cần kiểm thân/tham số sai kiểu.
 extra = ["C02"]
+
+[[endpoint]]
+op = "projects_cancel_create_project"
+waive = { C16 = "DELETE không có thân" }
