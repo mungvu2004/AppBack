@@ -9,6 +9,7 @@ nhãn ghép ("Phòng khách + Bếp ăn") và số dính chữ ("WC02"). Bench c
 khoá chỉ nhận đúng 8/109 phòng. Nên sau khớp nguyên khoá còn khớp gần đúng (`_fuzzy_usage`).
 """
 
+import functools
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -158,11 +159,13 @@ def _fuzzy_usage(key: str) -> RoomUsage | None:
     return None
 
 
+@functools.lru_cache(maxsize=4096)
 def match_room_label(text: str) -> RoomLabel | None:
     """Nhãn phòng của chuỗi OCR, hoặc `None` khi không nhận ra.
 
     Mỗi phần của nhãn ghép (tách ở `+ & ,`) lần lượt: khớp nguyên khoá hay khoá bỏ hết khoảng trắng, rồi khớp gần
     đúng (`_fuzzy_usage`). Số thứ tự cuối của phần khớp được giữ vào tên (`PHONG NGU 1` → `phòng ngủ 1`).
+    Hàm thuần, kết quả nhớ đệm: trang lớn lặp lại nhiều chữ giống nhau (số kích thước, tên phòng).
     """
     for part in _PARTS.split(text):
         base, ordinal = _split_ordinal(_GLUED_NUMBER.sub(" ", part))

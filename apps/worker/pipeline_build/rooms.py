@@ -20,7 +20,7 @@ from apps.worker.pipeline_build.constants import (
 from apps.worker.pipeline_build.geometry import Geoms, Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.core.clock import Clock
-from packages.domain.rules_ai import LOW_CONFIDENCE_CAP, outline_contains
+from packages.domain.rules_ai import LOW_CONFIDENCE_CAP
 from packages.domain.spatial import BoundingBox, Furniture, Point, Room, Wall, js_round, polygon_area_m2
 from packages.ml_contracts.artifacts import DetectionPx, TextPx
 from packages.ml_contracts.labels import LABEL_TARGETS
@@ -156,46 +156,56 @@ def _room_outlines(lines: Sequence[shapely.LineString]) -> list[list[Point]]:
 def _seeded_outlines(
     lines: Sequence[shapely.LineString],
     rooms: Sequence[Sequence[Point]],
-    texts: Sequence[TextPx],
+    labels: Sequence[RoomLabel | None],
     centres: Sequence[Point],
 ) -> list[list[Point]]:
     """Phòng mọc từ nhãn chữ nằm ngoài mọi phòng đã khép (lô gia biên ngoài là lan can, không gian mở hở cửa).
 
     Bốn tia ngang/dọc từ tâm chữ tới đường khép gần nhất hay biên bao lồi của tường (thay lan can), dài ≤
     `_SEED_RAY_MM`; đủ bốn phía mới dựng hộp, trừ các phòng đã có, giữ mảnh chứa tâm chữ. Nhãn đã nằm trong một
-    phòng (kể cả phòng vừa mọc) bị bỏ qua.
+    phòng (kể cả phòng vừa mọc) bị bỏ qua. Phòng và đường tra bằng `STRtree` (K18: 5 000 chữ x 20 000 tường).
     """
-    if not lines:
+    seeds = [centre for label, centre in zip(labels, centres, strict=True) if label is not None]
+    if not lines or not seeds:
         return []
     hull = shapely.convex_hull(shapely.MultiLineString(list(lines)))
-    obstacles = shapely.unary_union([*lines, hull.exterior]) if isinstance(hull, shapely.Polygon) else None
-    if obstacles is None:
+    if not isinstance(hull, shapely.Polygon):
         return []
-    taken = [shapely.Polygon([(p.x, p.y) for p in outline]) for outline in rooms if len(outline) >= 3]
+    obstacles = shapely.STRtree([*lines, hull.exterior])
+    closed = [shapely.Polygon([(p.x, p.y) for p in outline]) for outline in rooms if len(outline) >= 3]
+    closed_tree = shapely.STRtree(closed)
+    grown: list[shapely.Polygon] = []
     seeded: list[list[Point]] = []
-    for text, centre in zip(texts, centres, strict=True):
+    for centre in seeds:
         point = shapely.Point(centre.x, centre.y)
-        if match_room_label(text.text) is None or not hull.contains(point) or any(p.contains(point) for p in taken):
+        if (
+            not hull.contains(point)
+            or len(closed_tree.query(point, predicate="within"))
+            or any(g.contains(point) for g in grown)
+        ):
             continue
         reach: list[float] = []
         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
             ray = shapely.LineString(
                 [(centre.x, centre.y), (centre.x + dx * _SEED_RAY_MM, centre.y + dy * _SEED_RAY_MM)]
             )
-            hit = ray.intersection(obstacles)
-            if not hit.is_empty:
-                reach.append(float(shapely.distance(point, hit)))
+            near = obstacles.query(ray, predicate="intersects")
+            if len(near):
+                reach.append(
+                    float(min(shapely.distance(point, ray.intersection(obstacles.geometries[i])) for i in near))
+                )
         if len(reach) < 4:
             continue
         left, right, up, down = reach
         box = shapely.box(centre.x - left, centre.y - up, centre.x + right, centre.y + down)
-        free = box.difference(shapely.unary_union(taken)) if taken else box
+        blockers = [closed[i] for i in closed_tree.query(box, predicate="intersects")] + grown
+        free = box.difference(shapely.unary_union(blockers)) if blockers else box
         parts = list(free.geoms) if hasattr(free, "geoms") else [free]
         piece = next((part for part in parts if isinstance(part, shapely.Polygon) and part.intersects(point)), None)
         if piece is None or piece.area / 1e6 > _SEED_MAX_M2:
             continue
         seeded.append(_outline_points(shapely.Polygon(piece.exterior)))
-        taken.append(piece)
+        grown.append(piece)
     return seeded
 
 
@@ -228,26 +238,27 @@ def _text_centres(texts: Sequence[TextPx], scaling: Scaling) -> list[Point]:
 
 
 def _room_labels(
-    outlines: Sequence[Sequence[Point]], texts: Sequence[TextPx], centres: Sequence[Point]
+    outlines: Sequence[Sequence[Point]],
+    texts: Sequence[TextPx],
+    parsed: Sequence[RoomLabel | None],
+    centres: Sequence[Point],
 ) -> list[RoomLabel | None]:
     """Nhãn phòng của mỗi `outline` từ chữ trong biên có `match_room_label`.
 
     Nhiều nhãn trong một phòng (không gian mở "khách + bếp + sảnh", phòng ngủ có WC riêng) → công năng chính theo
     `_USAGE_PRIORITY`, rồi `confidence` cao nhất, hoà thì chữ đứng trước.
     """
-    parsed = [match_room_label(text.text) for text in texts]
-    labels: list[RoomLabel | None] = []
-    for outline in outlines:
-        best: RoomLabel | None = None
-        best_key = (-1, -1.0)
-        for text, label, centre in zip(texts, parsed, centres, strict=True):
-            if label is None or not outline_contains(outline, centre.x, centre.y):
-                continue
-            key = (_USAGE_PRIORITY.index(label.usage), text.confidence)
-            if key > best_key:
-                best, best_key = label, key
-        labels.append(best)
-    return labels
+    tree = shapely.STRtree([shapely.Polygon([(p.x, p.y) for p in outline]) for outline in outlines])
+    best: list[tuple[tuple[int, float], RoomLabel] | None] = [None for _ in outlines]
+    for text, label, centre in zip(texts, parsed, centres, strict=True):
+        if label is None:
+            continue
+        key = (_USAGE_PRIORITY.index(label.usage), text.confidence)
+        for room in tree.query(shapely.Point(centre.x, centre.y), predicate="within"):
+            current = best[int(room)]
+            if current is None or key > current[0]:
+                best[int(room)] = (key, label)
+    return [None if item is None else item[1] for item in best]
 
 
 def _fixture_labels(
@@ -263,15 +274,16 @@ def _fixture_labels(
     Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
     """
     found_in: list[set[str]] = [set() for _ in outlines]
+    polygons = [shapely.Polygon([(p.x, p.y) for p in outline]) for outline in outlines]
+    tree = shapely.STRtree(polygons)
     for d in detections:
         centre = scaling.point((d.box.x_min + d.box.x_max) / 2, (d.box.y_min + d.box.y_max) / 2)
         label: str = d.label
         if label == "kitchen_cabinet":
             long_side = scaling.mm(max(d.box.x_max - d.box.x_min, d.box.y_max - d.box.y_min))
             label = "kitchen_run" if long_side >= _KITCHEN_RUN_MM else label
-        for found, outline in zip(found_in, outlines, strict=True):
-            if outline_contains(outline, centre.x, centre.y):
-                found.add(label)
+        for room in tree.query(shapely.Point(centre.x, centre.y), predicate="within"):
+            found_in[int(room)].add(label)
     labels: list[RoomLabel | None] = []
     for found, area_m2 in zip(found_in, areas_m2, strict=True):
         if "kitchen_run" in found:
@@ -303,9 +315,11 @@ def build_rooms(
     `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE
     `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
     """
+    parsed = [match_room_label(text.text) for text in texts]
+    centres = _text_centres(texts, scaling)
     lines = _room_lines(walls, bridges)
     closed = _room_outlines(lines)
-    seeded = _seeded_outlines(lines, closed, texts, _text_centres(texts, scaling))
+    seeded = _seeded_outlines(lines, closed, parsed, centres)
     kept: list[tuple[list[Point], float]] = []
     for outline in [*closed, *seeded]:
         area_m2 = float(polygon_area_m2(outline)) if len(outline) >= 3 else 0.0
@@ -317,7 +331,7 @@ def build_rooms(
     outlines = [outline for outline, _ in kept]
     wall_ids = _wall_id_lists(walls, outlines)
     wall_by_id = {wall.id: wall for wall in walls}
-    from_text = _room_labels(outlines, texts, _text_centres(texts, scaling))
+    from_text = _room_labels(outlines, texts, parsed, centres)
     from_fixtures = _fixture_labels(outlines, [area for _, area in kept], detections, scaling)
     labels = name_rooms([text or fixture for text, fixture in zip(from_text, from_fixtures, strict=True)])
     rooms = []
