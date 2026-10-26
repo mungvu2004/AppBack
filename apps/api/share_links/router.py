@@ -16,8 +16,10 @@ from sqlalchemy import select
 from starlette.requests import Request
 
 from apps.api.core.deps import ClockDep, DbSession
+from apps.api.core.origin import reject_foreign_origin
+from apps.api.core.ratelimit import key_ip, rate_limit
 from apps.api.core.routing import protected_router, public_router
-from apps.api.core.wire import WireDatetime, WireModel, WireRequest
+from apps.api.core.wire import NfcStr, WireDatetime, WireModel, WireRequest
 from apps.api.projects.access import ProjectAccess, require_project
 from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.wire import SpatialGraphDocumentOut
@@ -33,6 +35,18 @@ ROUTERS: Final = (router, public)
 SHARE_PATH: Final = "/share/"
 """Đường FE mở liên kết; `url` trả về là `<origin><SHARE_PATH><token>`."""
 
+OPEN_RATE_LIMIT: Final = 60
+OPEN_RATE_WINDOW_S: Final = 60
+_open_limit: Final = rate_limit(
+    "share_links_open",
+    limit=OPEN_RATE_LIMIT,
+    window_s=OPEN_RATE_WINDOW_S,
+    key=key_ip,
+    store="cache",
+    on_error="open",
+)
+"""Mở liên kết công khai: 60 lượt/phút mỗi IP chặn dò token (C11); Redis hỏng không chặn người xem (chỉ đọc)."""
+
 
 class EmbedIn(WireRequest):
     """Bốn khoá embed FE gửi kèm (chỉ lưu ý định, không ảnh hưởng quyền)."""
@@ -47,8 +61,8 @@ class ShareLinkCreateIn(WireRequest):
 
     permission: Literal["view", "comment"] = "view"
     expires_at: datetime | None = None
-    viewpoint_code: str | None = Field(default=None, max_length=512)
-    label: str | None = Field(default=None, max_length=200)
+    viewpoint_code: NfcStr | None = Field(default=None, max_length=512)
+    label: NfcStr | None = Field(default=None, max_length=200)
     embed: EmbedIn | None = None
     password: str | None = None
 
@@ -169,9 +183,13 @@ async def share_links_revoke(
     return _out(row, request, clock.now())
 
 
-@public.get("/share/{token}")
+@public.get("/share/{token}", dependencies=[Depends(reject_foreign_origin), Depends(_open_limit)])
 async def share_links_open(token: str, request: Request, db: DbSession, clock: ClockDep) -> SharedModelOut:
-    """Công khai, chỉ đọc: token còn hiệu lực và dự án chưa xoá → đồ thị; còn lại 404."""
+    """Công khai, chỉ đọc: token còn hiệu lực và dự án chưa xoá → đồ thị; còn lại 404.
+
+    `Origin` lệch → 403 trước mọi thứ (C24; điều hướng thẳng không gửi `Origin` nên vẫn mở được);
+    quá hạn mức theo IP → 429.
+    """
     found = (
         await db.execute(
             select(ShareLinkRow, Project.name)
