@@ -14,6 +14,7 @@ Downgrade XOÁ mọi upload tài liệu (`document_pk IS NOT NULL`, mất dữ l
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Final
 
 import sqlalchemy as sa
@@ -33,7 +34,7 @@ UPLOAD_CHECK: Final = f"ck_{UPLOADS}_floor_or_document"
 UPLOAD_LINKS: Final = (("document_pk", DOCUMENTS, "CASCADE"), ("region_id", REGIONS, "SET NULL"))
 
 
-def _timestamps() -> list[sa.Column[object]]:
+def _timestamps() -> list[sa.Column[datetime]]:
     """Hai cột `created_at`/`updated_at` của `TimestampMixin`."""
     return [
         sa.Column(name, sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False)
@@ -138,7 +139,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Xoá upload tài liệu (mất dữ liệu), trả `floor_pk` về NOT NULL, bỏ index/CHECK/cột rồi ba bảng."""
-    op.execute(f"DELETE FROM {UPLOADS} WHERE document_pk IS NOT NULL")
+    op.execute("DELETE FROM uploads WHERE document_pk IS NOT NULL")
     op.drop_constraint(op.f(UPLOAD_CHECK), UPLOADS, type_="check")
     for column, referred, _ in UPLOAD_LINKS:
         op.drop_index(op.f(f"ix_{UPLOADS}_{column}"), table_name=UPLOADS)

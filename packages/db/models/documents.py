@@ -1,4 +1,4 @@
-"""Ba bảng tài liệu chưa gán tầng (Strategy B H1, PHASE-1-CONTRACT §2): `documents`, `document_pages`, `drawing_regions`.
+"""Ba bảng tài liệu chưa gán tầng (Strategy B H1): `documents`, `document_pages`, `drawing_regions`.
 
 Một tài liệu (PDF/ảnh nhiều bản vẽ) tải lên trước, tách trang, đề xuất vùng; người dùng xác nhận
 vùng nào thuộc tầng nào. CHECK là tầng phòng thủ cuối, nơi báo lỗi cho người dùng là
