@@ -11,7 +11,7 @@ _W, _H = 1400, 1000
 
 
 def _page() -> NDArray[np.uint8]:
-    """Trang trắng RGB `_H × _W` có đường khung giấy cách mép 2 %."""
+    """Trang trắng RGB `_H` x `_W` có đường khung giấy cách mép 2 %."""
     img = np.full((_H, _W, 3), 255, np.uint8)
     cv2.rectangle(img, (28, 20), (_W - 28, _H - 20), (0, 0, 0), 3)
     return img
@@ -48,15 +48,15 @@ def test_segment_page__two_plans() -> None:
 
 def test_segment_page__empty_page() -> None:
     """Trang chỉ có khung giấy (ảnh xám) → một hộp phủ cả trang."""
-    gray = cv2.cvtColor(_page(), cv2.COLOR_RGB2GRAY)
+    gray = cv2.cvtColor(_page(), cv2.COLOR_RGB2GRAY).astype(np.uint8, copy=False)
     assert segment_page(gray) == (Box(0.0, 0.0, 1.0, 1.0),)
 
 
 def test_segment_page__merges_overlaps() -> None:
     """Khối nét nằm trong viền một khối khác (không chạm) → gộp thành một hộp."""
     img = _page()
-    cv2.rectangle(img, (150, 150), (900, 800), (0, 0, 0), 4)
-    _plan(img, 350, 330, 700, 620)
+    cv2.rectangle(img, (150, 150), (900, 700), (0, 0, 0), 4)
+    _plan(img, 350, 280, 700, 570)
 
     boxes = segment_page(img)
 
@@ -67,8 +67,8 @@ def test_segment_page__merges_overlaps() -> None:
 def test_segment_page__boxes_normalized() -> None:
     """Mọi hộp có 0 ≤ x0 < x1 ≤ 1, 0 ≤ y0 < y1 ≤ 1 kể cả khi nét chạm mép ảnh; `Box` sai → ValueError."""
     img = np.full((_H, _W, 3), 255, np.uint8)
-    _plan(img, 0, 0, 700, 600)
-    _plan(img, 800, 500, _W - 1, _H - 1)
+    _plan(img, 0, 0, 650, 550)
+    _plan(img, 800, 520, _W - 1, _H - 1)
 
     boxes = segment_page(img)
 
@@ -77,5 +77,5 @@ def test_segment_page__boxes_normalized() -> None:
         assert 0.0 <= b.x0 < b.x1 <= 1.0
         assert 0.0 <= b.y0 < b.y1 <= 1.0
     for bad in ((0.5, 0.0, 0.5, 1.0), (0.0, 0.6, 1.0, 0.2), (-0.1, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.1)):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Box"):
             Box(*bad)
