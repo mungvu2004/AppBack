@@ -3,6 +3,8 @@
 Postgres, Redis thật qua `api_client`; mọi khẳng định "đã ghi" đọc lại bằng session mới (K22).
 """
 
+from typing import Any
+
 import httpx
 import pytest
 from sqlalchemy import select
@@ -26,7 +28,7 @@ async def _rows(sessionmaker: async_sessionmaker[AsyncSession], upload_id: str) 
         return upload, (await session.execute(stmt)).scalar_one()
 
 
-async def _post(client: httpx.AsyncClient, project_id: str, headers: dict[str, str], **body: object) -> httpx.Response:
+async def _post(client: httpx.AsyncClient, project_id: str, headers: dict[str, str], **body: Any) -> httpx.Response:
     """Gửi N39 với thân `init_body(**body)`."""
     return await client.post(init_path(project_id), json=init_body(**body), headers=headers)
 
