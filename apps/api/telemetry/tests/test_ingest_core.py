@@ -27,7 +27,7 @@ from packages.testing.fixtures.clock import FakeClock
 
 def test_event_names_mirror_appfront(appfront_dir: Path) -> None:
     fe_names = read_ts_array(appfront_dir / "src/lib/telemetry/events.ts", "TELEMETRY_EVENT_NAMES")
-    assert len(fe_names) == 12
+    assert len(fe_names) == 16
     assert set(fe_names) == EVENT_NAMES
 
 

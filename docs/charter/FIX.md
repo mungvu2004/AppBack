@@ -27,7 +27,7 @@ FIX <mã FIX> cho <mã prompt sở hữu> — <một câu mô tả lỗi>
 2. **Không sửa test cho khớp lỗi.** Chỉ được sửa test khi [3 BẰNG CHỨNG] chỉ ra chính test sai so với hợp đồng hoặc hiến chương, và báo cáo phải nói rõ.
 3. **Không mở rộng phạm vi.** Thấy lỗi khác thì ghi vào "Nợ và việc chưa làm"; không sửa trong FIX này.
 4. **Hợp đồng đổi** → FIX cho F-00a/F-00b/F-00c trước. Hợp nhất xong, người điều phối nâng `tools/contract/APPFRONT_SHA` của AppBack (không phải `prompts/APPFRONT_SHA`, Q-8), rồi mới FIX cho prompt BE.
-5. **Mã FIX:** `FIX-<số thứ tự 3 chữ số>`, ghi vào `docs/fixes.md` của repo tích hợp (người điều phối giữ).
+5. **Mã FIX:** `FIX-<số thứ tự>`, tăng dần, không dùng lại. Từ FIX-724 mã chỉ nằm trong trailer `Fix:` của commit; lấy mã kế tiếp theo lệnh ở đầu `docs/fixes.md` (sổ chỉ giữ FIX-001..723).
 6. **FIX đổi `packages/domain/spatial/model.py`** chạy `python -m apps.api.spatial_read.cli check-documents` trên seed và dán kết quả, và (khi bảng `versions` của B3-04 đã có) thêm vào test của FIX một lượt giải mọi `versions.snapshot` bằng `codec.document_from_json`; hỏng thì FIX kèm revision chuyển dữ liệu.
 7. **FIX nâng `DOCUMENT_SCHEMA_VERSION`** kèm revision chuyển cả `floor_documents` lẫn `versions.snapshot`.
 8. **FIX thu hẹp danh mục luật** (B3-05) kèm revision gỡ mã và khoá không còn khỏi `rule_configs.overrides`; thu hẹp khoảng `min`/`max` thì revision kẹp giá trị đã lưu về biên mới.

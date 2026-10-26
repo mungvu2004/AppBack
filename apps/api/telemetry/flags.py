@@ -1,6 +1,6 @@
-"""5 khoá cờ tính năng #9 và cách tính theo vai (B7-01 [2], [5], [6]).
+"""10 khoá cờ tính năng #9 và cách tính theo vai (B7-01 [2], [5], [6]).
 
-Gương `src/lib/telemetry/flags.ts:73,76,86-92` (FE): 5 khoá, cùng mẫu và trần độ dài,
+Gương `FEATURE_FLAG_KEYS` của `src/lib/telemetry/flags.ts` (FE): 10 khoá, cùng mẫu và trần độ dài,
 client không giải mã bằng schema nên khoá lạ/kiểu sai phải bị chặn ngay lúc **nạp cấu
 hình** ở BE (K01/K02), không phải lúc trả response.
 """
@@ -21,6 +21,11 @@ FEATURE_FLAG_KEYS: Final = (
     "rules.parallel-run",
     "export.pdf-vector",
     "qc.live-collaboration",
+    "viewer.realism-idle",
+    "viewer.realism-traa",
+    "viewer.realism-hdri",
+    "viewer.realism-materials",
+    "viewer.realism-details",
 )
 
 _MIN_ROLES: Final = 1

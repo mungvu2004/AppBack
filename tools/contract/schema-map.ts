@@ -133,4 +133,5 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   ml_cancel_job: object(ADMIN_ML, 'TrainingJobSchema'), // N35
   ml_list_job_metrics: object(ADMIN_ML, 'TrainingMetricPageSchema'), // N36
   ml_list_job_logs: object(ADMIN_ML, 'TrainingLogPageSchema'), // N37
+  share_links_open: object('@/api/client', 'SharedModelSchema'), // N38 (FIX-2436)
 };

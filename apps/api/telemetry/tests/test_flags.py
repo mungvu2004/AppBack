@@ -16,8 +16,8 @@ from apps.api.telemetry.tests.mirror import read_ts_array
 
 
 def test_feature_flag_keys_has_five_valid_keys() -> None:
-    assert len(FEATURE_FLAG_KEYS) == 5
-    assert len(set(FEATURE_FLAG_KEYS)) == 5
+    assert len(FEATURE_FLAG_KEYS) == 10
+    assert len(set(FEATURE_FLAG_KEYS)) == 10
     for key in FEATURE_FLAG_KEYS:
         assert FEATURE_FLAG_KEY_PATTERN.fullmatch(key), key
         assert len(key) <= MAX_FEATURE_FLAG_KEY_LENGTH

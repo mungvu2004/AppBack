@@ -1417,7 +1417,7 @@
       },
       "FeatureFlagsOut": {
         "additionalProperties": false,
-        "description": "`GET /api/feature-flags` — đúng 5 khoá của `flags.FEATURE_FLAG_KEYS`.",
+        "description": "`GET /api/feature-flags` — đúng 10 khoá của `flags.FEATURE_FLAG_KEYS`.",
         "properties": {
           "export.pdf-vector": {
             "anyOf": [
@@ -1473,6 +1473,61 @@
               }
             ],
             "title": "Scene.Soft-Shadows"
+          },
+          "viewer.realism-details": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer.Realism-Details"
+          },
+          "viewer.realism-hdri": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer.Realism-Hdri"
+          },
+          "viewer.realism-idle": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer.Realism-Idle"
+          },
+          "viewer.realism-materials": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer.Realism-Materials"
+          },
+          "viewer.realism-traa": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer.Realism-Traa"
           }
         },
         "title": "FeatureFlagsOut",
@@ -6587,7 +6642,7 @@
       },
       "UserPreferences": {
         "additionalProperties": false,
-        "description": "`users.preferences` trên dây (FE `UserPreferencesSchema`, FE3D-B4); `{}` khi chưa lưu gì.\n\nKhoá của `notifications` là loại thông báo server gửi (`NotificationKind`: `aiCompleted`,\n`violationFound`, `projectInvite`).",
+        "description": "`users.preferences` trên dây (FE `UserPreferencesSchema`, FE3D-B4); `{}` khi chưa lưu gì.\n\nKhoá của `notifications` là một loại thông báo server gửi; danh sách đủ nằm ở\n`NotificationKind`, không chép lại ở đây để khỏi lệch khi thêm loại mới.",
         "properties": {
           "appearance": {
             "anyOf": [

@@ -29,7 +29,7 @@ def test_be_bind_thật_đọc_đủ_49_2_37_dòng() -> None:
     n_rows = [r for r in rows if r.row_id.startswith("N")]
     assert len(numeric) == 49
     assert len(s_rows) == 2
-    assert len(n_rows) == 39
+    assert len(n_rows) == 40
 
 
 def test_query_bị_bỏ() -> None:

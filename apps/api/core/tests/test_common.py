@@ -60,6 +60,7 @@ PATH_VALUES: Final[dict[str, str]] = {
     "floor_id": "L-ABCDEFGHIJ",
     "measurement_id": "MS-0001",
     "item_id": "muc-thu-vien",
+    "link_id": f"shl_{ULID}",
     "family": "wallSegmentation",
     "token": "token-mau-cua-case-chung",
 }

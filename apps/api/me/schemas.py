@@ -52,8 +52,8 @@ class SeenPrefs(WireModel):
 class UserPreferences(WireModel):
     """`users.preferences` trên dây (FE `UserPreferencesSchema`, FE3D-B4); `{}` khi chưa lưu gì.
 
-    Khoá của `notifications` là loại thông báo server gửi (`NotificationKind`: `aiCompleted`,
-    `violationFound`, `projectInvite`).
+    Khoá của `notifications` là một loại thông báo server gửi; danh sách đủ nằm ở
+    `NotificationKind`, không chép lại ở đây để khỏi lệch khi thêm loại mới.
     """
 
     appearance: AppearancePrefs | None = None

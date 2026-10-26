@@ -70,7 +70,7 @@ def test_real_map_covers_every_contract_row(shapes: dict[str, str]) -> None:
     """83 mục = 45 HTTP + 2 SSE của §1 + 36 của §2 (không v2)."""
     result = check.check_map(shapes, ROWS)
     assert result.status == STATUS_OK, result.problems
-    assert len(shapes) == len(ROWS) == 85
+    assert len(shapes) == len(ROWS) == 86
 
 
 def test_map_missing_a_bind_row_fails(tmp_path: Path, shapes: dict[str, str]) -> None:

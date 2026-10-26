@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 37 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 38 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -121,6 +121,7 @@
 | N35 | `POST /api/admin/ml/training-jobs/{job_id}/cancel` | `ml_cancel_job` | `adminMl.ts` | A +ngoài | admin | có | B6-03a | F-12 |
 | N36 | `GET /api/admin/ml/training-jobs/{job_id}/metrics?since=` | `ml_list_job_metrics` | `adminMl.ts` | A | admin | — | B6-03a | F-12 |
 | N37 | `GET /api/admin/ml/training-jobs/{job_id}/logs?since=` | `ml_list_job_logs` | `adminMl.ts` | A | admin | — | B6-03a | F-12 |
+| N38 | `GET /api/share/{token}` | `share_links_open` | `client.ts` (`SharedModel`) | C | — | — | FIX-2436 | `SharedModelPage` |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 

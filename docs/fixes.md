@@ -4,6 +4,11 @@
 > ghi ở đây. Người điều phối giữ file này; worker chỉ đọc để biết mã kế tiếp.
 > Thông điệp commit của FIX mang **hai** trailer: `Prompt: <mã prompt sở hữu file>` và
 > `Fix: FIX-<nnn>` (BE-00 §13.2).
+>
+> **Sổ dừng ở FIX-723 (09/10/2026).** Từ FIX-724 trở đi mã chỉ còn trong trailer `Fix:` của commit
+> hai repo (tới 26/10/2026 đã lên FIX-2434), không chép lại vào đây. Mã kế tiếp = số lớn nhất
+> trong trailer + 1, lấy ở AppBack **và** AppFront (sau `git fetch`):
+> `git log --all --format=%B | grep -oE 'FIX-[0-9]+' | sort -t- -k2 -n | tail -1`.
 
 | Mã | Ngày | Cho prompt | Nợ | Một câu | Commit |
 |---|---|---|---|---|---|

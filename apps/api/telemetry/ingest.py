@@ -47,9 +47,13 @@ EVENT_NAMES: Final = frozenset(
         "scene.frame-rate",
         "project.open",
         "user.role-change",
+        "viewer.frame_p95",
+        "viewer.device_lost",
+        "viewer.backend",
+        "viewer.tier_change",
     }
 )
-"""Gương `src/lib/telemetry/events.ts:464-477` (12 tên)."""
+"""Gương `TELEMETRY_EVENT_NAMES` của `src/lib/telemetry/events.ts` (16 tên)."""
 
 ERROR_KINDS: Final = frozenset(
     {
