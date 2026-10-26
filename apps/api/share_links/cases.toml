@@ -1,0 +1,9 @@
+# Miễn case của module liên kết chia sẻ (CASE.md §2.3: chỉ C16 được miễn).
+
+[[endpoint]]
+op = "share_links_revoke"
+waive = { C16 = "DELETE không có thân" }
+
+[[endpoint]]
+op = "share_links_open"
+waive = { C16 = "GET công khai không có thân" }

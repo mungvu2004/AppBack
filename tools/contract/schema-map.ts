@@ -89,6 +89,9 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   users_invite_users: array(USERS, 'AdminUserSchema'), // #44
   users_resend_invitation: object(USERS, 'AdminUserSchema'), // #45
   users_delete_user: object(USERS, 'AdminUserSchema'), // #46
+  share_links_list: array('@/lib/export/shareLink', 'ShareLinkWireSchema'), // #47 (FIX-SHARE)
+  share_links_create: object('@/lib/export/shareLink', 'ShareLinkWireSchema'), // #48
+  share_links_revoke: object('@/lib/export/shareLink', 'ShareLinkWireSchema'), // #49
   // S1, S2: thân là `data:` của mỗi khung SSE (H5), không phải response HTTP.
   streams_open_progress: object(INDEX, 'ProgressSchema'), // S1
   streams_open_notifications: object('@/api/schemas/notifications', 'NotificationSchema'), // S2
@@ -134,4 +137,6 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   ml_list_job_metrics: object(ADMIN_ML, 'TrainingMetricPageSchema'), // N36
   ml_list_job_logs: object(ADMIN_ML, 'TrainingLogPageSchema'), // N37
   share_links_open: object('@/api/client', 'SharedModelSchema'), // N38 (FIX-2436)
+  share_links_export: object('@/api/schemas/spatialGraph', 'SpatialGraphDocumentSchema'), // N39 (FIX-SHARE)
+  projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
 };

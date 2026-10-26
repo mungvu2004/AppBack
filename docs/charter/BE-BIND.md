@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 38 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 42 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -68,13 +68,13 @@
 | 44 | users | `POST /api/users/invitations` | `users_invite_users` | `AdminUser[]` | A +ngoài | `user.manage` | có | B1-05 | tạo người `pending` (`usr_`) + token một lần của B1-03 + thư |
 | 45 | users | `POST /api/users/invitations/{user_id}/resend` | `users_resend_invitation` | `AdminUser` | A +ngoài | `user.manage` | có | B1-05 | `{user_id}` = `AdminUser.id`; token cũ mất hiệu lực |
 | 46 | users | `DELETE /api/users/{user_id}` | `users_delete_user` | `AdminUser` | A | `user.manage` | có | B1-05 | **có thân** `{confirmEmail, userId}` (W13) |
-| 47 | share-links | `GET /api/projects/{project_id}/share-links` | — | `ShareLinkWire` | v2 | — | — | **v2** | E6 = B; F-06 tắt |
-| 48 | share-links | `POST /api/projects/{project_id}/share-links` | — | `ShareLinkWire` | v2 | — | — | **v2** | |
-| 49 | share-links | `DELETE /api/projects/{project_id}/share-links/{link_id}` | — | `ShareLinkWire` | v2 | — | — | **v2** | |
+| 47 | share-links | `GET /api/projects/{project_id}/share-links` | `share_links_list` | `ShareLinkWire[]` | Đ | `share.create` | — | FIX-SHARE | mới trước; 404 người ngoài trước 403 viewer |
+| 48 | share-links | `POST /api/projects/{project_id}/share-links` | `share_links_create` | `ShareLinkWire` | G | `share.create` | — | FIX-SHARE | 201; token ngẫu nhiên 256 bit |
+| 49 | share-links | `DELETE /api/projects/{project_id}/share-links/{link_id}` | `share_links_revoke` | `ShareLinkWire` | G | `share.create` | — | FIX-SHARE | giữ dòng, đặt `revokedAt`; lặp lại vẫn trả `revoked` |
 | S1 | SSE | `GET /api/streams/projects/{project_id}/uploads/{upload_id}/progress` | `streams_open_progress` | sự kiện `Progress` | S | thành viên | — | B4-01 | S06 và S08 do B2-04 cài qua `StreamAccessPolicy`/`SnapshotProvider` |
 | S2 | SSE | `GET /api/streams/notifications` | `streams_open_notifications` | sự kiện `Notification` | S | — | — | B4-01 | không S06, không S08 (không ảnh chụp) |
 
-**Tổng:** 45/49 HTTP có chủ, 4 để v2 (#2, #47–49); 2/2 SSE có chủ.
+**Tổng:** 48/49 HTTP có chủ, 1 để v2 (#2); 2/2 SSE có chủ.
 
 ## 2. Hợp đồng MỚI v1
 
@@ -122,6 +122,8 @@
 | N36 | `GET /api/admin/ml/training-jobs/{job_id}/metrics?since=` | `ml_list_job_metrics` | `adminMl.ts` | A | admin | — | B6-03a | F-12 |
 | N37 | `GET /api/admin/ml/training-jobs/{job_id}/logs?since=` | `ml_list_job_logs` | `adminMl.ts` | A | admin | — | B6-03a | F-12 |
 | N38 | `GET /api/share/{token}` | `share_links_open` | `client.ts` (`SharedModel`) | C | — | — | FIX-2436 | `SharedModelPage` |
+| N39 | `POST /api/projects/{project_id}/exports` | `share_links_export` | `spatialGraph.ts` | Đ | `model.export` | — | FIX-SHARE | nút Xuất (chỉ đọc, cùng dạng N15) |
+| N40 | `DELETE /api/projects/{project_id}/creation` | `projects_cancel_create_project` | `index.ts` (`Project`) | G | thành viên | — | B2-01 | toast "Đã tạo" (Hoàn tác: người tạo, ≤ 10 phút) |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 
