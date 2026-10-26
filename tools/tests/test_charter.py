@@ -1,4 +1,4 @@
-"""tools/charter.py — [8]: BE-BIND thật đọc đủ 49 + 2 + 37 dòng; dòng sai khuôn → ValueError; query bị bỏ."""
+"""tools/charter.py — [8]: BE-BIND thật đọc đủ 49 + 2 + 42 dòng; dòng sai khuôn → ValueError; query bị bỏ."""
 
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ def _write_table(tmp_path: Path, *rows: str) -> Path:
     return p
 
 
-def test_be_bind_thật_đọc_đủ_49_2_37_dòng() -> None:
+def test_be_bind_thật_đọc_đủ_49_2_42_dòng() -> None:
     rows = load_bind_rows(BE_BIND)
     numeric = [r for r in rows if r.row_id.isdigit()]
     s_rows = [r for r in rows if r.row_id.startswith("S")]
     n_rows = [r for r in rows if r.row_id.startswith("N")]
     assert len(numeric) == 49
     assert len(s_rows) == 2
-    assert len(n_rows) == 40
+    assert len(n_rows) == 42
 
 
 def test_query_bị_bỏ() -> None:
