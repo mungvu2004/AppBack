@@ -59,6 +59,7 @@ def test_messages__no_sentence_ends_with_a_label() -> None:
     """FE nối `objectLabel` sau câu, nên không câu nào được kết thúc bằng nhãn truyền vào."""
     sentences = [messages.project_invite(label) for label in LABELS]
     sentences += [messages.project_invite(None), messages.ai_completed(), messages.violation_found(2)]
+    sentences += [messages.ai_failed(), messages.ai_failed("Chung cư Sông Hàn")]
     assert not any(
         sentence.endswith(label) for sentence in sentences for label in ("Chung cư Sông Hàn", "tầng trệt", "tầng 2")
     )
@@ -68,6 +69,13 @@ def test_messages__no_sentence_ends_with_a_label() -> None:
 def test_messages__ai_completed_blank_project_falls_back(name: str) -> None:
     """Tên dự án rỗng sau làm sạch → câu không nêu dự án (G1-13)."""
     assert messages.ai_completed(name) == "Hệ thống AI đã xử lý xong bản vẽ"
+
+
+def test_messages__ai_failed() -> None:
+    """Lượt hỏng (FIX-P0-11): mở câu bằng tên dự án đã làm sạch; tên rỗng → câu không nêu dự án."""
+    assert messages.ai_failed() == "AI chưa xử lý được bản vẽ"
+    assert messages.ai_failed(f" Nhà  {RLO}A ") == "Dự án Nhà A: AI chưa xử lý được bản vẽ"
+    assert messages.ai_failed(ZWSP) == "AI chưa xử lý được bản vẽ"
 
 
 def test_messages__ai_completed_cleans_project_name() -> None:

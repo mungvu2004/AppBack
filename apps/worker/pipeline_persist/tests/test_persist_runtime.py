@@ -152,11 +152,12 @@ async def _row_count(maker: Maker, model: type[NotificationRow] | type[VersionRe
 
 
 async def _no_writes(maker: Maker, *, floor_pk: int) -> None:
-    """Ca hỏng không để lại tài liệu, phiên bản hay thông báo nào (J03, J09)."""
+    """Ca hỏng không để lại tài liệu, phiên bản hay thông báo nào ngoài `aiFailed` (J03, J09; Phase 0 H6)."""
     async with maker() as db:
         assert await load_document(db, floor_pk) is None
+        kinds = set((await db.execute(select(NotificationRow.kind))).scalars())
     assert await _row_count(maker, VersionRecord) == 0
-    assert await _row_count(maker, NotificationRow) == 0
+    assert kinds <= {"aiFailed"}
 
 
 def _wait_failed(db_url: str, upload_id: str, deadline: float) -> dict[str, object]:

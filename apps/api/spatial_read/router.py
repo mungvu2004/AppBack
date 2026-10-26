@@ -27,6 +27,7 @@ from apps.api.spatial_read.assemble import effective_scale_source, level_out, sc
 from apps.api.spatial_read.documents import empty_document, load_document
 from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.pages import load_pages
+from apps.api.spatial_read.readiness import latest_run_facts, readiness_of
 from apps.api.spatial_read.wire import (
     FloorLayerDocumentOut,
     PointOut,
@@ -77,17 +78,19 @@ async def spatial_read_graph(project_id: str, request: Request, db: DbSession) -
 
 @router.get("/projects/{project_id}/floors/{floor_id}/spatial/layer", dependencies=[Depends(require_project())])
 async def spatial_read_layer(project_id: str, floor_id: str, request: Request, db: DbSession) -> FloorLayerDocumentOut:
-    """N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`, bốn danh sách, trục, kích thước."""
+    """N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước."""
     floor = await _floor_or_404(db, project_id, floor_id)
     stored = await load_document(db, floor.pk)
     document = empty_document(floor.pk) if stored is None else stored
     page_key = (await load_pages(db, [floor.pk], app=request.app)).get(floor.pk)
     source = effective_scale_source(document, page_key)
     out = await _floor_out_or_404(db, project_id, floor.pk, app=request.app)
+    run = await latest_run_facts(db, floor.pk)
     return FloorLayerDocumentOut(
         revision=document.revision,
         level=level_out(out, document, source),
         scale_status=scale_status(source),
+        readiness=readiness_of(run=run, scale_source=source, layer=document.layer),
         layer=layer_out(document.layer),
         axes=axes_out(document.axes),
         dimensions=dimensions_out(document.dimensions),

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.drawings import current_drawing
 from apps.api.projects.summaries import set_layer_counts, touch_project
+from apps.api.spatial_read.assemble import scale_status
 from apps.api.spatial_read.codec import document_to_json, entity_ids
 from apps.api.spatial_read.counts import layer_counts
 from apps.api.spatial_read.documents import FloorDocument, ScaleSource, ensure_document, load_document
@@ -44,6 +45,7 @@ from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, FORBIDDEN, NOT_FOU
 from packages.core.errors import MISSING, SYSTEM_PIPELINE, VersionConflictError
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorChangeLogRow, FloorDocumentRow
+from packages.domain.rules_ai import merge_dimensions
 from packages.domain.scale import RescaleError, rescale_dimensions, rescale_unreviewed
 from packages.domain.spatial import (
     DELETED,
@@ -64,6 +66,8 @@ from packages.domain.spatial import (
     diff_layers,
     has_critical,
     has_untracked_changes,
+    mark_edited,
+    mark_edited_dimensions,
     polygon_area_m2,
 )
 
@@ -166,12 +170,17 @@ class _Request:
 
 @dataclass(frozen=True)
 class _Scale:
-    """Tỉ lệ đích của lượt ghi; `factor` khác `None` nghĩa là tỉ lệ đổi và lớp phải tính lại."""
+    """Tỉ lệ đích của lượt ghi; `factor` khác `None` nghĩa là tỉ lệ đổi và lớp phải tính lại.
+
+    `include_reviewed`: tỉ lệ cũ chỉ là đoán (`scale_status` = `unresolved`), nên co giãn cả
+    mục đã duyệt — người dùng duyệt hình dạng theo pixel, không duyệt số mm của tỉ lệ tạm (H4).
+    """
 
     value: Decimal | None
     source: ScaleSource
     page_key: str | None
     factor: tuple[float, float] | None
+    include_reviewed: bool
 
 
 @dataclass(frozen=True)
@@ -454,11 +463,19 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
     )
     rank = 0 if other_page else _RANK[current.scale_source]
     target = request.body.scale_mm_per_px
+    provisional = scale_status(current.scale_source) == "unresolved"
     if target is None or _RANK[request.scale_source] < rank:
-        return _Scale(current.scale_mm_per_px, current.scale_source, current.scale_page_key, factor=None)
+        return _Scale(
+            current.scale_mm_per_px,
+            current.scale_source,
+            current.scale_page_key,
+            factor=None,
+            include_reviewed=provisional,
+        )
     previous = current.scale_mm_per_px
     factor = None if other_page or previous is None or previous == target else (float(previous), float(target))
-    return _Scale(target, request.scale_source, await _page_of(db, request, current), factor=factor)
+    page_key = await _page_of(db, request, current)
+    return _Scale(target, request.scale_source, page_key, factor=factor, include_reviewed=provisional)
 
 
 async def _page_of(db: AsyncSession, request: _Request, current: FloorDocument) -> str | None:
@@ -471,18 +488,20 @@ async def _page_of(db: AsyncSession, request: _Request, current: FloorDocument) 
     return None if drawing is None else drawing.page_key
 
 
-def _rescaled_layer(layer: SpatialLayer, factor: tuple[float, float]) -> SpatialLayer:
+def _rescaled_layer(layer: SpatialLayer, factor: tuple[float, float], *, include_reviewed: bool) -> SpatialLayer:
     """`rescale_unreviewed` với lỗi đổi sang 422 của #35 (người dùng sửa bằng cách gửi tỉ lệ khác)."""
     try:
-        return rescale_unreviewed(layer, *factor)
+        return rescale_unreviewed(layer, *factor, include_reviewed=include_reviewed)
     except RescaleError as error:
         raise VALIDATION.error(field="body.scaleMillimetresPerPixel") from error
 
 
-def _rescaled_dimensions(dimensions: Sequence[Dimension], factor: tuple[float, float]) -> tuple[Dimension, ...]:
+def _rescaled_dimensions(
+    dimensions: Sequence[Dimension], factor: tuple[float, float], *, include_reviewed: bool
+) -> tuple[Dimension, ...]:
     """`rescale_dimensions` với cùng cách đổi lỗi như `_rescaled_layer`."""
     try:
-        return rescale_dimensions(dimensions, *factor)
+        return rescale_dimensions(dimensions, *factor, include_reviewed=include_reviewed)
     except RescaleError as error:
         raise VALIDATION.error(field="body.scaleMillimetresPerPixel") from error
 
@@ -498,46 +517,64 @@ def _with_areas(layer: SpatialLayer) -> SpatialLayer:
 
 
 def _next_layer(request: _Request, current: FloorDocument, scale: _Scale) -> _Next:
-    """Bước 7-8: nền (lớp hiện tại, đã đổi tỉ lệ nếu cần) rồi lớp mới của một trong ba đường."""
-    base = current.layer if scale.factor is None else _rescaled_layer(current.layer, scale.factor)
+    """Bước 7-8: nền (lớp hiện tại, đã đổi tỉ lệ nếu cần) rồi lớp mới của một trong ba đường.
+
+    Lớp người ghi gửi được đánh `edited` **trước** khi co giãn: thân #35 mang lớp ở tỉ lệ cũ,
+    so ở cùng tỉ lệ thì co giãn không bị nhận nhầm là sửa (H1 §2.3).
+    """
+    base = (
+        current.layer
+        if scale.factor is None
+        else _rescaled_layer(current.layer, scale.factor, include_reviewed=scale.include_reviewed)
+    )
     if request.merge is not None:
         outcome = request.merge(base, scale.value)
         _check_candidate(outcome.layer, level_id=request.level_id)
         return _Next(_with_areas(outcome.layer), outcome.id_map)
     if request.body.layer is not None:
-        sent = request.body.layer if scale.factor is None else _rescaled_layer(request.body.layer, scale.factor)
+        sent = request.body.layer
+        if request.actor_id != SYSTEM_PIPELINE:
+            sent = mark_edited(current.layer, sent)
+        if scale.factor is not None:
+            sent = _rescaled_layer(sent, scale.factor, include_reviewed=scale.include_reviewed)
         return _Next(_with_areas(sent), {})
     return _Next(_with_areas(base), {})
 
 
 def _next_dimensions(request: _Request, current: FloorDocument, scale: _Scale, nxt: _Next) -> tuple[Dimension, ...]:
-    """Bước 9: danh sách kích thước mới (khác `current.dimensions` thì bước 13 ghi nhật ký theo id)."""
+    """Bước 9: danh sách kích thước mới (khác `current.dimensions` thì bước 13 ghi nhật ký theo id).
+
+    Đường `merge` trộn danh sách AI gửi vào nền thay vì thay cả danh sách (H3):
+    `merge_dimensions` giữ mục người đã chạm và tự ánh xạ `referenceIds` qua `id_map`.
+    Đường người ghi lấy nguyên danh sách gửi, đã đánh `edited` trước khi co giãn (H1 §2.3).
+    """
+    base = (
+        current.dimensions
+        if scale.factor is None
+        else _rescaled_dimensions(current.dimensions, scale.factor, include_reviewed=scale.include_reviewed)
+    )
     sent = request.body.dimensions
-    if sent is not None:
-        dimensions = _sent_dimensions(sent, request.body.scale_mm_per_px, scale.value)
-        dimensions = _remap_refs(dimensions, nxt.id_map) if nxt.id_map else dimensions
-    elif scale.factor is None:
-        dimensions = current.dimensions
+    if sent is None:
+        dimensions = base
+    elif request.merge is not None:
+        ai = _sent_dimensions(sent, request.body.scale_mm_per_px, scale)
+        dimensions = merge_dimensions(base, ai, nxt.id_map)
     else:
-        dimensions = _rescaled_dimensions(current.dimensions, scale.factor)
+        if request.actor_id != SYSTEM_PIPELINE:
+            sent = mark_edited_dimensions(current.dimensions, sent)
+        dimensions = _sent_dimensions(sent, request.body.scale_mm_per_px, scale)
     return _drop_missing_refs(dimensions, entity_ids(nxt.layer))
 
 
 def _sent_dimensions(
-    dimensions: tuple[Dimension, ...], sent_scale: Decimal | None, target: Decimal | None
+    dimensions: tuple[Dimension, ...], sent_scale: Decimal | None, scale: _Scale
 ) -> tuple[Dimension, ...]:
     """Kích thước người gọi gửi, đưa từ hệ tỉ lệ của thân về hệ tỉ lệ đích."""
+    target = scale.value
     if sent_scale is None or target is None or sent_scale == target:
         return dimensions
-    return _rescaled_dimensions(dimensions, (float(sent_scale), float(target)))
-
-
-def _remap_refs(dimensions: tuple[Dimension, ...], id_map: Mapping[str, str]) -> tuple[Dimension, ...]:
-    """Đổi `referenceIds` theo bảng id của `merge`: mục AI bị bỏ trỏ sang mục được giữ."""
-    return tuple(
-        item.model_copy(update={"reference_ids": tuple(id_map.get(ref, ref) for ref in item.reference_ids)})
-        for item in dimensions
-    )
+    factor = (float(sent_scale), float(target))
+    return _rescaled_dimensions(dimensions, factor, include_reviewed=scale.include_reviewed)
 
 
 def _drop_missing_refs(dimensions: tuple[Dimension, ...], live: frozenset[str]) -> tuple[Dimension, ...]:

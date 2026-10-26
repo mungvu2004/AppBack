@@ -118,7 +118,7 @@
 
 **K21 — Pipeline đè mục người đã duyệt.**
 - Sai: ghi đè cả lớp bằng kết quả AI.
-- Đúng: chỉ qua hàm trộn của B3-06.
+- Đúng: chỉ qua hàm trộn của B3-06; giữ mục `reviewed`, `source:'human'`, `edited` và mục người đã xoá không mọc lại (Phase 0). Đổi tỉ lệ từ tỉ lệ tạm co giãn cả mục đã duyệt (giữ hình học theo pixel, BE-00 §9).
 - Bắt bởi: test B3-06, J06 của B5-06b.
 
 ## Quy trình và cổng

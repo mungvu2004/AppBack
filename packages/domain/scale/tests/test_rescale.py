@@ -1,4 +1,7 @@
-"""Đổi tỉ lệ cho mục chưa duyệt (#35, N19): độ dài mặt bằng nhân `k`, chiều cao giữ, mục đã duyệt giữ nguyên."""
+"""Đổi tỉ lệ cho mục chưa duyệt (#35, N19): độ dài mặt bằng nhân `k`, chiều cao giữ, mục đã duyệt giữ nguyên.
+
+`include_reviewed=True` (H4) đổi cả mục đã duyệt.
+"""
 
 import pytest
 
@@ -110,3 +113,22 @@ def test_empty_layer_rescales_to_empty() -> None:
     """Lớp rỗng → lớp rỗng."""
     empty = SpatialLayer(walls=(), openings=(), rooms=(), furniture=())
     assert rescale_unreviewed(empty, 6.0, 12.0) == empty
+
+
+def test_reviewed_entities_scale_when_include_reviewed() -> None:
+    """`include_reviewed=True` (tỉ lệ cũ chỉ là đoán, H4): tường và phòng đã duyệt cũng nhân đôi, cờ duyệt giữ."""
+    approved = WALL.model_copy(update={"reviewed": True, "source": "human", "confidence": 1.0})
+    layer = LAYER.model_copy(update={"walls": (approved,)})
+    scaled = rescale_unreviewed(layer, 6.0, 12.0, include_reviewed=True)
+    wall, room = scaled.walls[0], scaled.rooms[0]
+    assert wall.centreline == Segment(start=Point(x=0, y=0), end=Point(x=2000, y=0))
+    assert (wall.thickness_mm, wall.reviewed, wall.source) == (440, True, "human")
+    assert (room.outline[2], room.reviewed) == (Point(x=8000, y=8500), True)
+
+
+def test_dimensions_include_reviewed_scale_line() -> None:
+    """`include_reviewed=True`: `line` của kích thước đã duyệt nhân đôi, `valueMm` giữ."""
+    approved = DIMENSIONS[0].model_copy(update={"reviewed": True, "source": "human"})
+    (scaled,) = rescale_dimensions((approved,), 6.0, 12.0, include_reviewed=True)
+    assert scaled.line == Segment(start=Point(x=0, y=-1000), end=Point(x=2000, y=-1000))
+    assert (scaled.value_mm, scaled.reviewed) == (approved.value_mm, True)

@@ -18,8 +18,10 @@ from typing import Any, cast
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.core.errors import MISSING, RemoteFieldChange, VersionEntityType
+from packages.core.errors import MISSING, SYSTEM_PIPELINE, RemoteFieldChange, VersionEntityType
 from packages.db.models.spatial import FloorChangeLogRow
+from packages.domain.rules_ai import Removed
+from packages.domain.spatial import DELETED, Point, Segment, vertex_id
 
 _COLUMNS = (
     FloorChangeLogRow.id,
@@ -77,3 +79,77 @@ def _change(row: Row[Any]) -> RemoteFieldChange:
         changed_by=row.changed_by,
         changed_by_name=row.changed_by_name,
     )
+
+
+async def human_removals(db: AsyncSession, *, floor_pk: int) -> Removed:
+    """Tường/phòng người đã xoá kèm hình học cuối — "bia mộ" để lượt pipeline không dựng lại (H2 Phase 0).
+
+    Hai truy vấn, không N+1. Một: dòng **mới nhất** mỗi id tường/phòng (`DISTINCT ON
+    (entity_id)`), giữ id mà dòng đó là `__deleted__` do người ghi — xoá rồi ghi lại cùng id
+    thì dòng mới nhất không còn là `__deleted__`. Hai: giá trị mới nhất của `x`/`y` hai đầu
+    tường và `outline` của phòng (index `(floor_pk, entity_id, field, revision)`). Lịch gộp
+    chỉ xoá dòng đã bị dòng mới hơn cùng `(entity_id, field)` che, nên cả hai còn sau gộp.
+    Thiếu dữ liệu hình học thì bỏ mục đó; id còn sống không lọc ở đây (merge lọc).
+    """
+    newest = (
+        select(
+            FloorChangeLogRow.entity_id,
+            FloorChangeLogRow.entity_type,
+            FloorChangeLogRow.field,
+            FloorChangeLogRow.changed_by,
+        )
+        .where(FloorChangeLogRow.floor_pk == floor_pk, FloorChangeLogRow.entity_type.in_(("wall", "room")))
+        .distinct(FloorChangeLogRow.entity_id)
+        .order_by(FloorChangeLogRow.entity_id, FloorChangeLogRow.revision.desc(), FloorChangeLogRow.id.desc())
+        .subquery()
+    )
+    deleted = (
+        await db.execute(
+            select(newest.c.entity_id, newest.c.entity_type)
+            .where(newest.c.field == DELETED, newest.c.changed_by != SYSTEM_PIPELINE)
+            .order_by(newest.c.entity_id)
+        )
+    ).all()
+    if not deleted:
+        return Removed()
+    wall_ids = [row.entity_id for row in deleted if row.entity_type == "wall"]
+    room_ids = [row.entity_id for row in deleted if row.entity_type == "room"]
+    keys = [vertex_id(wall_id, end) for wall_id in wall_ids for end in ("start", "end")] + room_ids
+    values = (
+        await db.execute(
+            select(FloorChangeLogRow.entity_id, FloorChangeLogRow.field, FloorChangeLogRow.value)
+            .where(
+                FloorChangeLogRow.floor_pk == floor_pk,
+                FloorChangeLogRow.entity_id.in_(keys),
+                FloorChangeLogRow.field.in_(("x", "y", "outline")),
+                FloorChangeLogRow.removed.is_(False),
+            )
+            .distinct(FloorChangeLogRow.entity_id, FloorChangeLogRow.field)
+            .order_by(
+                FloorChangeLogRow.entity_id,
+                FloorChangeLogRow.field,
+                FloorChangeLogRow.revision.desc(),
+                FloorChangeLogRow.id.desc(),
+            )
+        )
+    ).all()
+    latest: dict[tuple[str, str], Any] = {(row.entity_id, row.field): row.value for row in values}
+    return Removed(
+        walls=tuple(
+            (wall_id, Segment(start=start, end=end))
+            for wall_id in wall_ids
+            if (start := _vertex(latest, vertex_id(wall_id, "start"))) is not None
+            and (end := _vertex(latest, vertex_id(wall_id, "end"))) is not None
+        ),
+        rooms=tuple(
+            (room_id, tuple(Point.model_validate(point) for point in latest[(room_id, "outline")]))
+            for room_id in room_ids
+            if (room_id, "outline") in latest
+        ),
+    )
+
+
+def _vertex(latest: dict[tuple[str, str], Any], key: str) -> Point | None:
+    """Đầu tường từ giá trị mới nhất của `x` và `y`; thiếu một trong hai → `None`."""
+    x, y = latest.get((key, "x")), latest.get((key, "y"))
+    return None if x is None or y is None else Point(x=x, y=y)

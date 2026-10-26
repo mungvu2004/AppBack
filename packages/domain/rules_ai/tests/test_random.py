@@ -4,9 +4,9 @@ import logging
 from collections import Counter
 from typing import Final
 
-from packages.domain.rules_ai import apply_post_rules, merge_pipeline_result
+from packages.domain.rules_ai import Removed, apply_post_rules, merge_pipeline_result
 from packages.domain.rules_ai.tests.generators import Pair, random_pair, shares_ids
-from packages.domain.rules_ai.tests.reference import ref_apply_post_rules, ref_merge
+from packages.domain.rules_ai.tests.reference import ref_apply_post_rules, ref_keep, ref_merge
 from packages.domain.spatial import SpatialLayer, ai_reviewed_ids, check_integrity, has_critical
 
 _LOG = logging.getLogger(__name__)
@@ -29,17 +29,29 @@ def _check_rules(source: SpatialLayer, tally: Counter[str]) -> None:
     tally["rules_changed_something"] += result != source
 
 
+def _removals(pair: Pair) -> Removed:
+    """Bia mộ từ cặp: tường/phòng AI thứ 0, 4, 8… dưới id đã mất, cộng một mục `K` còn sống (phải bị bỏ qua)."""
+    keep = ref_keep(pair.current)
+    walls = [(f"W-GONE{n:06d}", w.centreline) for n, w in enumerate(pair.ai.walls) if n % 4 == 0]
+    rooms = [(f"R-GONE{n:06d}", r.outline) for n, r in enumerate(pair.ai.rooms) if n % 4 == 0]
+    walls += [(w.id, w.centreline) for w in pair.current.walls if w.id in keep][:1]
+    rooms += [(r.id, r.outline) for r in pair.current.rooms if r.id in keep][:1]
+    return Removed(walls=tuple(walls), rooms=tuple(rooms))
+
+
 def _check_merge(pair: Pair, tally: Counter[str]) -> None:
-    """Bốn bất biến của [6] và `layer`, `id_map`, `dropped_ai_ids` bằng bản tham chiếu so mọi cặp."""
+    """Bốn bất biến của [6] và `layer`, `id_map`, `dropped_ai_ids`, `suppressed_ids` bằng bản tham chiếu so mọi cặp."""
     current, ai = pair.current, pair.ai
     assert ai_reviewed_ids(current) == ()
     assert ai_reviewed_ids(ai) == ()
     assert not has_critical(check_integrity(current))
     assert not has_critical(check_integrity(ai))
     tally["generator_valid"] += 1
-    result = merge_pipeline_result(current, ai)
-    layer, dropped, id_map = ref_merge(current, ai)
-    assert (result.layer, result.dropped_ai_ids, dict(result.id_map)) == (layer, dropped, id_map), "khác tham chiếu"
+    removed = _removals(pair)
+    result = merge_pipeline_result(current, ai, removed)
+    expected = ref_merge(current, ai, removed)
+    got = (result.layer, result.dropped_ai_ids, dict(result.id_map), result.suppressed_ids)
+    assert got == expected, "khác tham chiếu"
     tally["merge_equal_reference"] += 1
     kept = result.layer.entities()
     assert all(entity in kept for entity in current.entities() if entity.reviewed), "mục đã duyệt bị mất/sửa"
@@ -48,10 +60,11 @@ def _check_merge(pair: Pair, tally: Counter[str]) -> None:
     tally["invariant_no_ai_reviewed"] += 1
     assert not has_critical(check_integrity(result.layer)), "kết quả có lỗi critical"
     tally["invariant_no_critical"] += 1
-    assert merge_pipeline_result(result.layer, ai).layer == result.layer, "trộn lần hai đổi lớp"
+    assert merge_pipeline_result(result.layer, ai, removed).layer == result.layer, "trộn lần hai đổi lớp"
     tally["invariant_idempotent"] += 1
     tally["merge_dropped_something"] += bool(result.dropped_ai_ids)
     tally["merge_mapped_ids"] += bool(result.id_map)
+    tally["merge_suppressed_something"] += bool(result.suppressed_ids)
 
 
 def test_random_pairs__invariants_and_reference_equality() -> None:
@@ -79,6 +92,7 @@ def test_random_pairs__invariants_and_reference_equality() -> None:
     assert tally["rules_changed_something"] > len(SEEDS) // 2
     assert tally["merge_dropped_something"] > len(SEEDS) // 2
     assert tally["merge_mapped_ids"] > len(SEEDS) // 2
+    assert tally["merge_suppressed_something"] > 0
 
 
 def test_generator__shares_ids_in_at_least_a_fifth_of_the_seeds_and_is_deterministic() -> None:

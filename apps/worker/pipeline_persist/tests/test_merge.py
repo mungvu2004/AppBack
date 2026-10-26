@@ -9,7 +9,7 @@ from typing import Final
 
 from apps.worker.pipeline_persist.merge import make_merge, with_floor_height
 from apps.worker.pipeline_persist.tests.helpers import ai_layer
-from packages.domain.rules_ai.merge import merge_pipeline_result
+from packages.domain.rules_ai.merge import Removed, merge_pipeline_result
 from packages.domain.spatial.model import SpatialLayer
 
 LEVEL_ID: Final = "L-MERGE00000"
@@ -25,7 +25,7 @@ def test_make_merge_passes_ai_unchanged_when_target_is_none() -> None:
     """`target is None` → `merge_pipeline_result` nhận đúng lớp AI, không qua `rescale`."""
     base, ai = _layers()
 
-    got = make_merge(ai, Decimal("12"))(base, None)
+    got = make_merge(ai, Decimal("12"), Removed())(base, None)
 
     assert got.layer == merge_pipeline_result(base, ai).layer
 
@@ -34,8 +34,8 @@ def test_make_merge_rescales_ai_to_target_scale() -> None:
     """`target` khác tỉ lệ dựng → lớp AI về đúng `target` trước khi trộn (tường co lại)."""
     base, ai = _layers()
 
-    at_twelve = make_merge(ai, Decimal("12"))(base, Decimal("12"))
-    at_six = make_merge(ai, Decimal("12"))(base, Decimal("6"))
+    at_twelve = make_merge(ai, Decimal("12"), Removed())(base, Decimal("12"))
+    at_six = make_merge(ai, Decimal("12"), Removed())(base, Decimal("6"))
 
     assert at_six.layer != at_twelve.layer
     assert len(at_six.layer.walls) == len(at_twelve.layer.walls)

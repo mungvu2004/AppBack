@@ -357,3 +357,98 @@ async def test_scale_change_breaking_a_dimension_is_a_validation_error(
         await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, scale=Decimal("1"))
 
     assert caught.value.params["field"] == "body.scaleMillimetresPerPixel"
+
+
+async def test_scale_from_project_default_rescales_reviewed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Tỉ lệ cũ chỉ là mặc định dự án: đặt gấp 10 thì cả tường đã duyệt cũng thành 10.000 mm (H4)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(
+        db_session, floor, fake_clock, scale=Decimal("1"), scale_source="project_default", reviewed_wall=True
+    )
+
+    result = await write(
+        db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, scale=Decimal("10")
+    )
+
+    assert (_wall_length(result.layer, 0), _wall_length(result.layer, 1)) == (10000, 10000)
+
+
+async def test_scale_from_pipeline_rescales_reviewed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Tỉ lệ pipeline suy ra cũng là tạm (`scale_status` = `unresolved`): người đặt tỉ lệ thì co giãn hết."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(db_session, floor, fake_clock, scale=Decimal("10"), scale_source="pipeline", reviewed_wall=True)
+
+    result = await write(
+        db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, scale=Decimal("20")
+    )
+
+    assert (_wall_length(result.layer, 0), _wall_length(result.layer, 1)) == (2000, 2000)
+
+
+async def test_merge_over_project_default_rescales_reviewed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Lượt pipeline suy được tỉ lệ trên tầng `project_default`: nền đưa cho `merge` co giãn cả mục đã duyệt."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(
+        db_session, floor, fake_clock, scale=Decimal("1"), scale_source="project_default", reviewed_wall=True
+    )
+    merge = RecordingMerge(lambda base: base)
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        scale=Decimal("12"),
+        scale_source="pipeline",
+        page_key=PAGE_1,
+        merge=merge,
+    )
+
+    assert merge.base is not None
+    assert (_wall_length(merge.base, 0), _wall_length(merge.base, 1)) == (12000, 12000)
+    assert [_wall_length((await reread(db_session, floor.pk)).layer, i) for i in (0, 1)] == [12000, 12000]
+
+
+async def test_merge_keeps_overridden_dimension(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Lượt pipeline không thay kích thước có `overrideValueMm`; mục AI mới không trùng vẫn được thêm (H3)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    overridden = make_dimension(floor.level_id).model_copy(update={"override_value_mm": 1234})
+    await _prepared(db_session, floor, fake_clock, dimensions=(overridden,))
+    fresh = make_dimension(floor.level_id, entity_id="M-TESTDIM002", length=3000)
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        merge=RecordingMerge(lambda base: base),
+        dimensions=(fresh,),
+    )
+
+    dimensions = (await reread(db_session, floor.pk)).dimensions
+    assert [(item.id, item.override_value_mm) for item in dimensions] == [
+        ("M-TESTDIM001", 1234),
+        ("M-TESTDIM002", None),
+    ]
+
+
+async def test_merge_replaces_plain_ai_dimensions(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Kích thước AI chưa ai chạm thì lượt pipeline mới thay hẳn (H3)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(db_session, floor, fake_clock, dimensions=(make_dimension(floor.level_id),))
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        merge=RecordingMerge(lambda base: base),
+        dimensions=(make_dimension(floor.level_id, entity_id="M-TESTDIM002", length=3000),),
+    )
+
+    assert [item.id for item in (await reread(db_session, floor.pk)).dimensions] == ["M-TESTDIM002"]

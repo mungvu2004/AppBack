@@ -375,11 +375,28 @@ async def _review_first_wall(
     inner: dict[str, Any] = {"layer": layer_wire}
     if scale is not None:
         inner["scaleMillimetresPerPixel"] = scale
+    return reviewed_wall, await _put_body(client, headers, project_id, level_id, doc, inner)
+
+
+async def _put_body(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    project_id: str,
+    level_id: str,
+    doc: Any,
+    inner: dict[str, Any],
+) -> int:
+    """Một lượt ghi #35 của người trên revision của `doc`; trả revision mới."""
     response = await client.put(
         write_layer_path(project_id, level_id), json={"baseVersion": doc.revision, "body": inner}, headers=headers
     )
     assert response.status_code == 200, response.text
-    return reviewed_wall, response.json()["revision"]
+    return int(response.json()["revision"])
+
+
+def _layer_body(layer: Any) -> dict[str, Any]:
+    """Dạng dây của cả bốn danh sách lớp, đúng cái FE gửi trong `body.layer`."""
+    return {name: [wire(item) for item in getattr(layer, name)] for name in ("walls", "openings", "rooms", "furniture")}
 
 
 async def test_spatial_read_layer__C01_pipeline(
@@ -471,6 +488,65 @@ async def test_pipeline_e2e_rerun_keeps_reviewed(
     assert time.monotonic() - start < 120.0
 
 
+async def test_rerun_after_edit_keeps_wall(
+    db_url: str,
+    e2e_worker: None,
+    e2e_client: httpx.AsyncClient,
+) -> None:
+    """FIX-P0-07: sửa chiều cao một tường AI (chưa duyệt) qua #35 rồi tải lại → lượt hai giữ bản người sửa."""
+    project_id, level_id, floor_pk, headers = await _signed_in_scene(db_url, e2e_client)
+    plan = render_plan(SEED)
+    await _run_pipeline(e2e_client, headers, project_id, level_id, plan.image_png)
+    doc_one = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
+    assert doc_one.layer.walls, "pipeline phải sinh ít nhất một tường để sửa"
+    target = doc_one.layer.walls[0]
+    height = target.height_mm + 123
+    walls = tuple(w.model_copy(update={"height_mm": height}) if w.id == target.id else w for w in doc_one.layer.walls)
+    layer = doc_one.layer.model_copy(update={"walls": walls})
+    await _put_body(e2e_client, headers, project_id, level_id, doc_one, {"layer": _layer_body(layer)})
+
+    await _run_pipeline(e2e_client, headers, project_id, level_id, plan.image_png)
+
+    doc_two = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
+    kept = next(w for w in doc_two.layer.walls if w.id == target.id)
+    assert (kept.height_mm, kept.edited, kept.reviewed) == (height, True, False), kept
+    assert len(doc_two.layer.walls) == len(doc_one.layer.walls)
+
+
+async def test_rerun_after_delete_keeps_it_deleted(
+    db_url: str,
+    e2e_worker: None,
+    e2e_client: httpx.AsyncClient,
+) -> None:
+    """FIX-P0-07: xoá một tường AI qua #35 rồi tải lại cùng ảnh → tường không quay lại."""
+    project_id, level_id, floor_pk, headers = await _signed_in_scene(db_url, e2e_client)
+    plan = render_plan(SEED)
+    await _run_pipeline(e2e_client, headers, project_id, level_id, plan.image_png)
+    doc_one = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
+    assert doc_one.layer.walls, "pipeline phải sinh ít nhất một tường để xoá"
+    gone = doc_one.layer.walls[0]
+    gone_ids = {gone.id, *(o.id for o in doc_one.layer.openings if o.wall_id == gone.id)}
+    rooms = tuple(
+        r.model_copy(update={"wall_ids": tuple(i for i in r.wall_ids if i != gone.id)}) for r in doc_one.layer.rooms
+    )
+    layer = doc_one.layer.model_copy(
+        update={
+            "walls": tuple(w for w in doc_one.layer.walls if w.id != gone.id),
+            "openings": tuple(o for o in doc_one.layer.openings if o.wall_id != gone.id),
+            "rooms": rooms,
+        }
+    )
+    dimensions = [wire(d) for d in doc_one.dimensions if not gone_ids & set(d.reference_ids)]
+    inner = {"layer": _layer_body(layer), "dimensions": dimensions}
+    await _put_body(e2e_client, headers, project_id, level_id, doc_one, inner)
+
+    await _run_pipeline(e2e_client, headers, project_id, level_id, plan.image_png)
+
+    doc_two = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
+    assert gone.id not in {w.id for w in doc_two.layer.walls}
+    assert len(doc_two.layer.walls) == len(doc_one.layer.walls) - 1
+
+
 async def test_pipeline_e2e_rerun_rescales_page(
     db_url: str,
     e2e_worker: None,
@@ -492,6 +568,9 @@ async def test_pipeline_e2e_rerun_rescales_page(
     reviewed_wall, _ = await _review_first_wall(
         e2e_client, headers, project_id, level_id, doc_one, scale=plan_one.mm_per_px * 2
     )
+    # Tỉ lệ cũ là `pipeline` (tạm) nên #35 co giãn cả tường vừa duyệt (Phase 0 H4, BE-00 §9): so với bản đã ghi.
+    doc_reviewed = await on_db(db_url, lambda maker: _read_doc(maker, floor_pk))
+    reviewed_wall = next(w for w in doc_reviewed.layer.walls if w.id == reviewed_wall.id)
 
     plan_two = render_plan(RESCALE_SEED)
     assert plan_two.mm_per_px != plan_one.mm_per_px, "seed hiệu chỉnh phải khác mm_per_px với seed đầu"

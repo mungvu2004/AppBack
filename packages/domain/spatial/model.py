@@ -138,12 +138,24 @@ FurnitureVariant = Literal[
 """35 `FURNITURE_VARIANTS` của FE `src/domain/spatial/types.ts`, đúng thứ tự."""
 
 
+def _not_edited(edited: bool) -> bool:
+    """`edited=False` thì bỏ khoá khi dump, như `roofs` rỗng."""
+    return not edited
+
+
 class Reviewed(DomainModel):
-    """Ba trường duyệt mọi thực thể mang (`ReviewMetadata`); `reviewed=True` chỉ do người đặt (A5)."""
+    """Trường duyệt mọi thực thể mang (`ReviewMetadata`); `reviewed=True` chỉ do người đặt (A5).
+
+    `edited`: một người đã thay đổi thực thể AI này (H1). Không phải duyệt, không đổi
+    `source`; BE tự suy ra lúc người ghi (`provenance.mark_edited`), không tin client.
+    `False` thì vắng khoá khi dump: tài liệu cũ ra đúng jsonb như trước, FE chưa biết
+    trường này vẫn giải được mọi mục chưa sửa.
+    """
 
     confidence: Confidence
     source: Literal["ai", "human"]
     reviewed: StrictBool
+    edited: StrictBool = Field(default=False, exclude_if=_not_edited)
 
 
 class Point(DomainModel):

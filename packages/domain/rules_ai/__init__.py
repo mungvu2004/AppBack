@@ -2,7 +2,8 @@
 
 `apply_post_rules` sửa hai lỗi AI hay mắc (thiết bị áp tường đứng cách tường, cửa sổ trên
 tường không phải tường bao); `merge_pipeline_result` trộn kết quả vào lớp hiện có mà không
-bao giờ sửa hay xoá mục `reviewed=True` (K21). Chỉ đổi mục `source="ai"` chưa duyệt; không
+bao giờ sửa hay xoá mục `reviewed=True` (K21), chặn mục người đã xoá (`Removed`);
+`merge_dimensions` trộn kích thước theo cùng luật giữ. Chỉ đổi mục `source="ai"` chưa duyệt; không
 đặt `reviewed`, không tạo id, không đoán tỉ lệ (K19). Lỗi tiền điều kiện là `ValueError`.
 """
 
@@ -14,8 +15,9 @@ from packages.domain.rules_ai.constants import (
     WALL_HUGGING_KINDS,
     WALL_HUGGING_TOLERANCE_MM,
 )
+from packages.domain.rules_ai.dimensions import merge_dimensions
 from packages.domain.rules_ai.geometry import gap_to_wall_face, outline_contains, wall_side
-from packages.domain.rules_ai.merge import MergeResult, merge_pipeline_result
+from packages.domain.rules_ai.merge import MergeResult, Removed, merge_pipeline_result
 from packages.domain.rules_ai.post_rules import apply_post_rules
 
 __all__ = [
@@ -26,8 +28,10 @@ __all__ = [
     "WALL_HUGGING_KINDS",
     "WALL_HUGGING_TOLERANCE_MM",
     "MergeResult",
+    "Removed",
     "apply_post_rules",
     "gap_to_wall_face",
+    "merge_dimensions",
     "merge_pipeline_result",
     "outline_contains",
     "wall_side",

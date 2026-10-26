@@ -3,7 +3,8 @@
 Golden của op này có bốn mẫu (`C01`, `C01_unresolved`, `C01_empty`, `C01_reviewed`) để H1
 ngữ cảnh `n16` chạy trên đủ bốn hình dạng: có tỉ lệ người đặt, tỉ lệ tạm, tầng trống, và
 tầng đã duyệt hết. Ba trong bốn không thể suy ra từ nhau — `scaleStatus` và `level.reviewed`
-đổi theo nguồn tỉ lệ, còn tầng trống là đường `empty_document` không chạm DB.
+đổi theo nguồn tỉ lệ, còn tầng trống là đường `empty_document` không chạm DB. Ba mẫu
+`C01_readiness_*` (FIX-P0-10) phủ ba trạng thái `readiness`.
 """
 
 import logging
@@ -15,16 +16,36 @@ from fastapi import FastAPI
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.drawings.runs import start_run
 from apps.api.projects.tests.test_routes_common import headers_of
-from apps.api.spatial_read.tests._helpers import make_scene
+from apps.api.spatial_read.tests._helpers import Scene, make_scene
 from apps.api.spatial_read.tests._read_helpers import FakePages, delete_floor_mid_request, layer_path, use_pages
+from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.spatial import FloorDocumentRow
+from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.drawings import make_complete_upload, png_bytes
+from packages.testing.factories.pipeline_orchestrate import make_run_pins
 from packages.testing.factories.spatial import make_floor_document, sample_floor_dimensions, sample_floor_layer
 from packages.testing.fixtures.clock import FakeClock
 
 SCALE = Decimal("12.700000")
+CRITICAL_SUMMARY: dict[str, object] = {
+    "hasCritical": True,
+    "criticalCount": 1,
+    "lowConfidence": {"walls": 0, "openings": 0, "rooms": 0, "furniture": 0},
+}
+
+
+async def _completed_classic_run(
+    db: AsyncSession, storage: LocalDiskStorage, clock: FakeClock, *, scene: Scene, floor: FloorRow
+) -> None:
+    """Một lượt `completed` của tầng, ghim ba họ cổ điển, quality có lỗi nghiêm trọng (FIX-P0-10)."""
+    upload = await make_complete_upload(db, storage, project=scene.project, floor=floor, data=png_bytes(10, 10))
+    run = await start_run(db, upload_id=upload.id, clock=clock)
+    await db.execute(update(PipelineRunRow).where(PipelineRunRow.id == run.id).values(status="completed"))
+    await make_run_pins(db, run_id=run.id, quality_summary=CRITICAL_SUMMARY)
 
 
 async def test_spatial_read_layer__C01(
@@ -119,6 +140,75 @@ async def test_spatial_read_layer__C01_reviewed(
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["level"]["reviewed"] is True
     assert body["level"]["source"] == "human"
+
+
+async def test_spatial_read_layer__C01_readiness_needs_review(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Tỉ lệ tạm + lượt xong có lỗi nghiêm trọng, ba họ cổ điển → `needsReview` đủ năm lý do."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db_session,
+        floor_pk=floor.pk,
+        layer=sample_floor_layer(0, level_id=floor.level_id),
+        scale=SCALE,
+        scale_source="pipeline",
+        clock=fake_clock,
+    )
+    await _completed_classic_run(db_session, local_storage, fake_clock, scene=scene, floor=floor)
+    await db_session.commit()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
+    assert body["readiness"] == {
+        "state": "needsReview",
+        "reasons": [
+            "scaleUnresolved",
+            "criticalIssues",
+            "fallbackWallModel",
+            "fallbackObjectModel",
+            "fallbackTextModel",
+        ],
+    }
+
+
+async def test_spatial_read_layer__C01_readiness_ready(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """Tỉ lệ người đặt, tầng duyệt hết → lý do cấp lượt tắt dù lượt có lỗi và dùng model cổ điển."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db_session,
+        floor_pk=floor.pk,
+        layer=sample_floor_layer(0, level_id=floor.level_id, reviewed=True),
+        scale=SCALE,
+        scale_source="human",
+        clock=fake_clock,
+    )
+    await _completed_classic_run(db_session, local_storage, fake_clock, scene=scene, floor=floor)
+    await db_session.commit()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
+    assert body["readiness"] == {"state": "ready", "reasons": []}
+    assert body["level"]["reviewed"] is True
+
+
+async def test_spatial_read_layer__C01_readiness_not_evaluated(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Tầng có tài liệu nhưng chưa có lượt `completed` nào → `notEvaluated`."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db_session,
+        floor_pk=floor.pk,
+        layer=sample_floor_layer(0, level_id=floor.level_id),
+        scale=SCALE,
+        scale_source="human",
+        clock=fake_clock,
+    )
+    await db_session.commit()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
+    assert body["readiness"] == {"state": "notEvaluated", "reasons": []}
 
 
 async def test_spatial_read_layer__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
