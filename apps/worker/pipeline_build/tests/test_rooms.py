@@ -345,3 +345,106 @@ def test_outline_points_drops_closing_point_that_rounds_onto_the_first() -> None
         Point(x=1000, y=0),
         Point(x=1000, y=1000),
     ]
+
+
+def _box(x0: float, y0: float, x1: float, y1: float) -> BoxPx:
+    """Hộp px (ở `_IDENTITY` cũng là mm)."""
+    return BoxPx(x_min=x0, y_min=y0, x_max=x1, y_max=y1)
+
+
+def _text(text: str, x: float, y: float, confidence: float = 0.9) -> TextPx:
+    """Chữ OCR hộp 400 x 200 tâm `(x, y)`."""
+    return TextPx(text=text, box=_box(x - 200, y - 100, x + 200, y + 100), confidence=confidence)
+
+
+def _usages(
+    walls: list[Wall], texts: tuple[TextPx, ...], detections: tuple[DetectionPx, ...], clock: FakeClock
+) -> list[str]:
+    """`usage` các phòng theo thứ tự (y, x) của `build_rooms`."""
+    rooms = build_rooms(
+        walls, (), texts, detections=detections, level_id=LEVEL_ID, scaling=_IDENTITY, clock=clock, dropped=Counter()
+    )
+    return [room.usage for room in rooms]
+
+
+def test_fixtures_name_unlabelled_rooms(fake_clock: FakeClock) -> None:
+    """Không có chữ: thiết bị vệ sinh trong phòng 9 m² → phòng tắm; dãy tủ bếp 2,4 m → bếp."""
+    detections = (
+        DetectionPx(label="sanitary_fixture", box=_box(500, 500, 900, 900), confidence=0.8),
+        DetectionPx(label="kitchen_cabinet", box=_box(3200, 200, 5600, 800), confidence=0.8),
+    )
+    assert _usages(_grid_walls(fake_clock), (), detections, fake_clock) == ["bathroom", "kitchen"]
+
+
+def test_short_cabinet_and_big_wardrobe_room_name_nothing(fake_clock: FakeClock) -> None:
+    """Tủ bếp ngắn (lavabo 1 m) không là bếp; thiết bị vệ sinh ở phòng > 10 m² không là phòng tắm."""
+    walls = [
+        _wall(fake_clock, (0, 0), (8000, 0)),
+        _wall(fake_clock, (0, 4000), (8000, 4000)),
+        _wall(fake_clock, (0, 0), (0, 4000)),
+        _wall(fake_clock, (8000, 0), (8000, 4000)),
+    ]
+    detections = (
+        DetectionPx(label="kitchen_cabinet", box=_box(500, 500, 1500, 1000), confidence=0.8),
+        DetectionPx(label="sanitary_fixture", box=_box(2000, 500, 2400, 900), confidence=0.8),
+    )
+    assert _usages(walls, (), detections, fake_clock) == ["other"]
+
+
+def test_wardrobe_names_bedroom_only_in_bedroom_sizes(fake_clock: FakeClock) -> None:
+    """Tủ áo trong phòng 9 m² → phòng ngủ; trong phòng 32 m² (phòng khách có kệ) → không."""
+    big = [
+        _wall(fake_clock, (0, 0), (8000, 0)),
+        _wall(fake_clock, (0, 4000), (8000, 4000)),
+        _wall(fake_clock, (0, 0), (0, 4000)),
+        _wall(fake_clock, (8000, 0), (8000, 4000)),
+    ]
+    wardrobe = (DetectionPx(label="wardrobe", box=_box(500, 500, 1500, 1100), confidence=0.8),)
+    assert _usages(_grid_walls(fake_clock), (), wardrobe, fake_clock)[0] == "bedroom"
+    assert _usages(big, (), wardrobe, fake_clock) == ["other"]
+
+
+def test_text_label_wins_over_fixtures(fake_clock: FakeClock) -> None:
+    """Chữ `PHONG NGU` thắng thiết bị vệ sinh cùng phòng (WC riêng trong phòng ngủ)."""
+    texts = (_text("PHONG NGU", 1500, 1500),)
+    detections = (DetectionPx(label="sanitary_fixture", box=_box(500, 500, 900, 900), confidence=0.8),)
+    assert _usages(_grid_walls(fake_clock), texts, detections, fake_clock)[0] == "bedroom"
+
+
+def test_main_usage_wins_among_labels_of_one_room(fake_clock: FakeClock) -> None:
+    """Không gian mở có `TIEN SANH` (0,99) và `PHONG KHACH` (0,7) → phòng khách, không phải hành lang."""
+    texts = (_text("TIEN SANH", 1000, 1000, 0.99), _text("PHONG KHACH", 2000, 2000, 0.7))
+    assert _usages(_grid_walls(fake_clock), texts, (), fake_clock)[0] == "livingRoom"
+
+
+def test_label_outside_closed_rooms_seeds_a_loggia(fake_clock: FakeClock) -> None:
+    """Lô gia ba mặt tường, mặt ngoài là lan can (không tường): nhãn `LO GIA` dựng phòng tới biên bao của tường.
+
+    Hai phòng 3 x 3 m; trên mỗi phòng một dải 1,5 m chỉ có tường dưới (chung) và tường bên, mặt trên là lan can.
+    """
+    segments = [
+        ((0, 1500), (6000, 1500)),
+        ((0, 4500), (6000, 4500)),
+        ((0, 0), (0, 4500)),
+        ((6000, 0), (6000, 4500)),
+        ((3000, 0), (3000, 4500)),
+    ]
+    walls = [_wall(fake_clock, start, end) for start, end in segments]
+    rooms = build_rooms(
+        walls,
+        (),
+        (_text("LO GIA", 4500, 750),),
+        level_id=LEVEL_ID,
+        scaling=_IDENTITY,
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    loggia = next(room for room in rooms if room.usage == "loggia")
+    assert loggia.name == "lô gia"
+    assert loggia.area_m2 == 4.95  # 3 x 1,65 m: biên bao lồi của tường đã kéo dài `ROOM_SNAP_MM` 150 mm
+
+
+def test_label_with_an_open_side_seeds_nothing(fake_clock: FakeClock) -> None:
+    """Nhãn ngoài biên bao lồi của tường (tên bản vẽ, ghi chú) không dựng phòng."""
+    texts = (_text("PHONG NGU", 1500, 9000),)
+    assert len(_usages(_grid_walls(fake_clock), texts, (), fake_clock)) == 2

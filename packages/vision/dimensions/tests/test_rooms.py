@@ -18,6 +18,7 @@ FE_NAMES = {
     "corridor": "hành lang",
     "stairwell": "buồng thang",
     "utility": "phòng kỹ thuật",
+    "loggia": "lô gia",
     "other": "phòng khác",
 }
 # Dựng tay từ `roomNameKey` (roomLabelReviewGateway.ts:1007-1016): trim, thường, bỏ số cuối, NFD bỏ dấu, `đ` → `d`.
@@ -29,12 +30,13 @@ FE_KEYS = {
     "hành lang": "hanh lang",
     "buồng thang": "buong thang",
     "phòng kỹ thuật": "phong ky thuat",
+    "lô gia": "lo gia",
     "phòng khác": "phong khac",
 }
 
 
 def test_usage_names_equal_registry() -> None:
-    """Tám tên bằng `ROOM_USAGE_LABELS` của FE và khoá bằng tập giá trị `Room.usage`."""
+    """Chín tên bằng `ROOM_USAGE_LABELS` của FE và khoá bằng tập giá trị `Room.usage`."""
     assert dict(ROOM_USAGE_NAMES) == FE_NAMES
     assert set(ROOM_USAGE_NAMES) == set(get_args(Room.model_fields["usage"].annotation))
 
@@ -83,7 +85,7 @@ def test_room_label_key_separators(text: str, key: str) -> None:
         ("CAU THANG 02", RoomLabel("stairwell", "buồng thang 02")),
         ("PHONG KY THUAT", RoomLabel("utility", "phòng kỹ thuật")),
         ("SAN VUON", None),
-        ("NGU NGON", None),
+        ("NGON", None),
         ("", None),
         ("   ", None),
         ("3", None),
@@ -92,6 +94,48 @@ def test_room_label_key_separators(text: str, key: str) -> None:
 )
 def test_match_room_label_table(text: str, expected: RoomLabel | None) -> None:
     """Khớp nguyên khoá hoặc khoá bỏ khoảng trắng; không khớp chuỗi con; tên lấy từ bộ FE, không chép chữ OCR."""
+    assert match_room_label(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Chữ OCR thật của bench căn hộ (F:/runs/bench-can-ho/ocr, 27/10/2026).
+        ("PHONG NCU", RoomLabel("bedroom", "phòng ngủ")),
+        ("FHONG NOU", RoomLabel("bedroom", "phòng ngủ")),
+        ("PHONG NO MRSFER", RoomLabel("bedroom", "phòng ngủ")),
+        ("PHONG NGU MASTER", RoomLabel("bedroom", "phòng ngủ")),
+        ("PHONG CON GA", RoomLabel("bedroom", "phòng ngủ")),
+        ("P.Ngi 1", RoomLabel("bedroom", "phòng ngủ 1")),
+        ("NGU01", RoomLabel("bedroom", "phòng ngủ 01")),
+        ("Phong ngu 1 + WC", RoomLabel("bedroom", "phòng ngủ 1")),
+        ("FHONG KHICH", RoomLabel("livingRoom", "phòng khách")),
+        ("PHONG KHACH, BEP & AN", RoomLabel("livingRoom", "phòng khách")),
+        ("KHACH BEP", RoomLabel("livingRoom", "phòng khách")),
+        ("Phong bep + an", RoomLabel("kitchen", "bếp")),
+        ("WC02", RoomLabel("bathroom", "phòng tắm 02")),
+        ("Phong ve sinh", RoomLabel("bathroom", "phòng tắm")),
+        ("TEN SANH", RoomLabel("corridor", "hành lang")),
+        ("TIEN SAN", RoomLabel("corridor", "hành lang")),
+        ("LOGOA", RoomLabel("loggia", "lô gia")),
+        ("Logis 2", RoomLabel("loggia", "lô gia 2")),
+        ("BAN CONG", RoomLabel("loggia", "lô gia")),
+        ("Son Phoi", RoomLabel("utility", "phòng kỹ thuật")),
+        ("HONG THAY BO", RoomLabel("utility", "phòng kỹ thuật")),
+        # Không phải nhãn phòng: đồ đạc, khung tên, chú thích diện tích.
+        ("Tu lanh", None),
+        ("Ban an 1. 4m", None),
+        ("HO SO THIET KE THI CONG", None),
+        ("Dion tich tim tuong", None),
+        ("TEN DU AN- PROJECT NAME", None),
+        ("Dien tich phu + KT", None),
+        ("Dibn tich thong thuy", None),
+        ("TeHSINH", None),
+        ("Mat bang can ho tang 4-20", None),
+    ],
+)
+def test_match_room_label_ocr_misreads(text: str, expected: RoomLabel | None) -> None:
+    """Chữ không dấu, sai 1-2 ký tự, nhãn ghép, số dính chữ vẫn ra công năng; chữ thường gặp khác không thành phòng."""
     assert match_room_label(text) == expected
 
 
