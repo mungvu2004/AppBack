@@ -49,9 +49,7 @@ async def test_documents_model__region_bbox_check(db_session: AsyncSession, box:
         ("page_count", 21, "ck_documents_page_count"),
     ],
 )
-async def test_documents_model__type_checks(
-    db_session: AsyncSession, field: str, value: Any, constraint: str
-) -> None:
+async def test_documents_model__type_checks(db_session: AsyncSession, field: str, value: Any, constraint: str) -> None:
     """Giá trị ngoài tập của loại bản vẽ, nguồn, trạng thái → `IntegrityError` đúng CHECK."""
     _, _, document, page = await _scene(db_session)
     region = await make_region(db_session, page=page)
@@ -74,7 +72,9 @@ async def test_uploads__floor_or_document_check(
 ) -> None:
     """Upload thiếu cả tầng lẫn tài liệu, hay có cả hai → `ck_uploads_floor_or_document`."""
     project, floor, document, _ = await _scene(db_session)
-    db_session.add(_upload(project, floor_pk=floor.pk if with_floor else None, document=document if with_document else None))
+    db_session.add(
+        _upload(project, floor_pk=floor.pk if with_floor else None, document=document if with_document else None)
+    )
     with pytest.raises(IntegrityError, match="ck_uploads_floor_or_document"):
         await db_session.flush()
 

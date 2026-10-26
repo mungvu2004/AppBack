@@ -228,30 +228,30 @@ def test_document_original_key() -> None:
     """Tệp gốc tài liệu nằm dưới tiền tố tài liệu của dự án; đuôi sai → `ValueError`."""
     assert keys.document_prefix(PROJECT, DOCUMENT) == DOCUMENT_PREFIX
     assert keys.document_original(PROJECT, DOCUMENT, "pdf") == f"{DOCUMENT_PREFIX}original.pdf"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="đuôi tệp"):
         keys.document_original(PROJECT, DOCUMENT, "PDF")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="một đoạn"):
         keys.document_original(PROJECT, "doc/../x", "pdf")
 
 
 def test_document_chunk_key() -> None:
     """Khúc tài liệu mang số và băm trong khoá; số âm hay băm sai → `ValueError`."""
     assert keys.document_chunk(PROJECT, DOCUMENT, 2, SHA) == f"{DOCUMENT_PREFIX}chunks/2/{SHA}"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="không âm"):
         keys.document_chunk(PROJECT, DOCUMENT, -1, SHA)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="băm khúc"):
         keys.document_chunk(PROJECT, DOCUMENT, 0, "A" * 64)
 
 
 def test_document_page_preview_key() -> None:
     """Ảnh xem trước trang `i`; số âm → `ValueError` như `upload_page`."""
     assert keys.document_page_preview(PROJECT, DOCUMENT, 0) == f"{DOCUMENT_PREFIX}pages/0/preview.png"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="không âm"):
         keys.document_page_preview(PROJECT, DOCUMENT, -1)
 
 
 def test_document_titles_key() -> None:
     """Kết quả chữ tiêu đề trang `i`; số âm → `ValueError`."""
     assert keys.document_titles(PROJECT, DOCUMENT, 3) == f"{DOCUMENT_PREFIX}pages/3/titles.json"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="không âm"):
         keys.document_titles(PROJECT, DOCUMENT, -1)
