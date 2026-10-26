@@ -122,6 +122,11 @@
 | N36 | `GET /api/admin/ml/training-jobs/{job_id}/metrics?since=` | `ml_list_job_metrics` | `adminMl.ts` | A | admin | — | B6-03a | F-12 |
 | N37 | `GET /api/admin/ml/training-jobs/{job_id}/logs?since=` | `ml_list_job_logs` | `adminMl.ts` | A | admin | — | B6-03a | F-12 |
 | N38 | `GET /api/share/{token}` | `share_links_open` | `client.ts` (`SharedModel`) | C | — | — | FIX-2436 | `SharedModelPage` |
+| N39 | `POST /api/projects/{project_id}/documents/uploads` | `documents_init_upload` | `apps/api/documents/schemas.py` | T-init | `floor.upload` | có | SB1-DOC | `documents.ts` (khay tài liệu) |
+| N40 | `GET /api/projects/{project_id}/documents/{document_id}` | `documents_read` | `apps/api/documents/schemas.py` | Đ | thành viên | — | SB1-DOC | `documents.ts` (`DocumentRegions`) |
+| N41 | `GET /api/projects/{project_id}/documents` | `documents_list` | `apps/api/documents/schemas.py` | Đ | thành viên | — | SB1-DOC | `documents.ts` (khay tài liệu) |
+| N42 | `PUT /api/projects/{project_id}/documents/{document_id}/pages/{page_index}/regions` | `documents_put_regions` | `apps/api/documents/schemas.py` | G | `floor.upload` | có | SB1-DOC | `documents.ts` (`DocumentRegions`) |
+| N43 | `POST /api/projects/{project_id}/documents/{document_id}/confirm` | `documents_confirm_regions` | `apps/api/documents/schemas.py` | G +ngoài | `floor.upload` | có | SB1-DOC | `documents.ts` (`DocumentRegions`) |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 
