@@ -38,6 +38,7 @@ from packages.vision.preprocess import (
     rectify,
     render_pdf_page,
 )
+from packages.vision.preprocess.sheet import drawing_quad
 from packages.vision.quality.assess import QualityReport, assess
 
 PathKind = Literal["reuse", "user", "auto"]
@@ -220,11 +221,12 @@ async def _load_base(plan: PagePlan, *, storage: ObjectStorage, settings: Orches
 def _source_quad(plan: PagePlan, page: RgbImage) -> Quad | None:
     """`quad` nguồn của đường (ii)/(iii); `None` nghĩa là giữ nguyên trang ([6] bước 2).
 
-    Có `corners` (chỉ đường (ii) mang) → dùng góc người dùng; không thì đi tìm khung (iii).
+    Có `corners` (chỉ đường (ii) mang) → dùng góc người dùng, không đổi gì. Không thì đi tìm khung
+    (iii) rồi thu về vùng vẽ (`drawing_quad`: bỏ khung tên và nét viền, kể cả khi không thấy khung).
     """
     if plan.corners is not None:
         return quad_from_ratios(plan.corners, page.width_px, page.height_px)
-    return find_frame(page)
+    return drawing_quad(page, find_frame(page))
 
 
 def _corners_of(plan: PagePlan, quad: Quad | None, page: RgbImage) -> Corners | None:

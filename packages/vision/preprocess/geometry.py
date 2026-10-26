@@ -38,6 +38,7 @@ _FRAME_EXPAND: Final = 1.01
 _BORDER_TOLERANCE_PX: Final = 2.0
 _INK_BLOCK_PX: Final = 15
 _HOUGH_THETA_STEPS: Final = 900
+_AXIS_TOLERANCE_PX: Final = 2.0
 
 
 def js_round(value: float) -> int:
@@ -396,14 +397,47 @@ def _warp_matrix_to_cap(
     return np.asarray(shrink @ matrix, dtype=np.float64), out_w, out_h
 
 
+def _axis_box(quad: Quad, width_px: int, height_px: int) -> tuple[int, int, int, int] | None:
+    """Hộp nguyên `(x0, y0, x1, y1)` khi `quad` gần như chữ nhật thẳng trục (cặp góc cùng cạnh lệch
+    <= `_AXIS_TOLERANCE_PX`), không thì `None`.
+
+    Khung tìm trên ảnh xuất số hay lệch 1 px (bench căn hộ ch-03/05/06); cắt thay vì nắn khi đó sai
+    hình <= 2 px, còn nắn thì làm nhạt mọi nét 1 px. Toạ độ kẹp vào ảnh vì góc được nằm đúng trên mép.
+    """
+    (tlx, tly), (trx, try_), (brx, bry), (blx, bly) = quad.points
+    if max(abs(tlx - blx), abs(trx - brx), abs(tly - try_), abs(bly - bry)) > _AXIS_TOLERANCE_PX:
+        return None
+    left, right = (min(max(js_round((a + b) / 2), 0), width_px) for a, b in ((tlx, blx), (trx, brx)))
+    top, bottom = (min(max(js_round((a + b) / 2), 0), height_px) for a, b in ((tly, try_), (bly, bry)))
+    return (left, top, right, bottom) if left < right and top < bottom else None
+
+
+def crop(img: RgbImage, box: tuple[int, int, int, int]) -> RectifyResult:
+    """Cắt nguyên pixel hộp `(x0, y0, x1, y1)` (đã nằm trong ảnh); homography là phép tịnh tiến.
+
+    Không nội suy: nét 1 px của bản vẽ CAD giữ nguyên độ đậm. Nắn bằng `warpPerspective` một khung
+    vốn đã thẳng làm đường kích thước nhạt còn ~9 mức so với nền (đo ở bench căn hộ ch-06), nên
+    đường kích thước không còn đo được.
+    """
+    x0, y0, x1, y1 = box
+    pixels = np.ascontiguousarray(img.pixels[y0:y1, x0:x1])
+    shift = np.array([[1.0, 0.0, -x0], [0.0, 1.0, -y0], [0.0, 0.0, 1.0]])
+    homography = Homography.from_array(shift, (img.width_px, img.height_px), (x1 - x0, y1 - y0))
+    return RectifyResult(RgbImage(pixels), homography)
+
+
 def rectify(img: RgbImage, quad: Quad, *, max_pixels: int = DEFAULT_MAX_PIXELS) -> RectifyResult:
     """Nắn phối cảnh giữ tỉ lệ khung, nền trắng, qua trần đầu ra.
 
-    Kích thước đích lấy cạnh dài nhất của mỗi hướng (`js_round`) để không nén nét;
-    vượt trần thì co ma trận trước `warpPerspective`. Homography trả về đưa đúng 4
-    góc nguồn về `(0,0), (w,0), (w,h), (0,h)` của ảnh kết quả.
+    `quad` là chữ nhật thẳng trục và lọt trần → `crop`, không nội suy (khung bản vẽ xuất số hầu
+    hết đã thẳng). Còn lại: kích thước đích lấy cạnh dài nhất của mỗi hướng (`js_round`) để không
+    nén nét; vượt trần thì co ma trận trước `warpPerspective`. Homography trả về đưa đúng 4 góc
+    nguồn về `(0,0), (w,0), (w,h), (0,h)` của ảnh kết quả.
     """
     validate_quad(quad, img.width_px, img.height_px)
+    box = _axis_box(quad, img.width_px, img.height_px)
+    if box is not None and (box[2] - box[0]) * (box[3] - box[1]) <= max_pixels:
+        return crop(img, box)
     top_left, top_right, bottom_right, bottom_left = quad.points
     target_w = max(1, js_round(max(math.dist(top_right, top_left), math.dist(bottom_right, bottom_left))))
     target_h = max(1, js_round(max(math.dist(bottom_left, top_left), math.dist(bottom_right, top_right))))
