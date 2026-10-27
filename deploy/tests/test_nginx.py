@@ -653,3 +653,32 @@ def test_nginx_pascal_mount_is_no_cache_with_security_headers() -> None:
     headers = [c.args for c in locs[0].children if c.directive == "add_header"]
     assert ["Cache-Control", "no-cache", "always"] in headers
     assert "security_headers.conf" in direct_includes(locs[0])
+
+
+def test_nginx_spatial_json_gzip_only_on_spatial_reads__perf03() -> None:
+    """PERF-03 P14: nén JSON chỉ ở location regex của N15/N16/N18, không lan sang `/api/projects`.
+
+    Regex phải khớp đúng ba đường đọc tài liệu không gian và **không** khớp danh sách/chi tiết
+    dự án (mang URL ký) — luật BREACH ở chú thích `app_locations.conf`.
+    """
+    files = _all_nginx_files()
+    matches = _locations_matching(files, lambda loc: loc.args[:1] == ["~"] and "spatial" in loc.args[-1])
+    assert len(matches) == 1, "cần đúng một location regex nén JSON cho route không gian"
+    _, loc = matches[0]
+    pairs = {(n.directive, tuple(n.args)) for n in loc.children}
+    assert ("gzip", ("on",)) in pairs
+    assert ("gzip_types", ("application/json",)) in pairs
+    assert ("proxy_pass", ("$api",)) in pairs
+    pattern = re.compile(loc.args[-1])
+    for path in (
+        "/api/projects/P1/spatial",
+        "/api/projects/P1/floors/L-1/spatial/layer",
+        "/api/projects/P1/versions/V1/snapshot",
+    ):
+        assert pattern.search(path), path
+    for path in ("/api/projects", "/api/projects/P1", "/api/projects/P1/floors/L-1/spatial", "/api/auth/login"):
+        assert not pattern.search(path), path
+    json_gzip = _locations_matching(
+        files, lambda other: any(n.directive == "gzip_types" and "application/json" in n.args for n in other.children)
+    )
+    assert len(json_gzip) == 1, "application/json chỉ được nén ở một location"
