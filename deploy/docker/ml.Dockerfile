@@ -16,9 +16,10 @@
 #   feed CUDA 12 chính thức (ORT_CUDA12_INDEX) mới nhất là 1.29.0:
 #   onnxruntime_gpu-1.29.0-cp312-cp312-manylinux_2_28_x86_64.whl
 # nên dùng 1.29.0 (lệch một minor với bản CPU, chỉ ở ảnh cuda). Torch cài
-# `--no-deps` nên ảnh chưa có gói nvidia-*-cu12: cài riêng thư viện CUDA EP
-# cần (cudart, nvrtc, cublas, cufft, curand, cudnn 9); loader gọi
-# `onnxruntime.preload_dlls()` để nạp chúng từ site-packages.
+# `--no-deps` nên ảnh chưa có gói nvidia-*-cu12 (trước PERF-03 `import torch`
+# của ảnh cuda hỏng: "libcublasLt.so.*[0-9] not found"): cài đúng các gói
+# nvidia-* mà metadata của torch cu126 khai (có cudnn 9 + cublas 12 mà CUDA
+# EP của ORT cần); loader gọi `onnxruntime.preload_dlls()` để nạp chúng.
 
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS deps
 ARG ML_VARIANT=cpu
@@ -58,10 +59,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
    && uv pip uninstall --python /opt/venv/bin/python onnxruntime \
    && uv pip install --python /opt/venv/bin/python --no-deps \
         --index-url "${ORT_CUDA12_INDEX}" "onnxruntime-gpu==${ORT_GPU_VERSION}" \
-   && uv pip install --python /opt/venv/bin/python \
-        "nvidia-cuda-runtime-cu12>=12.6,<13" "nvidia-cuda-nvrtc-cu12>=12.6,<13" \
-        "nvidia-cublas-cu12>=12.6,<13" "nvidia-cufft-cu12>=11.3,<12" \
-        "nvidia-curand-cu12>=10.3.7,<11" "nvidia-cudnn-cu12>=9.5,<10"; \
+   && /opt/venv/bin/python -c "import importlib.metadata as m; print('\n'.join(r.split(';')[0].strip() for r in m.requires('torch') or [] if r.startswith('nvidia-') and 'extra ==' not in r))" > /tmp/torch-cuda-deps.txt \
+   && uv pip install --python /opt/venv/bin/python -r /tmp/torch-cuda-deps.txt; \
     fi
 
 # Mã cần cho `apps.ml`, cộng bản ghim nhà cung cấp (B5-01). `.dockerignore`
