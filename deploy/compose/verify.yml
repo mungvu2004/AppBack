@@ -9,6 +9,9 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/verify.Dockerfile
+      # run.sh bỏ `compose build` khi nhãn này trùng băm Dockerfile (PERF-03)
+      labels:
+        appback.verify-key: ${VERIFY_IMAGE_KEY:-none}
     network_mode: bridge
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -33,7 +36,7 @@ services:
       - CASE_TRACE_FILE=/tmp/case-trace.jsonl
       - UV_CACHE_DIR=/work/uv-cache
       - UV_LINK_MODE=hardlink
-      - UV_PROJECT_ENVIRONMENT=/work/venv-${VERIFY_NAME}
+      # UV_PROJECT_ENVIRONMENT do in_container.sh đặt theo băm uv.lock (PERF-03)
       - MYPY_CACHE_DIR=/work/mypy-${VERIFY_NAME}
       - RUFF_CACHE_DIR=/tmp/ruff-cache
       - COVERAGE_FILE=/tmp/.coverage

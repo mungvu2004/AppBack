@@ -5,13 +5,14 @@ Chạy trên torch CPU: `autocast("cuda")`/`GradScaler("cuda")` vẫn **dựng �
 """
 
 import pytest
-import torch
 
 from apps.ml.training_segformer.config import SegformerTrainConfig, effective_batch_size, precision_for
 
 
 def test_train_m04_precision() -> None:
     """`cuda` → fp16 + scaler, `cpu` → float32 không scaler; cả hai dựng được trên torch CPU."""
+    import torch  # trong hàm: worker xdist không chạy test ML khỏi nạp torch lúc collect (PERF-03)
+
     cuda = precision_for("cuda")
     assert cuda.autocast_dtype is torch.float16
     assert cuda.use_scaler is True

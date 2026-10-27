@@ -194,7 +194,8 @@ def test_volume_work_được_tạo_tường_minh_trước_lượt_compose(workt
     assert result.returncode == 0, result.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
     assert calls[0] == "volume create appback-work"
-    assert calls[1].startswith("compose ")
+    assert calls[1].startswith("image inspect ")  # PERF-03: nhãn ảnh trùng băm Dockerfile thì bỏ `compose build`
+    assert calls[2].startswith("compose ")
 
 
 def test_shell__báo_làm_việc_trên_bản_chép(worktree: Path, tmp_path: Path) -> None:

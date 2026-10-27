@@ -13,7 +13,6 @@ import time
 from collections.abc import Callable, Iterator
 
 import pytest
-import torch
 
 from apps.ml.runtime import gpu
 from apps.ml.runtime.device import resolve_device
@@ -35,13 +34,13 @@ TTL_MS, RENEW_MS = LEASE_TTL_MS, LEASE_RENEW_MS
 )
 def test_resolve_device_m04(monkeypatch: pytest.MonkeyPatch, setting: str, available: bool, expected: str) -> None:
     """M04: `ML_DEVICE` (`cpu`/`auto`/`cuda`) cùng trạng thái CUDA chọn đúng thiết bị."""
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: available)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: available)
     assert resolve_device(setting) == expected  # type: ignore[arg-type]  # thiết lập chuỗi trong test
 
 
 def test_resolve_device_m04_cuda_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """M04: đòi `cuda` mà máy không có GPU → `ML_DEVICE_UNAVAILABLE` (lỗi vĩnh viễn, không thử lại)."""
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     with pytest.raises(PermanentError) as caught:
         resolve_device("cuda")
     assert caught.value.code == ML_DEVICE_UNAVAILABLE

@@ -6,6 +6,9 @@
 # (`shell` làm trên bản chép /tmp/w, không phải worktree — xem tools/verify/README.md)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
+# PERF-03: mốc giờ từng pha khởi động ra stderr (không vào log cổng), để đo chi phí trước bước 1.
+mark() { echo "[mốc] $(date +%s.%N) $*" >&2; }
+mark "run.sh bắt đầu"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -68,8 +71,10 @@ mkdir -p "$CACHE_DIR"
 mkdir -p "$CACHE_DIR/src-tar"
 SRC_TAR_DIR="$(mktemp -d "$CACHE_DIR/src-tar/run.XXXXXX")"
 trap 'rm -rf "$SRC_TAR_DIR" || echo "dọn tar nguồn $SRC_TAR_DIR hỏng — bỏ qua, cổng vẫn chạy" >&2' EXIT
+mark "tar nguồn"
 git ls-files -co --exclude-standard -z | tar --null --no-recursion --ignore-failed-read -T - -cf "$SRC_TAR_DIR/src.tar"
 VERIFY_SRC_TAR_DIR="$(win_path "$SRC_TAR_DIR")"
+mark "tar nguồn xong"
 
 # Số log cổng tối đa trong .cache/src-out/verify sau một lượt, tính cả log của lượt đó: 20 lượt ≈ 0,5 MB lượt
 # đạt, đủ so lượt đỏ với vài lượt trước nó; log cần giữ lâu hơn thì chép ra ngoài (NO-090).
@@ -110,8 +115,16 @@ docker volume create appback-work > /dev/null
 
 # Build riêng, stdin đóng, rồi mới `run`: `compose run --build` đọc stdin cho `buildx bake -f -` và nuốt script
 # của `shell` (NO-299); mọi việc đi qua đây nên không việc nào bị nuốt.
+# Ảnh verify chỉ dựng từ verify.Dockerfile (ảnh gốc ghim digest, không COPY gì từ repo): nhãn
+# `appback.verify-key` = băm Dockerfile; trùng thì bỏ `compose build` (~33 s dù toàn CACHED, PERF-03).
+VERIFY_IMAGE_KEY="$({ cat "$REPO_ROOT/deploy/docker/verify.Dockerfile" 2> /dev/null || true; } | sha256sum | cut -c1-16)"
+export VERIFY_IMAGE_KEY
 run_container() {
-  "${COMPOSE[@]}" build verify < /dev/null
+  mark "compose build"
+  if [[ "$(docker image inspect -f '{{index .Config.Labels "appback.verify-key"}}' appback-verify:local 2> /dev/null)"     != "$VERIFY_IMAGE_KEY" ]]; then
+    "${COMPOSE[@]}" build verify < /dev/null
+  fi
+  mark "compose run"
   "${COMPOSE[@]}" run --rm -v "$VERIFY_SRC_TAR_DIR:/src-tar:ro" "$@"
 }
 
@@ -121,6 +134,9 @@ case "$VERIFY_TASK" in
     # Log cổng ra host (NO-080): container tự xoá khi thoát, output chỉ đi qua client compose — shell
     # bọc bị cắt là mất bảng, file này thì còn. steps.py ghi song song stdout, không thay stdout.
     log_dir="$CACHE_DIR/src-out/verify"
+    # Cổng nhanh ghi log ở thư mục riêng (review PERF-03 #5): không đẩy log cổng đầy đủ ra khỏi trần
+    # `VERIFY_LOG_KEEP`, không bị lấy nhầm làm bằng chứng cổng đầy đủ.
+    [[ " $* " == *" --fast "* ]] && log_dir="$CACHE_DIR/src-out/verify-fast"
     mkdir -p "$log_dir"
     # Trần log (NO-090): mỗi lượt một file, không dọn thì checkout sống lâu dồn mãi (in_container.sh còn chép
     # cả .cache mỗi lượt). Giữ VERIFY_LOG_KEEP - 1 log mới nhất (mtime) trước khi lượt này tạo log của nó.
