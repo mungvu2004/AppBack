@@ -219,7 +219,7 @@ def test_compose_ml_services_are_hardened(env: str) -> None:
 
 
 _PROD_ONE_SHOT_SERVICES = {"migrate", "minio-init"}
-_APP_IMAGE_SERVICES = {"api", "worker", "beat", "ml", "ml-gpu", "web"}
+_APP_IMAGE_SERVICES = {"api", "worker", "beat", "ml", "ml-train", "ml-gpu", "web"}
 _PROD_IMAGE_TAG_RE = re.compile(r":\$\{IMAGE_TAG(:[?-][^}]*)?\}$")
 _APPBACK_ENV_FILE = "/etc/appback/appback.env"
 _ML_ENV_FILE = "/etc/appback/ml.env"
@@ -316,7 +316,7 @@ _CELERY_TASK_STREAM_ENV = {
     "STREAM_MAXLEN": "${STREAM_MAXLEN:-1000}",
 }
 # ml/ml-gpu không có trong mọi env (ci không chạy ml-gpu — không GPU trong CI).
-_ML_SERVICES_BY_ENV = {"dev": ("ml", "ml-gpu"), "ci": ("ml",), "prod": ("ml", "ml-gpu")}
+_ML_SERVICES_BY_ENV = {"dev": ("ml", "ml-train", "ml-gpu"), "ci": ("ml", "ml-train"), "prod": ("ml", "ml-train", "ml-gpu")}
 
 
 @pytest.mark.parametrize("env", ENVS)

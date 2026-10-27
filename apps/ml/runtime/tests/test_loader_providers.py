@@ -33,7 +33,9 @@ def test_select_providers(
     assert select_providers(device) == expected
 
 
-def test_cuda_session_error_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+def test_cuda_session_error_falls_back_to_cpu(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """Tạo phiên CUDA ném lỗi → cảnh báo một lần, phiên trả về chạy CPU."""
     real = ort.InferenceSession
 
