@@ -488,3 +488,16 @@ def test_compose_ml_backend_and_feature_flags_wired() -> None:
     for env in ("dev", "ci"):
         ml_env = _resolved_services(env)["ml"]["environment"]
         assert ml_env.get("ML_BACKEND") == "${ML_BACKEND:-onnx}", f"{env}: ml thiếu ML_BACKEND"
+
+
+def test_compose_api_runs_several_workers_with_small_db_pools() -> None:
+    """`api` chạy `--workers ${API_WORKERS:-4}` và báo cùng số cho app (chia trần SSE); pool DB
+    mỗi worker 5 + 3 (+ 5 claim) để 4 worker = 52 kết nối < 60 trên 100 `max_connections` (PERF-03 P4)."""
+    for env in ENVS:
+        api = _resolved_services(env)["api"]
+        command = [str(part) for part in api["command"]]
+        assert command[command.index("--workers") + 1] == "${API_WORKERS:-4}", f"{env}: api thiếu --workers"
+        api_env = api["environment"]
+        assert api_env.get("API_WORKERS") == "${API_WORKERS:-4}", f"{env}: api thiếu API_WORKERS"
+        assert api_env.get("DB_POOL_SIZE") == "${API_DB_POOL_SIZE:-5}", f"{env}: api thiếu DB_POOL_SIZE"
+        assert api_env.get("DB_MAX_OVERFLOW") == "${API_DB_MAX_OVERFLOW:-3}", f"{env}: api thiếu DB_MAX_OVERFLOW"
