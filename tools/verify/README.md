@@ -3,6 +3,8 @@
 Cổng verify chạy qua `bash tools/verify/run.sh <việc>` (xem `CLAUDE.md`).
 
 - `verify`: ghi log cổng và `<log>.junit.xml` của bước 5 vào `.cache/src-out/verify/` (NO-324).
+- Khoá cổng đầy đủ: `verify` (kể cả `--steps`, trừ `--fast`) giữ `flock /work/gate-full.lock` suốt lượt trong
+  `in_container.sh`; lượt khác in chủ khoá (`/work/gate-full.owner`) rồi chờ. Khoá nhả khi tiến trình chết, không treo.
 - `verify --fast` (PERF-03): bước 1, 2, 4, pytest các đơn vị bị chạm (`fast_test_paths`; đổi `conftest.py`,
   `pyproject.toml`, `uv.lock`, `packages/testing/fixtures/` thì cả bộ), không độ phủ; mypy nền trên cache ấm
   `/work/mypy-fast-<worktree>`. Xem trước — `verify` đầy đủ trước merge vẫn là phán quyết.

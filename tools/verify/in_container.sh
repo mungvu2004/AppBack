@@ -59,4 +59,18 @@ mark "uv sync xong"
 # Gốc import = gốc repo ở mọi nơi chạy (BE-01 [5]); công cụ của venv trên PATH.
 export PYTHONPATH=/tmp/w
 export PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
+
+# Một cổng ĐẦY ĐỦ một lúc trên cả máy (ENV §4, GATE-LOCK): mỗi lượt ~8,4 GiB trong VM 12 GB, hai lượt chồng
+# nhau từng làm OOM và treo Docker Desktop (2026-10-27). Khoá nằm trên volume `/work` mọi worktree dùng chung;
+# fd 8 đi theo `exec` sang python và các worker pytest, nên khoá nhả khi lượt kết thúc — kể cả bị giết, không
+# có khoá treo. `--fast` và `shell` nhẹ hơn nhiều, không xếp hàng.
+if [[ "${1:-}" == "verify" && " $* " != *" --fast "* ]]; then
+  exec 8> /work/gate-full.lock
+  if ! flock -n 8; then
+    echo "cổng đầy đủ: đang chờ lượt khác xong — $(cat /work/gate-full.owner 2> /dev/null || echo 'không rõ chủ')" >&2
+    flock 8
+  fi
+  echo "${VERIFY_NAME:-?} từ $(date -u +%H:%M:%SZ)" > /work/gate-full.owner
+  mark "giữ khoá cổng đầy đủ"
+fi
 exec "$UV_PROJECT_ENVIRONMENT/bin/python" -m tools.verify.steps "$@"
