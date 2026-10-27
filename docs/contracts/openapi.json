@@ -10061,7 +10061,7 @@
     },
     "/api/projects/{project_id}/floors/{floor_id}/spatial/layer": {
       "get": {
-        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước.",
+        "description": "N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước.\n\nSerialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.",
         "operationId": "spatial_read_layer_api_projects__project_id__floors__floor_id__spatial_layer_get",
         "parameters": [
           {
@@ -10996,7 +10996,7 @@
     },
     "/api/projects/{project_id}/spatial": {
       "get": {
-        "description": "N15 — cả đồ thị của dự án kèm `revision` từng tầng; dự án chưa có tầng → danh sách rỗng.",
+        "description": "N15 — cả đồ thị của dự án kèm `revision` từng tầng; dự án chưa có tầng → danh sách rỗng.\n\nSerialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.",
         "operationId": "spatial_read_graph_api_projects__project_id__spatial_get",
         "parameters": [
           {
@@ -11306,7 +11306,7 @@
     },
     "/api/projects/{project_id}/versions/{version_id}/snapshot": {
       "get": {
-        "description": "N18 — nội dung ảnh chụp (`layer`, `dimensions`) của một phiên bản.",
+        "description": "N18 — nội dung ảnh chụp (`layer`, `dimensions`) của một phiên bản; `ETag`/304 qua `cached_json`.",
         "operationId": "versions_read_snapshot_api_projects__project_id__versions__version_id__snapshot_get",
         "parameters": [
           {
