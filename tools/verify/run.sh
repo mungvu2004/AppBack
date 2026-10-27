@@ -86,13 +86,17 @@ source "$SCRIPT_DIR/appfront_repo.sh"
 APPFRONT_SHA_FILE="$REPO_ROOT/tools/contract/APPFRONT_SHA"
 if [[ -f "$APPFRONT_SHA_FILE" ]]; then
   sha="$(tr -d '[:space:]' < "$APPFRONT_SHA_FILE")"
-  appfront_cache="$CACHE_DIR/appfront/$sha"
+  # PERF-04: cache theo SHA dùng chung mọi worktree (trong `.git` chung) — worktree mới không giải nén lại
+  # AppFront (~40 s). Thư mục tạm cùng ổ với đích nên `mv` là đổi tên, không chép từ /tmp (ổ C:) sang; hai
+  # lượt cùng giải nén thì lượt sau thấy đích đã có (`mv -T` hỏng) và bỏ bản của mình.
+  appfront_root="$(git rev-parse --path-format=absolute --git-common-dir)/verify-appfront"
+  appfront_cache="$appfront_root/$sha"
   if [[ ! -d "$appfront_cache" ]]; then
-    tmp_dir="$(mktemp -d)"
+    mkdir -p "$appfront_root"
+    tmp_dir="$(mktemp -d "$appfront_root/tmp.XXXXXX")"
     git -c core.autocrlf=false -c core.eol=lf -C "${APPFRONT_REPO:-$(appfront_repo_default "$REPO_ROOT")}" archive "$sha" src package.json \
       | tar -x -C "$tmp_dir"
-    mkdir -p "$(dirname "$appfront_cache")"
-    mv "$tmp_dir" "$appfront_cache"
+    mv -T "$tmp_dir" "$appfront_cache" 2> /dev/null || rm -rf "$tmp_dir"
   fi
   VERIFY_APPFRONT_DIR="$(win_path "$appfront_cache")"
 else

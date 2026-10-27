@@ -28,6 +28,7 @@ from tools.contract import runner_client
 from tools.coverage_gate import unit_of
 from tools.lint_migrations import MERGE_REVISION_RE, revision_of
 from tools.lint_migrations import main as lint_migrations_main
+from tools.verify import affected
 
 REPO_ROOT = Path.cwd()
 OUT_DIR = Path(os.environ.get("VERIFY_OUT_DIR", "/src-out"))
@@ -529,21 +530,35 @@ def _in_step_order(outcomes: list[StepOutcome]) -> list[StepOutcome]:
 
 FAST_PYTEST_WORKERS = "4"
 FAST_MYPY_PREFIX = "mypy-fast-"
-FAST_FULL_SUITE_FILES = frozenset({"conftest.py", "pyproject.toml", "uv.lock"})
-"""Đổi một trong các tệp này là đổi cấu hình/fixture của MỌI test → cổng nhanh chạy cả bộ."""
-FAST_FULL_SUITE_DIRS = ("packages/testing/fixtures/",)
-_FAST_PYTEST = "pytest đơn vị bị chạm"
+_FAST_PYTEST = "pytest bị ảnh hưởng (cov đơn vị chạm)"
+FAST_STEP_INPUTS: dict[str, tuple[str, ...]] = {
+    "6": ("packages/db/",),
+    "7": ("tools/contract/", "docs/charter/BE-BIND.md", "docs/contracts/"),
+    "8": ("apps/api/", "packages/domain/", "packages/ml_contracts/"),
+}
+"""Bước có điều kiện của cổng nhanh → tiền tố đầu vào của nó: không tệp đổi nào khớp thì bỏ bước."""
 
 
 def fast_test_paths(changed: list[str]) -> list[str] | None:
-    """Thư mục test của cổng nhanh: mọi đơn vị bị chạm còn trên đĩa; `None` = cả bộ.
+    """Tệp test của cổng nhanh (`affected.affected_tests`); `None` = cả bộ, `[]` = không test nào.
 
-    Chỉ đơn vị bị chạm, không đơn vị phụ thuộc vào nó: sửa `packages/x` mà làm vỡ `apps/y` thì cổng
-    đầy đủ trước merge mới bắt được — đó là cái giá đổi lấy vòng sửa dưới 2 phút.
+    Bước 7 cần mẫu golden của MỌI thao tác (`_missing_success`), mà chỉ cả bộ mới ghi đủ: đầu vào bước 7
+    đổi thì chạy cả bộ. Phần đồ thị import không thấy (nạp động, `python -m`) là việc của cổng đầy đủ.
     """
-    if any(c in FAST_FULL_SUITE_FILES or c.startswith(FAST_FULL_SUITE_DIRS) for c in changed):
+    if _fast_step_wanted("7", changed):
         return None
-    return sorted({u for u in (unit_of(c) for c in changed) if u is not None and (REPO_ROOT / u).is_dir()})
+    return affected.affected_tests(changed, REPO_ROOT)
+
+
+def fast_cov_units(changed: list[str]) -> list[str]:
+    """Đơn vị mã bị chạm còn trên đĩa — nguồn `--cov` của cổng nhanh (đơn vị ngoài `source` không đo)."""
+    units = {u for u in (unit_of(c) for c in changed) if u is not None}
+    return sorted(u for u in units if u.startswith(affected.IMPORT_ROOTS) and (REPO_ROOT / u).is_dir())
+
+
+def _fast_step_wanted(number: str, changed: list[str]) -> bool:
+    """Có tệp đổi nào nằm dưới đầu vào của bước `number` (`FAST_STEP_INPUTS`)."""
+    return any(c.startswith(FAST_STEP_INPUTS[number]) for c in changed)
 
 
 def fast_mypy_env() -> dict[str, str]:
@@ -560,28 +575,44 @@ def fast_mypy_env() -> dict[str, str]:
 
 
 def step_fast_pytest() -> StepOutcome:
-    """Bước 5 của cổng nhanh: pytest các đơn vị bị chạm, KHÔNG độ phủ (ngưỡng là việc của cổng đầy đủ)."""
-    paths = fast_test_paths(_changed_files())
+    """Bước 5 của cổng nhanh: pytest tệp bị ảnh hưởng, độ phủ + `coverage_gate` chỉ trên đơn vị bị chạm.
+
+    Tập con test cho độ phủ không cao hơn cả bộ, nên đạt ở đây thì ngưỡng đơn vị/tập tệp bị chạm của cổng
+    đầy đủ cũng đạt; dòng "tổng" của `coverage_gate` ở đây chỉ là tổng các đơn vị bị chạm.
+    """
+    changed = _changed_files()
+    paths = fast_test_paths(changed)
     if paths == []:
-        return StepOutcome("5", _FAST_PYTEST, STATUS_NA, "không đơn vị nào bị chạm")
-    detail = "cả bộ — đổi cấu hình/fixture chung" if paths is None else ", ".join(paths)
-    r = _run(["pytest", "-n", FAST_PYTEST_WORKERS, "--dist", "loadfile", *(paths or [])])
+        return StepOutcome("5", _FAST_PYTEST, STATUS_NA, "không test nào bị ảnh hưởng")
+    detail = "cả bộ" if paths is None else f"{len(paths)} tệp test"
+    units = fast_cov_units(changed)
+    cov = [*(f"--cov={u}" for u in units), "--cov-report="] if units else []
+    r = _run(["pytest", "-n", FAST_PYTEST_WORKERS, "--dist", "loadfile", "--durations=10", *cov, *(paths or [])])
     if r.returncode == 5:  # pytest không thu được test nào: không hỏng, nhưng cũng không "đạt" (K25)
         return StepOutcome("5", _FAST_PYTEST, STATUS_NA, f"không có test — {detail}")
-    return StepOutcome("5", _FAST_PYTEST, STATUS_OK if r.returncode == 0 else STATUS_FAIL, detail)
+    if r.returncode != 0:
+        return StepOutcome("5", _FAST_PYTEST, STATUS_FAIL, f"pytest hỏng — {detail}")
+    if not units:
+        return StepOutcome("5", _FAST_PYTEST, STATUS_OK, f"{detail}; không đơn vị mã nào để đo độ phủ")
+    for cmd in (["coverage", "json"], [sys.executable, "-m", "tools.coverage_gate"]):
+        if _run(cmd).returncode != 0:
+            return StepOutcome("5", _FAST_PYTEST, STATUS_FAIL, f"độ phủ hỏng — {detail}")
+    return StepOutcome("5", _FAST_PYTEST, STATUS_OK, f"{detail}; cov {', '.join(units)}")
 
 
 def fast_gate_steps(proc: subprocess.Popen[bytes]) -> list[tuple[str, Callable[[], StepOutcome]]]:
-    """Thứ tự cổng nhanh: 1, 2, 4, pytest bị chạm, chờ mypy nền; bước 6 chỉ khi migration bị đổi."""
+    """Thứ tự cổng nhanh: 1, 2, 4, pytest bị ảnh hưởng, chờ mypy nền; 6/7/8 chỉ khi đầu vào của chúng đổi."""
+    changed = _changed_files()
     steps: list[tuple[str, Callable[[], StepOutcome]]] = [
         ("1", step_ruff_format),
         ("2", step_ruff_check),
         ("4", step_lint_imports),
-        ("5", step_fast_pytest),
-        ("3", lambda: join_mypy(proc)),
     ]
-    if any(c.startswith("packages/db/migrations/") for c in _changed_files()):
-        steps.append(("6", step_migrations))
+    if _fast_step_wanted("7", changed):
+        steps.append(("0", step_warm_node_modules))  # fixture `contract_build` của bước 5 cần runner Node
+    steps += [("5", step_fast_pytest), ("3", lambda: join_mypy(proc))]
+    conditional = {"6": step_migrations, "7": step_contract, "8": step_openapi}
+    steps += [(n, fn) for n, fn in conditional.items() if _fast_step_wanted(n, changed)]
     return steps
 
 
@@ -593,7 +624,10 @@ def _run_fast() -> int:
         if outcome.number == "5":
             outcome.name = _FAST_PYTEST
     _print_table(outcomes)
-    print("Cổng NHANH: không độ phủ, không 5b/7/8, chỉ test đơn vị bị chạm — chạy `verify` đầy đủ trước merge.")
+    print(
+        "Cổng NHANH: test bị ảnh hưởng (đồ thị import + fixture), độ phủ chỉ đơn vị bị chạm, không 5b; 6/7/8 chỉ"
+        " khi đầu vào đổi — `verify` đầy đủ trước merge."
+    )
     return 1 if any(o.status == STATUS_FAIL for o in outcomes) else 0
 
 
