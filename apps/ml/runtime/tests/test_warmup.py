@@ -11,6 +11,7 @@ from onnx import TensorProto, helper
 
 from apps.ml import warmup
 from packages.ml_contracts.payloads import ModelRef
+from packages.ml_contracts.pinned import PINNED
 
 
 def _identity_session() -> ort.InferenceSession:
@@ -65,7 +66,7 @@ def test_warm_up_loads_pinned_and_runs_a_dummy_pass(warm_env: Path, monkeypatch:
     monkeypatch.setattr(warmup, "load_onnx", fake_load)
     assert warmup.warm_up() == ["yolov8n", "ocrDetector"]
     assert [ref.pinned_name for ref in refs] == ["yolov8n"]
-    assert refs[0].checksum_sha256 == warmup.PINNED["yolov8n"].onnx_sha256
+    assert refs[0].checksum_sha256 == PINNED["yolov8n"].onnx_sha256
 
 
 def test_warm_up_failure_only_warns(
@@ -86,3 +87,40 @@ def test_warm_up_failure_only_warns(
     with caplog.at_level(logging.WARNING, logger=warmup.__name__):
         assert warmup.warm_up() == []
     assert [record.message for record in caplog.records].count("ml_warmup_failed") == 2
+
+
+def test_warm_session_skips_non_float_inputs() -> None:
+    """Đầu vào không phải float → `dummy_feed` trả `None`, không chạy lượt giả nào."""
+    spec = SimpleNamespace(name="ids", type="tensor(int64)", shape=[1, 8])
+
+    def run(*_: object) -> None:
+        """Không được gọi: không dựng được tensor giả cho đầu vào nguyên."""
+        raise AssertionError("không được chạy")
+
+    session = SimpleNamespace(get_inputs=lambda: [spec], run=run)
+    assert warmup.dummy_feed(session) is None
+    warmup._warm_session(session)
+
+
+def test_warm_ocr_detector_runs_one_white_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bộ dò OCR được dựng và dò một trang trắng `WARMUP_PAGE_PX` vuông, 3 kênh."""
+    pages: list[tuple[object, tuple[int, ...], int]] = []
+    detector = object()
+    monkeypatch.setattr(warmup, "_detector", lambda: detector)
+    monkeypatch.setattr(warmup, "_detect", lambda det, page: pages.append((det, page.shape, int(page.min()))))
+    warmup._warm_ocr_detector()
+    assert pages == [(detector, (warmup.WARMUP_PAGE_PX, warmup.WARMUP_PAGE_PX, 3), 255)]
+
+
+def test_worker_process_init_warms_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Receiver `worker_process_init` gọi `warm_up` một lần cho mỗi con prefork."""
+    calls: list[str] = []
+
+    def fake_warm_up() -> list[str]:
+        """Ghi lại lượt gọi."""
+        calls.append("warm")
+        return []
+
+    monkeypatch.setattr(warmup, "warm_up", fake_warm_up)
+    warmup._warm_on_start(sender=None)
+    assert calls == ["warm"]

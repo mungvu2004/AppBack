@@ -29,7 +29,7 @@ def test_select_providers(
     monkeypatch: pytest.MonkeyPatch, device: Any, available: list[str], expected: tuple[str, ...]
 ) -> None:
     """`cpu` luôn CPU; `auto` chỉ CUDA khi bản ORT có provider; `cuda` luôn thử CUDA (lỗi thì `_session` lùi)."""
-    monkeypatch.setattr(loader.ort, "get_available_providers", lambda: available)
+    monkeypatch.setattr(ort, "get_available_providers", lambda: available)
     assert select_providers(device) == expected
 
 
@@ -45,7 +45,7 @@ def test_cuda_session_error_falls_back_to_cpu(
             raise RuntimeError("libcudnn.so.9: cannot open shared object file")
         return real(data, sess_options=sess_options, providers=providers)
 
-    monkeypatch.setattr(loader.ort, "InferenceSession", fake)
+    monkeypatch.setattr(ort, "InferenceSession", fake)
     with caplog.at_level(logging.INFO, logger=loader.__name__):
         session = loader._session(add_model().SerializeToString(), 1, CUDA_PROVIDERS)
     assert session.get_providers() == CPU_ONLY
@@ -66,7 +66,7 @@ def test_cuda_providers_on_cpu_build_run_on_cpu(caplog: pytest.LogCaptureFixture
 def test_cpu_session_skips_preload(monkeypatch: pytest.MonkeyPatch) -> None:
     """Phiên CPU không gọi `preload_dlls` (tiến trình CPU không nạp thư viện CUDA)."""
     calls: list[int] = []
-    monkeypatch.setattr(loader.ort, "preload_dlls", lambda: calls.append(1), raising=False)
+    monkeypatch.setattr(ort, "preload_dlls", lambda: calls.append(1), raising=False)
     session = loader._session(add_model().SerializeToString(), 1)
     assert session.get_providers() == CPU_ONLY
     assert calls == []
@@ -76,14 +76,14 @@ def test_preload_missing_or_failing_is_harmless(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """ORT không có `preload_dlls` → bỏ qua; hàm ném → chỉ cảnh báo."""
-    monkeypatch.delattr(loader.ort, "preload_dlls", raising=False)
+    monkeypatch.delattr(ort, "preload_dlls", raising=False)
     loader._preload_cuda_dlls()
 
     def boom() -> None:
         """Giả `preload_dlls` thiếu thư viện."""
         raise OSError("libcublasLt.so.12 not found")
 
-    monkeypatch.setattr(loader.ort, "preload_dlls", boom, raising=False)
+    monkeypatch.setattr(ort, "preload_dlls", boom, raising=False)
     with caplog.at_level(logging.WARNING, logger=loader.__name__):
         loader._preload_cuda_dlls()
     assert any("preload_dlls" in r.getMessage() for r in caplog.records)
