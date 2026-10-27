@@ -82,7 +82,7 @@ def _open_square(ink: NDArray[np.uint8], size: int) -> NDArray[np.uint8]:
     neo `size - 1 - a` với `a` là neo lúc co. Kernel lẻ hai neo trùng nhau, như cũ.
     """
     kernel = np.ones((size, size), np.uint8)
-    erode_at = (size - 1) // 2
+    erode_at = size // 2 - (1 - size % 2)  # = (size - 1) // 2, viết theo chẵn/lẻ
     dilate_at = size - 1 - erode_at
     eroded = cv2.erode(ink, kernel, anchor=(erode_at, erode_at))
     return np.asarray(cv2.dilate(eroded, kernel, anchor=(dilate_at, dilate_at)), np.uint8)
