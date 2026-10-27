@@ -158,6 +158,22 @@ services:
       redis-broker:
         condition: service_healthy
 
+  ml-train:
+    extends:
+      file: base.yml
+      service: ml-train
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-ml:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    profiles: ["ml"]
+    environment:
+      ML_WARMUP: "0"
+    env_file:
+      - path: /etc/appback/ml.env
+        required: false
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+
   ml-gpu:
     extends:
       file: base.yml

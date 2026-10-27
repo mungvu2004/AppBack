@@ -2,6 +2,8 @@
 # (hợp đồng B0-08 §2). Không đặt ports/depends_on/profiles/image/build/container_name
 # ở file này; volume dữ liệu bền (pg-data, redis-broker-data, minio-data, local-storage)
 # cũng không đặt ở đây vì ci.yml không dùng volume có tên (chỉ khai ở dev.yml/prod.yml).
+# Hàng ML (PERF-03): `ml` nghe `ml.infer` (ML_INFER_CONCURRENCY, mặc định 3), `ml-train`
+# nghe `ml.training` (concurrency 1); ml-gpu nghe cả hai. Mỗi tệp dev/ci/prod khai đủ `ml` + `ml-train`.
 x-logging: &logging
   driver: json-file
   options:
@@ -173,10 +175,14 @@ services:
     networks:
       - appback
     healthcheck:
+      # Mỗi lượt ping dựng cả một tiến trình Celery (~1 nhân CPU): 30 s lúc chạy (PERF-03
+      # P20), 5 s trong start_period để `up --wait`/depends_on không chậm đi.
       test: ["CMD-SHELL", "celery -A apps.worker.celery_main inspect ping -d celery@$$HOSTNAME --timeout 5"]
-      interval: 10s
+      interval: 30s
       timeout: 8s
       retries: 10
+      start_period: 60s
+      start_interval: 5s
 
   beat:
     logging: *logging
@@ -188,9 +194,12 @@ services:
       # ảnh worker có HEALTHCHECK theo hàng đợi; beat không nghe hàng nên tắt (hợp đồng §2).
       disable: true
 
-  ml:
+  # PERF-03 P2: `ml` chỉ nghe `ml.infer` (tường/YOLO/OCR của một lần chạy chạy song song,
+  # ML_INFER_CONCURRENCY tiến trình × ML_ORT_THREADS luồng ≈ số nhân: 3 × 4 = 12);
+  # huấn luyện (giới hạn 3600 s) sang `ml-train` để không chặn upload tới 1 giờ.
+  ml: &ml-service
     logging: *logging
-    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer,ml.training", "--concurrency", "1"]
+    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer", "--concurrency", "${ML_INFER_CONCURRENCY:-3}"]
     init: true
     shm_size: "1gb"
     mem_limit: ${ML_MEM_LIMIT:-8g}
@@ -215,6 +224,13 @@ services:
     networks:
       - ml-internal
 
+  # Cùng ảnh/env/mạng với `ml` (anchor), chỉ nghe `ml.training`, một job mỗi lúc.
+  ml-train:
+    <<: *ml-service
+    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.training", "--concurrency", "1"]
+
+  # ml-gpu giữ cả hai hàng, concurrency 1: một GPU 6 GB không chứa nổi huấn luyện +
+  # nhiều tiến trình suy luận cùng lúc (PERF-03 P2 chỉ tách ở biến thể CPU).
   ml-gpu:
     logging: *logging
     command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer,ml.training", "--concurrency", "1"]
