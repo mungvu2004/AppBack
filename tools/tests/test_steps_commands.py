@@ -73,9 +73,9 @@ class FakeProc:
 def _starter(events: list[str], proc: FakeProc) -> Callable[[], FakeProc]:
     """Thay `steps.start_mypy`: ghi mốc "start" rồi trả `proc` (không dựng tiến trình thật)."""
 
-    def start() -> FakeProc:
-        """Ghi mốc rồi trả tiến trình giả."""
-        events.append("start")
+    def start(env: dict[str, str] | None = None) -> FakeProc:
+        """Ghi mốc (kèm thư mục cache mypy nếu lượt truyền env riêng) rồi trả tiến trình giả."""
+        events.append("start" if env is None else f"start {env.get('MYPY_CACHE_DIR')}")
         return proc
 
     return start
@@ -540,6 +540,102 @@ def test_verify__steps_lẻ_chạy_mypy_tuần_tự(repo: Path, monkeypatch: pyt
     assert steps.main(["verify", "--steps", "3"]) == 0
     assert events == []
     assert seen == ["mypy"]
+
+
+# --- cổng nhanh (PERF-03) ------------------------------------------------------------
+
+
+def test_fast_test_paths__chỉ_đơn_vị_bị_chạm_còn_trên_đĩa(repo: Path) -> None:
+    """Đơn vị suy từ tệp đổi, gộp trùng, bỏ đơn vị đã xoá và tệp ngoài đơn vị (README, docs)."""
+    _touch(repo, "apps/api/auth/router.py")
+    _touch(repo, "packages/db/engine.py")
+    changed = [
+        "apps/api/auth/router.py",
+        "apps/api/auth/tests/test_login.py",
+        "packages/db/engine.py",
+        "apps/api/gone/router.py",
+        "README.md",
+    ]
+    assert steps.fast_test_paths(changed) == ["apps/api/auth", "packages/db"]
+    assert steps.fast_test_paths(["docs/x.md"]) == []
+
+
+@pytest.mark.parametrize("changed", ["conftest.py", "pyproject.toml", "uv.lock", "packages/testing/fixtures/db.py"])
+def test_fast_test_paths__đổi_cấu_hình_chung_thì_cả_bộ(repo: Path, changed: str) -> None:
+    """Cấu hình/fixture dùng chung chạm mọi test: cổng nhanh không được đoán, chạy cả bộ (None)."""
+    assert steps.fast_test_paths(["apps/api/auth/router.py", changed]) is None
+
+
+def test_fast_mypy_env__cache_ấm_theo_worktree(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cổng nhanh dùng `mypy-fast-<tên>` cạnh cache của cổng đầy đủ; không có biến thì giữ nguyên env."""
+    monkeypatch.setenv("MYPY_CACHE_DIR", "/work/mypy-x")
+    monkeypatch.setenv("VERIFY_NAME", "Gate5 A")
+    assert steps.fast_mypy_env()["MYPY_CACHE_DIR"] == "/work/mypy-fast-gate5-a"
+    monkeypatch.delenv("MYPY_CACHE_DIR")
+    assert "MYPY_CACHE_DIR" not in steps.fast_mypy_env()
+
+
+@pytest.mark.parametrize(("rc", "status"), [(0, steps.STATUS_OK), (5, steps.STATUS_OK), (1, steps.STATUS_FAIL)])
+def test_step_fast_pytest__chạy_đơn_vị_bị_chạm_không_độ_phủ(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, rc: int, status: str
+) -> None:
+    """pytest nhận đúng thư mục đơn vị, không `--cov`; mã 5 (không thu được test) không phải hỏng."""
+    _touch(repo, "apps/api/auth/router.py")
+    monkeypatch.setenv("VERIFY_CHANGED", "apps/api/auth/router.py\n")
+    fake = _fake(monkeypatch, pytest=(rc, ""))
+    outcome = steps.step_fast_pytest()
+    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadgroup", "apps/api/auth"]]
+    assert (outcome.status, outcome.detail) == (status, "apps/api/auth")
+
+
+def test_step_fast_pytest__không_đơn_vị_nào_thì_không_áp_dụng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chỉ đổi tài liệu: không chạy pytest, bước 5 "không áp dụng" chứ không "đạt" (K25)."""
+    monkeypatch.setenv("VERIFY_CHANGED", "docs/x.md\n")
+    fake = _fake(monkeypatch)
+    assert steps.step_fast_pytest().status == steps.STATUS_NA
+    assert fake.calls == []
+
+
+def test_step_fast_pytest__cả_bộ_khi_đổi_fixture_chung(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đổi fixture dùng chung: pytest không kèm đường dẫn (cả `testpaths`)."""
+    monkeypatch.setenv("VERIFY_CHANGED", "packages/testing/fixtures/db.py\n")
+    fake = _fake(monkeypatch)
+    steps.step_fast_pytest()
+    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadgroup"]]
+
+
+def test_fast_gate_steps__bước_6_chỉ_khi_đổi_migration(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Thứ tự 1, 2, 4, 5, 3 (mypy nền chờ sau pytest); thêm 6 khi `packages/db/migrations/` bị đổi."""
+    proc = FakeProc(0, [])
+    monkeypatch.setenv("VERIFY_CHANGED", "apps/api/auth/router.py\n")
+    assert [n for n, _ in steps.fast_gate_steps(cast(Any, proc))] == ["1", "2", "4", "5", "3"]
+    monkeypatch.setenv("VERIFY_CHANGED", "packages/db/migrations/versions/r1.py\n")
+    assert [n for n, _ in steps.fast_gate_steps(cast(Any, proc))][-1] == "6"
+
+
+@pytest.mark.parametrize(("mypy_rc", "pytest_rc", "rc"), [(0, 0, 0), (1, 0, 1), (0, 1, 1)])
+def test_verify_fast__mypy_nền_cache_ấm_và_mã_thoát(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mypy_rc: int,
+    pytest_rc: int,
+    rc: int,
+) -> None:
+    """`verify --fast`: mypy nền trên cache ấm, trạng thái từ mã thoát THẬT, bảng nói rõ đây là cổng nhanh."""
+    events: list[str] = []
+    monkeypatch.setenv("MYPY_CACHE_DIR", "/work/mypy-x")
+    monkeypatch.setenv("VERIFY_NAME", "w")
+    monkeypatch.setenv("VERIFY_CHANGED", "tools/x.py\n")
+    _touch(repo, "tools/x.py")
+    monkeypatch.setattr(steps, "start_mypy", _starter(events, FakeProc(mypy_rc, events)))
+    _fake(monkeypatch, pytest=(pytest_rc, ""))
+    assert steps.main(["verify", "--fast"]) == rc
+    assert events[0] == "start /work/mypy-fast-w"
+    out = capsys.readouterr().out
+    assert "Cổng NHANH" in out
+    assert out.index("  3 |") < out.index("  5 |")
+    assert "coverage_gate" not in out  # dòng bước 5 mang tên của cổng nhanh, cả khi "chưa chạy"
 
 
 # --- lock / openapi -----------------------------------------------------------------

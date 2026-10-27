@@ -72,10 +72,14 @@ def _popen(cmd: list[str], **kw: Any) -> subprocess.Popen[bytes]:
     return subprocess.Popen(cmd, cwd=REPO_ROOT, **kw)
 
 
+def _changed_files() -> list[str]:
+    """Các đường tương đối bị đổi so với `main` (dòng của `VERIFY_CHANGED`, `run.sh` tính)."""
+    return [line.strip() for line in os.environ.get("VERIFY_CHANGED", "").splitlines() if line.strip()]
+
+
 def _touched_units() -> set[str]:
     """Các đơn vị (gói/app) bị chạm, suy ra từ các dòng của `VERIFY_CHANGED`."""
-    changed = [line.strip() for line in os.environ.get("VERIFY_CHANGED", "").splitlines() if line.strip()]
-    return {u for u in (unit_of(c) for c in changed) if u is not None}
+    return {u for u in (unit_of(c) for c in _changed_files()) if u is not None}
 
 
 def _gate_status(condition_file: Path, owner: str) -> str | None:
@@ -241,7 +245,7 @@ def step_mypy() -> StepOutcome:
     return StepOutcome("3", "mypy --strict", STATUS_OK if r.returncode == 0 else STATUS_FAIL)
 
 
-def start_mypy() -> subprocess.Popen[bytes]:
+def start_mypy(env: dict[str, str] | None = None) -> subprocess.Popen[bytes]:
     """Chạy mypy nền, stdout+stderr vào `MYPY_LOG` — để nó chạy song song bước 5 (C1).
 
     Bước 3 nguội ~219 s, bước 5 ~808 s: chạy chồng lên nhau thì 219 s đó biến mất khỏi tổng. Output
@@ -249,7 +253,7 @@ def start_mypy() -> subprocess.Popen[bytes]:
     """
     handle = MYPY_LOG.open("wb")
     try:
-        return _popen(["mypy"], stdout=handle, stderr=subprocess.STDOUT, env=_mypy_env())
+        return _popen(["mypy"], stdout=handle, stderr=subprocess.STDOUT, env=env or _mypy_env())
     finally:
         handle.close()  # Popen đã giữ fd riêng của nó
 
@@ -266,13 +270,13 @@ def join_mypy(proc: subprocess.Popen[bytes]) -> StepOutcome:
 
 
 @contextmanager
-def background_mypy() -> Iterator[subprocess.Popen[bytes]]:
+def background_mypy(env: dict[str, str] | None = None) -> Iterator[subprocess.Popen[bytes]]:
     """Chạy mypy nền suốt khối; ra khối mà nó còn sống thì giết.
 
     Bước 1/2 hỏng là cổng dừng sớm, bước 3 ghi "chưa chạy" — mypy nền phải chết theo, nếu không
     container còn một tiến trình con giữ fd và `_stop_pumps` đợi hết `LOG_DRAIN_TIMEOUT_S`.
     """
-    proc = start_mypy()
+    proc = start_mypy(env)
     try:
         yield proc
     finally:
@@ -518,6 +522,78 @@ def _in_step_order(outcomes: list[StepOutcome]) -> list[StepOutcome]:
     return sorted(outcomes, key=lambda o: _STEP_ORDER.get(o.number, len(_STEP_ORDER)))
 
 
+# ---------------------------------------------------------------------------
+# Cổng nhanh (PERF-03): `verify --fast` — xem trước mỗi lần sửa, cổng đầy đủ vẫn chạy trước merge
+# ---------------------------------------------------------------------------
+
+FAST_PYTEST_WORKERS = "4"
+FAST_FULL_SUITE_FILES = frozenset({"conftest.py", "pyproject.toml", "uv.lock"})
+"""Đổi một trong các tệp này là đổi cấu hình/fixture của MỌI test → cổng nhanh chạy cả bộ."""
+FAST_FULL_SUITE_DIRS = ("packages/testing/fixtures/",)
+_FAST_PYTEST = "pytest đơn vị bị chạm"
+
+
+def fast_test_paths(changed: list[str]) -> list[str] | None:
+    """Thư mục test của cổng nhanh: mọi đơn vị bị chạm còn trên đĩa; `None` = cả bộ.
+
+    Chỉ đơn vị bị chạm, không đơn vị phụ thuộc vào nó: sửa `packages/x` mà làm vỡ `apps/y` thì cổng
+    đầy đủ trước merge mới bắt được — đó là cái giá đổi lấy vòng sửa dưới 2 phút.
+    """
+    if any(c in FAST_FULL_SUITE_FILES or c.startswith(FAST_FULL_SUITE_DIRS) for c in changed):
+        return None
+    return sorted({u for u in (unit_of(c) for c in changed) if u is not None and (REPO_ROOT / u).is_dir()})
+
+
+def fast_mypy_env() -> dict[str, str]:
+    """Cache mypy ẤM theo worktree (`mypy-fast-<VERIFY_NAME>`): chỉ module đổi bị kiểm lại.
+
+    Xem trước, không thay cổng đầy đủ: cache ấm có thể phát lại kết quả cũ khi tệp đổi mà giữ nguyên
+    mtime và cỡ (NO-306); cổng đầy đủ vẫn dùng cache theo băm cây (`mypy_cache_dir`).
+    """
+    current = os.environ.get("MYPY_CACHE_DIR")
+    if not current:
+        return dict(os.environ)
+    name = normalize_verify_name(os.environ.get("VERIFY_NAME", "")) or "default"
+    return {**os.environ, "MYPY_CACHE_DIR": str(Path(current).parent / f"mypy-fast-{name}")}
+
+
+def step_fast_pytest() -> StepOutcome:
+    """Bước 5 của cổng nhanh: pytest các đơn vị bị chạm, KHÔNG độ phủ (ngưỡng là việc của cổng đầy đủ)."""
+    paths = fast_test_paths(_changed_files())
+    if paths == []:
+        return StepOutcome("5", _FAST_PYTEST, STATUS_NA, "không đơn vị nào bị chạm")
+    detail = "cả bộ — đổi cấu hình/fixture chung" if paths is None else ", ".join(paths)
+    r = _run(["pytest", "-n", FAST_PYTEST_WORKERS, "--dist", "loadgroup", *(paths or [])])
+    # 5 = pytest không thu được test nào (đơn vị chưa có test): không phải hỏng.
+    return StepOutcome("5", _FAST_PYTEST, STATUS_OK if r.returncode in (0, 5) else STATUS_FAIL, detail)
+
+
+def fast_gate_steps(proc: subprocess.Popen[bytes]) -> list[tuple[str, Callable[[], StepOutcome]]]:
+    """Thứ tự cổng nhanh: 1, 2, 4, pytest bị chạm, chờ mypy nền; bước 6 chỉ khi migration bị đổi."""
+    steps: list[tuple[str, Callable[[], StepOutcome]]] = [
+        ("1", step_ruff_format),
+        ("2", step_ruff_check),
+        ("4", step_lint_imports),
+        ("5", step_fast_pytest),
+        ("3", lambda: join_mypy(proc)),
+    ]
+    if any(c.startswith("packages/db/migrations/") for c in _changed_files()):
+        steps.append(("6", step_migrations))
+    return steps
+
+
+def _run_fast() -> int:
+    """`verify --fast`: các bước của `fast_gate_steps`, mypy nền trên cache ấm; 1 nếu có dòng "hỏng"."""
+    with background_mypy(fast_mypy_env()) as proc:
+        outcomes = _in_step_order(run_steps(fast_gate_steps(proc), None))
+    for outcome in outcomes:  # dòng "chưa chạy" lấy nhãn của cổng đầy đủ — bước 5 ở đây không đo độ phủ
+        if outcome.number == "5":
+            outcome.name = _FAST_PYTEST
+    _print_table(outcomes)
+    print("Cổng NHANH: không độ phủ, không 5b/7/8, chỉ test đơn vị bị chạm — chạy `verify` đầy đủ trước merge.")
+    return 1 if any(o.status == STATUS_FAIL for o in outcomes) else 0
+
+
 def _run_verify(args: argparse.Namespace) -> int:
     """Chạy các bước được chọn, chép mẫu golden, in bảng; 1 nếu có dòng "hỏng".
 
@@ -525,6 +601,8 @@ def _run_verify(args: argparse.Namespace) -> int:
     (`full_gate_steps`); `--steps` của worker chạy tuần tự như cũ. Cả hai dùng cùng cache mypy khoá
     theo băm cây (`mypy_cache_dir`), nên kết quả bước 3 của worker cũng bằng kết quả nguội (NO-306).
     """
+    if getattr(args, "fast", False):
+        return _run_fast()
     wanted = set(args.steps.split(",")) if args.steps else None
     # Không ai gõ bước "0": nó đi kèm khi lượt có bước cần runner Node.
     if wanted is not None and wanted & _RUNNER_STEPS:
@@ -793,6 +871,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_verify = sub.add_parser("verify")
     p_verify.add_argument("--steps", default=None)
+    p_verify.add_argument("--fast", action="store_true", help="cổng nhanh: chỉ đơn vị bị chạm, không độ phủ")
     p_verify.set_defaults(fn=cmd_verify)
 
     sub.add_parser("lock").set_defaults(fn=cmd_lock)

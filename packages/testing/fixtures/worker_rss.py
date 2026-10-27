@@ -8,8 +8,8 @@ worker xdist gửi thêm bản ghi qua `workeroutput` để controller in tóm t
 
 import json
 import resource
-from collections import Counter
-from collections.abc import Generator
+from collections import defaultdict
+from collections.abc import Generator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,7 @@ from packages.testing.fixtures.worker_id import xdist_worker_id
 
 RSS_LOG = Path("/tmp/worker-rss.jsonl")  # noqa: S108 — điểm trao đổi trong container cổng, không phải input
 TOP_FILES = 5
-_GROWTH: Counter[str] = Counter()
+_GROWTH: defaultdict[str, float] = defaultdict(float)
 _RECORDS: list[dict[str, Any]] = []
 
 
@@ -29,9 +29,9 @@ def _maxrss_mb() -> float:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
 
-def rss_record(worker: str, maxrss_mb: float, growth: Counter[str]) -> dict[str, Any]:
+def rss_record(worker: str, maxrss_mb: float, growth: Mapping[str, float]) -> dict[str, Any]:
     """Bản ghi một tiến trình: mã worker, RSS đỉnh, `TOP_FILES` tệp tăng nhiều nhất (bỏ tệp tăng 0)."""
-    top = [[path, round(mb, 1)] for path, mb in growth.most_common(TOP_FILES) if mb > 0]
+    top = [[path, round(mb, 1)] for path, mb in sorted(growth.items(), key=lambda kv: -kv[1])[:TOP_FILES] if mb > 0]
     return {"worker": worker or "main", "maxrss_mb": round(maxrss_mb, 1), "top": top}
 
 

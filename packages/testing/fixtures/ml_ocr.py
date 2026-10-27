@@ -24,6 +24,6 @@ def wheel_engine() -> "RapidOCR":
     Import trong hàm (PERF-03): conftest gốc nạp file này cho mọi worker xdist, import cấp module
     kéo onnxruntime + cv2 vào cả worker chỉ chạy test API/DB.
     """
-    from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]  # wheel không có py.typed
+    from rapidocr_onnxruntime import RapidOCR
 
     return RapidOCR()
