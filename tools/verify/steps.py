@@ -345,12 +345,13 @@ def step_coverage() -> StepOutcome:
     còn `coverage combine` riêng: gộp xong rồi, gọi lại chỉ thấy "No data to combine".
     `--cov` không kèm đường dẫn: lấy `[tool.coverage.run] source`, cùng nguồn như trước.
     `--cov-report=` tắt báo cáo của plugin — số thật do `coverage_gate` in ra từ `coverage json`.
-    `--dist loadgroup` (PERF-03): plugin `xdist_groups` cho mỗi file một nhóm riêng (như `loadfile`: fixture
-    phiên dựng một lần cho cả file, test phụ thuộc thứ tự trong file không bị xé), riêng file `apps/ml/` dồn
-    vào ba nhóm — chỉ ba worker phình RAM khi chạy test ML, các worker còn lại ở mức collect (~0,66 GiB).
+    `--dist loadfile`: mọi test cùng file vào cùng một tiến trình, nên fixture phiên (container
+    dịch vụ) dựng một lần cho cả file và test phụ thuộc thứ tự trong một file không bị xé ra.
+    PERF-03 đã thử `loadgroup` + nhóm theo tệp: nhóm không được áp, test cùng tệp bị xé ra mọi worker
+    (mỗi worker huấn luyện lại YOLO, pytest 585 → 1.108 s; test ghi chung `/tmp/ci-pip-audit.json` đỏ) — đừng thử lại.
     """
     steps = [
-        ["pytest", "-n", pytest_workers(), "--dist", "loadgroup", "--cov", "--cov-report="],
+        ["pytest", "-n", pytest_workers(), "--dist", "loadfile", "--cov", "--cov-report="],
         ["coverage", "json"],
     ]
     for cmd in steps:
@@ -563,7 +564,7 @@ def step_fast_pytest() -> StepOutcome:
     if paths == []:
         return StepOutcome("5", _FAST_PYTEST, STATUS_NA, "không đơn vị nào bị chạm")
     detail = "cả bộ — đổi cấu hình/fixture chung" if paths is None else ", ".join(paths)
-    r = _run(["pytest", "-n", FAST_PYTEST_WORKERS, "--dist", "loadgroup", *(paths or [])])
+    r = _run(["pytest", "-n", FAST_PYTEST_WORKERS, "--dist", "loadfile", *(paths or [])])
     # 5 = pytest không thu được test nào (đơn vị chưa có test): không phải hỏng.
     return StepOutcome("5", _FAST_PYTEST, STATUS_OK if r.returncode in (0, 5) else STATUS_FAIL, detail)
 

@@ -160,7 +160,7 @@ def test_bước_5_đạt_gọi_đủ_chuỗi(repo: Path, monkeypatch: pytest.Mo
 
 
 def test_bước_5_chạy_song_song_dưới_cov(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Bước 5 phải mang `-n`, `--dist loadgroup` và `--cov`; thiếu `--cov` là độ phủ tụt về 0."""
+    """Bước 5 phải mang `-n`, `--dist loadfile` và `--cov`; thiếu `--cov` là độ phủ tụt về 0."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
     fake = _fake(monkeypatch)
     steps.step_coverage()
@@ -169,7 +169,7 @@ def test_bước_5_chạy_song_song_dưới_cov(repo: Path, monkeypatch: pytest.
         "-n",
         steps.DEFAULT_PYTEST_WORKERS,
         "--dist",
-        "loadgroup",
+        "loadfile",
         "--cov",
         "--cov-report=",
     ]
@@ -584,7 +584,7 @@ def test_step_fast_pytest__chạy_đơn_vị_bị_chạm_không_độ_phủ(
     monkeypatch.setenv("VERIFY_CHANGED", "apps/api/auth/router.py\n")
     fake = _fake(monkeypatch, pytest=(rc, ""))
     outcome = steps.step_fast_pytest()
-    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadgroup", "apps/api/auth"]]
+    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile", "apps/api/auth"]]
     assert (outcome.status, outcome.detail) == (status, "apps/api/auth")
 
 
@@ -601,7 +601,7 @@ def test_step_fast_pytest__cả_bộ_khi_đổi_fixture_chung(repo: Path, monkey
     monkeypatch.setenv("VERIFY_CHANGED", "packages/testing/fixtures/db.py\n")
     fake = _fake(monkeypatch)
     steps.step_fast_pytest()
-    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadgroup"]]
+    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile"]]
 
 
 def test_fast_gate_steps__bước_6_chỉ_khi_đổi_migration(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

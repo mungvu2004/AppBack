@@ -7,7 +7,7 @@
 - Khởi động cổng 144 s → 15 s: venv dùng chung theo băm `uv.lock` + phiên bản uv (`/work/venv-lock-*`, `flock`; worktree
   mới không cài lại venv, 473 s), bỏ `compose build` khi nhãn ảnh trùng băm Dockerfile, bỏ `uv sync` khi lock + pyproject
   + uv không đổi. `gc` giữ 3 venv theo băm mới nhất.
-- Bước 5 `--dist loadgroup`: plugin `xdist_groups` cho mỗi tệp một nhóm (như `loadfile`), tệp `apps/ml/` dồn 3 nhóm LPT.
-  Giữ `-n 6`: `-n 10` bị OOM trong VM 12 GB (worker 0,9–1,1 GiB khi chạy thật). Plugin `worker_rss` in RSS đỉnh mỗi worker.
+- Bước 5 giữ `-n 6 --dist loadfile`: `-n 10` bị OOM trong VM 12 GB; `loadgroup` + nhóm theo tệp không được áp (test cùng
+  tệp xé ra mọi worker, pytest 585 → 1.108 s) nên bỏ. Plugin `worker_rss` in RSS đỉnh mỗi worker (đo: 1,7–2,6 GiB).
 - `test_durations.json` sinh lại từ junit 2026-10-26; import nặng trong test ML và `ml_ocr` dời vào hàm.
 - Không endpoint, không bảng, không migration, không đổi dây: bước 6, 7, 8 không có gì mới để kiểm.
