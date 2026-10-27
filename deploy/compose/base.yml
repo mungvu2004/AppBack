@@ -21,6 +21,19 @@ x-celery-task-env: &celery-task-env
 services:
   postgres:
     logging: *logging
+    # P25 (PERF-03): mặc định của ảnh là shared_buffers 128MB + jit=on — JIT chỉ thêm độ trễ cho
+    # truy vấn ngắn của API; random_page_cost 1.1 vì dữ liệu nằm trên SSD; pg_stat_statements để
+    # đo truy vấn chậm (`CREATE EXTENSION pg_stat_statements` chạy tay một lần, không qua migration).
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - jit=off
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - shared_buffers=256MB
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-appback}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?bắt buộc — mật khẩu Postgres}
