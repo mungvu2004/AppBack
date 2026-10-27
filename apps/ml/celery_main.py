@@ -27,6 +27,8 @@ WARMUP_ALIVE_TIMEOUT_S: Final = 300.0
 
 app = create_celery("ml")
 app.conf.worker_proc_alive_timeout = WARMUP_ALIVE_TIMEOUT_S
+# Đọc lúc container chạy (không phải nội suy compose), để override `environment:` có tác dụng.
+app.conf.worker_concurrency = get_ml_settings().ml_infer_concurrency
 
 discover_submodules("apps.ml", "tasks")
 

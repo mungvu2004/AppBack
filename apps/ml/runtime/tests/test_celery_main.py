@@ -79,6 +79,30 @@ def test_celery_main_starts_without_the_signing_key(
     assert result.stdout.strip().splitlines()[-1] == expected
 
 
+CONCURRENCY_SCRIPT = "import apps.ml.celery_main as main; print(main.app.conf.worker_concurrency)"
+
+
+@pytest.mark.parametrize(("value", "expected"), [(None, "3"), ("2", "2")])
+def test_celery_main_reads_infer_concurrency_at_runtime(messaging_env: None, value: str | None, expected: str) -> None:
+    """PERF-03: số tiến trình `ml` lấy từ `ML_INFER_CONCURRENCY` lúc tiến trình chạy (mặc định 3),
+    không phải `--concurrency` nội suy lúc compose — override `environment:` mới có tác dụng."""
+    env = {key: val for key, val in os.environ.items() if key != "ML_INFER_CONCURRENCY"}
+    env |= {"APP_ENV": "test"} | ({} if value is None else {"ML_INFER_CONCURRENCY": value})
+
+    result = subprocess.run(  # noqa: S603 — lệnh cố định, chạy chính Python của venv
+        [sys.executable, "-c", CONCURRENCY_SCRIPT],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == expected
+
+
 EXPORTER_SCRIPT = textwrap.dedent(
     """
     from celery.signals import worker_process_init
