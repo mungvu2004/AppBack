@@ -5,6 +5,8 @@ trình (sessionmaker, kho, đồng hồ) rồi gọi lõi. Lỗi tạm, hết h�
 `define_task` lo; `on_failed` chạy `fail_quality` trên vòng sự kiện dùng chung của tiến trình.
 """
 
+import logging
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Final
@@ -19,6 +21,7 @@ from packages.storage.port import ObjectStorage
 
 QUALITY_TASK: Final = "pipeline.quality.run"
 """Tên task; B5-06b gửi nó sau khi ghi lớp, B5-06c gửi lại khi quét bù (B5-07 [2])."""
+_log: Final = logging.getLogger(__name__)
 
 
 def open_storage() -> ObjectStorage:
@@ -57,9 +60,23 @@ def fail_quality_step(payload: RunStepPayload, code: str) -> None:
 @define_task(name=QUALITY_TASK, payload=RunStepPayload, on_failed=fail_quality_step)
 async def check_pipeline_quality(payload: RunStepPayload) -> None:
     """Kiểm toàn vẹn + đếm mục tin cậy thấp, ghi `quality.json`, đóng lượt (`qualityCheck`, [6])."""
-    await run_quality(
-        payload,
-        sessionmaker=worker_sessionmaker(),
-        storage=_STORAGE.get(),
-        clock=SystemClock(),
-    )
+    started = time.monotonic()
+    status = "failed"
+    try:
+        await run_quality(
+            payload,
+            sessionmaker=worker_sessionmaker(),
+            storage=_STORAGE.get(),
+            clock=SystemClock(),
+        )
+        status = "completed"
+    finally:
+        _log.info(
+            "pipeline_step_timing",
+            extra={
+                "run_id": payload.run_id,
+                "step": "qualityCheck",
+                "status": status,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            },
+        )

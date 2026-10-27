@@ -1,5 +1,6 @@
 """`run_step` gọi trực tiếp: mọi nhánh đọc trang, ghi artifact, báo `step_done` (không cần worker)."""
 
+import logging
 import os
 import struct
 import subprocess
@@ -36,6 +37,7 @@ from packages.ml_contracts.payloads import InferStepPayload, ModelRef, StepResul
 from packages.ml_contracts.pinned import PINNED
 from packages.ml_contracts.synthetic import render_plan
 from packages.storage.local import LocalDiskStorage
+from packages.storage.port import ObjectStorage
 
 PLAN = render_plan(55)
 
@@ -88,6 +90,90 @@ async def test_run_step_writes_then_reports(local_storage: LocalDiskStorage) -> 
         walls_from_json(b"".join([chunk async for chunk in local_storage.open_read(result.artifact_keys[0])])).walls
         == ()
     )
+
+
+class CountingReads:
+    """Bọc `_read_page`: đếm số lần thật sự tải trang từ kho."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Thay `tasks_util._read_page` bằng bản đếm, vẫn gọi bản gốc."""
+        self.keys: list[str] = []
+        original = tasks_util._read_page
+
+        async def counted(storage: ObjectStorage, key: str) -> bytes:
+            """Ghi khoá rồi đọc như cũ."""
+            self.keys.append(key)
+            return await original(storage, key)
+
+        monkeypatch.setattr(tasks_util, "_read_page", counted)
+
+
+async def test_run_step_reads_and_decodes_a_page_once_per_process(
+    local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P21: ba bước của một lượt cùng trang → tải + giải một lần; mỗi bước nhận bản sao ghi được."""
+    payload = infer_payload()
+    await put_page(local_storage, payload)
+    reads = CountingReads(monkeypatch)
+    seen: list[NDArray[np.uint8]] = []
+
+    def mutating_step(image: NDArray[np.uint8], item: InferStepPayload, prepared: None) -> StepOutput:
+        """Bước sửa ảnh tại chỗ: task sau vẫn phải thấy trang gốc."""
+        seen.append(image.copy())
+        image[:] = 0
+        return walls_step(seen[-1], item, prepared)
+
+    sent = Sent()
+    for _ in range(3):
+        await run_step(payload, mutating_step, storage=local_storage, send=sent)
+    assert reads.keys == [payload.page_key]
+    assert [result.status for _, result in sent.calls] == ["completed"] * 3
+    assert all(np.array_equal(item, seen[0]) for item in seen)
+    assert seen[0].any()
+
+
+async def test_run_step_page_cache_is_bounded_lru(
+    local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quá `PAGE_CACHE_SIZE` trang → trang cũ nhất bị bỏ và lần sau tải lại."""
+    payloads = [infer_payload() for _ in range(tasks_util.PAGE_CACHE_SIZE + 1)]
+    for item in payloads:
+        await put_page(local_storage, item)
+    reads = CountingReads(monkeypatch)
+    sent = Sent()
+    for item in [*payloads, payloads[-1], payloads[0]]:
+        await run_step(item, walls_step, storage=local_storage, send=sent)
+    assert reads.keys == [item.page_key for item in payloads] + [payloads[0].page_key]
+
+
+async def test_run_step_does_not_cache_page_failures(
+    local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Trang thiếu → `failed`, không vào cache: trang tới sau thì lần sau đọc được."""
+    payload = infer_payload()
+    reads = CountingReads(monkeypatch)
+    sent = Sent()
+    await run_step(payload, walls_step, storage=local_storage, send=sent)
+    await put_page(local_storage, payload)
+    await run_step(payload, walls_step, storage=local_storage, send=sent)
+    assert [result.status for _, result in sent.calls] == ["failed", "completed"]
+    assert reads.keys == [payload.page_key, payload.page_key]
+
+
+async def test_run_step_logs_step_timing(local_storage: LocalDiskStorage, caplog: pytest.LogCaptureFixture) -> None:
+    """P26: mỗi bước xong (đạt hay hỏng) → một dòng `pipeline_step_timing` có run, bước, `duration_ms`."""
+    payload = infer_payload()
+    sent = Sent()
+    with caplog.at_level(logging.INFO, logger="apps.ml.runtime.tasks_util"):
+        await run_step(payload, walls_step, storage=local_storage, send=sent)
+        await put_page(local_storage, payload)
+        await run_step(payload, walls_step, storage=local_storage, send=sent)
+    records = [record for record in caplog.records if record.getMessage() == "pipeline_step_timing"]
+    assert [(r.__dict__["run_id"], r.__dict__["step"], r.__dict__["status"]) for r in records] == [
+        (payload.run_id, payload.step, "failed"),
+        (payload.run_id, payload.step, "completed"),
+    ]
+    assert [r.__dict__["duration_ms"] for r in records] == [result.duration_ms for _, result in sent.calls]
 
 
 async def test_run_step_reports_the_model_version_on_every_path(local_storage: LocalDiskStorage) -> None:
