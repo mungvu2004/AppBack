@@ -27,7 +27,14 @@ fi
 # PERF-01 B-pyc: biên dịch .pyc ngay lúc cài — venv mới không có bytecode thì mỗi tiến trình pytest tự
 # biên dịch lúc import (collection 211 s ở worktree mới, 25 s khi ấm); `uv sync` làm một lần cho cả venv.
 export UV_COMPILE_BYTECODE=1
-uv sync --locked --all-packages --group dev
+# PERF-03: venv dùng chung theo băm `uv.lock` + phiên bản uv, không theo tên worktree — worktree mới
+# không còn cài lại cả venv (473 s đo 2026-10-27). Gói workspace cài editable trỏ `/tmp/w`, cùng đường ở mọi
+# container. `flock`: hai lượt cùng băm (khác worktree) không `uv sync` chồng lên nhau; `touch` cho `gc`
+# giữ các venv dùng gần nhất (`VENV_PREFIX` trong steps.py).
+venv_key="$({ cat uv.lock; uv --version; } | sha256sum | cut -c1-16)"
+export UV_PROJECT_ENVIRONMENT="/work/venv-lock-$venv_key"
+flock "/work/flock-venv-lock-$venv_key" uv sync --locked --all-packages --group dev
+touch "$UV_PROJECT_ENVIRONMENT"
 
 # Gốc import = gốc repo ở mọi nơi chạy (BE-01 [5]); công cụ của venv trên PATH.
 export PYTHONPATH=/tmp/w

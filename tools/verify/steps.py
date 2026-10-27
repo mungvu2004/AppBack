@@ -158,6 +158,10 @@ MYPY_CACHE_KEEP = 3
 """Số thư mục `mypy-tree-*` `gc` giữ lại (mới nhất theo mtime). Mỗi cái ~200 MB; 3 phủ HEAD + hai lượt trước."""
 
 
+VENV_PREFIX = "venv-lock-"
+"""Tiền tố venv dùng chung theo băm `uv.lock` (`in_container.sh`); `gc` giữ `MYPY_CACHE_KEEP` cái mới nhất."""
+
+
 def _hash_tree(files: list[Path], extra: list[Path]) -> str:
     """sha256 của (đường dẫn, nội dung) từng file trong `files` rồi `extra`, cộng phiên bản mypy.
 
@@ -755,7 +759,7 @@ def cmd_shell(_args: argparse.Namespace) -> int:
 
 
 def cmd_gc(_args: argparse.Namespace) -> int:
-    """Xoá venv-*/mypy-* của worktree không còn tồn tại, và cache mypy theo băm cây đã cũ.
+    """Xoá venv-*/mypy-* của worktree không còn tồn tại, và venv/cache mypy theo băm đã cũ.
 
     `mypy-tree-<băm>` không thuộc worktree nào (khoá bằng nội dung cây nguồn — `mypy_cache_dir`): giữ
     `MYPY_CACHE_KEEP` thư mục mới nhất theo mtime, xoá phần còn lại. `run.sh` truyền danh sách worktree
@@ -763,8 +767,14 @@ def cmd_gc(_args: argparse.Namespace) -> int:
     """
     valid = {n for n in os.environ.get("VERIFY_VALID_NAMES", "").split(",") if n}
     all_dirs = sorted([*WORK_DIR.glob("venv-*"), *WORK_DIR.glob("mypy-*")])
-    hashed = [d for d in all_dirs if d.name.startswith(MYPY_CACHE_PREFIX)]
-    keep = {d for d in sorted(hashed, key=lambda d: d.stat().st_mtime, reverse=True)[:MYPY_CACHE_KEEP]}
+    hashed = [d for d in all_dirs if d.name.startswith((MYPY_CACHE_PREFIX, VENV_PREFIX))]
+    keep = {
+        d
+        for prefix in (MYPY_CACHE_PREFIX, VENV_PREFIX)
+        for d in sorted(
+            (h for h in hashed if h.name.startswith(prefix)), key=lambda d: d.stat().st_mtime, reverse=True
+        )[:MYPY_CACHE_KEEP]
+    }
     removed = []
     for d in all_dirs:
         if d in keep or (d not in hashed and d.name.split("-", 1)[1] in valid):

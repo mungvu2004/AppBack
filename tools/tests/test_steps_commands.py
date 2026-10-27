@@ -724,19 +724,19 @@ def test_gc_xoá_thư_mục_của_worktree_đã_mất(repo: Path, monkeypatch: p
     assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == ["mypy-a", "uv-cache", "venv-a"]
 
 
-def test_gc_giữ_n_cache_mypy_theo_băm_mới_nhất(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`mypy-tree-<băm>` không thuộc worktree nào: giữ `MYPY_CACHE_KEEP` cái mtime mới nhất, xoá phần còn lại."""
+def test_gc_giữ_n_thư_mục_theo_băm_mới_nhất(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`mypy-tree-<băm>`, `venv-lock-<băm>` không thuộc worktree nào: mỗi loại giữ `MYPY_CACHE_KEEP` cái mới nhất."""
     monkeypatch.setattr(steps, "MYPY_CACHE_KEEP", 2)
-    for index in range(4):
-        d = steps.WORK_DIR / f"{steps.MYPY_CACHE_PREFIX}{index:016x}"
-        d.mkdir(parents=True)
-        os.utime(d, (1_700_000_000 + index, 1_700_000_000 + index))
+    for prefix in (steps.MYPY_CACHE_PREFIX, steps.VENV_PREFIX):
+        for index in range(4):
+            d = steps.WORK_DIR / f"{prefix}{index:016x}"
+            d.mkdir(parents=True)
+            os.utime(d, (1_700_000_000 + index, 1_700_000_000 + index))
     monkeypatch.setenv("VERIFY_VALID_NAMES", "")
     assert steps.main(["gc"]) == 0
-    assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == [
-        f"{steps.MYPY_CACHE_PREFIX}{2:016x}",
-        f"{steps.MYPY_CACHE_PREFIX}{3:016x}",
-    ]
+    assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == sorted(
+        f"{prefix}{index:016x}" for prefix in (steps.MYPY_CACHE_PREFIX, steps.VENV_PREFIX) for index in (2, 3)
+    )
 
 
 def test_shell_exec_bash(monkeypatch: pytest.MonkeyPatch) -> None:
