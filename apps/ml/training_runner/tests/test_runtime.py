@@ -34,7 +34,6 @@ from typing import Final
 
 import onnx
 import pytest
-import torch
 from pydantic import BaseModel
 
 from apps.ml.runtime.gpu import GPU_LOCK_NAME
@@ -401,7 +400,7 @@ def m04(claim_client: SyncRedis, local_storage: LocalDiskStorage, monkeypatch: p
 
     monkeypatch.setattr(runner, "training_slot", fast_training_slot)
     monkeypatch.setattr(runner, "gpu_slot", spying_gpu_slot)
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     return M04(
         redis=claim_client,
         storage=local_storage,

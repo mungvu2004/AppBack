@@ -11,9 +11,7 @@ from pathlib import Path
 from typing import Final
 
 import pytest
-import torch
 
-from apps.ml.training_segformer import loop
 from apps.ml.training_segformer.config import SegformerTrainConfig
 from apps.ml.training_segformer.tests.support import RecordingReporter, load_pinned_base, write_split
 from packages.core.clock import SystemClock
@@ -29,6 +27,10 @@ def test_train_gpu_mitb1_fits_6gb(tmp_path: Path) -> None:
 
     Không tự `.to("cuda")`: `loop.train_model` chuyển model theo `spec.device`.
     """
+    import torch  # trong hàm: worker xdist không chạy test ML khỏi nạp torch lúc collect (PERF-03)
+
+    from apps.ml.training_segformer import loop
+
     data_dir = tmp_path / "data"
     write_split(data_dir, "train", 64, seed=0, width_px=1600, height_px=1200)
     write_split(data_dir, "validation", 2, seed=1000, width_px=1600, height_px=1200)
