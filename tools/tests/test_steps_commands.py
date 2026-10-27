@@ -545,25 +545,29 @@ def test_verify__steps_lẻ_chạy_mypy_tuần_tự(repo: Path, monkeypatch: pyt
 # --- cổng nhanh (PERF-03) ------------------------------------------------------------
 
 
-def test_fast_test_paths__chỉ_đơn_vị_bị_chạm_còn_trên_đĩa(repo: Path) -> None:
-    """Đơn vị suy từ tệp đổi, gộp trùng, bỏ đơn vị đã xoá và tệp ngoài đơn vị (README, docs)."""
-    _touch(repo, "apps/api/auth/router.py")
-    _touch(repo, "packages/db/engine.py")
-    changed = [
-        "apps/api/auth/router.py",
-        "apps/api/auth/tests/test_login.py",
-        "packages/db/engine.py",
-        "apps/api/gone/router.py",
-        "README.md",
-    ]
-    assert steps.fast_test_paths(changed) == ["apps/api/auth", "packages/db"]
+def _no_graph(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đồ thị import rỗng: test của `steps` không dựng grimp trên repo giả (đồ thị thật: `test_affected.py`)."""
+    monkeypatch.setattr("tools.verify.affected.importers_of", lambda _module: set())
+
+
+def test_fast_test_paths__đồ_thị_import_hay_cả_bộ_khi_đổi_đầu_vào_bước_7(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tệp test của đơn vị bị chạm (đồ thị rỗng); đầu vào bước 7 đổi → cả bộ (mẫu golden phải đủ)."""
+    _no_graph(monkeypatch)
+    _touch(repo, "apps/api/auth/tests/test_login.py")
+    _touch(repo, "apps/api/notes/tests/test_notes.py")
+    assert steps.fast_test_paths(["apps/api/auth/router.py", "README.md"]) == ["apps/api/auth/tests/test_login.py"]
     assert steps.fast_test_paths(["docs/x.md"]) == []
+    assert steps.fast_test_paths(["apps/api/auth/router.py", "tools/contract/APPFRONT_SHA"]) is None
 
 
-@pytest.mark.parametrize("changed", ["conftest.py", "pyproject.toml", "uv.lock", "packages/testing/fixtures/db.py"])
-def test_fast_test_paths__đổi_cấu_hình_chung_thì_cả_bộ(repo: Path, changed: str) -> None:
-    """Cấu hình/fixture dùng chung chạm mọi test: cổng nhanh không được đoán, chạy cả bộ (None)."""
-    assert steps.fast_test_paths(["apps/api/auth/router.py", changed]) is None
+def test_fast_cov_units__đơn_vị_mã_còn_trên_đĩa(repo: Path) -> None:
+    """Nguồn `--cov`: đơn vị dưới packages/apps/tools còn trên đĩa; bỏ đơn vị đã xoá và `deploy`/`tests`."""
+    _touch(repo, "apps/api/auth/router.py")
+    _touch(repo, "deploy/x.sh")
+    changed = ["apps/api/auth/router.py", "apps/api/gone/router.py", "deploy/x.sh", "README.md"]
+    assert steps.fast_cov_units(changed) == ["apps/api/auth"]
 
 
 def test_fast_mypy_env__cache_ấm_theo_worktree(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -575,21 +579,36 @@ def test_fast_mypy_env__cache_ấm_theo_worktree(monkeypatch: pytest.MonkeyPatch
     assert "MYPY_CACHE_DIR" not in steps.fast_mypy_env()
 
 
-@pytest.mark.parametrize(("rc", "status"), [(0, steps.STATUS_OK), (5, steps.STATUS_NA), (1, steps.STATUS_FAIL)])
-def test_step_fast_pytest__chạy_đơn_vị_bị_chạm_không_độ_phủ(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, rc: int, status: str
+@pytest.mark.parametrize(
+    ("rules", "status", "ran_gate"),
+    [
+        ({}, steps.STATUS_OK, True),
+        ({"pytest": (5, "")}, steps.STATUS_NA, False),
+        ({"pytest": (1, "")}, steps.STATUS_FAIL, False),
+        ({"tools.coverage_gate": (1, "")}, steps.STATUS_FAIL, True),
+    ],
+)
+def test_step_fast_pytest__tệp_bị_ảnh_hưởng_độ_phủ_đơn_vị_chạm(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, rules: dict[str, tuple[int, str]], status: str, ran_gate: bool
 ) -> None:
-    """pytest nhận đúng thư mục đơn vị, không `--cov`; mã 5 (không thu được test) là "không áp dụng"."""
+    """pytest nhận tệp test bị ảnh hưởng + `--cov=<đơn vị chạm>`; rồi `coverage json` → `coverage_gate`.
+    Mã 5 (không thu được test) là "không áp dụng"; pytest hay cổng độ phủ hỏng → "hỏng"."""
+    _no_graph(monkeypatch)
     _touch(repo, "apps/api/auth/router.py")
+    _touch(repo, "apps/api/auth/tests/test_login.py")
     monkeypatch.setenv("VERIFY_CHANGED", "apps/api/auth/router.py\n")
-    fake = _fake(monkeypatch, pytest=(rc, ""))
+    fake = FakeRun(rules=rules)
+    monkeypatch.setattr(steps, "_run", fake)
     outcome = steps.step_fast_pytest()
-    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile", "apps/api/auth"]]
+    assert fake.calls[0] == [
+        "pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile", "--durations=10",
+        "--cov=apps/api/auth", "--cov-report=", "apps/api/auth/tests/test_login.py",
+    ]  # fmt: skip
+    assert fake.ran("tools.coverage_gate") is ran_gate
     assert outcome.status == status
-    assert outcome.detail.endswith("apps/api/auth")
 
 
-def test_step_fast_pytest__không_đơn_vị_nào_thì_không_áp_dụng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_fast_pytest__không_test_nào_thì_không_áp_dụng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Chỉ đổi tài liệu: không chạy pytest, bước 5 "không áp dụng" chứ không "đạt" (K25)."""
     monkeypatch.setenv("VERIFY_CHANGED", "docs/x.md\n")
     fake = _fake(monkeypatch)
@@ -597,21 +616,31 @@ def test_step_fast_pytest__không_đơn_vị_nào_thì_không_áp_dụng(repo: P
     assert fake.calls == []
 
 
-def test_step_fast_pytest__cả_bộ_khi_đổi_fixture_chung(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Đổi fixture dùng chung: pytest không kèm đường dẫn (cả `testpaths`)."""
-    monkeypatch.setenv("VERIFY_CHANGED", "packages/testing/fixtures/db.py\n")
+def test_step_fast_pytest__cả_bộ_không_đơn_vị_mã_thì_không_đo_độ_phủ(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`uv.lock` đổi: cả bộ (không đường dẫn), không đơn vị mã nào → không `--cov`, không `coverage_gate`."""
+    monkeypatch.setenv("VERIFY_CHANGED", "uv.lock\n")
     fake = _fake(monkeypatch)
-    steps.step_fast_pytest()
-    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile"]]
+    assert steps.step_fast_pytest().status == steps.STATUS_OK
+    assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile", "--durations=10"]]
 
 
-def test_fast_gate_steps__bước_6_chỉ_khi_đổi_migration(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Thứ tự 1, 2, 4, 5, 3 (mypy nền chờ sau pytest); thêm 6 khi `packages/db/migrations/` bị đổi."""
-    proc = FakeProc(0, [])
-    monkeypatch.setenv("VERIFY_CHANGED", "apps/api/auth/router.py\n")
-    assert [n for n, _ in steps.fast_gate_steps(cast(Any, proc))] == ["1", "2", "4", "5", "3"]
-    monkeypatch.setenv("VERIFY_CHANGED", "packages/db/migrations/versions/r1.py\n")
-    assert [n for n, _ in steps.fast_gate_steps(cast(Any, proc))][-1] == "6"
+@pytest.mark.parametrize(
+    ("changed", "order"),
+    [
+        ("apps/worker/x/tasks.py", ["1", "2", "4", "5", "3"]),
+        ("packages/db/models/x.py", ["1", "2", "4", "5", "3", "6"]),
+        ("apps/api/auth/router.py", ["1", "2", "4", "5", "3", "8"]),
+        ("tools/contract/APPFRONT_SHA", ["1", "2", "4", "0", "5", "3", "7"]),
+    ],
+)
+def test_fast_gate_steps__bước_6_7_8_chỉ_khi_đầu_vào_đổi(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, changed: str, order: list[str]
+) -> None:
+    """Thứ tự 1, 2, 4, 5, 3 (mypy nền chờ sau pytest); 6/7/8 theo `FAST_STEP_INPUTS`, bước 7 kéo theo bước 0."""
+    monkeypatch.setenv("VERIFY_CHANGED", f"{changed}\n")
+    assert [n for n, _ in steps.fast_gate_steps(cast(Any, FakeProc(0, [])))] == order
 
 
 @pytest.mark.parametrize(("mypy_rc", "pytest_rc", "rc"), [(0, 0, 0), (1, 0, 1), (0, 1, 1)])
@@ -629,6 +658,8 @@ def test_verify_fast__mypy_nền_cache_ấm_và_mã_thoát(
     monkeypatch.setenv("VERIFY_NAME", "w")
     monkeypatch.setenv("VERIFY_CHANGED", "tools/x.py\n")
     _touch(repo, "tools/x.py")
+    _touch(repo, "tools/tests/test_x.py")
+    _no_graph(monkeypatch)
     monkeypatch.setattr(steps, "start_mypy", _starter(events, FakeProc(mypy_rc, events)))
     _fake(monkeypatch, pytest=(pytest_rc, ""))
     assert steps.main(["verify", "--fast"]) == rc

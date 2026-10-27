@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import importlib
 import json
+import logging
 import os
 import pickle
 import subprocess
@@ -683,25 +684,24 @@ def test_run_training_job_watchdog_timeout(harness: Harness) -> None:
     assert [item["error_code"] for item in harness.finished()] == [TRAINING_TIMEOUT]
 
 
-def test_main_ignores_override_outside_test_env(harness: Harness, tmp_path: Path) -> None:
-    """`TRAINING_TRAINER_OVERRIDE` ngoài `APP_ENV=test` bị bỏ qua → `discover_trainers` không có họ ấy.
+def test_main_ignores_override_outside_test_env(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`TRAINING_TRAINER_OVERRIDE` ngoài `APP_ENV=test` bị bỏ qua: `_trainers` trả `discover_trainers` và log
+    `training_trainer_override_ignored` — dòng phân biệt "bị bỏ qua" với "được nạp" ([5], quyết định bảo mật).
 
-    Lượt vẫn chạy tới `finished(failed, TRAINING_TRAINER_MISSING)`: bỏ qua override là quyết định
-    bảo mật ([5]), không phải lỗi hạ tầng, nên tiến trình con thoát 0 sau khi báo cho cầu nối.
+    Trong tiến trình chứ không `python -m` (PERF-04): tiến trình con thật nạp MỌI trainer (torch, transformers,
+    ultralytics) — 20 s rảnh, quá trần 110 s khi máy tải. Nối dây `main` → `_trainers` đã có
+    `test_main_runs_override_trainer`; họ không có trainer → `TRAINING_TRAINER_MISSING` đã có test riêng.
     """
-    env = dict(os.environ) | {
-        "APP_ENV": "dev",
-        "ML_DEVICE": "cpu",
-        "STORAGE_BACKEND": "local",
-        "STORAGE_LOCAL_ROOT": str(tmp_path / "objects"),
-        "TRAINING_TRAINER_OVERRIDE": "apps.ml.training_runner.tests.support:TRAINER",
-    }
-    code, stderr = _main_run(harness.payload, harness.token, env)
-    assert code == 0, stderr
-    # Dòng phân biệt "override bị bỏ qua" với "override được nạp": nếu `_trainers` nạp `TRAINER` của
-    # test thì lượt sẽ chạy xong và không có dòng này (không như `test_main_runs_override_trainer`).
-    assert "training_trainer_override_ignored" in stderr
-    assert _object_bytes(harness.storage, weights_key(harness.payload.job_id, harness.token)) is None
+    from apps.ml.runtime.trainers import discover_trainers
+    from apps.ml.training_runner import __main__ as main_module
+
+    monkeypatch.setenv("APP_ENV", "dev")
+    override = _settings(training_trainer_override="apps.ml.training_runner.tests.support:TRAINER")
+    with caplog.at_level(logging.WARNING, logger=main_module.__name__):
+        assert main_module._trainers(override) is discover_trainers
+    assert [r.getMessage() for r in caplog.records] == ["training_trainer_override_ignored"]
 
 
 def test_main_crash_log_masks_secret_values() -> None:

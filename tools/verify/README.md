@@ -5,9 +5,12 @@ Cổng verify chạy qua `bash tools/verify/run.sh <việc>` (xem `CLAUDE.md`).
 - `verify`: ghi log cổng và `<log>.junit.xml` của bước 5 vào `.cache/src-out/verify/` (NO-324).
 - Khoá cổng đầy đủ: `verify` (kể cả `--steps`, trừ `--fast`) giữ `flock /work/gate-full.lock` suốt lượt trong
   `in_container.sh`; lượt khác in chủ khoá (`/work/gate-full.owner`) rồi chờ. Khoá nhả khi tiến trình chết, không treo.
-- `verify --fast` (PERF-03): bước 1, 2, 4, pytest các đơn vị bị chạm (`fast_test_paths`; đổi `conftest.py`,
-  `pyproject.toml`, `uv.lock`, `packages/testing/fixtures/` thì cả bộ), không độ phủ; mypy nền trên cache ấm
-  `/work/mypy-fast-<worktree>`. Xem trước — `verify` đầy đủ trước merge vẫn là phán quyết.
+- `verify --fast` (PERF-03, PERF-04): bước 1, 2, 4; pytest các tệp test bị ảnh hưởng (`affected.py`: test của đơn vị
+  bị chạm + test nhập bắc cầu module đổi theo đồ thị grimp + test xin fixture mà module fixture nhập module đổi; đổi
+  `conftest.py`, `pyproject.toml`, `uv.lock`, `packages/testing/`, migration hay đầu vào bước 7 thì cả bộ) với độ phủ +
+  `coverage_gate` chỉ trên đơn vị bị chạm; mypy nền trên cache ấm `/work/mypy-fast-<worktree>`; bước 6/7/8 chỉ khi đầu
+  vào của chúng đổi (`FAST_STEP_INPUTS`); không 5b. Không thấy nạp động và `python -m` — `verify` đầy đủ trước merge
+  vẫn là phán quyết.
 - Bước 3: cổng đầy đủ (không `--steps`, hoặc `--steps` gồm **mọi** bước 1–8 và `5b`) chạy mypy
   **nguội** (`MYPY_CACHE_DIR=/dev/null`, ~212 s cả repo); `--steps` thiếu bước và `shell` dùng cache ấm
   `/work/mypy-<worktree>` (~5 s) — chỉ là xem trước: cache ấm có thể phát lại kết quả cũ cả hai chiều.
