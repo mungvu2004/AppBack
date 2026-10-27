@@ -313,7 +313,7 @@ def export_junit(source: Path, suffix: str) -> None:
 
 
 PYTEST_WORKERS_ENV = "VERIFY_PYTEST_WORKERS"
-DEFAULT_PYTEST_WORKERS = "10"
+DEFAULT_PYTEST_WORKERS = "6"
 
 
 def pytest_workers() -> str:
