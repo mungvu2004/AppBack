@@ -168,12 +168,13 @@ def test_dockerfile_worker_copies_apps_api() -> None:
 
 
 def test_dockerfile_ml_has_pinned_fetch_and_export_and_arg_variant() -> None:
-    """`ml`: có `RUN` chạy `pinned fetch --dest /opt/models` và `export_pinned --dest
-    /opt/models`, có `ARG ML_VARIANT=cpu`, có kiểm `importlib.metadata` không có
+    """`ml`: có `RUN` chạy `pinned fetch` vào cache mount rồi chép sang `/opt/models` (FIX-2457) và
+    `export_pinned --dest /opt/models`, có `ARG ML_VARIANT=cpu`, có kiểm `importlib.metadata` không có
     `opencv-python` trong venv chạy (uv không cài `pip`)."""
     _, instructions = _load("ml")
     run_text = " ".join(i.args for i in instructions if i.name == "RUN")
-    assert "packages.ml_contracts.pinned fetch --dest /opt/models" in run_text, "ml: thiếu pinned fetch"
+    assert "packages.ml_contracts.pinned fetch --dest /root/.cache/pinned" in run_text, "ml: thiếu pinned fetch"
+    assert '/root/.cache/pinned/$name" /opt/models/' in run_text, "ml: trọng số ghim không chép vào /opt/models"
     assert "apps.ml.runtime.export_pinned --dest /opt/models" in run_text, "ml: thiếu export_pinned"
     arg_text = [i.args for i in instructions if i.name == "ARG"]
     assert "ML_VARIANT=cpu" in arg_text, "ml: thiếu ARG ML_VARIANT=cpu"
