@@ -439,8 +439,8 @@ def test_label_outside_closed_rooms_seeds_a_loggia(fake_clock: FakeClock) -> Non
         clock=fake_clock,
         dropped=Counter(),
     )
-    loggia = next(room for room in rooms if room.usage == "loggia")
-    assert loggia.name == "lô gia"
+    loggia = next(room for room in rooms if room.usage == "loggia" and min(p.x for p in room.outline) >= 3000)
+    assert loggia.name.startswith("lô gia")
     assert loggia.area_m2 == 4.95  # 3 x 1,65 m: biên bao lồi của tường đã kéo dài `ROOM_SNAP_MM` 150 mm
 
 
@@ -448,3 +448,56 @@ def test_label_with_an_open_side_seeds_nothing(fake_clock: FakeClock) -> None:
     """Nhãn ngoài biên bao lồi của tường (tên bản vẽ, ghi chú) không dựng phòng."""
     texts = (_text("PHONG NGU", 1500, 9000),)
     assert len(_usages(_grid_walls(fake_clock), texts, (), fake_clock)) == 2
+
+
+def _rooms_of(walls: list[Wall], detections: tuple[DetectionPx, ...], clock: FakeClock) -> tuple[Room, ...]:
+    """`build_rooms` không chữ, `_IDENTITY`."""
+    return build_rooms(
+        walls, (), (), detections=detections, level_id=LEVEL_ID, scaling=_IDENTITY, clock=clock, dropped=Counter()
+    )
+
+
+def test_door_box_closes_gap_between_a_corner_and_a_wall(fake_clock: FakeClock) -> None:
+    """Vách giữa dừng ở góc chữ L cách tường trên 900 mm (đầu ở góc, không tự do): hộp cửa lệch tim 70 mm vẫn khép."""
+    segments = [
+        ((0, 0), (6000, 0)),
+        ((0, 3000), (6000, 3000)),
+        ((0, 0), (0, 3000)),
+        ((6000, 0), (6000, 3000)),
+        ((3000, 900), (3000, 3000)),
+        ((2000, 900), (3000, 900)),
+    ]
+    walls = [_wall(fake_clock, start, end) for start, end in segments]
+    door = (DetectionPx(label="door", box=_box(2900, 100, 2960, 800), confidence=0.7),)
+    assert len(_rooms_of(walls, (), fake_clock)) == 1
+    assert len(_rooms_of(walls, door, fake_clock)) == 2
+
+
+def test_walled_rim_strip_becomes_a_loggia(fake_clock: FakeClock) -> None:
+    """Dải 3 x 1,5 m trên phòng phải có tường dưới và hai bên, không nhãn: thành `lô gia` (mặt trên là lan can)."""
+    segments = [
+        ((0, 1500), (6000, 1500)),
+        ((0, 4500), (6000, 4500)),
+        ((0, 1500), (0, 4500)),
+        ((6000, 0), (6000, 4500)),
+        ((3000, 0), (3000, 4500)),
+    ]
+    rooms = _rooms_of([_wall(fake_clock, start, end) for start, end in segments], (), fake_clock)
+    loggias = [room for room in rooms if room.usage == "loggia"]
+    assert [room.name for room in loggias] == ["lô gia"]
+    assert loggias[0].area_m2 == 4.95
+
+
+def test_hull_notch_walled_on_two_sides_is_not_a_room(fake_clock: FakeClock) -> None:
+    """Mặt bằng chữ L: góc khuyết 3 x 3 m trong biên bao chỉ sát tường hai mặt → không dựng lô gia."""
+    segments = [
+        ((0, 0), (6000, 0)),
+        ((0, 0), (0, 6000)),
+        ((6000, 0), (6000, 3000)),
+        ((3000, 3000), (6000, 3000)),
+        ((3000, 3000), (3000, 6000)),
+        ((0, 6000), (3000, 6000)),
+        ((0, 3000), (3000, 3000)),
+    ]
+    rooms = _rooms_of([_wall(fake_clock, start, end) for start, end in segments], (), fake_clock)
+    assert [room.usage for room in rooms] == ["other", "other"]
