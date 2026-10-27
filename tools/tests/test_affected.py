@@ -106,6 +106,24 @@ def test_affected_tests__hạ_tầng_chung_thì_cả_bộ(repo: Path, changed: s
     assert affected.affected_tests(["apps/api/auth/service.py", changed], repo, _importers) is None
 
 
+def test_affected_tests__fixture_autouse_dính_thì_cả_bộ(repo: Path) -> None:
+    """Fixture `autouse` chạy trong mọi test mà không test nào nhắc tên: module của nó bị chạm → `None`; fixture
+    autouse không dính thì vẫn chọn theo luật thường."""
+    signer = (
+        "import pytest\nfrom apps.api.drawings import urls\n\n\n"
+        "@pytest.fixture(autouse=True)\ndef signer_cache():\n    yield\n"
+    )
+    (repo / "packages/testing/fixtures/signer.py").write_text(signer, encoding="utf-8")
+
+    def importers(module: str) -> set[str]:
+        return {"packages.testing.fixtures.signer"} if module == "apps.api.drawings.urls" else set()
+
+    assert affected.affected_tests(["apps/api/drawings/urls.py"], repo, importers) is None
+    assert affected.affected_tests(["apps/worker/clock/tick.py"], repo, importers) == [
+        "apps/worker/clock/tests/test_tick.py"
+    ]
+
+
 def test_importers_of__đồ_thị_thật() -> None:
     """Đồ thị grimp thật của repo: `steps` nhập `affected`, gói thì tính cả kẻ nhập module con."""
     assert "tools.verify.steps" in affected.importers_of("tools.verify.affected")

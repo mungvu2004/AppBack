@@ -7,6 +7,9 @@ Một tệp `test_*.py` được chọn khi một trong ba điều đúng:
   cầu module bị đổi, hay xin một fixture như thế — test không nhập `packages.db` vẫn chạy trên nó qua
   `db_sessionmaker`.
 
+Fixture `autouse` của `packages/testing/fixtures/` bị ảnh hưởng thì chạy cả bộ: nó chạy trong mọi test mà không
+test nào nhắc tên nó (sửa `apps/api/drawings/urls.py` chạm `signer_cache`).
+
 Không thấy (cổng đầy đủ trước merge bắt): nạp động (`pkgutil`/`import_module` của
 `apps.api.core.extensions`, `discover_trainers`, lịch Celery) và tiến trình con `python -m`. Module nạp
 động hỏng lúc nhập thì test của chính đơn vị nó — luôn được chọn — vẫn đỏ.
@@ -82,6 +85,24 @@ def _fixture_name(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     return fn.name
 
 
+def _is_autouse(decorator: ast.expr) -> bool:
+    """Decorator fixture có `autouse=True`."""
+    return isinstance(decorator, ast.Call) and any(
+        kw.arg == "autouse" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+        for kw in decorator.keywords
+    )
+
+
+def autouse_fixtures(source: str) -> set[str]:
+    """Tên các fixture `autouse=True` của một module."""
+    return {
+        _fixture_name(node)
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and any(_is_fixture(d) and _is_autouse(d) for d in node.decorator_list)
+    }
+
+
 def fixture_params(source: str) -> dict[str, set[str]]:
     """Fixture của một module → tên các tham số (fixture khác) nó xin."""
     return {
@@ -105,12 +126,16 @@ def mentioned_names(source: str) -> set[str]:
     return names
 
 
-def tainted_fixtures(root: Path, hit: set[str]) -> set[str]:
-    """Fixture mà module fixture của nó nằm trong `hit`, cộng mọi fixture xin (bắc cầu) một fixture như thế."""
+def tainted_fixtures(root: Path, hit: set[str]) -> tuple[set[str], set[str]]:
+    """Fixture mà module fixture của nó nằm trong `hit`, cộng mọi fixture xin (bắc cầu) một fixture như thế;
+    kèm tên mọi fixture `autouse` của `FIXTURES_DIR`."""
     params: dict[str, set[str]] = {}
     tainted: set[str] = set()
+    autouse: set[str] = set()
     for path in sorted((root / FIXTURES_DIR).glob("*.py")):
-        own = fixture_params(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        own = fixture_params(source)
+        autouse |= autouse_fixtures(source)
         params |= own
         if module_of(path.relative_to(root).as_posix()) in hit:
             tainted |= own.keys()
@@ -121,7 +146,7 @@ def tainted_fixtures(root: Path, hit: set[str]) -> set[str]:
             if name not in tainted and wants & tainted:
                 tainted.add(name)
                 grew = True
-    return tainted
+    return tainted, autouse
 
 
 def _test_files(root: Path) -> Iterable[str]:
@@ -145,7 +170,9 @@ def affected_tests(changed: list[str], root: Path, importers: Importers | None =
     for module in modules:
         hit |= (importers or importers_of)(module)
     units = {u for u in map(unit_of, changed) if u is not None}
-    tainted = tainted_fixtures(root, hit) if hit else set()
+    tainted, autouse = tainted_fixtures(root, hit) if hit else (set(), set())
+    if tainted & autouse:
+        return None
     return [
         rel
         for rel in _test_files(root)
