@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 import onnx
 import pytest
-import torch
 from onnx import TensorProto, helper, numpy_helper
 
 from apps.ml.runtime import loader
@@ -201,6 +200,7 @@ async def test_load_onnx_m03_user_pickle(
     local_storage: LocalDiskStorage, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pickle, zip `.pt`, safetensors với checksum **khớp** vẫn bị chặn; không bộ giải pickle nào được gọi."""
+    import torch  # trong hàm: worker xdist không chạy test ML khỏi nạp torch lúc collect (PERF-03)
 
     def forbidden(*_: object, **__: object) -> None:
         """Bộ giải bị cấm: gọi tới là test hỏng."""
@@ -452,6 +452,8 @@ async def test_session_cache_keeps_three(local_storage: LocalDiskStorage, tmp_pa
 
 async def test_load_onnx_m03_exported_storage(local_storage: LocalDiskStorage, tmp_path: Path) -> None:
     """Model torch tí hon → `export_onnx` → storage → `load_onnx` chạy ra cùng số với torch."""
+    import torch  # trong hàm: worker xdist không chạy test ML khỏi nạp torch lúc collect (PERF-03)
+
     torch.manual_seed(0)
     net = torch.nn.Sequential(torch.nn.Linear(1, 4), torch.nn.ReLU(), torch.nn.Linear(4, 1))
     path = tmp_path / "net.onnx"

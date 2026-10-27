@@ -11,11 +11,19 @@ không nới ngưỡng ([9] cấm) — xem `do-truoc-sau.md` BE-3.
 """
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
-from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]  # wheel không có py.typed
+if TYPE_CHECKING:
+    from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-untyped]  # wheel không có py.typed
 
 
 @lru_cache(maxsize=1)
-def wheel_engine() -> RapidOCR:
-    """`RapidOCR()` mặc định của wheel (bộ phân loại góc vẫn bật; mỗi lượt gọi tự tắt bằng `use_cls=False`)."""
+def wheel_engine() -> "RapidOCR":
+    """`RapidOCR()` mặc định của wheel (bộ phân loại góc vẫn bật; mỗi lượt gọi tự tắt bằng `use_cls=False`).
+
+    Import trong hàm (PERF-03): conftest gốc nạp file này cho mọi worker xdist, import cấp module
+    kéo onnxruntime + cv2 vào cả worker chỉ chạy test API/DB.
+    """
+    from rapidocr_onnxruntime import RapidOCR
+
     return RapidOCR()

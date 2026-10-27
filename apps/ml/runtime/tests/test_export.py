@@ -11,7 +11,6 @@ from typing import Any, ClassVar
 
 import onnx
 import pytest
-import torch
 from onnx import helper
 
 from apps.ml.runtime import export_pinned
@@ -74,6 +73,8 @@ def test_export_onnx_deterministic(tmp_path: Path) -> None:
 
 def test_export_onnx_refuses_models_over_two_gib(tmp_path: Path) -> None:
     """Mô hình vượt 2 GiB bị từ chối bằng `ValueError` và không để lại tệp ONNX nào."""
+    import torch  # trong hàm: worker xdist không chạy test ML khỏi nạp torch lúc collect (PERF-03)
+
     huge = torch.nn.Linear(32_768, 16_384, device="meta")
     with pytest.raises(ValueError, match="2 GiB"):
         export_onnx(huge, torch.zeros(1, 32_768), tmp_path / "huge.onnx")

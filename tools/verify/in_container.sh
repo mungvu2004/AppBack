@@ -7,6 +7,8 @@
 # Riêng việc `lock`: chạy `uv lock` (không --upgrade) trước bước 2 — chưa có
 # uv.lock thì `--locked` không chạy được; sync ngay sau đó kiểm lock cài được.
 set -euo pipefail
+mark() { echo "[mốc] $(date +%s.%N) $*" >&2; }  # PERF-03: đo khởi động (cặp với run.sh)
+mark "container bắt đầu"
 
 # /tmp/w đã có sẵn (working_dir) → giải nén NỘI DUNG repo vào đó, không tạo /tmp/w/src
 mkdir -p /tmp/w
@@ -18,7 +20,9 @@ if [[ -f /src-tar/src.tar ]]; then
 else
   cp -r /src/. /tmp/w/
 fi
+mark "giải nén xong"
 find /tmp/w -type f -exec chmod 644 {} +
+mark "chmod xong"
 cd /tmp/w
 
 if [[ "${1:-}" == "lock" ]]; then
@@ -27,7 +31,30 @@ fi
 # PERF-01 B-pyc: biên dịch .pyc ngay lúc cài — venv mới không có bytecode thì mỗi tiến trình pytest tự
 # biên dịch lúc import (collection 211 s ở worktree mới, 25 s khi ấm); `uv sync` làm một lần cho cả venv.
 export UV_COMPILE_BYTECODE=1
-uv sync --locked --all-packages --group dev
+# PERF-03: venv dùng chung theo băm `uv.lock` + phiên bản uv, không theo tên worktree — worktree mới
+# không còn cài lại cả venv (473 s đo 2026-10-27). Gói workspace cài editable trỏ `/tmp/w`, cùng đường ở mọi
+# container. `flock`: hai lượt cùng băm (khác worktree) không `uv sync` chồng lên nhau; `touch` cho `gc`
+# giữ các venv dùng gần nhất (`VENV_PREFIX` trong steps.py).
+venv_key="$({ cat uv.lock; uv --version; } | sha256sum | cut -c1-16)"
+export UV_PROJECT_ENVIRONMENT="/work/venv-lock-$venv_key"
+# `uv sync` ấm vẫn ~35 s (biên dịch lại .pyc của 16.444 tệp). Đầu vào của sync là uv.lock + mọi
+# pyproject.toml + phiên bản uv: trùng đúng lượt sync đạt gần nhất (dấu `.verify-synced`, ghi SAU khi
+# sync đạt) thì kết quả `--locked` cũng y hệt — bỏ qua. Kiểm và sync cùng trong khoá.
+sync_key="$({ cat uv.lock; uv --version; find . -name pyproject.toml -not -path '*/node_modules/*' -print0 | sort -z | xargs -0 sha256sum; } | sha256sum | cut -c1-16)"
+exec 9> "/work/flock-venv-lock-$venv_key"
+flock 9
+if [[ "$(cat "$UV_PROJECT_ENVIRONMENT/.verify-synced" 2> /dev/null || true)" != "$sync_key" ]]; then
+  uv sync --locked --all-packages --group dev
+  echo "$sync_key" > "$UV_PROJECT_ENVIRONMENT/.verify-synced"
+fi
+# `shell` có thể `uv pip install` vào venv CHUNG: xoá dấu để lượt kế sync lại và gỡ gói lạ (review PERF-03 #1).
+if [[ "${1:-}" == "shell" ]]; then
+  rm -f "$UV_PROJECT_ENVIRONMENT/.verify-synced"
+fi
+flock -u 9
+exec 9>&-
+touch "$UV_PROJECT_ENVIRONMENT"
+mark "uv sync xong"
 
 # Gốc import = gốc repo ở mọi nơi chạy (BE-01 [5]); công cụ của venv trên PATH.
 export PYTHONPATH=/tmp/w
