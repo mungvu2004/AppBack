@@ -230,6 +230,16 @@ async def run_pipeline_step_done(
     Một giao dịch duy nhất, ngắn (K36): mọi việc gửi đi qua `on_after_commit`, nên rollback ở
     đây (kết quả muộn) không bao giờ để lại task đã gửi (J09).
     """
+    _log.info(
+        "pipeline_step_timing",
+        extra={
+            "run_id": payload.run_id,
+            "task": "step_done",
+            "step": payload.step,
+            "status": payload.status,
+            "duration_ms": payload.duration_ms,
+        },
+    )
     async with session_scope(sessionmaker) as db:
         if not await _step_done(db, payload, clock):
             await db.rollback()

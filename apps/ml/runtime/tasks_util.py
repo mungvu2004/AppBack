@@ -7,7 +7,9 @@ giao lặp chỉ ghi lại cùng bytes rồi gửi lại (J06); B5-06c kiểm l�
 """
 
 import asyncio
+import logging
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Final
@@ -36,6 +38,7 @@ __all__ = [
     "STEP_DONE_TASK",
     "InferContext",
     "StepOutput",
+    "clear_page_cache",
     "clear_session_cache",
     "infer_context",
     "reset_infer_context",
@@ -47,6 +50,16 @@ STEP_DONE_TASK: Final = "pipeline.orchestrate.step_done"
 PAGE_MAX_BYTES: Final = 256 * 1024 * 1024
 ARTIFACT_MAX_BYTES: Final = 64 * 1024 * 1024
 _CONTENT_TYPES: Final = {".json": "application/json", ".png": "image/png"}
+PAGE_CACHE_SIZE: Final = 2
+"""Số trang đã giải giữ trong tiến trình (PERF-03 P21): ba task ML của một lượt đọc cùng trang.
+
+ponytail: trần cố định 2 trang (trang ≤ `MASK_MAX_PIXELS` RGB, cỡ vài trăm MB mỗi trang) thay vì
+trần theo byte; đủ cho một lượt chạy ở mỗi tiến trình prefork, nâng khi có số đo RAM thật.
+"""
+
+_log: Final = logging.getLogger(__name__)
+type _PageCacheKey = tuple[int, str, int, int]
+_PAGE_CACHE: Final[OrderedDict[_PageCacheKey, tuple[ObjectStorage, NDArray[np.uint8]]]] = OrderedDict()
 
 type Send = Callable[[str, BaseModel], None]
 
@@ -85,9 +98,23 @@ def infer_context() -> InferContext:
 
 
 def reset_infer_context() -> None:
-    """Chỉ cho test: quên ngữ cảnh và cấu hình đã đọc."""
+    """Chỉ cho test: quên ngữ cảnh, cấu hình đã đọc và trang đã giải."""
     _CONTEXT.reset()
     reset_ml_settings_cache()
+    clear_page_cache()
+
+
+def clear_page_cache() -> None:
+    """Quên mọi trang đã giải trong tiến trình (test, hay giải phóng RAM)."""
+    _PAGE_CACHE.clear()
+
+
+def _log_step_timing(payload: InferStepPayload, status: str, duration_ms: int) -> None:
+    """Một dòng log có cấu trúc khi một bước ML xong (PERF-03 P26); không chứa khoá hay bí mật."""
+    _log.info(
+        "pipeline_step_timing",
+        extra={"run_id": payload.run_id, "step": payload.step, "status": status, "duration_ms": duration_ms},
+    )
 
 
 def step_failed(payload: InferStepPayload, code: str, *, send: Send = send_task, duration_ms: int = 0) -> None:
@@ -130,6 +157,28 @@ def _decode_page(data: bytes, payload: InferStepPayload) -> NDArray[np.uint8]:
     return np.asarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), dtype=np.uint8)
 
 
+async def _load_page(storage: ObjectStorage, payload: InferStepPayload) -> NDArray[np.uint8]:
+    """Trang đã giải, qua cache LRU `PAGE_CACHE_SIZE` mục theo (kho, `page_key`, khổ).
+
+    Khoá trang của một lượt tải không bị ghi đè nên cache không cũ. Mục giữ chính `storage`
+    để `id(storage)` không bị dùng lại khi mục còn sống. Mảng trong cache đặt chỉ-đọc và mỗi
+    lần trả **bản sao**, nên `fn` của task sau không thấy chỉnh sửa tại chỗ của task trước.
+    Lỗi (`PermanentError`, lỗi kho) không vào cache.
+    """
+    key = (id(storage), payload.page_key, payload.width_px, payload.height_px)
+    hit = _PAGE_CACHE.get(key)
+    if hit is not None:
+        _PAGE_CACHE.move_to_end(key)
+        return hit[1].copy()
+    data = await _read_page(storage, payload.page_key)
+    image = await asyncio.to_thread(_decode_page, data, payload)
+    image.flags.writeable = False
+    _PAGE_CACHE[key] = (storage, image)
+    while len(_PAGE_CACHE) > PAGE_CACHE_SIZE:
+        _PAGE_CACHE.popitem(last=False)
+    return image.copy()
+
+
 async def _write(storage: ObjectStorage, payload: InferStepPayload, output: StepOutput) -> tuple[str, ...]:
     """Ghi đè từng artifact dưới `artifact_prefix`; tên ngoài `STEP_ARTIFACTS[step]` → `ValueError`."""
     unknown = set(output.artifacts) - set(STEP_ARTIFACTS[payload.step])
@@ -163,20 +212,22 @@ async def run_step[PreparedT](
     started = time.monotonic()
     try:
         prepared = None if prepare is None else await prepare(payload)
-        data = await _read_page(storage, payload.page_key)
-        image = await asyncio.to_thread(_decode_page, data, payload)
+        image = await _load_page(storage, payload)
         output = await asyncio.to_thread(fn, image, payload, prepared)
         keys = await _write(storage, payload, output)
     except PermanentError as exc:
         elapsed = int((time.monotonic() - started) * 1000)
+        _log_step_timing(payload, "failed", elapsed)
         await asyncio.to_thread(step_failed, payload, exc.code, send=send, duration_ms=elapsed)
         return
+    elapsed = int((time.monotonic() - started) * 1000)
+    _log_step_timing(payload, "completed", elapsed)
     result = StepResultPayload(
         run_id=payload.run_id,
         step=payload.step,
         status="completed",
         artifact_keys=keys,
         model_version_id=payload.model.version_id,
-        duration_ms=int((time.monotonic() - started) * 1000),
+        duration_ms=elapsed,
     )
     await asyncio.to_thread(send, STEP_DONE_TASK, result)

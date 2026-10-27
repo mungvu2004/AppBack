@@ -6,6 +6,8 @@ Hàm task mỏng theo BE-00 §7 "Khuôn task": dựng tài nguyên tiến trình
 worker (`runner()`), không `asyncio.run` riêng mỗi lượt.
 """
 
+import logging
+import time
 from typing import Final
 
 from apps.worker.pipeline_persist.service import fail_step, run_persist
@@ -18,6 +20,7 @@ from packages.storage.port import ObjectStorage
 
 PERSIST_TASK: Final = "pipeline.persist.run"
 """Tên task; B5-06c gửi nó khi `persisted_revision` của lượt còn NULL (B5-06b [2])."""
+_log: Final = logging.getLogger(__name__)
 
 
 def _storage() -> ObjectStorage:
@@ -49,9 +52,23 @@ def fail_persist_step(payload: RunStepPayload, code: str) -> None:
 @define_task(name=PERSIST_TASK, payload=RunStepPayload, on_failed=fail_persist_step)
 async def persist_pipeline_result(payload: RunStepPayload) -> None:
     """Ghi lớp AI đã dựng vào tài liệu tầng, báo `aiCompleted`, xếp bước chất lượng ([6])."""
-    await run_persist(
-        payload,
-        sessionmaker=worker_sessionmaker(),
-        storage=_STORAGE.get(),
-        clock=SystemClock(),
-    )
+    started = time.monotonic()
+    status = "failed"
+    try:
+        await run_persist(
+            payload,
+            sessionmaker=worker_sessionmaker(),
+            storage=_STORAGE.get(),
+            clock=SystemClock(),
+        )
+        status = "completed"
+    finally:
+        _log.info(
+            "pipeline_step_timing",
+            extra={
+                "run_id": payload.run_id,
+                "step": "persist",
+                "status": status,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            },
+        )
