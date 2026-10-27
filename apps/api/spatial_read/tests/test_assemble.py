@@ -10,7 +10,13 @@ from decimal import Decimal
 import pytest
 
 from apps.api.projects.wire import FloorOut
-from apps.api.spatial_read.assemble import effective_scale_source, level_out, level_reviewed, scale_status
+from apps.api.spatial_read.assemble import (
+    effective_scale_source,
+    level_out,
+    level_reviewed,
+    provisional_scale_source,
+    scale_status,
+)
 from apps.api.spatial_read.documents import FloorDocument, ScaleSource, empty_document
 from packages.domain.spatial import SpatialLayer
 from packages.testing.factories.spatial import sample_floor_dimensions, sample_floor_layer
@@ -50,6 +56,16 @@ def _floor_out(*, area_m2: float | None = None) -> FloorOut:
 def test_scale_status_for_every_source(source: ScaleSource, expected: str | None) -> None:
     """Đủ bốn nguồn: chỉ tỉ lệ **tạm** mới kèm `scaleStatus` trên dây (W24, HOP-DONG-MOI §4.2)."""
     assert scale_status(source) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [("human", None), ("none", None), ("pipeline", "pipeline"), ("project_default", "project_default")],
+)
+def test_provisional_scale_source_follows_scale_status(source: ScaleSource, expected: str | None) -> None:
+    """`scaleSource` có đúng khi `scaleStatus` có, và tách "không đo được" khỏi "máy đo" (UX-R1 K12)."""
+    assert provisional_scale_source(source) == expected
+    assert (provisional_scale_source(source) is None) == (scale_status(source) is None)
 
 
 def test_level_reviewed_needs_at_least_one_wall() -> None:

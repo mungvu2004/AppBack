@@ -24,7 +24,7 @@ from apps.api.core.routing import protected_router
 from apps.api.floors.lookup import floor_outs, get_floor
 from apps.api.projects.access import require_project
 from apps.api.projects.wire import FloorOut
-from apps.api.spatial_read.assemble import effective_scale_source, level_out, scale_status
+from apps.api.spatial_read.assemble import effective_scale_source, level_out, provisional_scale_source, scale_status
 from apps.api.spatial_read.documents import empty_document, load_document
 from apps.api.spatial_read.graph import spatial_graph
 from apps.api.spatial_read.http_cache import cached_json
@@ -106,6 +106,7 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         revision=document.revision,
         level=level_out(out, document, source),
         scale_status=scale_status(source),
+        scale_source=provisional_scale_source(source),
         readiness=readiness_of(run=run, scale_source=source, layer=document.layer),
         layer=layer_out(document.layer),
         axes=axes_out(document.axes),

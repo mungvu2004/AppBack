@@ -269,6 +269,8 @@ class FloorLayerDocumentOut(WireModel):
     revision: Annotated[int, Field(ge=0)]
     level: LevelOut
     scale_status: Literal["unresolved"] | None = None
+    scale_source: Literal["pipeline", "project_default"] | None = None
+    """Nguồn tỉ lệ tạm, chỉ có khi có `scaleStatus` (UX-R1 K12): `project_default` = không đo được."""
     readiness: ReadinessOut
     layer: SpatialLayerOut
     axes: list[AxisOut]

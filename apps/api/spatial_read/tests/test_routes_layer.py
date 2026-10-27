@@ -78,6 +78,7 @@ async def test_spatial_read_layer__C01(
     assert body["level"]["id"] == floor.level_id
     assert body["level"]["scaleMillimetresPerPixel"] == 12.7
     assert "scaleStatus" not in body
+    assert "scaleSource" not in body
     assert len(body["layer"]["walls"]) == len(layer.walls)
     assert body["axes"] == []
     assert {item["levelId"] for item in body["dimensions"]} == {floor.level_id}
@@ -104,7 +105,31 @@ async def test_spatial_read_layer__C01_unresolved(
     await db_session.commit()
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["scaleStatus"] == "unresolved"
+    assert body["scaleSource"] == "pipeline"
     assert body["level"]["reviewed"] is False
+
+
+async def test_spatial_read_layer__C01_project_default(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Máy không đo được, tỉ lệ lấy mặc định dự án → `scaleSource: 'project_default'` (UX-R1 K12).
+
+    Cùng `scaleStatus: 'unresolved'` như tỉ lệ pipeline, nhưng FE cần biết để tô đỏ và chặn bước.
+    """
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db_session,
+        floor_pk=floor.pk,
+        layer=sample_floor_layer(0, level_id=floor.level_id, reviewed=True),
+        scale=SCALE,
+        scale_source="project_default",
+        clock=fake_clock,
+    )
+    await db_session.commit()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
+    assert body["scaleStatus"] == "unresolved"
+    assert body["scaleSource"] == "project_default"
 
 
 async def test_spatial_read_layer__C01_empty(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
@@ -261,6 +286,7 @@ async def test_spatial_read_layer__C17(api_client: httpx.AsyncClient, db_session
         await api_client.get(layer_path(scene.project.id, scene.floors[0].level_id), headers=headers_of(scene.owner))
     ).json()
     assert "scaleStatus" not in body
+    assert "scaleSource" not in body
     assert "areaM2" not in body["level"]
     assert "scaleMillimetresPerPixel" not in body["level"]
 
@@ -344,6 +370,7 @@ async def test_spatial_read_layer_keeps_scale_on_same_or_unknown_page(
     use_pages(api_app, FakePages({floor.pk: page} if page is not None else {}))
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert "scaleStatus" not in body
+    assert "scaleSource" not in body
     assert body["level"]["reviewed"] is True
 
 
@@ -368,6 +395,7 @@ async def test_spatial_read_layer_without_page_gate(
     use_pages(api_app)
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert "scaleStatus" not in body
+    assert "scaleSource" not in body
     assert body["level"]["reviewed"] is True
 
 

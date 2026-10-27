@@ -41,6 +41,17 @@ def scale_status(scale_source: ScaleSource) -> Literal["unresolved"] | None:
     return "unresolved" if scale_source in ("pipeline", "project_default") else None
 
 
+def provisional_scale_source(scale_source: ScaleSource) -> Literal["pipeline", "project_default"] | None:
+    """Nguồn của tỉ lệ tạm, đi kèm `scaleStatus` (UX-R1 K12): vắng đúng khi `scaleStatus` vắng.
+
+    `project_default` là "máy không đo được, đang dùng mặc định của dự án" (thường 1 mm/px) — FE
+    tô đỏ và chặn bước phụ thuộc số đo; `pipeline` là "máy đo được, cần người kiểm" (vàng).
+    """
+    if scale_source == "pipeline" or scale_source == "project_default":
+        return scale_source
+    return None
+
+
 def level_reviewed(layer: SpatialLayer, scale_source: ScaleSource) -> bool:
     """Tầng coi là đã duyệt: có ≥ 1 tường, mọi mục của lớp `reviewed`, và tỉ lệ không còn tạm.
 

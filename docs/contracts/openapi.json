@@ -1735,6 +1735,21 @@
             "title": "Revision",
             "type": "integer"
           },
+          "scaleSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pipeline",
+                  "project_default"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scalesource"
+          },
           "scaleStatus": {
             "anyOf": [
               {
