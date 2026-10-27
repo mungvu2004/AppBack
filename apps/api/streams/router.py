@@ -39,7 +39,7 @@ LastEventId = Annotated[str | None, Query(alias="lastEventId")]
 
 
 def build_stream_pool(settings: StreamSettings) -> ConnectionPool:
-    """Pool Redis chỉ dành cho SSE, **có trần** `STREAM_MAX_GLOBAL` (B4-01 [5]).
+    """Pool Redis chỉ dành cho SSE, **có trần** `STREAM_MAX_GLOBAL / API_WORKERS` (B4-01 [5], PERF-03).
 
     Không dùng pool của `streams_redis()`: trần mặc định của nó là 2**31, đủ để vài nghìn
     luồng chạm `maxclients` của `redis-broker` — instance dùng chung với Celery và DB an
@@ -51,7 +51,7 @@ def build_stream_pool(settings: StreamSettings) -> ConnectionPool:
         decode_responses=True,
         socket_connect_timeout=CONNECT_TIMEOUT_S,
         socket_timeout=STREAM_READ_TIMEOUT_S,
-        max_connections=settings.stream_max_global,
+        max_connections=settings.stream_max_per_process,
     )
 
 
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.stream_registry = build_registry(app)
     # `BoundedSemaphore`: một lượt trả chỗ dư (dọn chạy hai lần) ném `ValueError` ngay thay vì
     # âm thầm nới trần toàn cục lên quá cỡ pool SSE (RES-02).
-    app.state.stream_slots = asyncio.BoundedSemaphore(settings.stream_max_global)
+    app.state.stream_slots = asyncio.BoundedSemaphore(settings.stream_max_per_process)
     pool = build_stream_pool(settings)
     app.state.stream_pool = pool
     try:

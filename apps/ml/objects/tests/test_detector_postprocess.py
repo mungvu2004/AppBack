@@ -73,7 +73,8 @@ def test_decode_tile__coco_threshold_stricter_than_default() -> None:
     output = yolo_output([(50, 50, 20, 20, cls, 0.4)], nc=80)
     window = Window(0, 0, 640, 640)
     assert len(decode_tile(output, window, COCO_LABELS, 640)) == 0
-    other_labels = tuple(label if label is not None else "other" for label in COCO_LABELS)
+    other: DetectionLabel = "other"  # không ngưỡng riêng -> `CONFIDENCE_MIN`
+    other_labels = (other,) * len(COCO_LABELS)
     assert len(decode_tile(output, window, other_labels, 640)) == 1
 
 

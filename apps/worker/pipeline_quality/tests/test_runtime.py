@@ -28,10 +28,13 @@ from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.tasks import override_quality_storage
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
 from apps.worker.pipeline_quality.tests.helpers import process_env as process_env
+from packages.core.clock import SystemClock
+from packages.core.ids import new_id
 from packages.db.engine import create_engine, create_sessionmaker
 from packages.db.models.spatial import FloorDocumentRow
 from packages.db.settings import DatabaseSettings
 from packages.messaging.celery_app import send_task
+from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.messaging.redis import AsyncRedis, SyncRedis, streams_redis_sync
 from packages.messaging.streams import FIELD, upload_stream
 from packages.storage.keys import run_artifact
@@ -439,3 +442,33 @@ async def test_quality_holds_no_session_during_put(
             core.cancel()
     finally:
         await engine.dispose()
+
+
+@pytest.mark.usefixtures("celery_test_app")
+def test_check_pipeline_quality_logs_step_timing(
+    local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """P26 (PERF-03): task chất lượng để lại một dòng `pipeline_step_timing` có `duration_ms`.
+
+    Lõi thay bằng hàm rỗng: test chỉ kiểm vỏ task đo và log, không cần DB hay sân khấu lượt.
+    """
+    calls: list[str] = []
+
+    async def fake_run_quality(payload: RunStepPayload, **_: object) -> None:
+        """Lõi giả: ghi run id, không làm gì khác."""
+        calls.append(payload.run_id)
+
+    monkeypatch.setattr(tasks, "run_quality", fake_run_quality)
+    monkeypatch.setattr(tasks, "worker_sessionmaker", lambda: None)
+    payload = RunStepPayload(run_id=new_id("run", SystemClock()))
+    with override_quality_storage(lambda: local_storage), caplog.at_level(logging.INFO, logger=tasks.__name__):
+        tasks.check_pipeline_quality.apply(args=[payload.model_dump(mode="json")])
+
+    assert calls == [payload.run_id]
+    (timing,) = [r for r in caplog.records if r.getMessage() == "pipeline_step_timing"]
+    assert (timing.__dict__["run_id"], timing.__dict__["step"], timing.__dict__["status"]) == (
+        payload.run_id,
+        "qualityCheck",
+        "completed",
+    )
+    assert timing.__dict__["duration_ms"] >= 0

@@ -75,6 +75,9 @@ class UploadRow(Base, TimestampMixin):
             "created_at",
             postgresql_where=text("status = 'receiving'"),
         ),
+        # N7 (`drawings/latest.py`) join `uploads` theo tầng rồi xếp mới nhất trước; index một phần
+        # ở trên chỉ phủ `receiving`, nên thiếu index này là quét tuần tự cả lịch sử tải (P16).
+        Index(f"ix_{UPLOADS}_floor_pk_created_at", "floor_pk", text("created_at DESC"), text("id DESC")),
     )
 
 
@@ -128,6 +131,9 @@ class PipelineRunRow(Base, TimestampMixin):
         # lấy lượt **mới nhất** của từng tầng (`DISTINCT ON (floor_pk) … ORDER BY created_at DESC`).
         # Cả hai là tra theo tầng + thứ tự thời gian, nên một index phục vụ cả hai.
         Index(f"ix_{PIPELINE_RUNS}_floor_pk_created_at", "floor_pk", "created_at"),
+        # Lượt chạy mới nhất của **một lượt tải** (`drawings/latest.py`, `drawings/progress.py`:
+        # `WHERE upload_id = … ORDER BY created_at DESC, id DESC LIMIT 1`) — trước đây quét tuần tự (P16).
+        Index(f"ix_{PIPELINE_RUNS}_upload_id_created_at", "upload_id", text("created_at DESC"), text("id DESC")),
     )
 
 

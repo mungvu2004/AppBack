@@ -35,6 +35,13 @@ class StreamSettings(BaseSettings):
     stream_max_global: PositiveInt = 500
     stream_read_block_ms: PositiveInt = 1000
     stream_read_count: PositiveInt = 100
+    api_workers: PositiveInt = 1
+    """`API_WORKERS` — số tiến trình uvicorn; trần toàn cục chia đều cho mỗi tiến trình (PERF-03 P4)."""
+
+    @property
+    def stream_max_per_process(self) -> int:
+        """Phần `STREAM_MAX_GLOBAL` của một tiến trình: tổng N tiến trình không vượt trần toàn cục."""
+        return max(1, self.stream_max_global // self.api_workers)
 
     @model_validator(mode="after")
     def _closes_within_s07(self) -> "StreamSettings":

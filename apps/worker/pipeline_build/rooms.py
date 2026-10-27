@@ -42,6 +42,24 @@ _USAGE_PRIORITY: tuple[RoomUsage, ...] = (
 )
 """Thứ tự tăng dần: công năng đứng sau thắng khi một phòng có nhiều nhãn (sảnh, kho, WC là phần phụ)."""
 
+_DOOR_REACH_MM = 300.0
+"""Khoảng lệch cho phép giữa hộp cửa và khe (cánh cửa vẽ cạnh tường, hộp không trùng tim tường)."""
+
+_DOOR_SPAN_RATIO = (0.6, 1.8)
+"""Khe cửa dài 0,6-1,8 lần cạnh dài hộp cửa (hộp chỉ ôm cánh, khe tính tới tim tường hai bên)."""
+
+_PARALLEL_COS = 0.9
+"""Tường gần song song khe (|cos| ≥ 0,9) bắn tia theo hướng ra của nó: đầu tường nằm trong hộp cửa sổ thì tâm hộp
+có thể ở phía thân tường."""
+
+_RIM_DEPTH_MM = 6000.0
+"""Lô gia nằm trong 6 m tính từ biên bao: chỉ chia ô bằng đường trong dải đó."""
+
+_RIM_M2 = (1.5, 15.0)
+_RIM_FILL = 0.7
+_RIM_WALLED = 0.5
+"""Mảnh trống ở rìa thành lô gia khi 1,5-15 m², ≥ 70 % hộp bao, ≥ 3 cạnh hộp bao sát đường khép ≥ 50 %."""
+
 _SEED_RAY_MM = 6000
 """Tia của phòng mọc từ nhãn dài nhất 6 m: xa hơn là chữ nằm ngoài căn hộ (tên bản vẽ, ghi chú)."""
 
@@ -135,11 +153,97 @@ def _outline_points(polygon: shapely.Polygon) -> list[Point]:
     return deduped
 
 
-def _room_lines(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
-    """Mọi đường khép phòng: tường kéo dài `ROOM_SNAP_MM`, `bridges` và `_gap_closers`."""
+def _door_closers(
+    walls: Sequence[Wall], detections: Sequence[DetectionPx], scaling: Scaling
+) -> list[shapely.LineString]:
+    """Đoạn khép khe cửa đi và cửa sổ theo hộp dò được, kể cả khe giữa một góc tường và tường đối diện (đầu ở góc
+    không là đầu tự do nên `_gap_closers` bỏ qua). Cửa sổ tính vì vách kính, cửa lô gia vẽ nét mảnh: model tường
+    một lớp bỏ sót, phòng ngủ tràn ra lô gia (bench căn hộ ch-08).
+
+    Mỗi ô mở: từ mọi đầu tường cách tâm hộp ≤ cạnh dài + `_DOOR_REACH_MM`, bắn tia dọc cạnh dài của hộp (về phía tâm,
+    hay theo hướng ra của tường khi tường gần song song khe — `_PARALLEL_COS`) tới tim tường đầu tiên không chứa đầu
+    đó. Giữ đoạn: dài `_DOOR_SPAN_RATIO` lần cạnh dài (cận dưới so với phần hộp còn phía trước đầu tường nằm trong
+    hộp: hộp cửa sổ ôm cả mẩu tường đã dò); không nằm đè tường quá nửa; lệch ngang khỏi tâm hộp ≤
+    min(`_DOOR_REACH_MM`, 1/4 cạnh dài) + nửa cạnh ngắn; đi qua gần tâm hộp (≤ nửa cạnh dài + `_DOOR_REACH_MM`).
+    Lấy đoạn ngắn nhất. Hộp lệch tim tường vài chục mm (cánh cửa vẽ cạnh
+    tường) vẫn khép được, việc mà phép phủ hộp của 3b không làm được.
+    """
+    openings = [d for d in detections if d.label in _OPENING_LABELS]
+    if not openings or len(walls) < 2:
+        return []
+    centrelines = [
+        shapely.LineString([(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)])
+        for w in walls
+    ]
+    tree = shapely.STRtree(centrelines)
+    tips = [(w.centreline.start, w.centreline.end, i) for i, w in enumerate(walls)]
+    tips += [(w.centreline.end, w.centreline.start, i) for i, w in enumerate(walls)]
+    tip_points = shapely.STRtree([shapely.Point(p.x, p.y) for p, _, _ in tips])
+    closers: list[shapely.LineString] = []
+    for door in openings:
+        low = scaling.point(door.box.x_min, door.box.y_min)
+        high = scaling.point(door.box.x_max, door.box.y_max)
+        width, height = high.x - low.x, high.y - low.y
+        length, short = max(width, height), min(width, height)
+        if length <= 0:
+            continue
+        axis = (1.0, 0.0) if width >= height else (0.0, 1.0)
+        centre = shapely.Point((low.x + high.x) / 2, (low.y + high.y) / 2)
+        best: shapely.LineString | None = None
+        for slot in tip_points.query(centre.buffer(length + _DOOR_REACH_MM)):
+            tip, base, owner = tips[int(slot)]
+            run = math.hypot(tip.x - base.x, tip.y - base.y)
+            along = ((tip.x - base.x) * axis[0] + (tip.y - base.y) * axis[1]) / run if run else 0.0
+            if abs(along) >= _PARALLEL_COS:
+                towards = 1.0 if along > 0 else -1.0
+            else:
+                towards = 1.0 if (centre.x - tip.x) * axis[0] + (centre.y - tip.y) * axis[1] >= 0 else -1.0
+            far = (high.x if towards > 0 else low.x) if axis[0] else (high.y if towards > 0 else low.y)
+            ahead = (far - (tip.x if axis[0] else tip.y)) * towards
+            offset = abs((centre.y - tip.y) * axis[0] + (centre.x - tip.x) * axis[1])
+            if ahead <= 0 or offset > min(_DOOR_REACH_MM, length / 4) + short / 2:
+                continue
+            gap = min(ahead, length)
+            reach = length * _DOOR_SPAN_RATIO[1] + ROOM_SNAP_MM
+            end = (tip.x + towards * axis[0] * reach, tip.y + towards * axis[1] * reach)
+            ray = shapely.LineString([(tip.x, tip.y), end])
+            origin = shapely.Point(tip.x, tip.y)
+            hits = [
+                origin.distance(ray.intersection(centrelines[int(i)]))
+                for i in tree.query(ray, predicate="intersects")
+                if int(i) != owner and centrelines[int(i)].distance(origin) > ROOM_SNAP_MM
+            ]
+            if not hits:
+                continue
+            span = min(hits)
+            if not _DOOR_SPAN_RATIO[0] * gap <= span <= _DOOR_SPAN_RATIO[1] * length:
+                continue
+            foot = (tip.x + towards * axis[0] * (span + 1), tip.y + towards * axis[1] * (span + 1))
+            segment = shapely.LineString([(tip.x, tip.y), foot])
+            if segment.distance(centre) > length / 2 + _DOOR_REACH_MM:
+                continue
+            walled = shapely.union_all([centrelines[int(i)] for i in tree.query(segment.buffer(ROOM_SNAP_MM))])
+            if segment.intersection(walled.buffer(ROOM_SNAP_MM)).length > segment.length / 2:
+                continue
+            if best is None or segment.length < best.length:
+                best = segment
+        if best is not None:
+            closers.append(best)
+    return closers
+
+
+def _room_lines(
+    walls: Sequence[Wall],
+    bridges: Sequence[tuple[Point, Point]],
+    detections: Sequence[DetectionPx] = (),
+    scaling: Scaling | None = None,
+) -> list[shapely.LineString]:
+    """Mọi đường khép phòng: tường kéo dài `ROOM_SNAP_MM`, `bridges`, `_gap_closers` và `_door_closers`."""
     lines: list[shapely.LineString] = [_extend(wall, ROOM_SNAP_MM) for wall in walls]
     lines.extend(shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges)
     lines.extend(_gap_closers(walls, bridges))
+    if scaling is not None:
+        lines.extend(_door_closers(walls, detections, scaling))
     return lines
 
 
@@ -207,6 +311,51 @@ def _seeded_outlines(
         seeded.append(_outline_points(shapely.Polygon(piece.exterior)))
         grown.append(piece)
     return seeded
+
+
+def _rim_outlines(lines: Sequence[shapely.LineString], rooms: Sequence[Sequence[Point]]) -> list[list[Point]]:
+    """Lô gia không có nhãn: ô do đường khép và biên bao lồi của chúng chia ra (mặt ngoài lan can thay bằng biên bao),
+    chưa thuộc phòng nào, chạm biên bao, rộng `_RIM_M2`, gần chữ nhật (≥ `_RIM_FILL` hộp bao) và ≥ 3 cạnh hộp bao có
+    ≥ `_RIM_WALLED` sát đường khép (phần lồi của biên bao ngoài căn hộ chỉ sát tường một hai mặt).
+
+    Chỉ chia ô bằng đường trong `_RIM_DEPTH_MM` quanh biên bao, tra phòng và đường bằng `STRtree` (K18: trần
+    20 000 tường không được gộp toàn bộ).
+    """
+    if not lines:
+        return []
+    hull = shapely.convex_hull(shapely.MultiLineString(list(lines)))
+    if not isinstance(hull, shapely.Polygon):
+        return []
+    line_tree = shapely.STRtree(list(lines))
+    near_rim = [lines[int(i)] for i in line_tree.query(hull.exterior.buffer(_RIM_DEPTH_MM), predicate="intersects")]
+    polygons = [shapely.Polygon([(p.x, p.y) for p in o]) for o in rooms if len(o) >= 3]
+    room_tree = shapely.STRtree(polygons)
+    rim = hull.exterior.buffer(ROOM_SNAP_MM)
+    merged = shapely.unary_union([*near_rim, hull.exterior])
+    faces = shapely.polygonize(list(merged.geoms) if hasattr(merged, "geoms") else [merged])
+    found: list[list[Point]] = []
+    for face in faces.geoms:
+        if not isinstance(face, shapely.Polygon):
+            continue
+        if not _RIM_M2[0] <= face.area / 1e6 <= _RIM_M2[1] or not face.intersects(rim):
+            continue
+        overlap = sum(face.intersection(polygons[int(i)]).area for i in room_tree.query(face, predicate="intersects"))
+        if overlap > 0.5 * face.area:
+            continue
+        x0, y0, x1, y1 = face.bounds
+        if face.area < _RIM_FILL * (x1 - x0) * (y1 - y0):
+            continue
+        near = face.buffer(ROOM_SNAP_MM)
+        walls = shapely.unary_union([lines[int(i)] for i in line_tree.query(near, predicate="intersects")])
+        near_walls = walls.buffer(ROOM_SNAP_MM)
+        sides = [
+            shapely.LineString(side)
+            for side in (((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0)))
+        ]
+        if sum(side.intersection(near_walls).length >= _RIM_WALLED * side.length for side in sides) < 3:
+            continue
+        found.append(_outline_points(shapely.Polygon(face.exterior)))
+    return found
 
 
 def _wall_id_lists(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[tuple[str, ...]]:
@@ -317,11 +466,13 @@ def build_rooms(
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
-    lines = _room_lines(walls, bridges)
+    lines = _room_lines(walls, bridges, detections, scaling)
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
+    rims = _rim_outlines(lines, [*closed, *seeded])
+    rim_keys = {tuple(outline) for outline in rims}
     kept: list[tuple[list[Point], float]] = []
-    for outline in [*closed, *seeded]:
+    for outline in [*closed, *seeded, *rims]:
         area_m2 = float(polygon_area_m2(outline)) if len(outline) >= 3 else 0.0
         if len(outline) < 3 or area_m2 < MIN_ROOM_AREA_M2:
             dropped["roomTooSmall"] += 1
@@ -333,7 +484,11 @@ def build_rooms(
     wall_by_id = {wall.id: wall for wall in walls}
     from_text = _room_labels(outlines, texts, parsed, centres)
     from_fixtures = _fixture_labels(outlines, [area for _, area in kept], detections, scaling)
-    labels = name_rooms([text or fixture for text, fixture in zip(from_text, from_fixtures, strict=True)])
+    loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
+    from_rim = [loggia if tuple(outline) in rim_keys else None for outline in outlines]
+    labels = name_rooms(
+        [text or rim or fixture for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)]
+    )
     rooms = []
     for (outline, area_m2), ids, label in zip(kept, wall_ids, labels, strict=True):
         confidences = [wall_by_id[i].confidence for i in ids]

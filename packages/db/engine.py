@@ -26,6 +26,10 @@ from packages.db.settings import DatabaseSettings, get_database_settings
 # dứt điểm là bỏ chặng `host.docker.internal` (cho verify và testcontainers chung network).
 GATE_CONNECT_TIMEOUT_S: Final = 180.0
 
+# Thay kết nối sau 30 phút: đủ ngắn để không vấp `idle timeout` của proxy/NAT, đủ dài để
+# chi phí bắt tay lại không đáng kể (P15).
+POOL_RECYCLE_S: Final = 1800
+
 _worker_makers: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, async_sessionmaker[AsyncSession]]] = (
     weakref.WeakKeyDictionary()
 )
@@ -37,7 +41,10 @@ def create_engine(settings: DatabaseSettings) -> AsyncEngine:
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout_s,
-        pool_pre_ping=True,
+        # Không `pool_pre_ping`: nó tốn thêm một round trip `SELECT 1` mỗi lần lấy kết nối, tức mỗi
+        # request (P15, PERF-03). Kết nối cũ được thay định kỳ bằng `pool_recycle`; Postgres khởi động
+        # lại thì request đầu trên kết nối chết hỏng một lần rồi pool tự loại kết nối đó.
+        pool_recycle=POOL_RECYCLE_S,
         hide_parameters=True,  # lỗi SQL không kéo tham số (băm mật khẩu, email) vào log (K11)
         connect_args={
             "timeout": settings.db_connect_timeout_s,
