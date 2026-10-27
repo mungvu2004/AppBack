@@ -157,6 +157,7 @@ services:
     environment:
       ML_BACKEND: ${ML_BACKEND:-onnx}
       ML_WARMUP: "0"
+      ML_DEVICE: cpu
     depends_on:
       redis-broker:
         condition: service_healthy

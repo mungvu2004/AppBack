@@ -167,6 +167,7 @@ services:
     profiles: ["ml"]
     environment:
       ML_WARMUP: "0"
+      ML_DEVICE: cpu
     env_file:
       - path: /etc/appback/ml.env
         required: false

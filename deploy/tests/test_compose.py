@@ -182,6 +182,16 @@ def test_compose_worker_concurrency_and_mem_limit(env: str) -> None:
     assert worker.get("mem_limit") == "${WORKER_MEM_LIMIT:-3g}", f"{env}: worker mem_limit sai"
 
 
+@pytest.mark.parametrize("env", ENVS)
+def test_compose_ml_concurrency_runtime_and_train_on_cpu(env: str) -> None:
+    """`ml`: không ghi cứng `--concurrency` (celery_main đọc `ML_INFER_CONCURRENCY` lúc chạy, nên
+    override `environment:` có tác dụng); `ml-train`: `ML_DEVICE=cpu` để không tranh VRAM với `ml` (PERF-03)."""
+    services = _resolved_services(env)
+    assert "--concurrency" not in _cmd_text(services["ml"].get("command")), f"{env}: ml ghi cứng --concurrency"
+    assert services["ml"]["environment"].get("ML_INFER_CONCURRENCY") == "${ML_INFER_CONCURRENCY:-3}"
+    assert services["ml-train"]["environment"].get("ML_DEVICE") == "cpu", f"{env}: ml-train phải ML_DEVICE=cpu"
+
+
 def test_compose_dev_build_services_tagged_local_dev() -> None:
     """`dev`: dịch vụ có `build` phải có `image: appback-*:dev` (build một lần, dùng lại tag)."""
     pattern = re.compile(r"^appback-[a-z0-9_-]+:dev$")

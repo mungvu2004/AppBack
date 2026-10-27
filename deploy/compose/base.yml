@@ -3,7 +3,7 @@
 # ở file này; volume dữ liệu bền (pg-data, redis-broker-data, minio-data, local-storage)
 # cũng không đặt ở đây vì ci.yml không dùng volume có tên (chỉ khai ở dev.yml/prod.yml).
 # Hàng ML (PERF-03): `ml` nghe `ml.infer` (ML_INFER_CONCURRENCY, mặc định 3), `ml-train`
-# nghe `ml.training` (concurrency 1); ml-gpu nghe cả hai. Mỗi tệp dev/ci/prod khai đủ `ml` + `ml-train`.
+# nghe `ml.training` (concurrency 1, ML_DEVICE=cpu); ml-gpu nghe cả hai. Mỗi tệp dev/ci/prod khai đủ `ml` + `ml-train`.
 x-logging: &logging
   driver: json-file
   options:
@@ -217,9 +217,11 @@ services:
   # PERF-03 P2: `ml` chỉ nghe `ml.infer` (tường/YOLO/OCR của một lần chạy chạy song song,
   # ML_INFER_CONCURRENCY tiến trình × ML_ORT_THREADS luồng ≈ số nhân: 3 × 4 = 12);
   # huấn luyện (giới hạn 3600 s) sang `ml-train` để không chặn upload tới 1 giờ.
+  # Không `--concurrency` ở lệnh: `celery_main` đọc ML_INFER_CONCURRENCY lúc container chạy,
+  # nên override `environment:` (vd. 2 trên GPU 6 GB) có tác dụng — nội suy compose thì không.
   ml: &ml-service
     logging: *logging
-    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer", "--concurrency", "${ML_INFER_CONCURRENCY:-3}"]
+    command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.infer"]
     init: true
     shm_size: "1gb"
     mem_limit: ${ML_MEM_LIMIT:-8g}
@@ -238,6 +240,7 @@ services:
       S3_ACCESS_KEY: ${S3_ML_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_ML_SECRET_KEY}
       ML_DEVICE: ${ML_DEVICE:-auto}
+      ML_INFER_CONCURRENCY: ${ML_INFER_CONCURRENCY:-3}
     volumes:
       # Không tmpfs: /tmp cần ≥ 20 GiB đĩa trống (xuất ONNX, tệp tạm huấn luyện).
       - ml-tmp:/tmp
@@ -245,6 +248,8 @@ services:
       - ml-internal
 
   # Cùng ảnh/env/mạng với `ml` (anchor), chỉ nghe `ml.training`, một job mỗi lúc.
+  # dev/ci/prod đặt ML_DEVICE=cpu cho nó: khi `ml` phục vụ trên GPU (ảnh cuda), suy luận đã
+  # chiếm gần hết VRAM (RTX 4050 6 GB: 5,8/6,1 GB với 3 tiến trình) — huấn luyện GPU chỉ qua `ml-gpu`.
   ml-train:
     <<: *ml-service
     command: ["celery", "-A", "apps.ml.celery_main", "worker", "-Q", "ml.training", "--concurrency", "1"]
