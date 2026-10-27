@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.pool import QueuePool
 
-from packages.db.engine import create_engine, create_sessionmaker, session_scope, worker_sessionmaker
+from packages.db.engine import POOL_RECYCLE_S, create_engine, create_sessionmaker, session_scope, worker_sessionmaker
 from packages.db.settings import DatabaseSettings, reset_database_settings_cache
 
 CREATE_NOTE = "CREATE TABLE IF NOT EXISTS note (id serial PRIMARY KEY, body text NOT NULL)"
@@ -91,3 +91,14 @@ async def test_worker_sessionmaker_works_against_real_database(db_url: str, monk
         assert await _rows(maker) == ["worker"]
     finally:
         reset_database_settings_cache()
+
+
+async def test_engine_recycles_instead_of_pre_ping() -> None:
+    """P15: không `SELECT 1` trước mỗi lần lấy kết nối; kết nối cũ thay bằng `pool_recycle`."""
+    engine = create_engine(DatabaseSettings(database_url="postgresql+asyncpg://u:p@localhost:5432/db"))
+    try:
+        pool = cast(QueuePool, engine.sync_engine.pool)
+        assert pool._pre_ping is False  # pool không phơi công khai hai cờ này
+        assert pool._recycle == POOL_RECYCLE_S == 1800
+    finally:
+        await engine.dispose()
