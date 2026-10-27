@@ -19,6 +19,7 @@ from apps.ml.text.reader import (
     REC_HEIGHT_PX,
     REC_MAX_WIDTH_PX,
     REC_MIN_WIDTH_PX,
+    UPRIGHT_SURE_CONFIDENCE,
     RapidOcrReader,
     _crop,
     _detect,
@@ -173,6 +174,26 @@ def test_best_takes_higher_confidence_orientation() -> None:
 def test_best_prefers_upright_on_tie() -> None:
     """Hoà tin cậy → giữ lượt đầu (không xoay), nên kết quả tất định."""
     assert _TieKeepsFirst()._best(_marked_crop()) == ("upright", 0.7)
+
+
+class _UprightSure(RapidOcrReader):
+    """Bộ đọc tiêm: lượt thẳng đạt `UPRIGHT_SURE_CONFIDENCE`; đếm số lượt `_run`."""
+
+    def __init__(self) -> None:
+        """Không cần phiên nào: chỉ `_run` bị thay."""
+        self.calls = 0
+
+    def _run(self, crop: NDArray[np.uint8]) -> tuple[str, float]:
+        """Lượt xoay còn tin cậy hơn, nhưng không được chạy tới."""
+        self.calls += 1
+        return ("flipped", 1.0) if int(crop[0, 0, 0]) == 0 else ("upright", UPRIGHT_SURE_CONFIDENCE)
+
+
+def test_best_skips_flip_when_upright_is_sure() -> None:
+    """Hồi quy PERF-03 P19: lượt thẳng đủ chắc → chỉ một lượt rec, không xoay 180°."""
+    reader = _UprightSure()
+    assert reader._best(_marked_crop()) == ("upright", UPRIGHT_SURE_CONFIDENCE)
+    assert reader.calls == 1
 
 
 def test_rec_widths_round_up_to_step() -> None:

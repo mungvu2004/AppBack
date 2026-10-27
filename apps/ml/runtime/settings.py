@@ -29,7 +29,7 @@ class MlEnvSettings(BaseSettings):
 
 
 class MlSettings(BaseSettings):
-    """`ML_DEVICE`, `ML_BACKEND`, `ML_MODELS_DIR` (ảnh `ml` nhúng bản ghim ở đây), `ML_ORT_THREADS`."""
+    """`ML_DEVICE`, `ML_BACKEND`, `ML_MODELS_DIR` (ảnh `ml` nhúng bản ghim ở đây), `ML_ORT_THREADS`, `ML_WARMUP`."""
 
     model_config = SettingsConfigDict(extra="ignore", env_file=None)
 
@@ -37,6 +37,9 @@ class MlSettings(BaseSettings):
     ml_backend: Literal["onnx", "fake"] = "onnx"
     ml_models_dir: str = "/opt/models"
     ml_ort_threads: Annotated[int, Field(ge=1, le=64)] = 4
+    """Luồng ORT mỗi phiên; × `ML_INFER_CONCURRENCY` (compose, mặc định 3) ≈ số nhân (12)."""
+    ml_warmup: bool = True
+    """`ML_WARMUP=0` bỏ làm ấm ở `worker_process_init` (`apps.ml.warmup`, PERF-03 P3)."""
 
 
 @cache
