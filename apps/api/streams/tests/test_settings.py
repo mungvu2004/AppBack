@@ -67,3 +67,10 @@ def test_cache_reads_environment_once(monkeypatch: pytest.MonkeyPatch) -> None:
         assert get_stream_settings().stream_max_per_user == 2
     finally:
         reset_stream_settings_cache()
+
+
+@pytest.mark.parametrize(("workers", "expected"), [(1, 500), (4, 125), (3, 166), (1000, 1)])
+def test_global_cap_is_split_across_api_workers(workers: int, expected: int) -> None:
+    """N tiến trình uvicorn mỗi cái giữ `STREAM_MAX_GLOBAL // N` chỗ: tổng không vượt trần toàn cục."""
+    settings = StreamSettings(api_workers=workers)
+    assert settings.stream_max_per_process == expected

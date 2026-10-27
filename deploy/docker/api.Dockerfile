@@ -70,4 +70,9 @@ USER 10001
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
 
-CMD ["sh", "-c", "exec uvicorn apps.api.core.app:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS} --no-access-log"]
+# PERF-03 P4: một tiến trình uvicorn là trần ~20 req/s trên máy 12 CPU (spatial p50 39 ms
+# khi 1 request, 965 ms khi 16 đồng thời). Mỗi worker có pool DB riêng (DB_POOL_SIZE +
+# DB_MAX_OVERFLOW + 5 pool claim): 4 × (5 + 3 + 5) = 52 < 60 trên 100 max_connections.
+# Trần SSE toàn cục được chia cho API_WORKERS trong apps/api/streams/settings.py.
+ENV API_WORKERS=4 DB_POOL_SIZE=5 DB_MAX_OVERFLOW=3
+CMD ["sh", "-c", "exec uvicorn apps.api.core.app:create_app --factory --workers ${API_WORKERS} --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS} --no-access-log"]

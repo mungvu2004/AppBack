@@ -389,3 +389,13 @@ def test_dockerfile_copied_code_is_import_closed(image: str) -> None:
                     if f"{top}/{name}" not in copied:
                         missing.add(f"{top}/{name} (từ {py.relative_to(_REPO_ROOT).as_posix()})")
         assert not missing, f"{image} tầng {stage.name or stage.index}: thiếu COPY {sorted(missing)}"
+
+
+def test_dockerfile_api_runs_api_workers_uvicorn_processes() -> None:
+    """Ảnh `api` chạy riêng (không compose) vẫn có `--workers ${API_WORKERS}` với mặc định 4 và
+    pool DB nhỏ mỗi worker: 4 × (5 + 3 + 5 claim) = 52 < 60 kết nối (PERF-03 P4)."""
+    text = require_path("deploy/docker/api.Dockerfile").read_text(encoding="utf-8")
+    assert "--workers ${API_WORKERS}" in text, "api: CMD thiếu --workers ${API_WORKERS}"
+    assert re.search(r"^ENV API_WORKERS=4 DB_POOL_SIZE=5 DB_MAX_OVERFLOW=3$", text, re.MULTILINE), (
+        "api: thiếu ENV mặc định API_WORKERS/DB_POOL_SIZE/DB_MAX_OVERFLOW"
+    )
