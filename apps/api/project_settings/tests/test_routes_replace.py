@@ -40,6 +40,7 @@ async def test_settings_replace_settings__C01(api_client: httpx.AsyncClient, db_
         "snapToleranceMm": 40,
         "confidenceThreshold": 0.5,
         "defaultScaleMmPerPx": 2.5,
+        "separateUnits": False,
     }
     second = await put_settings(api_client, project.id, owner, replace_body(1, snapToleranceMm=41))
     assert second.status_code == 200
@@ -94,6 +95,8 @@ async def test_settings_replace_settings__rounding_and_writer(
         {"notes": 5},
         {"sceneStyle": "neon"},
         {"sceneStyle": 1},
+        {"separateUnits": "true"},
+        {"separateUnits": 1},
     ],
 )
 async def test_settings_replace_settings__C02(
@@ -128,6 +131,27 @@ async def test_settings_replace_settings__C01_scene_style(
     assert cleared.status_code == 200
     assert "sceneStyle" not in cleared.json()
     assert (await read_settings(db_session, project.id)).scene_style is None
+
+
+async def test_settings_replace_settings__C01_separate_units(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """UX-R2 K34: `separateUnits` lưu và trả lại; PUT vắng khoá giữ giá trị cũ (client cũ); `false` tắt lại."""
+    owner, project = await seed_engineer_project(db_session)
+    first = await put_settings(api_client, project.id, owner, replace_body(0, separateUnits=True))
+    assert first.status_code == 200
+    assert first.json()["separateUnits"] is True
+
+    kept = await put_settings(api_client, project.id, owner, replace_body(1, snapToleranceMm=41))
+    assert kept.status_code == 200
+    assert kept.json()["separateUnits"] is True
+    read = await api_client.get(settings_path(project.id), headers=headers_of(owner))
+    assert read.json() == kept.json()
+
+    off = await put_settings(api_client, project.id, owner, replace_body(2, separateUnits=False))
+    assert off.status_code == 200
+    assert off.json()["separateUnits"] is False
+    assert (await read_settings(db_session, project.id)).separate_units is False
 
 
 async def test_settings_replace_settings__C02_missing_field(

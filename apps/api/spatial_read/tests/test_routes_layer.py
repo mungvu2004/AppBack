@@ -106,6 +106,7 @@ async def test_spatial_read_layer__C01_unresolved(
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["scaleStatus"] == "unresolved"
     assert body["scaleSource"] == "pipeline"
+    assert "suggestedScaleMmPerPx" not in body
     assert body["level"]["reviewed"] is False
 
 
@@ -130,6 +131,8 @@ async def test_spatial_read_layer__C01_project_default(
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["scaleStatus"] == "unresolved"
     assert body["scaleSource"] == "project_default"
+    assert body["suggestedScaleMmPerPx"] == 8.659  # 12,7 * 150 / 220 (UX-R2 K01)
+    assert body["level"]["scaleMillimetresPerPixel"] == 12.7  # chỉ đề xuất, tỉ lệ tầng không đổi
 
 
 async def test_spatial_read_layer__C01_empty(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

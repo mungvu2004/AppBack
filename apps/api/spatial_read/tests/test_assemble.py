@@ -16,6 +16,7 @@ from apps.api.spatial_read.assemble import (
     level_reviewed,
     provisional_scale_source,
     scale_status,
+    suggested_scale_mm_per_px,
 )
 from apps.api.spatial_read.documents import FloorDocument, ScaleSource, empty_document
 from packages.domain.spatial import SpatialLayer
@@ -66,6 +67,35 @@ def test_provisional_scale_source_follows_scale_status(source: ScaleSource, expe
     """`scaleSource` có đúng khi `scaleStatus` có, và tách "không đo được" khỏi "máy đo" (UX-R1 K12)."""
     assert provisional_scale_source(source) == expected
     assert (provisional_scale_source(source) is None) == (scale_status(source) is None)
+
+
+def _walls_thick(*thickness_mm: int) -> SpatialLayer:
+    """Lớp mẫu tầng 0 với bề dày tường lần lượt `thickness_mm` (lặp vòng nếu ít hơn số tường)."""
+    layer = sample_floor_layer(0, level_id=LEVEL_ID)
+    walls = tuple(
+        wall.model_copy(update={"thickness_mm": thickness_mm[i % len(thickness_mm)]})
+        for i, wall in enumerate(layer.walls[: len(thickness_mm)])
+    )
+    return layer.model_copy(update={"walls": walls})
+
+
+def test_suggested_scale_brings_median_wall_to_150_mm() -> None:
+    """UX-R2 K01: tường 7/10/16 mm ở 1 mm/px → trung vị 10 → đề xuất 15 mm/px; 3 chữ số thập phân."""
+    assert suggested_scale_mm_per_px(_doc(layer=_walls_thick(7, 10, 16), scale=Decimal(1)), "project_default") == 15.0
+    assert suggested_scale_mm_per_px(_doc(layer=_walls_thick(220), scale=Decimal("12.7")), "project_default") == 8.659
+
+
+@pytest.mark.parametrize("source", ["human", "none", "pipeline"])
+def test_suggested_scale_only_for_project_default(source: ScaleSource) -> None:
+    """Tỉ lệ máy đo hay người đặt không cần đề xuất."""
+    assert suggested_scale_mm_per_px(_doc(layer=_walls_thick(10), scale=Decimal(1)), source) is None
+
+
+def test_suggested_scale_absent_without_walls_scale_or_range() -> None:
+    """Không tường, không tỉ lệ, hay kết quả ngoài 1-200 mm/px → vắng."""
+    assert suggested_scale_mm_per_px(_doc(scale=Decimal(1)), "project_default") is None
+    assert suggested_scale_mm_per_px(_doc(layer=_walls_thick(10)), "project_default") is None
+    assert suggested_scale_mm_per_px(_doc(layer=_walls_thick(300), scale=Decimal(1)), "project_default") is None
 
 
 def test_level_reviewed_needs_at_least_one_wall() -> None:

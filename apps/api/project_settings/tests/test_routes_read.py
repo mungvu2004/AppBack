@@ -33,6 +33,7 @@ async def test_settings_read_settings__C01(api_client: httpx.AsyncClient, db_ses
         "snapToleranceMm": 50,
         "confidenceThreshold": 0.75,
         "defaultScaleMmPerPx": 1,
+        "separateUnits": False,
     }
 
     written = await put_settings(api_client, project.id, owner, replace_body(0, notes="Ghi chú"))

@@ -1761,6 +1761,18 @@
               }
             ],
             "title": "Scalestatus"
+          },
+          "suggestedScaleMmPerPx": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestedscalemmperpx"
           }
         },
         "required": [
@@ -4625,7 +4637,7 @@
       },
       "ProjectSettingsBodyIn": {
         "additionalProperties": false,
-        "description": "Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế) và `sceneStyle`.\n\n`sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này\nkhông xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.",
+        "description": "Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, PUT thay thế), `sceneStyle`, `separateUnits`.\n\n`sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này\nkhông xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.\n`separateUnits` (UX-R2 K34) cũng vậy: vắng = giữ giá trị đang lưu; chỉ nhận `true`/`false`.",
         "properties": {
           "buildingType": {
             "enum": [
@@ -4679,6 +4691,11 @@
               }
             ],
             "title": "Scenestyle"
+          },
+          "separateUnits": {
+            "default": false,
+            "title": "Separateunits",
+            "type": "boolean"
           },
           "snapToleranceMm": {
             "maximum": 120.0,
@@ -4742,6 +4759,11 @@
               }
             ],
             "title": "Scenestyle"
+          },
+          "separateUnits": {
+            "default": false,
+            "title": "Separateunits",
+            "type": "boolean"
           },
           "snapToleranceMm": {
             "title": "Snaptolerancemm",

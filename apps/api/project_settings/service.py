@@ -36,7 +36,7 @@ def _columns(body: ProjectSettingsBodyIn) -> dict[str, Any]:
     """Các cột dữ liệu của body đã chuẩn hoá (NFC, trim, làm tròn đã làm ở schema).
 
     `scene_style` chỉ có mặt khi thân gửi khoá `sceneStyle` (kể cả `null`): vắng thì `UPDATE` không đụng cột
-    và băm của thân cũ không đổi.
+    và băm của thân cũ không đổi. `separate_units` theo cùng luật với khoá `separateUnits`.
     """
     columns: dict[str, Any] = {
         "building_type": body.building_type,
@@ -48,6 +48,8 @@ def _columns(body: ProjectSettingsBodyIn) -> dict[str, Any]:
     }
     if "scene_style" in body.model_fields_set:
         columns["scene_style"] = body.scene_style
+    if "separate_units" in body.model_fields_set:
+        columns["separate_units"] = body.separate_units
     return columns
 
 

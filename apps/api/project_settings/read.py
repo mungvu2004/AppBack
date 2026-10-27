@@ -25,6 +25,8 @@ class ProjectSettingsValue:
     confidence_threshold: Decimal
     default_scale_mm_per_px: Decimal
     scene_style: str | None = None
+    separate_units: bool = False
+    """UX-R2 K34: các tầng là những căn hộ riêng, không phải tầng chồng của một toà nhà."""
 
 
 DEFAULT_SETTINGS: Final = ProjectSettingsValue(
@@ -50,6 +52,7 @@ def value_of(row: ProjectSettingsRow) -> ProjectSettingsValue:
         confidence_threshold=row.confidence_threshold,
         default_scale_mm_per_px=row.default_scale_mm_per_px,
         scene_style=row.scene_style,
+        separate_units=row.separate_units,
     )
 
 

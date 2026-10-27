@@ -63,10 +63,11 @@ type ScaleMmPerPx = Annotated[Decimal, BeforeValidator(_to_decimal), Field(ge=De
 
 
 class ProjectSettingsBodyIn(WireRequest):
-    """Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế) và `sceneStyle`.
+    """Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, PUT thay thế), `sceneStyle`, `separateUnits`.
 
     `sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này
     không xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.
+    `separateUnits` (UX-R2 K34) cũng vậy: vắng = giữ giá trị đang lưu; chỉ nhận `true`/`false`.
     """
 
     building_type: BuildingType
@@ -76,6 +77,7 @@ class ProjectSettingsBodyIn(WireRequest):
     confidence_threshold: Confidence
     default_scale_mm_per_px: ScaleMmPerPx
     scene_style: SceneStyle | None = None
+    separate_units: Annotated[bool, Field(strict=True)] = False
 
 
 class ProjectSettingsWriteIn(WireRequest):
@@ -99,6 +101,7 @@ class ProjectSettingsOut(WireModel):
     confidence_threshold: float
     default_scale_mm_per_px: float
     scene_style: str | None = None
+    separate_units: bool = False
 
     @classmethod
     def of(cls, value: ProjectSettingsValue) -> "ProjectSettingsOut":
@@ -112,4 +115,5 @@ class ProjectSettingsOut(WireModel):
             confidence_threshold=float(value.confidence_threshold),
             default_scale_mm_per_px=float(value.default_scale_mm_per_px),
             scene_style=value.scene_style,
+            separate_units=value.separate_units,
         )

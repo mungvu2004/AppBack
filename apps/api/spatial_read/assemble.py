@@ -13,11 +13,13 @@ thì tỉ lệ cũ không còn xác nhận được gì, nên nó tụt xuống 
 Module này nhập được trong ngữ cảnh worker: không `fastapi`, không `starlette`.
 """
 
-from typing import Literal
+from statistics import median
+from typing import Final, Literal
 
 from apps.api.projects.wire import FloorOut
 from apps.api.spatial_read.documents import FloorDocument, ScaleSource
 from apps.api.spatial_read.wire import LevelOut
+from packages.domain.scale import classify_scale_range
 from packages.domain.spatial import SpatialLayer
 
 _HUMAN_CONFIDENCE = 1.0
@@ -50,6 +52,24 @@ def provisional_scale_source(scale_source: ScaleSource) -> Literal["pipeline", "
     if scale_source == "pipeline" or scale_source == "project_default":
         return scale_source
     return None
+
+
+SUGGESTED_WALL_THICKNESS_MM: Final = 150
+"""Bề dày tường trung vị mà tỉ lệ đề xuất nhắm tới — cùng đích `s_dựng` của pipeline (bước 2)."""
+
+
+def suggested_scale_mm_per_px(doc: FloorDocument, scale_source: ScaleSource) -> float | None:
+    """Tỉ lệ đề xuất cho tầng `project_default` (UX-R2 K01): đưa bề dày tường trung vị về 150 mm.
+
+    Tính lúc đọc từ tỉ lệ đang lưu và tường đang có, không lưu, không đổi tầng: đây chỉ là gợi ý
+    để người dùng xác nhận, bề dày 150 mm chưa ai kiểm. Vắng khi nguồn khác, chưa có tỉ lệ hay
+    tường, hoặc kết quả (3 chữ số thập phân) ra ngoài dải đọc được 1-200 mm/px.
+    """
+    if scale_source != "project_default" or doc.scale_mm_per_px is None or not doc.layer.walls:
+        return None
+    thickness = median(wall.thickness_mm for wall in doc.layer.walls)
+    value = round(float(doc.scale_mm_per_px) * SUGGESTED_WALL_THICKNESS_MM / thickness, 3)
+    return value if classify_scale_range(value) == "inRange" else None
 
 
 def level_reviewed(layer: SpatialLayer, scale_source: ScaleSource) -> bool:
