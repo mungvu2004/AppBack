@@ -1,6 +1,7 @@
 """Điểm vào tiến trình worker `ml`.
 
-    celery -A apps.ml.celery_main worker -Q ml.infer,ml.training
+    celery -A apps.ml.celery_main worker -Q ml.infer        # dịch vụ `ml` (PERF-03 P2)
+    celery -A apps.ml.celery_main worker -Q ml.training     # dịch vụ `ml-train`
 
 Nhập mọi `apps.ml.<module>.tasks` một cấp để `shared_task` vào sổ trước khi worker công
 bố hàng. Lúc khởi động (`worker_init`): broker phải `noeviction`, và bộ giả
@@ -11,14 +12,21 @@ rỗng cho mọi bản vẽ thật mà không ai hay.
 nạp trọng số ngoài, nó không được cầm khoá gốc ký JWT (BE-00 §2.1/§9, NO-085).
 """
 
+from typing import Final
+
 from celery.signals import worker_init
 
+from apps.ml import warmup  # noqa: F401 — gắn receiver làm ấm `worker_process_init` (PERF-03 P3)
 from apps.ml.runtime.settings import MlEnvSettings, get_ml_settings
 from packages.messaging.celery_app import create_celery
 from packages.messaging.redis import assert_broker_policy, broker_redis_sync
 from packages.messaging.schedules import discover_submodules
 
+WARMUP_ALIVE_TIMEOUT_S: Final = 300.0
+"""Celery mặc định đợi con prefork báo UP 4 s rồi giết nó; làm ấm (`warmup`) cần lâu hơn."""
+
 app = create_celery("ml")
+app.conf.worker_proc_alive_timeout = WARMUP_ALIVE_TIMEOUT_S
 
 discover_submodules("apps.ml", "tasks")
 

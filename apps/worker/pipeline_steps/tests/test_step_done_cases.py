@@ -283,3 +283,26 @@ def test_fail_pipeline_step_done_runs_core_on_process_loop(caplog: pytest.LogCap
         tasks.fail_pipeline_step_done(missing, "RETRY_EXHAUSTED")
 
     assert "pipeline_result_ignored" in caplog.text
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_step_done_logs_step_timing(
+    db_sessionmaker: Maker, fake_clock: FakeClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """P26 (PERF-03): mỗi kết quả bước tới `step_done` → một dòng `pipeline_step_timing` có `duration_ms`.
+
+    Log trước giao dịch nên cả kết quả muộn (lượt không tồn tại) vẫn để lại thời gian của bước.
+    """
+    missing = StepResultPayload(
+        run_id=new_id("run", SystemClock()), step=BUILD_STEP, status="completed", duration_ms=1234
+    )
+
+    with caplog.at_level(logging.INFO, logger="apps.worker.pipeline_steps.step_done"):
+        await run_pipeline_step_done(missing, sessionmaker=db_sessionmaker, clock=fake_clock)
+
+    (record,) = [r for r in caplog.records if r.getMessage() == "pipeline_step_timing"]
+    assert (record.__dict__["run_id"], record.__dict__["step"], record.__dict__["duration_ms"]) == (
+        missing.run_id,
+        BUILD_STEP,
+        1234,
+    )

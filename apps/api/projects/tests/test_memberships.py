@@ -69,6 +69,8 @@ async def test_member_users_runs_one_query_and_drops_deleted_people(
         async with db_sessionmaker() as fresh:
             by_project = await member_users(fresh, [first.id, second.id, "prj_khong-co"])
     assert counter.count == 1, counter.statements
+    # PERF-03 P11: chỉ nạp cột của `UserSchema`, không kéo JSONB `preferences` của từng người.
+    assert "preferences" not in str(counter.statements[0]), counter.statements
     assert [user.id for user in by_project[first.id]] == [owner.id]
     assert [user.id for user in by_project[second.id]] == [owner.id]
     assert by_project["prj_khong-co"] == []

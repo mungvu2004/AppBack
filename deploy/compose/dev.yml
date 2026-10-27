@@ -162,6 +162,26 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  ml-train:
+    extends:
+      file: base.yml
+      service: ml-train
+    build:
+      context: ../..
+      dockerfile: deploy/docker/ml.Dockerfile
+      args:
+        ML_VARIANT: cpu
+    image: appback-ml:dev
+    profiles: ["ml"]
+    environment:
+      ML_BACKEND: ${ML_BACKEND:-onnx}
+      ML_WARMUP: "0"
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
   ml-gpu:
     extends:
       file: base.yml

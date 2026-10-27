@@ -13,6 +13,7 @@ def test_allowlisted_env_keeps_names_and_prefixes_only(monkeypatch: pytest.Monke
     monkeypatch.setenv("KEEP_ME", "1")
     monkeypatch.setenv("ML_DEVICE", "cpu")
     monkeypatch.delenv("PYTHONPATH", raising=False)
+    monkeypatch.delenv("ML_WARMUP", raising=False)  # fixture ml_settings đặt sẵn cho mọi test (PERF-03)
     env = allowlisted_env(frozenset({"KEEP_ME"}), ("ML_",))
     assert env == {"KEEP_ME": "1", "ML_DEVICE": "cpu", "PYTHONPATH": os.getcwd()}
 
