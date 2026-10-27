@@ -134,6 +134,9 @@ case "$VERIFY_TASK" in
     # Log cổng ra host (NO-080): container tự xoá khi thoát, output chỉ đi qua client compose — shell
     # bọc bị cắt là mất bảng, file này thì còn. steps.py ghi song song stdout, không thay stdout.
     log_dir="$CACHE_DIR/src-out/verify"
+    # Cổng nhanh ghi log ở thư mục riêng (review PERF-03 #5): không đẩy log cổng đầy đủ ra khỏi trần
+    # `VERIFY_LOG_KEEP`, không bị lấy nhầm làm bằng chứng cổng đầy đủ.
+    [[ " $* " == *" --fast "* ]] && log_dir="$CACHE_DIR/src-out/verify-fast"
     mkdir -p "$log_dir"
     # Trần log (NO-090): mỗi lượt một file, không dọn thì checkout sống lâu dồn mãi (in_container.sh còn chép
     # cả .cache mỗi lượt). Giữ VERIFY_LOG_KEEP - 1 log mới nhất (mtime) trước khi lượt này tạo log của nó.

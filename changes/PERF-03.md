@@ -9,5 +9,5 @@
   + uv không đổi. `gc` giữ 3 venv theo băm mới nhất.
 - Bước 5 giữ `-n 6 --dist loadfile`: `-n 10` bị OOM trong VM 12 GB; `loadgroup` + nhóm theo tệp không được áp (test cùng
   tệp xé ra mọi worker, pytest 585 → 1.108 s) nên bỏ. Plugin `worker_rss` in RSS đỉnh mỗi worker (đo: 1,7–2,6 GiB).
-- `test_durations.json` sinh lại từ junit 2026-10-26; import nặng trong test ML và `ml_ocr` dời vào hàm.
+- `test_durations.json` sinh lại từ junit 2026-10-26; import nặng trong vài test ML và `ml_ocr` dời vào hàm (không giảm RSS: worker vẫn collect cả bộ; đo 1,7–2,6 GiB/worker).
 - Không endpoint, không bảng, không migration, không đổi dây: bước 6, 7, 8 không có gì mới để kiểm.

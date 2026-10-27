@@ -575,17 +575,18 @@ def test_fast_mypy_env__cache_ấm_theo_worktree(monkeypatch: pytest.MonkeyPatch
     assert "MYPY_CACHE_DIR" not in steps.fast_mypy_env()
 
 
-@pytest.mark.parametrize(("rc", "status"), [(0, steps.STATUS_OK), (5, steps.STATUS_OK), (1, steps.STATUS_FAIL)])
+@pytest.mark.parametrize(("rc", "status"), [(0, steps.STATUS_OK), (5, steps.STATUS_NA), (1, steps.STATUS_FAIL)])
 def test_step_fast_pytest__chạy_đơn_vị_bị_chạm_không_độ_phủ(
     repo: Path, monkeypatch: pytest.MonkeyPatch, rc: int, status: str
 ) -> None:
-    """pytest nhận đúng thư mục đơn vị, không `--cov`; mã 5 (không thu được test) không phải hỏng."""
+    """pytest nhận đúng thư mục đơn vị, không `--cov`; mã 5 (không thu được test) là "không áp dụng"."""
     _touch(repo, "apps/api/auth/router.py")
     monkeypatch.setenv("VERIFY_CHANGED", "apps/api/auth/router.py\n")
     fake = _fake(monkeypatch, pytest=(rc, ""))
     outcome = steps.step_fast_pytest()
     assert fake.calls == [["pytest", "-n", steps.FAST_PYTEST_WORKERS, "--dist", "loadfile", "apps/api/auth"]]
-    assert (outcome.status, outcome.detail) == (status, "apps/api/auth")
+    assert outcome.status == status
+    assert outcome.detail.endswith("apps/api/auth")
 
 
 def test_step_fast_pytest__không_đơn_vị_nào_thì_không_áp_dụng(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -812,12 +813,12 @@ def test_merge_heads_lint_hỏng_không_chép(repo: Path, monkeypatch: pytest.Mo
 
 
 def test_gc_xoá_thư_mục_của_worktree_đã_mất(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`gc` chỉ xoá venv-*/mypy-* của worktree không còn trong danh sách sống."""
-    for name in ("venv-a", "venv-b", "mypy-a", "mypy-c", "uv-cache"):
+    """`gc` xoá mypy-*/mypy-fast-* của worktree đã mất, và mọi `venv-<tên>` kiểu cũ (venv giờ theo băm lock)."""
+    for name in ("venv-a", "venv-b", "mypy-a", "mypy-c", "mypy-fast-a", "mypy-fast-c", "uv-cache"):
         (steps.WORK_DIR / name).mkdir(parents=True)
     monkeypatch.setenv("VERIFY_VALID_NAMES", "a")
     assert steps.main(["gc"]) == 0
-    assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == ["mypy-a", "uv-cache", "venv-a"]
+    assert sorted(p.name for p in steps.WORK_DIR.iterdir()) == ["mypy-a", "mypy-fast-a", "uv-cache"]
 
 
 def test_gc_giữ_n_thư_mục_theo_băm_mới_nhất(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

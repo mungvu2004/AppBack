@@ -528,6 +528,7 @@ def _in_step_order(outcomes: list[StepOutcome]) -> list[StepOutcome]:
 # ---------------------------------------------------------------------------
 
 FAST_PYTEST_WORKERS = "4"
+FAST_MYPY_PREFIX = "mypy-fast-"
 FAST_FULL_SUITE_FILES = frozenset({"conftest.py", "pyproject.toml", "uv.lock"})
 """Đổi một trong các tệp này là đổi cấu hình/fixture của MỌI test → cổng nhanh chạy cả bộ."""
 FAST_FULL_SUITE_DIRS = ("packages/testing/fixtures/",)
@@ -555,7 +556,7 @@ def fast_mypy_env() -> dict[str, str]:
     if not current:
         return dict(os.environ)
     name = normalize_verify_name(os.environ.get("VERIFY_NAME", "")) or "default"
-    return {**os.environ, "MYPY_CACHE_DIR": str(Path(current).parent / f"mypy-fast-{name}")}
+    return {**os.environ, "MYPY_CACHE_DIR": str(Path(current).parent / f"{FAST_MYPY_PREFIX}{name}")}
 
 
 def step_fast_pytest() -> StepOutcome:
@@ -565,8 +566,9 @@ def step_fast_pytest() -> StepOutcome:
         return StepOutcome("5", _FAST_PYTEST, STATUS_NA, "không đơn vị nào bị chạm")
     detail = "cả bộ — đổi cấu hình/fixture chung" if paths is None else ", ".join(paths)
     r = _run(["pytest", "-n", FAST_PYTEST_WORKERS, "--dist", "loadfile", *(paths or [])])
-    # 5 = pytest không thu được test nào (đơn vị chưa có test): không phải hỏng.
-    return StepOutcome("5", _FAST_PYTEST, STATUS_OK if r.returncode in (0, 5) else STATUS_FAIL, detail)
+    if r.returncode == 5:  # pytest không thu được test nào: không hỏng, nhưng cũng không "đạt" (K25)
+        return StepOutcome("5", _FAST_PYTEST, STATUS_NA, f"không có test — {detail}")
+    return StepOutcome("5", _FAST_PYTEST, STATUS_OK if r.returncode == 0 else STATUS_FAIL, detail)
 
 
 def fast_gate_steps(proc: subprocess.Popen[bytes]) -> list[tuple[str, Callable[[], StepOutcome]]]:
@@ -843,7 +845,8 @@ def cmd_gc(_args: argparse.Namespace) -> int:
 
     `mypy-tree-<băm>` không thuộc worktree nào (khoá bằng nội dung cây nguồn — `mypy_cache_dir`): giữ
     `MYPY_CACHE_KEEP` thư mục mới nhất theo mtime, xoá phần còn lại. `run.sh` truyền danh sách worktree
-    còn sống cho nhóm còn lại.
+    còn sống cho nhóm còn lại: `mypy-<tên>` và `mypy-fast-<tên>` (cổng nhanh) của worktree sống được giữ;
+    `venv-<tên>` kiểu cũ luôn bị xoá — venv giờ dùng chung theo băm `uv.lock` (PERF-03).
     """
     valid = {n for n in os.environ.get("VERIFY_VALID_NAMES", "").split(",") if n}
     all_dirs = sorted([*WORK_DIR.glob("venv-*"), *WORK_DIR.glob("mypy-*")])
@@ -857,7 +860,9 @@ def cmd_gc(_args: argparse.Namespace) -> int:
     }
     removed = []
     for d in all_dirs:
-        if d in keep or (d not in hashed and d.name.split("-", 1)[1] in valid):
+        fast = d.name.startswith(FAST_MYPY_PREFIX)
+        owner = d.name.removeprefix(FAST_MYPY_PREFIX) if fast else d.name.split("-", 1)[1]
+        if d in keep or (d not in hashed and not d.name.startswith("venv-") and owner in valid):
             continue
         shutil.rmtree(d, ignore_errors=True)
         removed.append(d.name)
