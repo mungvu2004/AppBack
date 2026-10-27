@@ -12,11 +12,12 @@ mục gốc, đường `external_data` sẽ được hiểu theo thư mục làm
 
 import asyncio
 import hashlib
+import logging
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 import onnx
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
@@ -36,6 +37,8 @@ ONNX_FIRST_BYTE: Final = 0x08
 
 TRUSTED_DOMAINS: Final = frozenset({"", "ai.onnx"})
 FORBIDDEN_OPS: Final = frozenset({"Loop", "Scan"})
+
+_log: Final = logging.getLogger(__name__)
 
 
 class _Sessions:
@@ -205,15 +208,53 @@ async def read_model_object(storage: ObjectStorage, key: str) -> bytes:
     )
 
 
-def _session(data: bytes, threads: int) -> ort.InferenceSession:
-    """Phiên CPU từ bytes; lỗi `onnxruntime` (lớp thật) → `MODEL_FORMAT_UNSUPPORTED`."""
+CPU_PROVIDERS: Final = ("CPUExecutionProvider",)
+CUDA_PROVIDERS: Final = ("CUDAExecutionProvider", "CPUExecutionProvider")
+
+
+def select_providers(device: Literal["auto", "cpu", "cuda"]) -> tuple[str, ...]:
+    """Providers theo `ML_DEVICE`: `cpu` → CPU; `cuda` → CUDA rồi CPU;
+    `auto` → CUDA chỉ khi bản `onnxruntime` đang cài có `CUDAExecutionProvider` (ảnh cuda)."""
+    if device == "cuda":
+        return CUDA_PROVIDERS
+    if device == "auto" and "CUDAExecutionProvider" in ort.get_available_providers():
+        return CUDA_PROVIDERS
+    return CPU_PROVIDERS
+
+
+def _preload_cuda_dlls() -> None:
+    """Nạp sẵn CUDA/cuDNN từ gói `nvidia-*-cu12` (ảnh cuda cài riêng) cho ORT ≥ 1.21;
+    bản ORT không có hàm hay nạp lỗi thì bỏ qua — tạo phiên sẽ tự rơi về CPU."""
+    preload = getattr(ort, "preload_dlls", None)
+    if preload is None:
+        return
+    try:
+        preload()
+    except Exception as exc:  # noqa: BLE001 — chỉ là bước nạp sẵn; lỗi thật lộ ra lúc tạo phiên
+        _log.warning("onnxruntime.preload_dlls lỗi: %s", exc)
+
+
+def _session(data: bytes, threads: int, providers: tuple[str, ...] = CPU_PROVIDERS) -> ort.InferenceSession:
+    """Phiên từ bytes với `providers`; phiên CUDA lỗi → cảnh báo, dựng lại trên CPU.
+    Lỗi `onnxruntime` (lớp thật) của phiên CPU → `MODEL_FORMAT_UNSUPPORTED`."""
     options = ort.SessionOptions()
     options.intra_op_num_threads = threads
     options.inter_op_num_threads = 1
+    if providers != CPU_PROVIDERS:
+        _preload_cuda_dlls()
+        try:
+            session = ort.InferenceSession(data, sess_options=options, providers=list(providers))
+        except Exception as exc:  # noqa: BLE001 — mọi lỗi CUDA (thiếu thư viện, hết VRAM) → CPU
+            _log.warning("tạo phiên ONNX với %s lỗi, rơi về CPU: %s", providers, exc)
+        else:
+            _log.info("phiên ONNX dùng providers %s", session.get_providers())
+            return session
     try:
-        return ort.InferenceSession(data, sess_options=options, providers=["CPUExecutionProvider"])
+        session = ort.InferenceSession(data, sess_options=options, providers=list(CPU_PROVIDERS))
     except ORT_ERRORS as exc:
         raise _unsupported() from exc
+    _log.info("phiên ONNX dùng providers %s", session.get_providers())
+    return session
 
 
 async def load_onnx(
@@ -229,7 +270,8 @@ async def load_onnx(
     2. đọc ≤ `MODEL_MAX_BYTES` (ghim: `models_dir/<name>.onnx`; storage: `weights_key`);
     3. SHA-256 tự tính ≠ checksum (ghim: cả `onnx_sha256` của bản ghim) → `MODEL_CHECKSUM_MISMATCH`;
     4-5. byte đầu, giải protobuf, luật ONNX không tin → `MODEL_FORMAT_UNSUPPORTED`;
-    6. `InferenceSession` CPU với `ML_ORT_THREADS` luồng, ngoài vòng sự kiện.
+    6. `InferenceSession` theo `ML_DEVICE` (`select_providers`; CUDA lỗi → CPU) với
+       `ML_ORT_THREADS` luồng, ngoài vòng sự kiện.
     """
     if ref.is_classic:
         raise ValueError("model cổ điển không có gì để nạp")
@@ -243,6 +285,8 @@ async def load_onnx(
     else:
         data = await read_model_object(storage, str(ref.weights_key))
     await asyncio.to_thread(_verify, data, ref, pinned)
-    session = await asyncio.to_thread(_session, data, get_ml_settings().ml_ort_threads)
+    settings = get_ml_settings()
+    providers = select_providers(settings.ml_device)
+    session = await asyncio.to_thread(_session, data, settings.ml_ort_threads, providers)
     _SESSIONS.put(ref.checksum_sha256, session)
     return session
