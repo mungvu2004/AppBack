@@ -160,7 +160,7 @@ def test_bước_5_đạt_gọi_đủ_chuỗi(repo: Path, monkeypatch: pytest.Mo
 
 
 def test_bước_5_chạy_song_song_dưới_cov(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Bước 5 phải mang `-n`, `--dist loadfile` và `--cov`; thiếu `--cov` là độ phủ tụt về 0."""
+    """Bước 5 phải mang `-n`, `--dist loadgroup` và `--cov`; thiếu `--cov` là độ phủ tụt về 0."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
     fake = _fake(monkeypatch)
     steps.step_coverage()
@@ -169,7 +169,7 @@ def test_bước_5_chạy_song_song_dưới_cov(repo: Path, monkeypatch: pytest.
         "-n",
         steps.DEFAULT_PYTEST_WORKERS,
         "--dist",
-        "loadfile",
+        "loadgroup",
         "--cov",
         "--cov-report=",
     ]
@@ -219,7 +219,7 @@ def test_số_tiến_trình_bước_5_theo_env(monkeypatch: pytest.MonkeyPatch, 
 def test_số_tiến_trình_bước_5_mặc_định(monkeypatch: pytest.MonkeyPatch) -> None:
     """Không đặt biến môi trường thì số tiến trình bước 5 là mặc định."""
     monkeypatch.delenv(steps.PYTEST_WORKERS_ENV, raising=False)
-    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS == "6"  # số đo NO-280: 6 nhanh nhất, 8 hết chỗ RAM
+    assert steps.pytest_workers() == steps.DEFAULT_PYTEST_WORKERS == "10"  # PERF-03: worker nhẹ (~0,8 GiB), test ML dồn 3 nhóm
 
 
 # --- bước 5b ------------------------------------------------------------------------

@@ -202,7 +202,6 @@ async def test_load_onnx_m03_user_pickle(
     """Pickle, zip `.pt`, safetensors với checksum **khớp** vẫn bị chặn; không bộ giải pickle nào được gọi."""
     import torch  # trong hàm: worker xdist không chạy test ML khỏi nạp torch lúc collect (PERF-03)
 
-
     def forbidden(*_: object, **__: object) -> None:
         """Bộ giải bị cấm: gọi tới là test hỏng."""
         raise AssertionError("bộ giải pickle không được chạm tới")

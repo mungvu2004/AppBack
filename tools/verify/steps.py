@@ -313,7 +313,7 @@ def export_junit(source: Path, suffix: str) -> None:
 
 
 PYTEST_WORKERS_ENV = "VERIFY_PYTEST_WORKERS"
-DEFAULT_PYTEST_WORKERS = "6"
+DEFAULT_PYTEST_WORKERS = "10"
 
 
 def pytest_workers() -> str:
@@ -341,11 +341,12 @@ def step_coverage() -> StepOutcome:
     còn `coverage combine` riêng: gộp xong rồi, gọi lại chỉ thấy "No data to combine".
     `--cov` không kèm đường dẫn: lấy `[tool.coverage.run] source`, cùng nguồn như trước.
     `--cov-report=` tắt báo cáo của plugin — số thật do `coverage_gate` in ra từ `coverage json`.
-    `--dist loadfile`: mọi test cùng file vào cùng một tiến trình, nên fixture phiên (container
-    dịch vụ) dựng một lần cho cả file và test phụ thuộc thứ tự trong một file không bị xé ra.
+    `--dist loadgroup` (PERF-03): plugin `xdist_groups` cho mỗi file một nhóm riêng (như `loadfile`: fixture
+    phiên dựng một lần cho cả file, test phụ thuộc thứ tự trong file không bị xé), riêng file `apps/ml/` dồn
+    vào ba nhóm — chỉ ba worker phình RAM khi chạy test ML, các worker còn lại ở mức collect (~0,66 GiB).
     """
     steps = [
-        ["pytest", "-n", pytest_workers(), "--dist", "loadfile", "--cov", "--cov-report="],
+        ["pytest", "-n", pytest_workers(), "--dist", "loadgroup", "--cov", "--cov-report="],
         ["coverage", "json"],
     ]
     for cmd in steps:
