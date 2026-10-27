@@ -148,6 +148,21 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  ml-train:
+    extends:
+      file: base.yml
+      service: ml-train
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-ml:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    profiles: ["ml"]
+    environment:
+      ML_BACKEND: ${ML_BACKEND:-onnx}
+      ML_WARMUP: "0"
+    depends_on:
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
   web:
     extends:
       file: base.yml

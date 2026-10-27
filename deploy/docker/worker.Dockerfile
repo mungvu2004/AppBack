@@ -60,7 +60,8 @@ RUN mkdir -p /var/lib/appback/storage \
 
 USER 10001
 
-HEALTHCHECK --interval=15s --timeout=10s --start-period=10s --retries=3 \
+# Mỗi lượt ping dựng cả một tiến trình Celery (~1 nhân CPU): 30 s thay 15 s (PERF-03 P20).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD celery -A apps.worker.celery_main inspect ping -d celery@$HOSTNAME --timeout 5
 
 CMD ["celery", "-A", "apps.worker.celery_main", "worker", "-Q", "default,pipeline.cpu"]

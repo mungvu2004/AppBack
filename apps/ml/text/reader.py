@@ -40,6 +40,7 @@ __all__ = [
     "REC_HEIGHT_PX",
     "REC_MAX_WIDTH_PX",
     "TEXT_CONFIDENCE_MIN",
+    "UPRIGHT_SURE_CONFIDENCE",
     "RapidOcrReader",
     "ctc_decode",
     "rec_characters",
@@ -70,6 +71,11 @@ MERGE_IOU: Final = 0.5
 ROTATE_RATIO: Final = 1.5
 DARK_BACKGROUND_MEAN: Final = 127.0
 BLANK_INDEX: Final = 0
+
+UPRIGHT_SURE_CONFIDENCE: Final = 0.9
+"""Lượt không xoay tin cậy từ mức này thì bỏ lượt xoay 180° (PERF-03 P19: mỗi ô chữ từng
+chạy rec hai lần). Cao hơn hẳn `TEXT_CONFIDENCE_MIN` vì chữ ngược đọc thẳng vẫn có thể ra
+chuỗi tin cậy vừa (`8.00` → `00.8`); dưới ngưỡng thì vẫn đọc cả hai và lấy lượt tốt hơn."""
 
 
 @lru_cache(maxsize=1)
@@ -328,12 +334,14 @@ class RapidOcrReader:
         return ctc_decode(np.asarray(probs, dtype=np.float32)[0], self._characters)
 
     def _best(self, crop: NDArray[np.uint8]) -> tuple[str, float]:
-        """Đọc cả hai hướng 0°/180° và lấy lượt tin cậy hơn (hoà → lượt không xoay).
+        """Đọc hướng 0°; dưới `UPRIGHT_SURE_CONFIDENCE` đọc thêm 180° và lấy lượt tin cậy hơn (hoà → 0°).
 
         Thay cho bộ phân loại góc của `RapidOCR()`: bộ ấy lật ngược chuỗi gần đối xứng và
         đo được 67/122 chữ kích thước đúng, tắt nó đo được 114/122 (NO-063).
         """
         upright = self._run(crop)
+        if upright[1] >= UPRIGHT_SURE_CONFIDENCE:
+            return upright
         flipped = self._run(np.asarray(cv2.rotate(crop, cv2.ROTATE_180), dtype=np.uint8))
         return upright if upright[1] >= flipped[1] else flipped
 
