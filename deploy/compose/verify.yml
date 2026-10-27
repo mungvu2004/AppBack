@@ -9,6 +9,9 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/verify.Dockerfile
+      # run.sh bỏ `compose build` khi nhãn này trùng băm Dockerfile (PERF-03)
+      labels:
+        appback.verify-key: ${VERIFY_IMAGE_KEY:-none}
     network_mode: bridge
     extra_hosts:
       - "host.docker.internal:host-gateway"
