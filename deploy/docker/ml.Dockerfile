@@ -86,7 +86,15 @@ COPY packages/ml_contracts/ packages/ml_contracts/
 
 # Trọng số nhà cung cấp ghim SHA-256, xuất ONNX — có mạng lúc build (BE-00 §9).
 # Hỏng ở đây → build `ml` hỏng thật (không bỏ bước, hợp đồng §5).
-RUN python -m packages.ml_contracts.pinned fetch --dest /opt/models \
+# Tải vào cache mount: bước này đứng sau COPY mã nên sửa mã nào cũng chạy lại, mà `fetch`
+# bỏ qua tệp đã đúng SHA → chỉ tải lại khi bản ghim đổi. Chỉ chép thư mục của PINNED hiện
+# tại sang /opt/models (cache còn bản ghim cũ thì không lọt vào ảnh).
+RUN --mount=type=cache,target=/root/.cache/pinned \
+    python -m packages.ml_contracts.pinned fetch --dest /root/.cache/pinned \
+ && mkdir -p /opt/models \
+ && for name in $(python -c "from packages.ml_contracts.pinned import PINNED; print(*(w.name for w in PINNED.values() if w.files))"); do \
+      cp -a "/root/.cache/pinned/$name" /opt/models/; \
+    done \
  && python -m apps.ml.runtime.export_pinned --dest /opt/models
 
 # Kiểm cuối tầng dựng: đủ mọi thư viện suy luận, không có `opencv-python`/
