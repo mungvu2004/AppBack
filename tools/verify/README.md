@@ -3,6 +3,9 @@
 Cổng verify chạy qua `bash tools/verify/run.sh <việc>` (xem `CLAUDE.md`).
 
 - `verify`: ghi log cổng và `<log>.junit.xml` của bước 5 vào `.cache/src-out/verify/` (NO-324).
+- `verify --fast` (PERF-03): bước 1, 2, 4, pytest các đơn vị bị chạm (`fast_test_paths`; đổi `conftest.py`,
+  `pyproject.toml`, `uv.lock`, `packages/testing/fixtures/` thì cả bộ), không độ phủ; mypy nền trên cache ấm
+  `/work/mypy-fast-<worktree>`. Xem trước — `verify` đầy đủ trước merge vẫn là phán quyết.
 - Bước 3: cổng đầy đủ (không `--steps`, hoặc `--steps` gồm **mọi** bước 1–8 và `5b`) chạy mypy
   **nguội** (`MYPY_CACHE_DIR=/dev/null`, ~212 s cả repo); `--steps` thiếu bước và `shell` dùng cache ấm
   `/work/mypy-<worktree>` (~5 s) — chỉ là xem trước: cache ấm có thể phát lại kết quả cũ cả hai chiều.
