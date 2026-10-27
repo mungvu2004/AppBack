@@ -63,6 +63,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
    && uv pip install --python /opt/venv/bin/python -r /tmp/torch-cuda-deps.txt; \
     fi
 
+# CUDA EP của onnxruntime-gpu 1.29 dựng trên CUDA 12.8+: với libcudart 12.6 của cuda-toolkit
+# (torch cu126) nó hỏng "undefined symbol: cudaLibraryGetKernel" rồi rơi về CPU (đo 27/10).
+# cudart 12.9 cùng mức cuBLAS 12.9 đã có; torch cu126 chạy được trên cudart mới hơn cùng dòng 12.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$ML_VARIANT" = "cuda" ]; then \
+      uv pip install --python /opt/venv/bin/python "nvidia-cuda-runtime-cu12>=12.9,<13"; \
+    fi
+
 # Mã cần cho `apps.ml`, cộng bản ghim nhà cung cấp (B5-01). `.dockerignore`
 # loại `packages/testing` khỏi các COPY thư mục dưới đây.
 COPY apps/__init__.py apps/__init__.py
