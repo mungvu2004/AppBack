@@ -48,6 +48,10 @@ _DOOR_REACH_MM = 300.0
 _DOOR_SPAN_RATIO = (0.6, 1.8)
 """Khe cửa dài 0,6-1,8 lần cạnh dài hộp cửa (hộp chỉ ôm cánh, khe tính tới tim tường hai bên)."""
 
+_PARALLEL_COS = 0.9
+"""Tường gần song song khe (|cos| ≥ 0,9) bắn tia theo hướng ra của nó: đầu tường nằm trong hộp cửa sổ thì tâm hộp
+có thể ở phía thân tường."""
+
 _RIM_DEPTH_MM = 6000.0
 """Lô gia nằm trong 6 m tính từ biên bao: chỉ chia ô bằng đường trong dải đó."""
 
@@ -152,38 +156,54 @@ def _outline_points(polygon: shapely.Polygon) -> list[Point]:
 def _door_closers(
     walls: Sequence[Wall], detections: Sequence[DetectionPx], scaling: Scaling
 ) -> list[shapely.LineString]:
-    """Đoạn khép khe cửa theo hộp cửa dò được, kể cả khe giữa một góc tường và tường đối diện (đầu ở góc không là
-    đầu tự do nên `_gap_closers` bỏ qua).
+    """Đoạn khép khe cửa đi và cửa sổ theo hộp dò được, kể cả khe giữa một góc tường và tường đối diện (đầu ở góc
+    không là đầu tự do nên `_gap_closers` bỏ qua). Cửa sổ tính vì vách kính, cửa lô gia vẽ nét mảnh: model tường
+    một lớp bỏ sót, phòng ngủ tràn ra lô gia (bench căn hộ ch-08).
 
-    Mỗi cửa: từ mọi đầu tường cách tâm hộp ≤ cạnh dài + `_DOOR_REACH_MM`, bắn tia dọc cạnh dài của hộp (về phía tâm)
-    tới tim tường đầu tiên không chứa đầu đó; giữ đoạn dài `_DOOR_SPAN_RATIO` lần cạnh dài và đi qua gần tâm hộp
-    (≤ nửa cạnh dài + `_DOOR_REACH_MM`), lấy đoạn ngắn nhất. Hộp lệch tim tường vài chục mm (cánh cửa vẽ cạnh
+    Mỗi ô mở: từ mọi đầu tường cách tâm hộp ≤ cạnh dài + `_DOOR_REACH_MM`, bắn tia dọc cạnh dài của hộp (về phía tâm,
+    hay theo hướng ra của tường khi tường gần song song khe — `_PARALLEL_COS`) tới tim tường đầu tiên không chứa đầu
+    đó. Giữ đoạn: dài `_DOOR_SPAN_RATIO` lần cạnh dài (cận dưới so với phần hộp còn phía trước đầu tường nằm trong
+    hộp: hộp cửa sổ ôm cả mẩu tường đã dò); không nằm đè tường quá nửa; lệch ngang khỏi tâm hộp ≤
+    min(`_DOOR_REACH_MM`, 1/4 cạnh dài) + nửa cạnh ngắn; đi qua gần tâm hộp (≤ nửa cạnh dài + `_DOOR_REACH_MM`).
+    Lấy đoạn ngắn nhất. Hộp lệch tim tường vài chục mm (cánh cửa vẽ cạnh
     tường) vẫn khép được, việc mà phép phủ hộp của 3b không làm được.
     """
-    doors = [d for d in detections if d.label in ("door", "double_door")]
-    if not doors or len(walls) < 2:
+    openings = [d for d in detections if d.label in _OPENING_LABELS]
+    if not openings or len(walls) < 2:
         return []
     centrelines = [
         shapely.LineString([(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)])
         for w in walls
     ]
     tree = shapely.STRtree(centrelines)
-    tips = [(w.centreline.start, i) for i, w in enumerate(walls)] + [(w.centreline.end, i) for i, w in enumerate(walls)]
-    tip_points = shapely.STRtree([shapely.Point(p.x, p.y) for p, _ in tips])
+    tips = [(w.centreline.start, w.centreline.end, i) for i, w in enumerate(walls)]
+    tips += [(w.centreline.end, w.centreline.start, i) for i, w in enumerate(walls)]
+    tip_points = shapely.STRtree([shapely.Point(p.x, p.y) for p, _, _ in tips])
     closers: list[shapely.LineString] = []
-    for door in doors:
+    for door in openings:
         low = scaling.point(door.box.x_min, door.box.y_min)
         high = scaling.point(door.box.x_max, door.box.y_max)
         width, height = high.x - low.x, high.y - low.y
-        length = max(width, height)
+        length, short = max(width, height), min(width, height)
         if length <= 0:
             continue
         axis = (1.0, 0.0) if width >= height else (0.0, 1.0)
         centre = shapely.Point((low.x + high.x) / 2, (low.y + high.y) / 2)
         best: shapely.LineString | None = None
         for slot in tip_points.query(centre.buffer(length + _DOOR_REACH_MM)):
-            tip, owner = tips[int(slot)]
-            towards = 1.0 if (centre.x - tip.x) * axis[0] + (centre.y - tip.y) * axis[1] >= 0 else -1.0
+            tip, base, owner = tips[int(slot)]
+            run = math.hypot(tip.x - base.x, tip.y - base.y)
+            along = ((tip.x - base.x) * axis[0] + (tip.y - base.y) * axis[1]) / run if run else 0.0
+            if abs(along) >= _PARALLEL_COS:
+                towards = 1.0 if along > 0 else -1.0
+            else:
+                towards = 1.0 if (centre.x - tip.x) * axis[0] + (centre.y - tip.y) * axis[1] >= 0 else -1.0
+            far = (high.x if towards > 0 else low.x) if axis[0] else (high.y if towards > 0 else low.y)
+            ahead = (far - (tip.x if axis[0] else tip.y)) * towards
+            offset = abs((centre.y - tip.y) * axis[0] + (centre.x - tip.x) * axis[1])
+            if ahead <= 0 or offset > min(_DOOR_REACH_MM, length / 4) + short / 2:
+                continue
+            gap = min(ahead, length)
             reach = length * _DOOR_SPAN_RATIO[1] + ROOM_SNAP_MM
             end = (tip.x + towards * axis[0] * reach, tip.y + towards * axis[1] * reach)
             ray = shapely.LineString([(tip.x, tip.y), end])
@@ -196,11 +216,14 @@ def _door_closers(
             if not hits:
                 continue
             span = min(hits)
-            if not _DOOR_SPAN_RATIO[0] * length <= span <= _DOOR_SPAN_RATIO[1] * length:
+            if not _DOOR_SPAN_RATIO[0] * gap <= span <= _DOOR_SPAN_RATIO[1] * length:
                 continue
             foot = (tip.x + towards * axis[0] * (span + 1), tip.y + towards * axis[1] * (span + 1))
             segment = shapely.LineString([(tip.x, tip.y), foot])
             if segment.distance(centre) > length / 2 + _DOOR_REACH_MM:
+                continue
+            walled = shapely.union_all([centrelines[int(i)] for i in tree.query(segment.buffer(ROOM_SNAP_MM))])
+            if segment.intersection(walled.buffer(ROOM_SNAP_MM)).length > segment.length / 2:
                 continue
             if best is None or segment.length < best.length:
                 best = segment

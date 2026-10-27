@@ -473,6 +473,22 @@ def test_door_box_closes_gap_between_a_corner_and_a_wall(fake_clock: FakeClock) 
     assert len(_rooms_of(walls, door, fake_clock)) == 2
 
 
+def test_window_box_closes_glass_partition_from_a_stub_inside_it(fake_clock: FakeClock) -> None:
+    """Vách kính y = 2000 chỉ còn mẩu tường 0-500 nằm trong hộp cửa sổ (tâm hộp ở phía thân tường): vẫn khép tới
+    tường phải 3000 (bench căn hộ ch-08, phòng ngủ tràn ra lô gia)."""
+    segments = [
+        ((0, 0), (3000, 0)),
+        ((0, 5000), (3000, 5000)),
+        ((0, 0), (0, 5000)),
+        ((3000, 0), (3000, 5000)),
+        ((0, 2000), (500, 2000)),
+    ]
+    walls = [_wall(fake_clock, start, end) for start, end in segments]
+    window = (DetectionPx(label="window", box=_box(0, 1950, 3000, 2050), confidence=0.7),)
+    assert len(_rooms_of(walls, (), fake_clock)) == 1
+    assert len(_rooms_of(walls, window, fake_clock)) == 2
+
+
 def test_walled_rim_strip_becomes_a_loggia(fake_clock: FakeClock) -> None:
     """Dải 3 x 1,5 m trên phòng phải có tường dưới và hai bên, không nhãn: thành `lô gia` (mặt trên là lan can)."""
     segments = [
