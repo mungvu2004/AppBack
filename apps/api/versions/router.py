@@ -12,12 +12,14 @@ OpenAPI nói đúng hai đường ấy.
 from typing import Annotated, Final
 
 from fastapi import Depends, Query
+from starlette.requests import Request
 from starlette.responses import Response
 
 from apps.api.core.deps import ClockDep, DbSession
 from apps.api.core.pagination import CursorPage, PageParams, page_params
 from apps.api.core.routing import protected_router, route_options
 from apps.api.projects.access import ProjectAccess, require_project
+from apps.api.spatial_read.http_cache import cached_json
 from apps.api.versions import service
 from apps.api.versions.schemas import (
     FloorVersionSnapshotOut,
@@ -51,12 +53,16 @@ async def versions_read_version(version_id: str, access: _Member, db: DbSession)
     return await service.read_version(db, access, version_id)
 
 
-@router.get("/projects/{project_id}/versions/{version_id}/snapshot")
+@router.get("/projects/{project_id}/versions/{version_id}/snapshot", response_model=FloorVersionSnapshotOut)
 async def versions_read_snapshot(
-    version_id: str, floor_id: Annotated[str, Query(alias="floorId", min_length=1)], access: _Member, db: DbSession
-) -> FloorVersionSnapshotOut:
-    """N18 — nội dung ảnh chụp (`layer`, `dimensions`) của một phiên bản."""
-    return await service.read_snapshot(db, access, version_id=version_id, floor_id=floor_id)
+    version_id: str,
+    floor_id: Annotated[str, Query(alias="floorId", min_length=1)],
+    request: Request,
+    access: _Member,
+    db: DbSession,
+) -> Response:
+    """N18 — nội dung ảnh chụp (`layer`, `dimensions`) của một phiên bản; `ETag`/304 qua `cached_json`."""
+    return cached_json(request, await service.read_snapshot(db, access, version_id=version_id, floor_id=floor_id))
 
 
 @router.post(

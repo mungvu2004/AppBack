@@ -176,8 +176,11 @@ def test_persist_pipeline_result__J01_smoke(
     fake_clock: FakeClock,
     broker: SyncRedis,
     celery_test_app: Celery,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Task thật qua `task.apply`, **không** gọi `after_commit_idle`: đúng một `pipeline.quality.run`.
+
+    P26 (PERF-03): task để lại một dòng `pipeline_step_timing` (`persist`, `completed`, `duration_ms`).
 
     Task gửi bước kế tiếp lên chính hàng `pipeline.cpu` mà nó chạy trên đó, nên BE-00 §7 đòi
     `task.apply` chứ không dựng worker thật (worker sẽ nuốt mất thông điệp cần đếm). `celery_test_app`
@@ -191,9 +194,17 @@ def test_persist_pipeline_result__J01_smoke(
     arranged = on_own_loop(db_url, lambda maker: arrange(maker, local_storage, fake_clock))
 
     start = time.monotonic()
-    tasks.persist_pipeline_result.apply(args=[arranged.payload.model_dump(mode="json")])
+    with caplog.at_level(logging.INFO, logger="apps.worker.pipeline_persist.tasks"):
+        tasks.persist_pipeline_result.apply(args=[arranged.payload.model_dump(mode="json")])
     _log.info("j01_smoke_elapsed_s=%.3f", time.monotonic() - start)
 
+    (timing,) = [r for r in caplog.records if r.getMessage() == "pipeline_step_timing"]
+    assert (timing.__dict__["run_id"], timing.__dict__["step"], timing.__dict__["status"]) == (
+        arranged.run_id,
+        "persist",
+        "completed",
+    )
+    assert timing.__dict__["duration_ms"] >= 0
     assert len(_quality_messages(broker, arranged.run_id)) == 1
     assert on_own_loop(db_url, lambda maker: _progress(maker, arranged.upload_id))["status"] == "running"
 

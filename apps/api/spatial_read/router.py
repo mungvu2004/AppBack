@@ -17,6 +17,7 @@ from typing import Final
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
+from starlette.responses import Response
 
 from apps.api.core.deps import DbSession
 from apps.api.core.routing import protected_router
@@ -26,6 +27,7 @@ from apps.api.projects.wire import FloorOut
 from apps.api.spatial_read.assemble import effective_scale_source, level_out, scale_status
 from apps.api.spatial_read.documents import empty_document, load_document
 from apps.api.spatial_read.graph import spatial_graph
+from apps.api.spatial_read.http_cache import cached_json
 from apps.api.spatial_read.pages import load_pages
 from apps.api.spatial_read.readiness import latest_run_facts, readiness_of
 from apps.api.spatial_read.wire import (
@@ -70,15 +72,29 @@ async def spatial_read_floor(project_id: str, floor_id: str, request: Request, d
     return await _floor_out_or_404(db, project_id, floor.pk, app=request.app)
 
 
-@router.get("/projects/{project_id}/spatial", dependencies=[Depends(require_project())])
-async def spatial_read_graph(project_id: str, request: Request, db: DbSession) -> SpatialGraphDocumentOut:
-    """N15 — cả đồ thị của dự án kèm `revision` từng tầng; dự án chưa có tầng → danh sách rỗng."""
-    return await spatial_graph(db, project_id, app=request.app)
+@router.get(
+    "/projects/{project_id}/spatial",
+    dependencies=[Depends(require_project())],
+    response_model=SpatialGraphDocumentOut,
+)
+async def spatial_read_graph(project_id: str, request: Request, db: DbSession) -> Response:
+    """N15 — cả đồ thị của dự án kèm `revision` từng tầng; dự án chưa có tầng → danh sách rỗng.
+
+    Serialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.
+    """
+    return cached_json(request, await spatial_graph(db, project_id, app=request.app))
 
 
-@router.get("/projects/{project_id}/floors/{floor_id}/spatial/layer", dependencies=[Depends(require_project())])
-async def spatial_read_layer(project_id: str, floor_id: str, request: Request, db: DbSession) -> FloorLayerDocumentOut:
-    """N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước."""
+@router.get(
+    "/projects/{project_id}/floors/{floor_id}/spatial/layer",
+    dependencies=[Depends(require_project())],
+    response_model=FloorLayerDocumentOut,
+)
+async def spatial_read_layer(project_id: str, floor_id: str, request: Request, db: DbSession) -> Response:
+    """N16 — lớp của một tầng: `revision`, `level`, `scaleStatus`/`readiness`, bốn danh sách, trục, kích thước.
+
+    Serialize một lần + `ETag`/304 (`cached_json`); `response_model` giữ openapi như cũ.
+    """
     floor = await _floor_or_404(db, project_id, floor_id)
     stored = await load_document(db, floor.pk)
     document = empty_document(floor.pk) if stored is None else stored
@@ -86,7 +102,7 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
     source = effective_scale_source(document, page_key)
     out = await _floor_out_or_404(db, project_id, floor.pk, app=request.app)
     run = await latest_run_facts(db, floor.pk)
-    return FloorLayerDocumentOut(
+    out_document = FloorLayerDocumentOut(
         revision=document.revision,
         level=level_out(out, document, source),
         scale_status=scale_status(source),
@@ -96,3 +112,4 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         dimensions=dimensions_out(document.dimensions),
         origin=None if document.origin is None else PointOut.model_validate(document.origin.model_dump()),
     )
+    return cached_json(request, out_document)

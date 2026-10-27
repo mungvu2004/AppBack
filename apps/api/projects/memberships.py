@@ -16,6 +16,7 @@ from typing import Final
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from apps.api.projects.summaries import touch_projects
 from packages.core.clock import Clock
@@ -92,17 +93,25 @@ async def lock_editor_ids(db: AsyncSession, project_id: str) -> list[str]:
     return list((await db.execute(stmt)).scalars().all())
 
 
+MEMBER_USER_COLUMNS: Final = (User.id, User.email, User.name, User.role, User.avatar_key)
+"""Cột `users` mà `member_users` nạp — đủ cho `wire.user_outs` và `wire.summary_member_out`."""
+
+
 async def member_users(db: AsyncSession, project_ids: Sequence[str]) -> dict[str, list[User]]:
     """Thành viên **chưa xoá mềm** của từng dự án, một truy vấn; dự án không có ai → `[]`.
 
     Lô rỗng trả `{}` **không** chạy câu nào: một trang danh sách rỗng không đáng một vòng DB
     cho `IN ()`.
+
+    Chỉ nạp các cột `UserSchema`/`SummaryMemberOut` dùng (`wire.user_outs`): cả dòng User kéo
+    JSONB `preferences` theo mỗi thành viên — 52 dự án từng tốn 172 KB / 47 ms (PERF-03 P11).
     """
     if not project_ids:
         return {}
     stmt = (
         select(ProjectMembership.project_id, User)
         .join(User, User.id == ProjectMembership.user_id)
+        .options(load_only(*MEMBER_USER_COLUMNS))
         .where(ProjectMembership.project_id.in_(project_ids), User.deleted_at.is_(None))
         .order_by(ProjectMembership.project_id, ProjectMembership.user_id)
     )

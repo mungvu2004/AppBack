@@ -44,11 +44,12 @@ __all__ = [
 CONFIDENCE_MIN: Final = 0.25
 COCO_CONFIDENCE_MIN: Final = 0.5
 LABEL_CONFIDENCE_MIN: Final[Mapping[str, float]] = MappingProxyType(
-    {"door": 0.45, "sanitary_fixture": 0.4, "wardrobe": 0.7, "window": 0.45}
+    {"bed": 0.8, "chair": 0.5, "door": 0.45, "sanitary_fixture": 0.4, "table": 0.6, "wardrobe": 0.7, "window": 0.45}
 )
 """Ngưỡng hiển thị riêng từng nhãn của model miền: F1 cao nhất trên 400 trang validation CubiCasa
-(yolo11m, 2026-10-19), làm tròn 0,05. Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng
-`COCO_CONFIDENCE_MIN` cho mọi nhãn."""
+(yolo11m, 2026-10-19), làm tròn 0,05. Bàn/ghế/giường (yolo11m-v3, 2026-10-27, đáp án đồ rời vẽ tay):
+precision ≈ 0,9 mà recall còn 0,83 đến 0,89 — ở `CONFIDENCE_MIN` bàn và giường chỉ đúng ~70%.
+Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng `COCO_CONFIDENCE_MIN` cho mọi nhãn."""
 NMS_IOU: Final = 0.5
 MERGE_OVERLAP: Final = 0.7
 CUT_COVER_MIN: Final = 0.7
