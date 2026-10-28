@@ -2232,7 +2232,7 @@
       },
       "Furniture": {
         "additionalProperties": false,
-        "description": "Đồ đạc đặt trên mặt bằng; `roomId` vắng khi chưa gắn phòng.",
+        "description": "Đồ đạc đặt trên mặt bằng; `roomId` vắng khi chưa gắn phòng.\n\n`suggested`: gợi ý của máy người duyệt chưa nhận (B3) — FE vẽ nét đứt, không dựng 3D,\nkhông thành nhãn huấn luyện. Nhận = duyệt và bỏ cờ; `False` vắng khoá khi dump như `edited`.",
         "properties": {
           "boundingBox": {
             "$ref": "#/components/schemas/BoundingBox"
@@ -2278,7 +2278,9 @@
               "kitchenCabinet",
               "sanitaryFixture",
               "stair",
-              "other"
+              "other",
+              "washingMachine",
+              "shower"
             ],
             "title": "Kind",
             "type": "string"
@@ -2356,6 +2358,11 @@
             ],
             "title": "Source",
             "type": "string"
+          },
+          "suggested": {
+            "default": false,
+            "title": "Suggested",
+            "type": "boolean"
           },
           "variant": {
             "anyOf": [
@@ -2460,7 +2467,9 @@
                   "kitchenCabinet",
                   "sanitaryFixture",
                   "stair",
-                  "other"
+                  "other",
+                  "washingMachine",
+                  "shower"
                 ],
                 "type": "string"
               },
@@ -2581,7 +2590,9 @@
               "kitchenCabinet",
               "sanitaryFixture",
               "stair",
-              "other"
+              "other",
+              "washingMachine",
+              "shower"
             ],
             "title": "Kind",
             "type": "string"
@@ -2653,6 +2664,17 @@
             ],
             "title": "Source",
             "type": "string"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested"
           },
           "variant": {
             "anyOf": [

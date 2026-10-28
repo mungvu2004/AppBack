@@ -11,7 +11,7 @@ from packages.ml_contracts.families import (
     MODEL_FAMILIES,
     TRAINABLE_FAMILIES,
 )
-from packages.ml_contracts.labels import COCO_TO_LABEL, DETECTION_LABELS, LABEL_TARGETS, OBJECT_LABELS
+from packages.ml_contracts.labels import ADDED_LABELS, COCO_TO_LABEL, DETECTION_LABELS, LABEL_TARGETS, OBJECT_LABELS
 
 
 def test_families_are_pipeline_steps() -> None:
@@ -29,7 +29,10 @@ def test_object_labels_are_the_yolo_class_order() -> None:
     assert OBJECT_LABELS[:3] == ("door", "double_door", "window")
     assert OBJECT_LABELS[-1] == "stair"
     assert len(OBJECT_LABELS) == 10
-    assert (*OBJECT_LABELS, "other") == DETECTION_LABELS
+    assert ADDED_LABELS == ("washing_machine", "shower")
+    assert (*OBJECT_LABELS, "other", *ADDED_LABELS) == DETECTION_LABELS
+    assert DETECTION_LABELS.index("washing_machine") == 11
+    assert DETECTION_LABELS.index("shower") == 12
     assert set(COCO_TO_LABEL.values()) <= set(DETECTION_LABELS)
     assert COCO_TO_LABEL["dining table"] == "table"
     assert COCO_TO_LABEL["sink"] == COCO_TO_LABEL["toilet"] == "sanitary_fixture"
@@ -53,3 +56,5 @@ def test_label_targets_match_the_domain() -> None:
     assert LABEL_TARGETS["double_door"].width_mm is None
     assert (LABEL_TARGETS["window"].width_mm, LABEL_TARGETS["window"].sill_mm) == (1200, 900)
     assert LABEL_TARGETS["kitchen_cabinet"].domain_kind == "kitchenCabinet"
+    assert LABEL_TARGETS["washing_machine"].domain_kind == "washingMachine"
+    assert LABEL_TARGETS["shower"].domain_kind == "shower"

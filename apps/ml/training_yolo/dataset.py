@@ -3,8 +3,8 @@
 Đọc trực tiếp `data_dir/{train,validation}/{sample_id}/{image.png,objects.json}`, mẫu sắp theo
 tên (tái lập); không đọc `test/`. Cắt hộp theo lát bằng numpy trên toàn mảng `(n, 4)` của một
 mẫu, không vòng Python hộp x lát x điểm ảnh (K28). `names` của `data.yaml` là `ARTIFACT_LABELS`
-(11 nhãn, quyết định "Lệch khỏi prompt" của điều phối B6-04b): chỉ số lớp hộp vẫn theo
-`OBJECT_LABELS.index` (0..9, trùng `ARTIFACT_LABELS.index`), lớp 10 `other` không bao giờ có hộp.
+(13 nhãn): chỉ số lớp hộp = `ARTIFACT_LABELS.index` (`washing_machine` 11, `shower` 12 đứng sau `other`),
+lớp 10 `other` không bao giờ có hộp.
 """
 
 from collections.abc import Callable, Sequence
@@ -23,7 +23,6 @@ from apps.ml.training_segformer.errors import DATASET_SAMPLE_INVALID
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import DetectionPx, objects_from_json
 from packages.ml_contracts.datasets import Split
-from packages.ml_contracts.labels import OBJECT_LABELS
 from packages.vision.preprocess import DEFAULT_MAX_PIXELS, VisionError, encode_png, load_raster
 from packages.vision.preprocess.types import RgbImage
 
@@ -62,8 +61,8 @@ def _read_sample(sample_dir: Path) -> tuple[RgbImage, tuple[DetectionPx, ...]]:
 
 
 def _valid_boxes(detections: Sequence[DetectionPx]) -> tuple[NDArray[np.float64], NDArray[np.int64], int]:
-    """Hộp của mẫu có `label` thuộc `OBJECT_LABELS`, dạng `(n, 4)` xyxy + chỉ số lớp; số hộp bỏ."""
-    label_index: Final[dict[str, int]] = {label: i for i, label in enumerate(OBJECT_LABELS)}
+    """Hộp của mẫu có `label` thuộc `ARTIFACT_LABELS` trừ `other`, dạng `(n, 4)` xyxy + chỉ số lớp; số hộp bỏ."""
+    label_index: Final[dict[str, int]] = {label: i for i, label in enumerate(ARTIFACT_LABELS) if label != "other"}
     kept_boxes: list[tuple[float, float, float, float]] = []
     kept_classes: list[int] = []
     skipped = 0

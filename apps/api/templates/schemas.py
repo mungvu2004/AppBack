@@ -46,9 +46,21 @@ class RoomFields(NullFreeModel):
 class FurnitureFields(NullFreeModel):
     """`fields` của đồ nội thất; không có hộp bao vì nó gắn với một chỗ đặt cụ thể."""
 
-    kind: Literal["table", "chair", "bed", "wardrobe", "kitchenCabinet", "sanitaryFixture", "stair", "other"] | None = (
-        None
-    )
+    kind: (
+        Literal[
+            "table",
+            "chair",
+            "bed",
+            "wardrobe",
+            "kitchenCabinet",
+            "sanitaryFixture",
+            "stair",
+            "other",
+            "washingMachine",
+            "shower",
+        ]
+        | None
+    ) = None
     rotation_deg: Degrees | None = None
 
 

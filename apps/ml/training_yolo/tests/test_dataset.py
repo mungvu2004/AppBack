@@ -69,6 +69,20 @@ def test_label_line_format_and_class_index(tmp_path: Path) -> None:
     assert result.train_tiles == 1
 
 
+def test_new_classes_take_ids_after_other(tmp_path: Path) -> None:
+    """`shower` thành lớp 12 (sau `other` = 10), không bị bỏ như `other`."""
+    data_dir, work_dir = tmp_path / "data", tmp_path / "work"
+    shower = _box_detection(100, 100, 200, 180, label="shower")
+    _write_sample(data_dir, "train", "s0000", width=640, height=480, detections=(shower,))
+    _write_sample(data_dir, "validation", "s0000", width=640, height=480, detections=(_box_detection(0, 0, 640, 480),))
+
+    result = build_yolo_dataset(data_dir, work_dir, tile_px=640, keep_every=1, cancelled=_NEVER_CANCELLED)
+
+    line = next((work_dir / "labels" / "train").glob("*.txt")).read_text(encoding="utf-8")
+    assert line.split()[0] == "12"
+    assert result.skipped_boxes == 0
+
+
 def test_box_straddling_tile_kept_at_ten_percent(tmp_path: Path) -> None:
     """Hộp cắt còn đúng 10% diện tích gốc, mỗi cạnh ≥ 2px → giữ."""
     data_dir, work_dir = tmp_path / "data", tmp_path / "work"

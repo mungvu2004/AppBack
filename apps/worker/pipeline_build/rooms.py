@@ -417,8 +417,9 @@ def _fixture_labels(
     scaling: Scaling,
 ) -> list[RoomLabel | None]:
     """Công năng suy từ đồ đạc dò được trong biên, cho phòng không có nhãn chữ (bản vẽ không ghi tên, chữ "WC" nhỏ
-    OCR bỏ sót), theo thứ tự: dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp; thiết bị vệ sinh và ≤ `_BATHROOM_MAX_M2` →
-    phòng tắm; tủ áo và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
+    OCR bỏ sót), theo thứ tự: dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp; thiết bị vệ sinh/buồng tắm đứng và
+    ≤ `_BATHROOM_MAX_M2` → phòng tắm; máy giặt (không kèm thiết bị vệ sinh) và ≤ `_BATHROOM_MAX_M2` → lô-gia;
+    tủ áo và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
 
     Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
     """
@@ -437,8 +438,10 @@ def _fixture_labels(
     for found, area_m2 in zip(found_in, areas_m2, strict=True):
         if "kitchen_run" in found:
             usage: RoomUsage | None = "kitchen"
-        elif "sanitary_fixture" in found and area_m2 <= _BATHROOM_MAX_M2:
+        elif found & {"sanitary_fixture", "shower"} and area_m2 <= _BATHROOM_MAX_M2:
             usage = "bathroom"
+        elif "washing_machine" in found and area_m2 <= _BATHROOM_MAX_M2:
+            usage = "loggia"
         elif "wardrobe" in found and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
             usage = "bedroom"
         else:
