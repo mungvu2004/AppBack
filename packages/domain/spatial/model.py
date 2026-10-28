@@ -255,7 +255,11 @@ class Opening(Reviewed):
 
 
 class Furniture(Reviewed):
-    """Đồ đạc đặt trên mặt bằng; `roomId` vắng khi chưa gắn phòng."""
+    """Đồ đạc đặt trên mặt bằng; `roomId` vắng khi chưa gắn phòng.
+
+    `suggested`: gợi ý của máy người duyệt chưa nhận (B3) — FE vẽ nét đứt, không dựng 3D,
+    không thành nhãn huấn luyện. Nhận = duyệt và bỏ cờ; `False` vắng khoá khi dump như `edited`.
+    """
 
     id: FurnitureIdStr
     level_id: LevelIdStr
@@ -269,6 +273,7 @@ class Furniture(Reviewed):
     lift_mm: NonNegativeMm | None = None
     model: FurnitureModel | None = None
     slots: Annotated[dict[SlotName, MaterialRef], Field(max_length=8)] | None = None
+    suggested: StrictBool = Field(default=False, exclude_if=_not_edited)
 
 
 class Room(Reviewed):

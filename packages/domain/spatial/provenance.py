@@ -39,7 +39,12 @@ def _marked[E: (Wall, Opening, Room, Furniture, Roof, Dimension)](
 def mark_edited(current: SpatialLayer, sent: SpatialLayer) -> SpatialLayer:
     """Lớp `sent` với cờ `edited` suy từ `current`; mục `vertex` của `diff_layers` quy về tường chủ."""
     owners = {key: wall.id for wall in sent.walls for key in (vertex_id(wall.id, "start"), vertex_id(wall.id, "end"))}
-    changed = {owners.get(change.entity_id, change.entity_id) for change in diff_layers(current, sent)}
+    # Nhận một gợi ý (gỡ `suggested`) là duyệt, không phải sửa (B3).
+    changed = {
+        owners.get(change.entity_id, change.entity_id)
+        for change in diff_layers(current, sent)
+        if change.field != "suggested"
+    }
     before = {entity.id: entity for entity in current.entities()}
     return sent.model_copy(
         update={

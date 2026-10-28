@@ -142,3 +142,12 @@ def test_pascal_fields_are_tracked() -> None:
         FieldChange(ITEM.id, "furniture", "slots", {"fabric": "library:linen", "legs": "scene:walnut"}),
     ]
     assert diff_layers(dressed, LAYER) == [FieldChange(c.entity_id, c.entity_type, c.field, MISSING) for c in added]
+
+
+def test_suggestion_accept_is_logged() -> None:
+    """Nhận gợi ý (B3): cờ `suggested` gỡ khỏi món đồ là một mục nhật ký — nhãn miễn phí về sau."""
+    suggested = LAYER.model_copy(
+        update={"furniture": (ITEM.model_copy(update={"suggested": True}), *LAYER.furniture[1:])}
+    )
+    assert diff_layers(LAYER, suggested) == [FieldChange(ITEM.id, "furniture", "suggested", True)]
+    assert diff_layers(suggested, LAYER) == [FieldChange(ITEM.id, "furniture", "suggested", MISSING)]

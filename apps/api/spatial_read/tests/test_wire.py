@@ -201,3 +201,13 @@ def test_layer_out_keeps_loggia_usage() -> None:
     loggia = layer.rooms[0].model_copy(update={"usage": "loggia"})
     body = layer_out(layer.model_copy(update={"rooms": (loggia,)})).model_dump(mode="json", by_alias=True)
     assert body["rooms"][0]["usage"] == "loggia"
+
+
+def test_layer_out_round_trips_suggested_flag() -> None:
+    """Gợi ý của máy (B3): `suggested=True` lên dây, đọc lại vào miền giữ cờ; `False` vắng khoá."""
+    layer = sample_floor_layer(0, level_id=LEVEL_ID)
+    flagged = layer.furniture[0].model_copy(update={"suggested": True})
+    body = layer_out(layer.model_copy(update={"furniture": (flagged, *layer.furniture[1:])})).model_dump(by_alias=True)
+    assert body["furniture"][0]["suggested"] is True
+    assert all("suggested" not in item for item in body["furniture"][1:])
+    assert type(layer).model_validate(body).furniture[0].suggested is True

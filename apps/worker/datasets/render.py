@@ -35,6 +35,23 @@ _FURNITURE_LABELS: dict[str, DetectionLabel] = {
 }
 """`other` cố ý vắng: không có nhãn huấn luyện (prompt khối [6])."""
 
+DRAWN_DEFAULT_MM = 600
+"""Cạnh hộp người **bấm** vẽ trên S-13 (FE `drawnFurnitureInputOf`): chưa kéo, chưa đổi cỡ thì không phải nhãn."""
+
+
+def _is_training_furniture(furniture: Furniture) -> bool:
+    """Đồ đạc thành nhãn huấn luyện: không phải gợi ý chưa nhận, không phải hộp mặc định người chưa chỉnh (B3).
+
+    Hộp mặc định đổi loại sang "giường" mà giữ 600x600 mm là nhãn sai cỡ. ponytail: nhận theo cỡ
+    (±1 mm), nên hộp người cố ý gõ đúng 600x600 cũng bị bỏ; cần phân biệt thì thêm cờ `edited`
+    hình học vào miền.
+    """
+    if furniture.suggested:
+        return False
+    box = furniture.bounding_box
+    untouched = all(abs(span - DRAWN_DEFAULT_MM) <= 1 for span in (box.max.x - box.min.x, box.max.y - box.min.y))
+    return not (furniture.source == "human" and untouched)
+
 
 def _segment_corners_px(
     start_x_mm: float,
@@ -169,7 +186,7 @@ def object_boxes(layer: SpatialLayer, *, width_px: int, height_px: int, mm_per_p
             detections.append(DetectionPx(label=_opening_label(opening), box=box, confidence=1.0))
     for furniture in layer.furniture:
         label = _FURNITURE_LABELS.get(furniture.kind)
-        if label is None:
+        if label is None or not _is_training_furniture(furniture):
             continue
         box = _clip_box(*_furniture_bounds_px(furniture, mm_per_px), width_px, height_px)
         if box is not None:

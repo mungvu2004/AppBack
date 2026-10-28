@@ -78,3 +78,13 @@ def test_unchanged_dimensions_are_not_edited() -> None:
     marked = mark_edited_dimensions(DIMENSIONS, list(DIMENSIONS))
     assert marked == DIMENSIONS
     assert not any(item.edited for item in marked)
+
+
+def test_accepting_a_suggestion_is_not_edited() -> None:
+    """Gỡ `suggested` (nhận gợi ý, B3) là duyệt, không phải sửa: món AI không mang `edited`."""
+    item = LAYER.furniture[0].model_copy(update={"source": "ai", "reviewed": False, "suggested": True})
+    current = LAYER.model_copy(update={"furniture": (item, *LAYER.furniture[1:])})
+    sent = current.model_copy(
+        update={"furniture": (item.model_copy(update={"suggested": False}), *LAYER.furniture[1:])}
+    )
+    assert item.id not in _edited_ids(mark_edited(current, sent))

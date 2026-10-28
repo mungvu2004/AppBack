@@ -21,7 +21,19 @@ _TRACKED_FIELDS: Final[dict[type[Wall | Opening | Room | Furniture | Roof], tupl
     Wall: ("thickness_mm", "height_mm", "kind", "paint"),
     Opening: ("width_mm", "height_mm", "sill_height_mm", "offset_mm", "swing", "wall_id"),
     Room: ("name", "usage", "outline", "finish", "floor_material"),
-    Furniture: ("kind", "centre", "rotation_deg", "room_id", "variant", "height_mm", "lift_mm", "model", "slots"),
+    # `suggested` (B3): nhật ký giữ lượt máy gợi ý, người nhận (cờ gỡ) hay bỏ (`__deleted__`) — nhãn miễn phí về sau.
+    Furniture: (
+        "kind",
+        "centre",
+        "rotation_deg",
+        "room_id",
+        "variant",
+        "height_mm",
+        "lift_mm",
+        "model",
+        "slots",
+        "suggested",
+    ),
     # Mái là một khối: đổi bất kỳ phần nào của `nodes` là đúng một mục `roof` (roof-contract.md).
     Roof: ("nodes",),
 }
@@ -46,7 +58,7 @@ def _snapshot(layer: SpatialLayer) -> _Snapshot:
         names = _TRACKED_FIELDS[type(entity)]
         dumped = entity.model_dump(mode="json", include=set(names))
         snapshot[(change_entity_type(entity), entity.id)] = {
-            name: MISSING if dumped[name] is None else dumped[name] for name in names
+            name: MISSING if dumped.get(name) is None else dumped[name] for name in names
         }
         if isinstance(entity, Wall):
             line = entity.centreline

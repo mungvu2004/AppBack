@@ -140,6 +140,8 @@ class FurnitureOut(_ReviewedOut):
     lift_mm: Millimetres | None = None
     model: FurnitureModelOut | None = None
     slots: dict[str, str] | None = None
+    # Gợi ý của máy chưa nhận (B3); miền bỏ khoá khi `False`, dây vắng khoá theo W2.
+    suggested: bool | None = None
 
 
 class RoofOut(_ReviewedOut):

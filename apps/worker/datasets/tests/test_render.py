@@ -233,3 +233,23 @@ def test_object_boxes__every_opening_orphan_still_returns_furniture() -> None:
     detections = object_boxes(layer, width_px=200, height_px=100, mm_per_px=MM_PER_PX)
 
     assert [d.label for d in detections] == ["table"]
+
+
+def test_object_boxes__suggested_furniture_dropped() -> None:
+    """Gợi ý của máy chưa nhận (B3) không thành nhãn huấn luyện."""
+    furniture = _furniture(kind="bed", box=(0, 0, 1600, 2000)).model_copy(update={"suggested": True})
+    layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=(furniture,))
+    assert object_boxes(layer, width_px=200, height_px=200, mm_per_px=MM_PER_PX) == ()
+
+
+def test_object_boxes__untouched_default_human_box_dropped() -> None:
+    """Hộp người bấm vẽ giữ nguyên 600x600 mm bị bỏ; kéo/đổi cỡ, hay hộp AI cùng cỡ, thì giữ (B3)."""
+    default = _furniture("F-0000000004", kind="bed", box=(100, 100, 700, 700))
+    resized = _furniture("F-0000000005", kind="bed", box=(0, 0, 1600, 2000))
+    ai_box = _furniture("F-0000000006", kind="chair", box=(0, 0, 600, 600)).model_copy(
+        update={"source": "ai", "reviewed": False}
+    )
+    layer = SpatialLayer(walls=(), openings=(), rooms=(), furniture=(default, resized, ai_box))
+    detections = object_boxes(layer, width_px=200, height_px=200, mm_per_px=MM_PER_PX)
+    assert sorted(d.label for d in detections) == ["bed", "chair"]
+    assert len(detections) == 2
