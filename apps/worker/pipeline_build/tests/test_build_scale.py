@@ -25,7 +25,7 @@ from packages.ml_contracts.synthetic import render_plan
 from packages.testing.fixtures.clock import FakeClock
 
 LEVEL_ID = "L-0000000000000000000000001"
-SIZE = {"width_px": 1600, "height_px": 1200}
+SIZE: dict[str, Any] = {"width_px": 1600, "height_px": 1200}
 
 
 def _wall(x0: float, y0: float, x1: float, y1: float, thickness_px: float = 20.0) -> WallPx:

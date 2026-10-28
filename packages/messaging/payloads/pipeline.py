@@ -12,6 +12,7 @@ from typing import Annotated, Self
 from pydantic import AfterValidator, Field, model_validator
 
 from packages.core.ids import check_id, is_spatial_id
+from packages.core.object_keys import check_key
 from packages.messaging.tasks import TaskPayload
 
 RunId = Annotated[str, AfterValidator(lambda value: check_id("run", value))]
@@ -44,6 +45,8 @@ class BuildStepPayload(TaskPayload):
     width_px: PixelSize
     height_px: PixelSize
     fallback_mm_per_px: FallbackScale
+    page_key: Annotated[str, AfterValidator(check_key)] | None = None
+    """Trang đã nắn cho nguồn gợi ý mực dư (B4); vắng ở thông điệp cũ → không gợi ý."""
 
     @model_validator(mode="after")
     def _check_run_prefix(self) -> Self:

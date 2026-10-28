@@ -23,6 +23,11 @@ def input_key(run_prefix: str, step: ModelFamily) -> str:
     return f"{run_prefix}{step}/{_first_json_name(step)}"
 
 
+def walls_mask_key(run_prefix: str) -> str:
+    """Khoá `walls.png` (mặt nạ tường) của bước `wallSegmentation` dưới `run_prefix`."""
+    return f"{run_prefix}wallSegmentation/walls.png"
+
+
 def layer_key(run_prefix: str) -> str:
     """Khoá `layer.json` mà `build_pipeline_layer` ghi ra (B5-05 [2])."""
     return f"{run_prefix}{_LAYER_NAME}"

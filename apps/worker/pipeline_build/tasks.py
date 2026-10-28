@@ -11,13 +11,14 @@ import time
 from dataclasses import dataclass
 from typing import Final
 
-from apps.worker.pipeline_build.artifacts import input_key, layer_key
+from apps.worker.pipeline_build.artifacts import input_key, layer_key, walls_mask_key
 from apps.worker.pipeline_build.build import build_layer
 from apps.worker.pipeline_build.errors import (
     PIPELINE_ARTIFACT_INVALID,
     PIPELINE_ARTIFACT_MISSING,
     PIPELINE_BUILD_INVALID,
 )
+from apps.worker.pipeline_build.residual import PageRaster, decode_page_raster
 from apps.worker.pipeline_build.settings import get_pipeline_build_settings
 from packages.core.clock import SystemClock
 from packages.messaging.celery_app import send_task
@@ -105,10 +106,29 @@ async def _read_inputs(
         raise PermanentError(PIPELINE_ARTIFACT_INVALID) from exc
 
 
+async def _read_page(storage: ObjectStorage, payload: BuildStepPayload, max_bytes: int) -> PageRaster | None:
+    """Trang + `walls.png` cho nguồn gợi ý mực dư; vắng, quá trần hay hỏng → `None` (gợi ý là phụ, không làm hỏng bước).
+
+    `DEPENDENCY_UNAVAILABLE` vẫn nổi lên cho `define_task` thử lại như ba artifact chính.
+    """
+    if payload.page_key is None:
+        return None
+    try:
+        page = await _read_artifact(storage, payload.page_key, max_bytes)
+        mask = await _read_artifact(storage, walls_mask_key(payload.run_prefix), max_bytes)
+        return await asyncio.to_thread(
+            decode_page_raster, page, mask, width_px=payload.width_px, height_px=payload.height_px
+        )
+    except (PermanentError, ValueError):
+        _log.warning("pipeline_build_page_unavailable", extra={"run_id": payload.run_id})
+        return None
+
+
 async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, key: str) -> None:
     """Dựng `BuiltLayer` (bước C) rồi ghi `layer.json`; đầu vào xấu (`ValueError`) → `PIPELINE_BUILD_INVALID`."""
     max_bytes = get_pipeline_build_settings().PIPELINE_ARTIFACT_MAX_BYTES
     walls, objects, text = await _read_inputs(storage, payload, max_bytes)
+    page = await _read_page(storage, payload, max_bytes)
     try:
         built = await asyncio.to_thread(
             build_layer,
@@ -120,6 +140,7 @@ async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, ke
             height_px=payload.height_px,
             fallback_mm_per_px=payload.fallback_mm_per_px,
             clock=SystemClock(),
+            page=page,
         )
     except ValueError as exc:
         raise PermanentError(PIPELINE_BUILD_INVALID) from exc

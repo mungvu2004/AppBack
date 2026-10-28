@@ -13,7 +13,7 @@ from typing import cast
 import pytest
 
 from apps.worker.pipeline_build import tasks
-from apps.worker.pipeline_build.artifacts import input_key, layer_key
+from apps.worker.pipeline_build.artifacts import input_key, layer_key, walls_mask_key
 from apps.worker.pipeline_build.tasks import BuildContext, build_pipeline_layer
 from packages.core.clock import SystemClock
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
@@ -26,6 +26,8 @@ from packages.ml_contracts.artifacts import (
     ObjectsResult,
     TextResult,
     WallsResult,
+    encode_mask,
+    encode_rgb_png,
     objects_to_json,
     text_to_json,
     walls_to_json,
@@ -302,6 +304,31 @@ def test_build_pipeline_layer__J08(
         assert any(record.getMessage() == "poison_message" for record in caplog.records), poison
         assert _results(broker, str(poison["run_id"])) == []
     assert broker.llen(OUTBOX) == 0
+
+
+def test_build_pipeline_layer_reads_page_for_suggestions(
+    broker: SyncRedis, context: LocalDiskStorage, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`page_key` có trang + `walls.png` → dựng xong không cảnh báo; trang vắng → vẫn dựng, log `page_unavailable`."""
+    page_key = f"projects/{_some_id('prj')}/floors/{_LEVEL}/uploads/{_some_id('upl')}/pages/0.png"
+    payload = _payload(page_key=page_key)
+    _seed_inputs(context, payload)
+    plan = render_plan(100, width_px=payload.width_px, height_px=payload.height_px)
+    for key, data in (
+        (page_key, encode_rgb_png(plan.pixels)),
+        (walls_mask_key(payload.run_prefix), encode_mask(plan.walls_mask)),
+    ):
+        asyncio.run(context.put(key, data, content_type="image/png", max_bytes=len(data) + 1))
+    missing = _payload(page_key=f"{page_key}.vang")
+    _seed_inputs(context, missing)
+    with caplog.at_level(logging.WARNING):
+        _apply(payload)
+        assert not any(r.getMessage() == "pipeline_build_page_unavailable" for r in caplog.records)
+        _apply(missing)
+    assert any(r.getMessage() == "pipeline_build_page_unavailable" for r in caplog.records)
+    for item in (payload, missing):
+        (result,) = _results(broker, item.run_id)
+        assert result["status"] == "completed"
 
 
 async def _read(storage: LocalDiskStorage, key: str) -> bytes | None:
