@@ -61,7 +61,7 @@ async def _prepare(payload: InferStepPayload) -> ObjectDetector:
         return _InactiveDetector()
     models_dir = Path(context.settings.ml_models_dir)
     session = await load_onnx(context.storage, payload.model, models_dir=models_dir)
-    return YoloOnnxDetector(session, labels_for(payload.model))
+    return YoloOnnxDetector(session, labels_for(payload.model), multiscale=True)
 
 
 def _detect(image: NDArray[np.uint8], payload: InferStepPayload, detector: ObjectDetector | None) -> StepOutput:
