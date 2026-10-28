@@ -7,6 +7,7 @@ from typing import Final
 
 from apps.worker.pipeline_build.build import BuiltLayer, build_layer
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import PageRaster
 from packages.ml_contracts.artifacts import (
     DetectionPx,
     ObjectsResult,
@@ -33,6 +34,7 @@ def build_wrapped(
     fallback_mm_per_px: Decimal = FALLBACK_MM_PER_PX,
     clock: FakeClock,
     level_id: str = SPATIAL_LEVEL_ID,
+    page: PageRaster | None = None,
 ) -> BuiltLayer:
     """`build_layer` với ba kết quả ML dựng từ dãy thường; mọi test dựng lớp đi qua đây."""
     return build_layer(
@@ -44,6 +46,7 @@ def build_wrapped(
         height_px=height_px,
         fallback_mm_per_px=fallback_mm_per_px,
         clock=clock,
+        page=page,
     )
 
 

@@ -96,6 +96,7 @@ async def queue_build(db: AsyncSession, run: RunRow, *, clock: Clock) -> bool:
         width_px=ctx.drawing.width_px,
         height_px=ctx.drawing.height_px,
         fallback_mm_per_px=scale,
+        page_key=ctx.drawing.page_key,
     )
     on_after_commit(db, lambda: send_task(BUILD_TASK, payload))
     return True

@@ -22,6 +22,7 @@ from shapely import STRtree
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import PageRaster, residual_ink_boxes
 from apps.worker.pipeline_build.rooms import build_furniture, build_rooms
 from packages.core.clock import Clock
 from packages.core.pipeline import PipelineCode
@@ -47,6 +48,7 @@ from packages.ml_contracts.artifacts import (
     MAX_DETECTIONS,
     MAX_TEXTS,
     MAX_WALLS,
+    BoxPx,
     DetectionPx,
     ObjectsResult,
     TextPx,
@@ -73,6 +75,12 @@ _BUILD_SCALE_TARGET_MM: Final = 150.0
 _BUILD_SCALE_MIN: Final = 1.0
 _BUILD_SCALE_MAX: Final = 200.0
 _ROOT_KEYS: Final = frozenset({"schemaVersion", "layer", "dimensions", "scaleMmPerPx", "scaleSource", "dropped"})
+_SUGGESTION_CONFIDENCE: Final = 0.5
+"""Gợi ý mực dư chưa có điểm của mô hình: lấy đúng trần "kém tin" `LOW_CONFIDENCE_CAP` nên luật 2 không hạ nữa."""
+
+_INK_WALL_MM: Final = 220.0
+"""Tỉ lệ dự phòng cho bộ lọc cỡ của mực dư khi chưa đọc được tỉ lệ: p75 bề dày tường ≈ 220 mm (bench căn hộ)."""
+
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
 
@@ -399,6 +407,7 @@ class _Attempt:
     rejected: tuple[str, ...]
     level_id: str
     source: str
+    suggestions: tuple[DetectionPx, ...] = ()
 
 
 def _assembled(
@@ -414,6 +423,8 @@ def _assembled(
     wall_set = build_walls(context.walls_px, context.detections, **shared)
     rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
     furniture = build_furniture(context.detections, rooms, **shared)
+    suggested = build_furniture(context.suggestions, rooms, **shared)
+    furniture = (*furniture, *(item.model_copy(update={"suggested": True}) for item in suggested))
     layer = SpatialLayer(walls=wall_set.walls, openings=wall_set.openings, rooms=rooms, furniture=furniture)
     return layer, wall_set
 
@@ -436,6 +447,44 @@ def _attempt(
     return layer, dimensions
 
 
+def _suggestions(
+    page: PageRaster | None,
+    walls_px: Sequence[WallPx],
+    detections: Sequence[DetectionPx],
+    texts: Sequence[TextPx],
+    mm_per_px: float | None,
+) -> tuple[DetectionPx, ...]:
+    """Hộp `other` gợi ý từ mực dư (B4); không có trang, khổ lệch hay không ước được tỉ lệ → `()`.
+
+    `mm_per_px` `None` (tỉ lệ dự phòng của dự án) → ước từ p75 bề dày tường, như bộ lọc cỡ đã chỉnh trên bench.
+    """
+    if page is None or page.gray.shape != page.walls.shape:
+        return ()
+    if mm_per_px is None:
+        if not walls_px:
+            return ()
+        mm_per_px = _INK_WALL_MM / float(np.percentile([w.thickness_px for w in walls_px], 75))
+
+    def corners(box: BoxPx) -> tuple[float, float, float, float]:
+        """Bốn toạ độ của hộp px."""
+        return (box.x_min, box.y_min, box.x_max, box.y_max)
+
+    boxes = residual_ink_boxes(
+        page,
+        detections=[(d.label, corners(d.box)) for d in detections],
+        texts=[corners(t.box) for t in texts],
+        mm_per_px=mm_per_px,
+    )
+    return tuple(
+        DetectionPx(
+            label="other",
+            confidence=_SUGGESTION_CONFIDENCE,
+            box=BoxPx(x_min=b[0], y_min=b[1], x_max=b[2], y_max=b[3]),
+        )
+        for b in boxes
+    )
+
+
 def build_layer(
     *,
     level_id: str,
@@ -446,12 +495,14 @@ def build_layer(
     height_px: int,
     fallback_mm_per_px: Decimal,
     clock: Clock,
+    page: PageRaster | None = None,
 ) -> BuiltLayer:
     """Ba artifact ML (px) → lớp không gian (mm) theo B5-05 [6]; không sửa đối số, không I/O.
 
     Đầu vào sai hợp đồng B5-01 (vượt trần, NaN, `confidence` ngoài `[0, 1]`, ảnh < 1 px,
     `fallback_mm_per_px` ≤ 0) → `ValueError`; đầu ra AI xấu chỉ bị bỏ và đếm vào `dropped`.
-    Dựng ở `s_dựng` rồi đổi về `s`; `RescaleError` → dựng lại thẳng ở `s`, không ném.
+    Dựng ở `s_dựng` rồi đổi về `s`; `RescaleError` → dựng lại thẳng ở `s`, không ném. `page` (trang + mặt nạ
+    tường) bật nguồn gợi ý mực dư: hộp `other` với `suggested=True`, không bao giờ trùng hộp phát hiện.
     """
     if width_px < 1 or height_px < 1:
         raise ValueError(f"ảnh {width_px}x{height_px} px không hợp lệ")
@@ -465,7 +516,8 @@ def build_layer(
     scale, source, samples, rejected = _resolved_scale(walls_px, texts, fallback_mm_per_px, base)
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
-    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, source)
+    suggestions = _suggestions(page, walls_px, detections, texts, final if source == "pipeline" else None)
+    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, source, suggestions)
     dropped = base.copy()
     layer, dimensions = _attempt(context, scaling=Scaling(build, final), clock=clock, dropped=dropped)
     if build != final:
