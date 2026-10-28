@@ -101,7 +101,7 @@ def _interior(barrier: NDArray[np.uint8], gap_px: float) -> NDArray[np.uint8]:
     for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
         if flood[y, x] == 0:
             cv2.floodFill(flood, seed, (x, y), 128)
-    return cv2.erode((flood != 128).astype(np.uint8), np.ones((5, 5), np.uint8))
+    return np.asarray(cv2.erode((flood != 128).astype(np.uint8), np.ones((5, 5), np.uint8)), dtype=np.uint8)
 
 
 def _overlap(a: Box, b: Box) -> tuple[float, float]:
@@ -138,11 +138,12 @@ def residual_ink_boxes(
     paper = gray[(inside > 0) & (wall == 0)]
     if paper.size == 0 or float((paper >= WHITE_GRAY).mean()) < MIN_WHITE_SHARE:
         return []
-    removed = cv2.dilate(wall, np.ones((7, 7), np.uint8))
+    removed = np.asarray(cv2.dilate(wall, np.ones((7, 7), np.uint8)), dtype=np.uint8)
     removed |= _box_mask(gray.shape, texts, 2) | _box_mask(gray.shape, [box for _, box in detections], 3)
     removed |= _box_mask(gray.shape, _door_squares(detections), 0)
     residual = ((gray < INK_GRAY) & (removed == 0) & (inside > 0)).astype(np.uint8)
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(residual, np.ones((5, 5), np.uint8)))
+    count, labels, raw_stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(residual, np.ones((5, 5), np.uint8)))
+    stats = np.asarray(raw_stats, dtype=np.int32)
     kept: list[tuple[int, Box]] = []
     for i in range(1, count):
         box = _component_box(stats, i, mm_per_px)
