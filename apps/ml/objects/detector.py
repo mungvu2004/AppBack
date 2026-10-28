@@ -40,6 +40,7 @@ __all__ = [
     "UPSCALE_FALLBACK",
     "UPSCALE_MAX",
     "UPSCALE_MIN",
+    "UPSCALE_SKIP_LABELS",
     "YoloOnnxDetector",
     "decode_tile",
     "label_thresholds",
@@ -92,6 +93,9 @@ UPSCALE_FALLBACK: Final = 1.5
 CONTAIN_MAX: Final = 0.6
 """Hộp chỉ lượt phóng mới thấy bị bỏ khi ≥ chừng này diện tích nằm trong một hộp lượt gốc (hộp con
 lồng trong sofa/giường): 6 bản căn hộ chấm tay, bỏ 7 hộp sai, không bỏ hộp đúng nào (2026-10-28)."""
+UPSCALE_SKIP_LABELS: Final = frozenset({"other"})
+"""Nhãn lượt phóng không được thêm: trên 14 bản bench (đáp án mù), 18 hộp `other` mới chỉ 5 đúng,
+8 hộp sai nằm trên nền màu đậm ch-07; bỏ chúng đưa độ đúng hộp mới 61% → 71% (2026-10-28)."""
 _NEW_IOU_MAX: Final = 0.3
 
 _PAD_VALUE: Final = 114
@@ -546,18 +550,17 @@ def _area_inside(boxes: NDArray[np.float64], others: NDArray[np.float64]) -> NDA
     return cast(NDArray[np.float64], ix * iy / area[:, None])
 
 
-def _add_new(native: _Detections, merged: _Detections) -> _Detections:
+def _add_new(native: _Detections, merged: _Detections, skip_classes: NDArray[np.int64]) -> _Detections:
     """Hộp gốc giữ nguyên hết, cộng hộp của lượt gộp mọi cỡ mà lượt gốc không có.
 
     "Không có" = IoU < 0,3 với mọi hộp gốc (bất kể nhãn) và < `CONTAIN_MAX` diện tích nằm trong
     một hộp gốc. Hộp gộp mà NMS đã thay hộp gốc bằng bản phóng tương đương (IoU ≥ 0,3) bị coi là
-    trùng, nên hộp gốc không bao giờ mất hay đổi.
+    trùng, nên hộp gốc không bao giờ mất hay đổi. Hộp mới thuộc lớp `skip_classes` bị bỏ.
     """
-    if len(native) == 0 or len(merged) == 0:
-        fresh = np.ones(len(merged), dtype=bool)
-    else:
+    fresh = ~np.isin(merged.classes, skip_classes)
+    if len(native) > 0 and len(merged) > 0:
         iou = np.stack([_iou_against(box, native.boxes) for box in merged.boxes])
-        fresh = ~np.any((iou >= _NEW_IOU_MAX) | (_area_inside(merged.boxes, native.boxes) >= CONTAIN_MAX), axis=1)
+        fresh &= ~np.any((iou >= _NEW_IOU_MAX) | (_area_inside(merged.boxes, native.boxes) >= CONTAIN_MAX), axis=1)
     return _cap_and_sort(
         _Detections(
             boxes=np.concatenate([native.boxes, merged.boxes[fresh]]),
@@ -595,6 +598,7 @@ class YoloOnnxDetector:
         self._input_name = inputs[0].name
         self._output_name = outputs[0].name
         self._door = labels.index("door") if multiscale and "door" in labels else None
+        self._skip = np.array([i for i, label in enumerate(labels) if label in UPSCALE_SKIP_LABELS], dtype=np.int64)
 
     def _candidates(self, image: RgbImage) -> _Candidates:
         """Ứng viên mọi lát của một ảnh (toạ độ ảnh ấy): lát tuần tự → suy luận CPU → decode."""
@@ -638,4 +642,4 @@ class YoloOnnxDetector:
         merged = merge_candidates(_concat_candidates([native_candidates, mapped]), page_w=width, page_h=height)
         # ponytail: chưa bỏ hộp mới ngoài căn hộ (sơ đồ vị trí, khung tên) — bước này chạy song song với
         # tường nên chưa có mặt nạ trong căn hộ; lọc ở spatialDataBuild khi cần.
-        return _finalize(_add_new(native, merged), self._labels)
+        return _finalize(_add_new(native, merged, self._skip), self._labels)

@@ -90,7 +90,7 @@ def test_add_new__keeps_native_and_drops_contained_or_matching() -> None:
             (100 - 40 * inside, 50, 100 + 40 * (1 - inside), 90, 2),  # < 60% trong hộp gốc → giữ
         ]
     )
-    out = _add_new(native, merged)
+    out = _add_new(native, merged, np.array([], dtype=np.int64))
     boxes = out.boxes.tolist()
     for kept in ([0.0, 0.0, 100.0, 100.0], [200.0, 200.0, 260.0, 260.0], [300.0, 300.0, 340.0, 340.0]):
         assert kept in boxes
@@ -101,7 +101,15 @@ def test_add_new__keeps_native_and_drops_contained_or_matching() -> None:
 
 def test_add_new__empty_native_keeps_all_merged() -> None:
     """Lượt gốc rỗng: mọi hộp gộp đều mới."""
-    assert len(_add_new(_dets([]), _dets([(0, 0, 10, 10, 0)]))) == 1
+    assert len(_add_new(_dets([]), _dets([(0, 0, 10, 10, 0)]), np.array([], dtype=np.int64))) == 1
+
+
+def test_add_new__drops_new_boxes_of_skipped_class_only() -> None:
+    """Hộp mới lớp bị loại (`other`) bỏ; hộp gốc cùng lớp vẫn giữ."""
+    native = _dets([(0, 0, 50, 50, 3)])
+    merged = _dets([(0, 0, 50, 50, 3), (100, 100, 150, 150, 3), (200, 200, 250, 250, 1)])
+    out = _add_new(native, merged, np.array([3], dtype=np.int64))
+    assert out.boxes.tolist() == [[0.0, 0.0, 50.0, 50.0], [200.0, 200.0, 250.0, 250.0]]
 
 
 def _detector(output: NDArray[np.float32], labels: tuple[DetectionLabel, ...], *, multiscale: bool) -> YoloOnnxDetector:
