@@ -61,6 +61,9 @@ LABEL_CONFIDENCE_MIN: Final[Mapping[str, float]] = MappingProxyType(
         "table": 0.55,
         "wardrobe": 0.6,
         "window": 0.4,
+        # ponytail: 0,45 tạm cho hai lớp mới của model 13 lớp; chỉnh lại theo F1 val lệch miền (như B2) sau khi train v4
+        "washing_machine": 0.45,
+        "shower": 0.45,
     }
 )
 """Ngưỡng hiển thị riêng từng nhãn của model miền (yolo11m-v3): F1 cao nhất trên 300 trang validation

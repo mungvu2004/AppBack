@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from apps.ml.objects.detector import YoloOnnxDetector
-from apps.ml.objects.labels import pipeline_labels
+from apps.ml.objects.labels import class_count, pipeline_labels
 from apps.ml.runtime.errors import MODEL_VERSION_FAMILY_MISMATCH
 from apps.ml.runtime.loader import load_onnx
 from apps.ml.runtime.tasks_util import StepOutput, infer_context, run_step, step_failed
@@ -61,7 +61,7 @@ async def _prepare(payload: InferStepPayload) -> ObjectDetector:
         return _InactiveDetector()
     models_dir = Path(context.settings.ml_models_dir)
     session = await load_onnx(context.storage, payload.model, models_dir=models_dir)
-    return YoloOnnxDetector(session, pipeline_labels(payload.model), multiscale=True)
+    return YoloOnnxDetector(session, pipeline_labels(payload.model, class_count(session)), multiscale=True)
 
 
 def _detect(image: NDArray[np.uint8], payload: InferStepPayload, detector: ObjectDetector | None) -> StepOutput:

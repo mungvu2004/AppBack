@@ -35,14 +35,14 @@ def build_adapter(ref: Any, session: Any) -> Any:
     của nó) chỉ để dựng adapter; `tasks.py` nhập ngược lại từ đây.
     """
     from apps.ml.objects.detector import YoloOnnxDetector
-    from apps.ml.objects.labels import labels_for
+    from apps.ml.objects.labels import class_count, labels_for
     from apps.ml.text.reader import RapidOcrReader
     from apps.ml.walls.segformer import SegformerOnnxSegmenter
 
     if ref.family == "wallSegmentation":
         return SegformerOnnxSegmenter(session)
     if ref.family == "openingAndFurnitureDetection":
-        return YoloOnnxDetector(session, labels_for(ref))
+        return YoloOnnxDetector(session, labels_for(ref, class_count(session)))
     return RapidOcrReader.from_session(session, pinned_name=ref.pinned_name)
 
 

@@ -6,20 +6,17 @@ là YOLO COCO gốc (chưa huấn luyện lại): đầu ra của chúng là ch�
 
 Lệch khỏi prompt: `COCO_TO_LABEL` khoá bằng tên lớp COCO (`"chair"`, …), không theo chỉ
 số; bảng chỉ số → tên cho 6 lớp mượn của B5-03 khối [6] đứng ở đây rồi tra `COCO_TO_LABEL`.
-Lệch khỏi prompt: `get_args(DetectionLabel)` trả lồng (`(Literal[...], Literal["other"])`,
-`DetectionLabel = ObjectLabel | Literal["other"]` là Union hai vế) chứ không phải tuple
-chuỗi phẳng — làm phẳng bằng `get_args` trên từng vế rồi nối.
+Model miền N lớp đọc N nhãn đầu của `ARTIFACT_LABELS` (lớp mới luôn nối cuối): v3 11 lớp,
+v4 13 lớp (thêm `washing_machine`, `shower`).
 """
 
 from collections.abc import Sequence
-from typing import Final, get_args
+from typing import Any, Final
 
-from packages.ml_contracts.labels import COCO_TO_LABEL, DetectionLabel
+from packages.ml_contracts.labels import COCO_TO_LABEL, DETECTION_LABELS, DetectionLabel
 from packages.ml_contracts.payloads import ModelRef
 
-ARTIFACT_LABELS: Final[tuple[DetectionLabel, ...]] = tuple(
-    label for part in get_args(DetectionLabel) for label in get_args(part)
-)
+ARTIFACT_LABELS: Final[tuple[DetectionLabel, ...]] = DETECTION_LABELS
 
 _COCO_CLASS_NAMES: Final[dict[int, str]] = {
     56: "chair",
@@ -42,16 +39,30 @@ DISABLED_LABELS: Final = frozenset({"stair"})
 sofa (B2 vật sót 2026-10-28). Đánh giá model vẫn giữ để số đo so được với lúc train."""
 
 
-def labels_for(ref: ModelRef) -> tuple[DetectionLabel | None, ...]:
-    """Bảng nhãn theo chỉ số lớp của model: COCO gốc cho model ghim, artifact cho model đã huấn luyện."""
+def class_count(session: Any) -> int | None:
+    """Số lớp của phiên ONNX YOLO kiểu ultralytics (đầu ra `(1, 4+N, A)`); hình dạng lạ → `None`
+    (detector tự từ chối khi dựng)."""
+    outputs = session.get_outputs()
+    channels = outputs[0].shape[1] if len(outputs) == 1 and len(outputs[0].shape) == 3 else None
+    return channels - 4 if isinstance(channels, int) and channels > 4 else None
+
+
+def labels_for(ref: ModelRef, n_classes: int | None = None) -> tuple[DetectionLabel | None, ...]:
+    """Bảng nhãn theo chỉ số lớp của model: COCO gốc cho model ghim, artifact cho model đã huấn luyện.
+
+    Model miền `n_classes` lớp (≤ số nhãn) đọc `n_classes` nhãn đầu: v3 11 lớp không thấy lớp mới;
+    vắng → đủ `ARTIFACT_LABELS`.
+    """
     if ref.pinned_name in PINNED_COCO_MODELS:
         return COCO_LABELS
+    if n_classes is not None and 0 < n_classes < len(ARTIFACT_LABELS):
+        return ARTIFACT_LABELS[:n_classes]
     return ARTIFACT_LABELS
 
 
-def pipeline_labels(ref: ModelRef) -> tuple[DetectionLabel | None, ...]:
+def pipeline_labels(ref: ModelRef, n_classes: int | None = None) -> tuple[DetectionLabel | None, ...]:
     """`labels_for` với nhãn `DISABLED_LABELS` đổi thành `None` (detector bỏ lớp `None` lúc decode)."""
-    return tuple(None if label in DISABLED_LABELS else label for label in labels_for(ref))
+    return tuple(None if label in DISABLED_LABELS else label for label in labels_for(ref, n_classes))
 
 
 def check_labels(labels: Sequence[str | None]) -> None:

@@ -264,7 +264,18 @@ class Furniture(Reviewed):
     id: FurnitureIdStr
     level_id: LevelIdStr
     room_id: RoomIdStr | None = None
-    kind: Literal["table", "chair", "bed", "wardrobe", "kitchenCabinet", "sanitaryFixture", "stair", "other"]
+    kind: Literal[
+        "table",
+        "chair",
+        "bed",
+        "wardrobe",
+        "kitchenCabinet",
+        "sanitaryFixture",
+        "stair",
+        "other",
+        "washingMachine",
+        "shower",
+    ]
     centre: Point
     bounding_box: BoundingBox
     rotation_deg: Degrees

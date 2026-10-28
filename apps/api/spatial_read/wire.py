@@ -131,7 +131,18 @@ class FurnitureOut(_ReviewedOut):
     id: str
     level_id: str
     room_id: str | None = None
-    kind: Literal["table", "chair", "bed", "wardrobe", "kitchenCabinet", "sanitaryFixture", "stair", "other"]
+    kind: Literal[
+        "table",
+        "chair",
+        "bed",
+        "wardrobe",
+        "kitchenCabinet",
+        "sanitaryFixture",
+        "stair",
+        "other",
+        "washingMachine",
+        "shower",
+    ]
     centre: PointOut
     bounding_box: BoundingBoxOut
     rotation_deg: Annotated[float, Field(ge=0, lt=360)]

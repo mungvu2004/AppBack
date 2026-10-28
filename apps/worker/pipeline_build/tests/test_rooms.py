@@ -376,6 +376,24 @@ def test_fixtures_name_unlabelled_rooms(fake_clock: FakeClock) -> None:
     assert _usages(_grid_walls(fake_clock), (), detections, fake_clock) == ["bathroom", "kitchen"]
 
 
+def test_shower_names_bathroom_and_washer_names_loggia(fake_clock: FakeClock) -> None:
+    """Buồng tắm đứng trong phòng 9 m² → phòng tắm; máy giặt (không thiết bị vệ sinh) → lô-gia."""
+    detections = (
+        DetectionPx(label="shower", box=_box(500, 500, 1400, 1400), confidence=0.8),
+        DetectionPx(label="washing_machine", box=_box(3500, 500, 4100, 1100), confidence=0.8),
+    )
+    assert _usages(_grid_walls(fake_clock), (), detections, fake_clock) == ["bathroom", "loggia"]
+
+
+def test_washer_in_bathroom_keeps_bathroom(fake_clock: FakeClock) -> None:
+    """Máy giặt đặt trong WC (thường gặp ở căn hộ VN) không đổi phòng tắm thành lô-gia."""
+    detections = (
+        DetectionPx(label="sanitary_fixture", box=_box(500, 500, 900, 900), confidence=0.8),
+        DetectionPx(label="washing_machine", box=_box(1500, 500, 2100, 1100), confidence=0.8),
+    )
+    assert _usages(_grid_walls(fake_clock), (), detections, fake_clock)[0] == "bathroom"
+
+
 def test_short_cabinet_and_big_wardrobe_room_name_nothing(fake_clock: FakeClock) -> None:
     """Tủ bếp ngắn (lavabo 1 m) không là bếp; thiết bị vệ sinh ở phòng > 10 m² không là phòng tắm."""
     walls = [

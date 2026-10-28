@@ -32,6 +32,8 @@ _FURNITURE_LABELS: dict[str, DetectionLabel] = {
     "kitchenCabinet": "kitchen_cabinet",
     "sanitaryFixture": "sanitary_fixture",
     "stair": "stair",
+    "washingMachine": "washing_machine",
+    "shower": "shower",
 }
 """`other` cố ý vắng: không có nhãn huấn luyện (prompt khối [6])."""
 

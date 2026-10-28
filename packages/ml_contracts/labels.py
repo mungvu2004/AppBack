@@ -1,8 +1,9 @@
 """Nhãn phát hiện ô mở và đồ đạc, và đích miền của từng nhãn (B5-03 dùng, B5-05 dựng).
 
-`OBJECT_LABELS` theo **đúng thứ tự id lớp YOLO** của model huấn luyện: đổi thứ tự là
-đọc sai mọi model đã huấn luyện. `other` chỉ có ở đầu ra (lớp COCO không có đích
-riêng), không phải lớp huấn luyện.
+`DETECTION_LABELS` theo **đúng thứ tự id lớp YOLO** của model huấn luyện: đổi thứ tự là
+đọc sai mọi model đã huấn luyện. `other` (id 10) là lớp gom đồ không có đích riêng.
+`ADDED_LABELS` (máy giặt, buồng tắm đứng; model 13 lớp, B5 2026-10-28) đứng **sau** `other`
+để model 11 lớp (v3) giữ nguyên id 0..10.
 """
 
 from collections.abc import Mapping
@@ -22,11 +23,13 @@ ObjectLabel = Literal[
     "sanitary_fixture",
     "stair",
 ]
-DetectionLabel = ObjectLabel | Literal["other"]
+AddedLabel = Literal["washing_machine", "shower"]
+DetectionLabel = ObjectLabel | Literal["other"] | AddedLabel
 SwingDirection = Literal["left", "right", "double", "sliding", "fixed"]
 
 OBJECT_LABELS: Final[tuple[ObjectLabel, ...]] = get_args(ObjectLabel)
-DETECTION_LABELS: Final[tuple[DetectionLabel, ...]] = (*OBJECT_LABELS, "other")
+ADDED_LABELS: Final[tuple[AddedLabel, ...]] = get_args(AddedLabel)
+DETECTION_LABELS: Final[tuple[DetectionLabel, ...]] = (*OBJECT_LABELS, "other", *ADDED_LABELS)
 
 COCO_TO_LABEL: Final[Mapping[str, DetectionLabel]] = MappingProxyType(
     {
@@ -76,5 +79,7 @@ LABEL_TARGETS: Final[Mapping[DetectionLabel, LabelTarget]] = MappingProxyType(
         "sanitary_fixture": _furniture("sanitaryFixture"),
         "stair": _furniture("stair"),
         "other": _furniture("other"),
+        "washing_machine": _furniture("washingMachine"),
+        "shower": _furniture("shower"),
     }
 )

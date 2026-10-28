@@ -7,6 +7,7 @@ from apps.ml.objects.labels import (
     COCO_LABELS,
     PINNED_COCO_MODELS,
     check_labels,
+    class_count,
     labels_for,
     pipeline_labels,
 )
@@ -37,8 +38,59 @@ def _model_ref(*, pinned_name: str | None) -> ModelRef:
 
 
 def test_artifact_labels__match_detection_labels() -> None:
-    """`ARTIFACT_LABELS` (phẳng hoá từ `get_args`) bằng đúng `DETECTION_LABELS` của B5-01."""
+    """`ARTIFACT_LABELS` bằng đúng `DETECTION_LABELS` của B5-01."""
     assert ARTIFACT_LABELS == DETECTION_LABELS
+
+
+_V3_LABELS = (
+    "door",
+    "double_door",
+    "window",
+    "table",
+    "chair",
+    "bed",
+    "wardrobe",
+    "kitchen_cabinet",
+    "sanitary_fixture",
+    "stair",
+    "other",
+)
+
+
+def test_labels_for__eleven_class_model_keeps_v3_mapping() -> None:
+    """Model 11 lớp (v3) đọc đúng 11 nhãn cũ theo thứ tự cũ, không thấy lớp mới."""
+    assert labels_for(_model_ref(pinned_name=None), 11) == _V3_LABELS
+
+
+def test_labels_for__thirteen_class_model_maps_new_ids() -> None:
+    """Model 13 lớp: id 0..10 như v3, id 11 `washing_machine`, id 12 `shower`."""
+    labels = labels_for(_model_ref(pinned_name=None), 13)
+    assert labels[:11] == _V3_LABELS
+    assert labels[11:] == ("washing_machine", "shower")
+    assert pipeline_labels(_model_ref(pinned_name=None), 13)[11:] == ("washing_machine", "shower")
+    assert len(pipeline_labels(_model_ref(pinned_name=None), 11)) == 11
+
+
+class _Out:
+    def __init__(self, shape: list[object]) -> None:
+        self.shape = shape
+
+
+class _Session:
+    def __init__(self, *shapes: list[object]) -> None:
+        self._outs = [_Out(s) for s in shapes]
+
+    def get_outputs(self) -> list[_Out]:
+        return self._outs
+
+
+def test_class_count__reads_output_channels() -> None:
+    """`(1, 4+N, A)` → N; hình dạng lạ hoặc kênh động → `None` (detector tự từ chối)."""
+    assert class_count(_Session([1, 15, "anchors"])) == 11
+    assert class_count(_Session([1, 17, 8400])) == 13
+    assert class_count(_Session([1, "c", 8400])) is None
+    assert class_count(_Session([1, 15])) is None
+    assert class_count(_Session([1, 15, 8], [1, 15, 8])) is None
 
 
 def test_coco_labels__eighty_entries_six_mapped() -> None:
