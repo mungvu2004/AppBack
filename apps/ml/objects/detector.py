@@ -50,12 +50,24 @@ __all__ = [
 CONFIDENCE_MIN: Final = 0.25
 COCO_CONFIDENCE_MIN: Final = 0.5
 LABEL_CONFIDENCE_MIN: Final[Mapping[str, float]] = MappingProxyType(
-    {"bed": 0.8, "chair": 0.5, "door": 0.45, "sanitary_fixture": 0.4, "table": 0.6, "wardrobe": 0.7, "window": 0.45}
+    {
+        "bed": 0.5,
+        "chair": 0.25,
+        "door": 0.4,
+        "kitchen_cabinet": 0.45,
+        "other": 0.4,
+        "sanitary_fixture": 0.3,
+        "table": 0.55,
+        "wardrobe": 0.6,
+        "window": 0.4,
+    }
 )
-"""Ngưỡng hiển thị riêng từng nhãn của model miền: F1 cao nhất trên 400 trang validation CubiCasa
-(yolo11m, 2026-10-19), làm tròn 0,05. Bàn/ghế/giường (yolo11m-v3, 2026-10-27, đáp án đồ rời vẽ tay):
-precision ≈ 0,9 mà recall còn 0,83 đến 0,89 — ở `CONFIDENCE_MIN` bàn và giường chỉ đúng ~70%.
-Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng `COCO_CONFIDENCE_MIN` cho mọi nhãn."""
+"""Ngưỡng hiển thị riêng từng nhãn của model miền (yolo11m-v3): F1 cao nhất trên 300 trang validation
+CubiCasa thu nhỏ x1, x1/1,5, x1/2,2 kèm nén JPEG và phủ màu — mô phỏng bản căn hộ VN vật nhỏ hơn lúc
+train (B2 vật sót 2026-10-28, `F:/runs/bench-can-ho/b2/thresholds.json`, `sweep.txt`), làm tròn 0,05,
+không chỉnh trên bench. Ngưỡng cũ (giường 0,8, bàn 0,6) chỉnh trên CubiCasa cỡ gốc nên bỏ sót giường
+trên bản thật. Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng `COCO_CONFIDENCE_MIN` cho mọi
+nhãn. `stair` tắt ở bước pipeline (`labels.pipeline_labels`), không qua ngưỡng."""
 NMS_IOU: Final = 0.5
 MERGE_OVERLAP: Final = 0.7
 CUT_COVER_MIN: Final = 0.7

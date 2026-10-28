@@ -2,7 +2,14 @@
 
 import pytest
 
-from apps.ml.objects.labels import ARTIFACT_LABELS, COCO_LABELS, PINNED_COCO_MODELS, check_labels, labels_for
+from apps.ml.objects.labels import (
+    ARTIFACT_LABELS,
+    COCO_LABELS,
+    PINNED_COCO_MODELS,
+    check_labels,
+    labels_for,
+    pipeline_labels,
+)
 from packages.core.clock import SystemClock
 from packages.core.ids import new_id
 from packages.ml_contracts.labels import DETECTION_LABELS
@@ -70,3 +77,12 @@ def test_check_labels__unknown_label_raises() -> None:
 def test_check_labels__none_and_valid_labels_pass() -> None:
     """`None` và nhãn hợp lệ đều qua được, không ném."""
     check_labels([None, "door", "other", None])
+
+
+def test_pipeline_labels__drops_stair_only() -> None:
+    """Bước pipeline bỏ `stair` (đổi thành `None`), các nhãn khác giữ nguyên chỉ số."""
+    labels = pipeline_labels(_model_ref(pinned_name=None))
+    assert len(labels) == len(ARTIFACT_LABELS)
+    assert "stair" not in labels
+    assert [label for label in ARTIFACT_LABELS if label != "stair"] == [label for label in labels if label is not None]
+    assert pipeline_labels(_model_ref(pinned_name="yolov8n")) == COCO_LABELS
