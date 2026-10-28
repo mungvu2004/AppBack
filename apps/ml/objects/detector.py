@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, cast
 
+import cv2
 import numpy as np
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 from numpy.typing import NDArray
@@ -21,13 +22,14 @@ from apps.ml.objects.labels import COCO_LABELS, check_labels
 from apps.ml.objects.tiles import Window, overlap_for, tile_windows
 from apps.ml.runtime.errors import MODEL_FORMAT_UNSUPPORTED, ORT_ERRORS
 from packages.messaging.tasks import PermanentError
-from packages.ml_contracts.artifacts import BoxPx, DetectionPx
+from packages.ml_contracts.artifacts import MASK_MAX_PIXELS, BoxPx, DetectionPx
 from packages.ml_contracts.labels import DetectionLabel
 from packages.ml_contracts.ports import RgbImage
 
 __all__ = [
     "COCO_CONFIDENCE_MIN",
     "CONFIDENCE_MIN",
+    "CONTAIN_MAX",
     "CUT_COVER_MIN",
     "CUT_SLIVER_AREA_RATIO",
     "JOIN_SPAN_MIN",
@@ -35,21 +37,38 @@ __all__ = [
     "MAX_DETECTIONS",
     "MERGE_OVERLAP",
     "NMS_IOU",
+    "UPSCALE_FALLBACK",
+    "UPSCALE_MAX",
+    "UPSCALE_MIN",
+    "UPSCALE_SKIP_LABELS",
     "YoloOnnxDetector",
     "decode_tile",
     "label_thresholds",
     "merge_candidates",
+    "upscale_factor",
 ]
 
 CONFIDENCE_MIN: Final = 0.25
 COCO_CONFIDENCE_MIN: Final = 0.5
 LABEL_CONFIDENCE_MIN: Final[Mapping[str, float]] = MappingProxyType(
-    {"bed": 0.8, "chair": 0.5, "door": 0.45, "sanitary_fixture": 0.4, "table": 0.6, "wardrobe": 0.7, "window": 0.45}
+    {
+        "bed": 0.5,
+        "chair": 0.25,
+        "door": 0.4,
+        "kitchen_cabinet": 0.45,
+        "other": 0.4,
+        "sanitary_fixture": 0.3,
+        "table": 0.55,
+        "wardrobe": 0.6,
+        "window": 0.4,
+    }
 )
-"""Ngưỡng hiển thị riêng từng nhãn của model miền: F1 cao nhất trên 400 trang validation CubiCasa
-(yolo11m, 2026-10-19), làm tròn 0,05. Bàn/ghế/giường (yolo11m-v3, 2026-10-27, đáp án đồ rời vẽ tay):
-precision ≈ 0,9 mà recall còn 0,83 đến 0,89 — ở `CONFIDENCE_MIN` bàn và giường chỉ đúng ~70%.
-Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng `COCO_CONFIDENCE_MIN` cho mọi nhãn."""
+"""Ngưỡng hiển thị riêng từng nhãn của model miền (yolo11m-v3): F1 cao nhất trên 300 trang validation
+CubiCasa thu nhỏ x1, x1/1,5, x1/2,2 kèm nén JPEG và phủ màu — mô phỏng bản căn hộ VN vật nhỏ hơn lúc
+train (B2 vật sót 2026-10-28, `F:/runs/bench-can-ho/b2/thresholds.json`, `sweep.txt`), làm tròn 0,05,
+không chỉnh trên bench. Ngưỡng cũ (giường 0,8, bàn 0,6) chỉnh trên CubiCasa cỡ gốc nên bỏ sót giường
+trên bản thật. Nhãn vắng ở đây dùng `CONFIDENCE_MIN`; model COCO dùng `COCO_CONFIDENCE_MIN` cho mọi
+nhãn. `stair` tắt ở bước pipeline (`labels.pipeline_labels`), không qua ngưỡng."""
 NMS_IOU: Final = 0.5
 MERGE_OVERLAP: Final = 0.7
 CUT_COVER_MIN: Final = 0.7
@@ -60,10 +79,31 @@ thấy trọn, mảnh mỏng còn sót qua NMS vì IoU với hộp lớn chỉ ~
 JOIN_SPAN_MIN: Final = 0.5
 MAX_DETECTIONS: Final = 2000
 
+DOOR_TRAIN_PX: Final = 70.0
+"""Cạnh dài hộp cửa (px) ở cỡ vật lúc train: hệ số phóng = `DOOR_TRAIN_PX / trung vị cạnh dài cửa`.
+
+Bước này chạy song song với tường và đọc kích thước nên chưa có mm/px; cỡ cửa của chính lượt gốc
+thay cho nó. Đo 2026-10-28 trên 11 bản căn hộ có tỉ lệ: `(mm/px ÷ 11) x cửa_px` trung vị 69,5
+(61 đến 77), tức hệ số theo cửa bám hệ số theo mm/px trong ±12%."""
+UPSCALE_MIN: Final = 1.2
+UPSCALE_MAX: Final = 2.6
+UPSCALE_FALLBACK: Final = 1.5
+"""Lượt phóng thêm: hệ số kẹp `[1, UPSCALE_MAX]`, dưới `UPSCALE_MIN` thì bỏ lượt; trang có < 2 cửa
+(không ước được cỡ) dùng `UPSCALE_FALLBACK` (vật trên bản căn hộ VN nhỏ hơn lúc train ~1,5 lần)."""
+CONTAIN_MAX: Final = 0.6
+"""Hộp chỉ lượt phóng mới thấy bị bỏ khi ≥ chừng này diện tích nằm trong một hộp lượt gốc (hộp con
+lồng trong sofa/giường): 6 bản căn hộ chấm tay, bỏ 7 hộp sai, không bỏ hộp đúng nào (2026-10-28)."""
+UPSCALE_SKIP_LABELS: Final = frozenset({"other"})
+"""Nhãn lượt phóng không được thêm: trên 14 bản bench (đáp án mù), 18 hộp `other` mới chỉ 5 đúng,
+8 hộp sai nằm trên nền màu đậm ch-07; bỏ chúng đưa độ đúng hộp mới 61% → 71% (2026-10-28)."""
+_NEW_IOU_MAX: Final = 0.3
+
 _PAD_VALUE: Final = 114
 _MIN_INPUT_PX: Final = 32
 _MIN_BOX_SIDE_PX: Final = 2.0
 _EDGE_TOUCH_PX: Final = 2.0
+_EDGE_EPS: Final = 1e-6
+"""Lát của lượt phóng đổi về toạ độ gốc là số thực: mép trang chỉ lệch sai số làm tròn, không phải mép cắt."""
 
 Labels = tuple[DetectionLabel | None, ...]
 
@@ -311,10 +351,10 @@ def _cut_edge_touches(
     tile_x, tile_y, tile_w, tile_h = tiles[:, 0], tiles[:, 1], tiles[:, 2], tiles[:, 3]
     right, bottom = tile_x + tile_w, tile_y + tile_h
     return {
-        "left": (tile_x > 0) & (np.abs(x1 - tile_x) <= _EDGE_TOUCH_PX),
-        "right": (right < page_w) & (np.abs(x2 - right) <= _EDGE_TOUCH_PX),
-        "top": (tile_y > 0) & (np.abs(y1 - tile_y) <= _EDGE_TOUCH_PX),
-        "bottom": (bottom < page_h) & (np.abs(y2 - bottom) <= _EDGE_TOUCH_PX),
+        "left": (tile_x > _EDGE_EPS) & (np.abs(x1 - tile_x) <= _EDGE_TOUCH_PX),
+        "right": (right < page_w - _EDGE_EPS) & (np.abs(x2 - right) <= _EDGE_TOUCH_PX),
+        "top": (tile_y > _EDGE_EPS) & (np.abs(y1 - tile_y) <= _EDGE_TOUCH_PX),
+        "bottom": (bottom < page_h - _EDGE_EPS) & (np.abs(y2 - bottom) <= _EDGE_TOUCH_PX),
     }
 
 
@@ -475,6 +515,61 @@ def _finalize(detections: _Detections, labels: Labels) -> tuple[DetectionPx, ...
     return tuple(results)
 
 
+def upscale_factor(door_long_sides: NDArray[np.float64], *, page_pixels: int) -> float:
+    """Hệ số phóng của lượt thêm: `DOOR_TRAIN_PX / trung vị cạnh dài cửa`, kẹp `[1, UPSCALE_MAX]`.
+
+    < 2 cửa → `UPSCALE_FALLBACK`. Trang phóng không vượt `MASK_MAX_PIXELS` (trần khổ trang của hợp
+    đồng), để lượt phóng không ngốn bộ nhớ hơn trang lớn nhất được nhận. Kết quả < `UPSCALE_MIN`
+    nghĩa là bỏ lượt phóng (người gọi quyết).
+    """
+    if door_long_sides.shape[0] < 2:
+        factor = UPSCALE_FALLBACK
+    else:
+        factor = float(np.clip(DOOR_TRAIN_PX / float(np.median(door_long_sides)), 1.0, UPSCALE_MAX))
+    return min(factor, float(np.sqrt(MASK_MAX_PIXELS / page_pixels)))
+
+
+def _to_page(candidates: _Candidates, sx: float, sy: float, *, page_w: int, page_h: int) -> _Candidates:
+    """Ứng viên trên trang phóng `(sx, sy)` → toạ độ trang gốc: hộp **và** lát nguồn cùng chia, kẹp vào trang.
+
+    Lát cũng đổi để `merge_candidates` vẫn nhận ra mảnh bị lát của lượt phóng cắt (mép trong).
+    """
+    scale = np.array([sx, sy, sx, sy], dtype=np.float64)
+    limit = np.array([page_w, page_h, page_w, page_h], dtype=np.float64)
+    boxes = np.minimum(candidates.boxes / scale, limit)
+    tiles = candidates.tiles / scale
+    return _Candidates(boxes=boxes, scores=candidates.scores, classes=candidates.classes, tiles=tiles)
+
+
+def _area_inside(boxes: NDArray[np.float64], others: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Ma trận `(n, m)`: phần diện tích hộp `boxes[i]` nằm trong `others[j]`."""
+    a, b = boxes[:, None, :], others[None, :, :]
+    ix = np.clip(np.minimum(a[..., 2], b[..., 2]) - np.maximum(a[..., 0], b[..., 0]), 0, None)
+    iy = np.clip(np.minimum(a[..., 3], b[..., 3]) - np.maximum(a[..., 1], b[..., 1]), 0, None)
+    area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    return cast(NDArray[np.float64], ix * iy / area[:, None])
+
+
+def _add_new(native: _Detections, merged: _Detections, skip_classes: NDArray[np.int64]) -> _Detections:
+    """Hộp gốc giữ nguyên hết, cộng hộp của lượt gộp mọi cỡ mà lượt gốc không có.
+
+    "Không có" = IoU < 0,3 với mọi hộp gốc (bất kể nhãn) và < `CONTAIN_MAX` diện tích nằm trong
+    một hộp gốc. Hộp gộp mà NMS đã thay hộp gốc bằng bản phóng tương đương (IoU ≥ 0,3) bị coi là
+    trùng, nên hộp gốc không bao giờ mất hay đổi. Hộp mới thuộc lớp `skip_classes` bị bỏ.
+    """
+    fresh = ~np.isin(merged.classes, skip_classes)
+    if len(native) > 0 and len(merged) > 0:
+        iou = np.stack([_iou_against(box, native.boxes) for box in merged.boxes])
+        fresh &= ~np.any((iou >= _NEW_IOU_MAX) | (_area_inside(merged.boxes, native.boxes) >= CONTAIN_MAX), axis=1)
+    return _cap_and_sort(
+        _Detections(
+            boxes=np.concatenate([native.boxes, merged.boxes[fresh]]),
+            scores=np.concatenate([native.scores, merged.scores[fresh]]),
+            classes=np.concatenate([native.classes, merged.classes[fresh]]),
+        )
+    )
+
+
 class YoloOnnxDetector:
     """`ObjectDetector` (B5-01) chạy trên phiên ONNX YOLO xuất kiểu ultralytics (khối [1])."""
 
@@ -484,12 +579,14 @@ class YoloOnnxDetector:
         labels: Labels,
         *,
         min_confidence: float | Mapping[str, float] | None = None,
+        multiscale: bool = False,
     ) -> None:
         """Kiểm hình dạng và nhãn ngay lúc dựng (K12, M02); sai → `PermanentError(MODEL_FORMAT_UNSUPPORTED)`.
 
         Không đọc `names`/metadata khác của ONNX (khối [2]); nhãn ngoài `ARTIFACT_LABELS`
         và khác `None` → `ValueError` qua `check_labels`. `min_confidence`: xem `label_thresholds`
-        (vắng → ngưỡng hiển thị mặc định; đánh giá mAP truyền 0,05).
+        (vắng → ngưỡng hiển thị mặc định; đánh giá mAP truyền 0,05). `multiscale`: thêm lượt phóng
+        (`detect`); bước pipeline bật, đánh giá model tắt để số đo so được với lúc train.
         """
         check_labels(labels)
         self._thresholds = label_thresholds(labels, min_confidence)
@@ -500,16 +597,13 @@ class YoloOnnxDetector:
         self._labels = labels
         self._input_name = inputs[0].name
         self._output_name = outputs[0].name
+        self._door = labels.index("door") if multiscale and "door" in labels else None
+        self._skip = np.array([i for i, label in enumerate(labels) if label in UPSCALE_SKIP_LABELS], dtype=np.int64)
 
-    def detect(self, image: RgbImage) -> tuple[DetectionPx, ...]:
-        """Ảnh trang → phát hiện theo pixel trang: lát tuần tự → suy luận CPU → decode → nối/NMS.
-
-        Lỗi `onnxruntime` lúc `session.run` (`ORT_ERRORS`) → `PermanentError(MODEL_FORMAT_UNSUPPORTED)`,
-        như `apps/ml/walls/segformer.py:93` (M04: không `resolve_device`, luôn CPU qua phiên đã nạp).
-        """
-        overlap_px = overlap_for(self.input_px)
+    def _candidates(self, image: RgbImage) -> _Candidates:
+        """Ứng viên mọi lát của một ảnh (toạ độ ảnh ấy): lát tuần tự → suy luận CPU → decode."""
         height, width = image.shape[:2]
-        windows = tile_windows(width, height, tile_px=self.input_px, overlap_px=overlap_px)
+        windows = tile_windows(width, height, tile_px=self.input_px, overlap_px=overlap_for(self.input_px))
         per_tile: list[_Candidates] = []
         for window in windows:
             tile_input = _preprocess_tile(image, window, self.input_px)
@@ -518,6 +612,34 @@ class YoloOnnxDetector:
             except ORT_ERRORS as exc:
                 raise _unsupported() from exc
             per_tile.append(decode_tile(output, window, self._labels, self.input_px, self._thresholds))
-        candidates = _concat_candidates(per_tile)
-        detections = merge_candidates(candidates, page_w=width, page_h=height)
-        return _finalize(detections, self._labels)
+        return _concat_candidates(per_tile)
+
+    def detect(self, image: RgbImage) -> tuple[DetectionPx, ...]:
+        """Ảnh trang → phát hiện theo pixel trang: lượt gốc, rồi (nếu bật) một lượt phóng gộp chung.
+
+        Lượt phóng (vật trên bản vẽ thật nhỏ hơn lúc train): phóng trang `upscale_factor` lần theo cỡ
+        cửa của lượt gốc, đổi ứng viên về toạ độ gốc rồi cho **chung** `merge_candidates` với ứng viên
+        gốc — mảnh bị lát phóng cắt rơi ở bước bỏ mảnh/NMS như mảnh gốc. Chỉ cộng hộp mới (`_add_new`).
+        Model không có nhãn `door` (COCO) không phóng: không ước được cỡ vật.
+
+        Lỗi `onnxruntime` lúc `session.run` (`ORT_ERRORS`) → `PermanentError(MODEL_FORMAT_UNSUPPORTED)`,
+        như `apps/ml/walls/segformer.py:93` (M04: không `resolve_device`, luôn CPU qua phiên đã nạp).
+        """
+        height, width = image.shape[:2]
+        native_candidates = self._candidates(image)
+        native = merge_candidates(native_candidates, page_w=width, page_h=height)
+        if self._door is None:
+            return _finalize(native, self._labels)
+        doors = native.boxes[native.classes == self._door]
+        factor = upscale_factor(
+            np.maximum(doors[:, 2] - doors[:, 0], doors[:, 3] - doors[:, 1]), page_pixels=width * height
+        )
+        if factor < UPSCALE_MIN:
+            return _finalize(native, self._labels)
+        up_w, up_h = round(width * factor), round(height * factor)
+        upscaled = np.asarray(cv2.resize(image, (up_w, up_h), interpolation=cv2.INTER_CUBIC), dtype=np.uint8)
+        mapped = _to_page(self._candidates(upscaled), up_w / width, up_h / height, page_w=width, page_h=height)
+        merged = merge_candidates(_concat_candidates([native_candidates, mapped]), page_w=width, page_h=height)
+        # ponytail: chưa bỏ hộp mới ngoài căn hộ (sơ đồ vị trí, khung tên) — bước này chạy song song với
+        # tường nên chưa có mặt nạ trong căn hộ; lọc ở spatialDataBuild khi cần.
+        return _finalize(_add_new(native, merged, self._skip), self._labels)

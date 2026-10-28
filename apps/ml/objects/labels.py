@@ -37,12 +37,21 @@ COCO_LABELS: Final[tuple[DetectionLabel | None, ...]] = tuple(
 
 PINNED_COCO_MODELS: Final = frozenset({"yolov8n", "yolov8s"})
 
+DISABLED_LABELS: Final = frozenset({"stair"})
+"""Nhãn bước pipeline bỏ hẳn: sản phẩm chỉ làm căn hộ một tầng, còn `stair` (F1 ≈ 0,70) bắn nhầm
+sofa (B2 vật sót 2026-10-28). Đánh giá model vẫn giữ để số đo so được với lúc train."""
+
 
 def labels_for(ref: ModelRef) -> tuple[DetectionLabel | None, ...]:
     """Bảng nhãn theo chỉ số lớp của model: COCO gốc cho model ghim, artifact cho model đã huấn luyện."""
     if ref.pinned_name in PINNED_COCO_MODELS:
         return COCO_LABELS
     return ARTIFACT_LABELS
+
+
+def pipeline_labels(ref: ModelRef) -> tuple[DetectionLabel | None, ...]:
+    """`labels_for` với nhãn `DISABLED_LABELS` đổi thành `None` (detector bỏ lớp `None` lúc decode)."""
+    return tuple(None if label in DISABLED_LABELS else label for label in labels_for(ref))
 
 
 def check_labels(labels: Sequence[str | None]) -> None:
