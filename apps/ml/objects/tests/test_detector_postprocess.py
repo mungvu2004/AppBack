@@ -49,10 +49,10 @@ def test_decode_tile__explicit_thresholds_override_default() -> None:
 def test_label_thresholds__defaults_per_label_and_overrides() -> None:
     """Nhãn có ngưỡng riêng dùng nó, nhãn vắng dùng `CONFIDENCE_MIN`, COCO dùng `COCO_CONFIDENCE_MIN`;
     số đè mọi nhãn, dict chỉ đè nhãn có trong dict, nhãn `None` không bao giờ qua (1,0)."""
-    labels: tuple[DetectionLabel, ...] = ("door", "other")
+    labels: tuple[DetectionLabel, ...] = ("door", "double_door")
     assert list(label_thresholds(labels)) == [LABEL_CONFIDENCE_MIN["door"], CONFIDENCE_MIN]
     assert list(label_thresholds(labels, 0.05)) == [0.05, 0.05]
-    assert list(label_thresholds(labels, {"other": 0.6})) == [LABEL_CONFIDENCE_MIN["door"], 0.6]
+    assert list(label_thresholds(labels, {"double_door": 0.6})) == [LABEL_CONFIDENCE_MIN["door"], 0.6]
     coco = label_thresholds(COCO_LABELS)
     mapped = [i for i, label in enumerate(COCO_LABELS) if label is not None]
     unmapped = [i for i, label in enumerate(COCO_LABELS) if label is None]
