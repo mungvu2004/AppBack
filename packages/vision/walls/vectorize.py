@@ -39,6 +39,10 @@ có distance 2,0, vách 110 mm trên `render_plan` có 4,0-7,0. 1,7 nằm giữa
 lượng tử (1,4; 2,0) nên không sát số đo nào. Tiêu chí tỉ lệ `T/J < 0,5` cũ cắt nhầm vách
 110 mm chạm tường bao 220 mm (T/J = 0,40) và mọi vách rất mảnh chạm tường rất dày (NO-288).
 """
+_AXIS_SHARE: Final = 0.85
+"""Bản vẽ có ≥ ngần này tổng độ dài tường ngang/dọc thì coi là bản vẽ vuông góc (bước 10b)."""
+_CORNER_DIAG_RATIO: Final = 3.0
+"""Đoạn chéo ngắn hơn ngần này lần bề dày của nó trên bản vẽ vuông góc là vụn ở góc (bước 10b)."""
 MAX_WALLS: Final = 20_000
 """Trần số tường của `WallsResult` (B5-01); `keep_longest` cắt về đúng trần này."""
 
@@ -518,26 +522,137 @@ def _set_end(seg: _Seg, head: bool, point: tuple[float, float]) -> None:
         seg.bx, seg.by = point
 
 
-def _shared_point(ends: list[tuple[_Seg, bool]]) -> tuple[float, float]:
-    """Giao điểm hai đường tim khi có cả ngang lẫn dọc, không thì trung bình các đầu mút."""
+def _shared_point(ends: list[tuple[_Seg, bool]], pin: tuple[float, float] | None = None) -> tuple[float, float]:
+    """`x` của đoạn dọc, `y` của đoạn ngang có mặt tại nút; trục nào thiếu lấy `pin`, không thì trung bình.
+
+    Lấy riêng từng toạ độ chứ không chỉ khi đủ cặp ngang + dọc: nút dọc + chéo mà lấy trung bình
+    cả `x` thì đoạn dọc đã ép trục bị kéo lệch lại (K-02, vách lệch 2,6°). `_align_shared_axes`
+    đã cho mọi đoạn ngang (dọc) chung nút cùng một `y` (`x`), nên đoạn nào cũng cho cùng giá trị.
+    """
     horizontal = next((s for s, _ in ends if s.axis == "h"), None)
     vertical = next((s for s, _ in ends if s.axis == "v"), None)
-    if horizontal is not None and vertical is not None:
-        return (vertical.ax, horizontal.ay)
-    return (
+    fallback = pin or (
         sum(s.ax if head else s.bx for s, head in ends) / len(ends),
         sum(s.ay if head else s.by for s, head in ends) / len(ends),
     )
+    return (
+        vertical.ax if vertical is not None else fallback[0],
+        horizontal.ay if horizontal is not None else fallback[1],
+    )
 
 
-def _place_shared(shared: dict[_Key, list[tuple[_Seg, bool]]]) -> None:
-    """Đặt lại **mọi** đầu mút dùng chung sau khi đã ép trục và gộp (bước 8)."""
-    for ends in shared.values():
-        if len(ends) < 2:
+def _place_shared(shared: dict[_Key, list[tuple[_Seg, bool]]], pins: dict[_Key, tuple[float, float]]) -> None:
+    """Đặt lại **mọi** đầu mút dùng chung (và đầu đã ghim ở bước 10b) sau khi ép trục và gộp (bước 8)."""
+    for key, ends in shared.items():
+        if len(ends) < 2 and key not in pins:
             continue
-        point = _shared_point(ends)
+        point = _shared_point(ends, pins.get(key))
         for seg, head in ends:
             _set_end(seg, head, point)
+
+
+def _align_shared_axes(segs: list[_Seg]) -> None:
+    """Đoạn ngang (dọc) nối nhau qua đầu mút chung → cùng một `y` (`x`), trung bình trọng số độ dài.
+
+    Hai đoạn ngang chỉ chung khoá sau khi `_drop_short`/bước 10b nhập khoá thì không qua `_fuse`,
+    nên còn lệch nhau vài px; không gióng lại thì `_place_shared` kéo một đầu và đoạn ngắn hơn nghiêng.
+    """
+    for axis in ("h", "v"):
+        lines = [seg for seg in segs if seg.axis == axis]
+        parent = list(range(len(lines)))
+        first: dict[_Key, int] = {}
+        for i, seg in enumerate(lines):
+            for key in (seg.a_key, seg.b_key):
+                parent[_root(parent, i)] = _root(parent, first.setdefault(key, i))
+        buckets: defaultdict[int, list[_Seg]] = defaultdict(list)
+        for i, seg in enumerate(lines):
+            buckets[_root(parent, i)].append(seg)
+        for group in buckets.values():
+            weights = [seg.length() for seg in group]
+            if axis == "h":
+                value = _weighted(group, [seg.ay for seg in group], weights)
+                for seg in group:
+                    seg.ay = seg.by = value
+            else:
+                value = _weighted(group, [seg.ax for seg in group], weights)
+                for seg in group:
+                    seg.ax = seg.bx = value
+
+
+def _clash(members: list[_Seg]) -> bool:
+    """Nhập nút sẽ ép hai đoạn ngang (dọc) cách nhau > ½ bề dày về cùng một đường: không được nhập."""
+    for axis in ("h", "v"):
+        lines = [seg for seg in members if seg.axis == axis]
+        values = [seg.ay if axis == "h" else seg.ax for seg in lines]
+        if lines and max(values) - min(values) > 0.5 * max(seg.thickness for seg in lines):
+            return True
+    return False
+
+
+def _end_of(seg: _Seg, key: _Key, alias: dict[_Key, _Key]) -> tuple[float, float]:
+    """Toạ độ đầu mút của `seg` mang khoá (đã quy về đại diện) `key`."""
+    return (seg.ax, seg.ay) if _resolve(alias, seg.a_key) == key else (seg.bx, seg.by)
+
+
+def _absorb_corner_diagonals(
+    segs: list[_Seg], graph: _Graph
+) -> tuple[list[_Seg], int, dict[_Key, tuple[float, float]]]:
+    """Bước 10b: bản vẽ vuông góc → bỏ hay hấp thụ đoạn chéo ngắn (< 3 x bề dày) ở góc (K-02).
+
+    Chỉ chạy khi ≥ 85 % tổng độ dài là ngang/dọc; tường chéo dài giữ nguyên. Từng đoạn, ngắn trước:
+    - hai đầu đều nối đoạn khác → nhập hai khoá như vát góc của `_drop_short` (trừ khi `_clash`);
+    - một đầu là nút giao không còn ai dùng (khoá chữ T đã bị `_fuse` nuốt) → các đoạn ở đầu kia
+      dời sang khoá đó và ghim nó ở toạ độ cũ, để tường vẫn chạm tường xuyên;
+    - một đầu tự do khác (lá, đỉnh DP mồ côi) → râu chéo, bỏ và đếm `short`;
+    - không đầu nào nối → bỏ, đếm `short`.
+    Trả các đoạn còn lại (khoá đã quy về đại diện), số đoạn bỏ và điểm ghim theo khoá.
+    """
+    total = sum(seg.length() for seg in segs)
+    if total == 0.0 or sum(seg.length() for seg in segs if seg.axis != "d") < _AXIS_SHARE * total:
+        return segs, 0, {}
+    incident: defaultdict[_Key, list[_Seg]] = defaultdict(list)
+    for seg in segs:
+        incident[seg.a_key].append(seg)
+        incident[seg.b_key].append(seg)
+    alias: dict[_Key, _Key] = {}
+    pins: dict[_Key, tuple[float, float]] = {}
+    gone: set[int] = set()
+    short = 0
+    candidates = [seg for seg in segs if seg.axis == "d" and seg.length() < _CORNER_DIAG_RATIO * seg.thickness]
+    for seg in sorted(candidates, key=_Seg.length):
+        head, tail = _resolve(alias, seg.a_key), _resolve(alias, seg.b_key)
+        if head == tail:
+            continue
+        near_head = [s for s in incident[head] if s is not seg]
+        near_tail = [s for s in incident[tail] if s is not seg]
+        if near_head and near_tail:
+            # Đoạn nối thẳng cùng hai khoá sẽ thành dài 0 khi nhập; hai đường cùng trục lệch xa thì bị ép.
+            if {id(s) for s in near_head} & {id(s) for s in near_tail} or _clash(near_head + near_tail):
+                continue
+            survivor, merged = head, tail
+        elif near_head or near_tail:
+            free = tail if near_head else head
+            if free[0] == 0 and not graph.node_leaf[free[1]]:
+                survivor, merged = free, (head if near_head else tail)
+                pins[free] = _end_of(seg, free, alias)
+            else:
+                survivor = merged = free
+        else:
+            survivor = merged = head
+        incident[head], incident[tail] = near_head, near_tail
+        gone.add(id(seg))
+        if survivor == merged:
+            short += 1
+            continue
+        alias[merged] = survivor
+        incident[survivor] = incident[survivor] + incident.pop(merged)
+        if merged in pins:
+            pins.setdefault(survivor, pins.pop(merged))
+    keep = [seg for seg in segs if id(seg) not in gone]
+    for seg in keep:
+        seg.a_key = _resolve(alias, seg.a_key)
+        seg.b_key = _resolve(alias, seg.b_key)
+    return keep, short, pins
 
 
 def _extend_leaves(shared: dict[_Key, list[tuple[_Seg, bool]]], graph: _Graph) -> None:
@@ -563,8 +678,12 @@ def _clamp(point: tuple[float, float], shape: tuple[int, int]) -> PointPx:
 
 
 def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegment, ...], int]:
-    """Kẹp biên, làm tròn, bỏ đoạn suy biến SAU làm tròn và sắp theo `(start, end)` (bước 9-11)."""
-    walls: list[WallSegment] = []
+    """Kẹp biên, làm tròn, bỏ đoạn suy biến SAU làm tròn và sắp theo `(start, end)` (bước 9-11).
+
+    Hai đoạn cùng hai đầu mút (hai nhánh xương song song giữa cùng hai nút, K-02) chỉ giữ một:
+    độ tin cao hơn, hoà thì dày hơn. Không đếm vào `short` vì không mất tường nào.
+    """
+    walls: dict[tuple[int, int, int, int], WallSegment] = {}
     short = 0
     for seg in segs:
         a = _clamp((seg.ax, seg.ay), shape)
@@ -576,15 +695,18 @@ def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegme
             continue
         if end < start:
             start, end = end, start
-        walls.append(
-            WallSegment(
-                start=start,
-                end=end,
-                thickness_px=round(seg.thickness, 2),
-                confidence=round(min(1.0, max(0.0, seg.conf)), 3),
-            )
+        wall = WallSegment(
+            start=start,
+            end=end,
+            thickness_px=round(seg.thickness, 2),
+            confidence=round(min(1.0, max(0.0, seg.conf)), 3),
         )
-    return tuple(sorted(walls, key=lambda w: (w.start, w.end))), short
+        # ponytail: lưới 1 px, cặp trùng nằm vắt qua mép ô làm tròn thì sót; cần thì so láng giềng.
+        slot = (round(start[0]), round(start[1]), round(end[0]), round(end[1]))
+        kept = walls.get(slot)
+        if kept is None or (wall.confidence, wall.thickness_px) > (kept.confidence, kept.thickness_px):
+            walls[slot] = wall
+    return tuple(sorted(walls.values(), key=lambda w: (w.start, w.end))), short
 
 
 def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
@@ -605,11 +727,13 @@ def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
     for seg in raw:
         seg.axis = _snap_axis(seg)
     fused, tiny = _drop_short([_fuse(members) for members in _groups(raw)], graph)
+    fused, corner, pins = _absorb_corner_diagonals(fused, graph)
+    _align_shared_axes(fused)
     shared = _ends_by_key(fused)
-    _place_shared(shared)
+    _place_shared(shared, pins)
     _extend_leaves(shared, graph)
     walls, dropped_short = _finalise(fused, mask.shape)
-    return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + dropped_short})
+    return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + corner + dropped_short})
 
 
 def vectorize(mask: NDArray[np.bool_]) -> tuple[WallSegment, ...]:
