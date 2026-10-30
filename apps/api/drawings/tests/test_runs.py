@@ -221,6 +221,8 @@ async def test_record_step_running_then_completed_moves_forward(
     """`running` mở lượt ở phần trăm của các bước **trước**; `completed` đẩy sang bước kế."""
     _, run = await _started_run(db_session, fake_clock)
     first = await record_step(db_session, run_id=run.id, step="preprocess", status="running", clock=fake_clock)
+    assert first is not None
+    assert isinstance(first.pop("queueAhead"), int)
     assert first == {
         "id": run.upload_id,
         "status": "running",

@@ -246,16 +246,16 @@ async def test_prepare_page__odd_raster_modes_complete(
     assert isinstance(prepared.report, QualityReport)
 
 
-async def test_prepare_page__encrypted_pdf_raises_pdf_unreadable(
+async def test_prepare_page__encrypted_pdf_raises_pdf_encrypted(
     local_storage: ObjectStorage, fake_clock: Clock
 ) -> None:
-    """U04: PDF có `user_password` → `PermanentError("PDF_UNREADABLE")` (không thử lại)."""
+    """U04: PDF có `user_password` → `PermanentError("PDF_ENCRYPTED")` (không thử lại)."""
     source = _source("pdf")
     assert source.original_key is not None
     await _put(local_storage, source.original_key, make_pdf(1, encrypt="user_password"))
     with pytest.raises(PermanentError) as caught:
         await _prepare(local_storage, fake_clock, PagePlan(source=source, kind="auto"))
-    assert caught.value.code == "PDF_UNREADABLE"
+    assert caught.value.code == "PDF_ENCRYPTED"
 
 
 async def test_prepare_page__huge_pdf_page_fits_max_pixels(local_storage: ObjectStorage, fake_clock: Clock) -> None:
