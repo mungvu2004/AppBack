@@ -57,10 +57,11 @@ def broker(messaging_env: None) -> Iterator[SyncRedis]:
 
 
 async def test_queue_infer_sends_all_three_when_used_is_empty(db_session: AsyncSession, broker: SyncRedis) -> None:
-    """`used` rỗng → ba thông điệp trên `ml.infer`, đúng `model`/`artifact_prefix`/`px_per_paper_mm`."""
+    """`used` rỗng → ba thông điệp trên `ml.infer`, đúng `model`/`artifact_prefix`/`px_per_paper_mm`/`vectors_key`."""
     run_id = new_id("run", SystemClock())
     prefix, page_key = _scene(run_id)
     pins = _pins(run_id=run_id)
+    vectors_key = f"{prefix}preprocess/vectors.json"
     queued = queue_infer(
         db_session,
         pins=pins,
@@ -69,6 +70,7 @@ async def test_queue_infer_sends_all_three_when_used_is_empty(db_session: AsyncS
         width_px=1600,
         height_px=1200,
         px_per_paper_mm=7.5,
+        vectors_key=vectors_key,
     )
     assert set(queued) == set(MODEL_FAMILIES)
     await db_session.commit()
@@ -80,6 +82,7 @@ async def test_queue_infer_sends_all_three_when_used_is_empty(db_session: AsyncS
         item = by_step[family]
         assert item["artifact_prefix"] == f"{prefix}{family}/"
         assert item["px_per_paper_mm"] == 7.5
+        assert item["vectors_key"] == vectors_key
         assert cast("dict[str, object]", item["model"])["family"] == family
 
 
@@ -103,6 +106,7 @@ async def test_queue_infer_skips_families_already_used(db_session: AsyncSession,
     payloads = queued_payloads(broker, ML_QUEUE)
     assert len(payloads) == 2
     assert all(item["step"] != "wallSegmentation" for item in payloads)
+    assert all(item.get("vectors_key") is None for item in payloads)  # trang không phải PDF vector
 
 
 async def test_queue_infer_rollback_leaves_queue_empty(db_session: AsyncSession, broker: SyncRedis) -> None:

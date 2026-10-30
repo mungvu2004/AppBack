@@ -35,9 +35,11 @@ def queue_infer(
     width_px: int,
     height_px: int,
     px_per_paper_mm: float | None = None,
+    vectors_key: str | None = None,
 ) -> tuple[ModelFamily, ...]:
     """Đăng ký gửi `ml.infer.*` cho mọi họ chưa có trong `pins.used`; trả các họ đã xếp.
 
+    `vectors_key` (nét PDF của trang, UX41 B1) đi cùng mọi payload; chỉ bước tường đọc nó.
     Không commit, không gọi `send_task` trực tiếp: mỗi thông điệp qua `on_after_commit` với một
     closure bắt giá trị theo tham số mặc định (không bắt biến vòng lặp `family` muộn, K18).
     """
@@ -54,6 +56,7 @@ def queue_infer(
             artifact_prefix=f"{run_prefix}{step}/",
             model=pins.pinned[family],
             px_per_paper_mm=px_per_paper_mm,
+            vectors_key=vectors_key,
         )
 
         def _send(task: str = INFER_TASKS[family], body: InferStepPayload = payload) -> None:

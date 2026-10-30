@@ -174,6 +174,7 @@ async def _gd2(
         width_px=page.width_px,
         height_px=page.height_px,
         px_per_paper_mm=page.px_per_paper_mm,
+        vectors_key=page.vectors_key,
     )
     return True
 

@@ -8,11 +8,14 @@ KHUNG của nhánh prep: việc B viết thân (được thêm hàm riêng, khô
 """
 
 import asyncio
+import logging
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Final, Literal
+
+import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
 
 from apps.api.drawings.drawings import new_page_key
 from apps.api.quality.assessments import AssessmentRow, Corners
@@ -21,6 +24,7 @@ from packages.core.clock import Clock
 from packages.core.error_codes import FILE_TYPE_MISMATCH, IMAGE_TOO_LARGE
 from packages.db.models.drawings import DrawingRow
 from packages.messaging.tasks import PermanentError
+from packages.ml_contracts.payloads import PAGE_VECTORS_NAME, PAGE_VECTORS_STEP
 from packages.storage import keys
 from packages.storage.port import ObjectStorage, read_all_capped
 from packages.vision.preprocess import (
@@ -38,10 +42,14 @@ from packages.vision.preprocess import (
     rectify,
     render_pdf_page,
 )
+from packages.vision.preprocess.pdf_vector import PdfPageVectors, pdf_page_vectors
 from packages.vision.preprocess.sheet import drawing_quad
 from packages.vision.quality.assess import QualityReport, assess
+from packages.vision.walls.pdf_walls import VECTORS_MAX_BYTES, pixel_vectors
 
 PathKind = Literal["reuse", "user", "auto"]
+
+_log: Final = logging.getLogger(__name__)
 
 PNG_CONTENT_TYPE: Final = "image/png"
 MM_PER_INCH: Final = 25.4
@@ -86,6 +94,8 @@ class PreparedPage:
     `homography` (dạng `Homography.to_json()`), `report` là `None` chỉ ở đường `reuse` (GD2
     không ghi `drawings`/đo). `created_key`: khoá trang **mới** lượt này ghi (`new_page_key`) để
     GD2 xoá khi hỏng; không bao giờ là `pages/{i}.png`. `px_per_paper_mm` theo [6] bước 3.
+    `vectors_key`: `vectors.json` (nét PDF theo px trang này, `PageVectors`) khi trang là PDF vector
+    vừa dựng lượt này — bước tường đọc nó thay vì vector hoá mặt nạ (UX41 B1).
     """
 
     page_key: str
@@ -96,6 +106,7 @@ class PreparedPage:
     corners: Corners | None
     report: QualityReport | None
     created_key: str | None
+    vectors_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,11 +114,13 @@ class _Base:
     """Trang **chưa nắn** vừa dựng xong cùng dữ kiện chỉ pha dựng biết.
 
     `size_pt` là khổ trang PDF **vừa dựng lượt này**, mọi đường khác `None` — vì
-    `px_per_paper_mm` chỉ đo được khi biết khổ giấy thật ([6] bước 3).
+    `px_per_paper_mm` chỉ đo được khi biết khổ giấy thật ([6] bước 3). `vectors` cùng điều kiện:
+    nét vector của trang đó (point hiển thị), đọc khi còn giữ bản PDF.
     """
 
     page: RgbImage
     size_pt: tuple[float, float] | None
+    vectors: PdfPageVectors | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,20 +168,33 @@ async def _read_capped(storage: ObjectStorage, key: str, *, max_bytes: int) -> b
     )
 
 
-def _render_base(data: bytes, kind: str, page_index: int, settings: OrchestrateSettings) -> tuple[_Base, bytes]:
-    """Bản gốc → trang chưa nắn + PNG để ghi lên `upload_page`; PDF kèm khổ trang.
+def _page_vectors_or_none(data: bytes, page_index: int) -> PdfPageVectors | None:
+    """Nét vector của trang, hay `None` khi PDFium không đọc được nét/chữ (UX41 B1).
 
-    Khổ trang PDF đọc **trước** khi dựng (`pdf_page_size_pt` không dựng ảnh) để `px_per_paper_mm`
-    không phải giữ `data` sống qua các pha sau. Chạy trong `asyncio.to_thread`.
+    Nét PDF chỉ là đường tốt hơn cho bước tường: lỗi đọc nét không được làm hỏng trang mà
+    `render_pdf_page` vẫn dựng được. Log cảnh báo không mang khoá object hay đường tệp.
+    """
+    try:
+        return pdf_page_vectors(data, page_index)
+    except (VisionError, pdfium.PdfiumError) as exc:
+        _log.warning("preprocess_vectors_unreadable", extra={"page_index": page_index, "reason": type(exc).__name__})
+        return None
+
+
+def _render_base(data: bytes, kind: str, page_index: int, settings: OrchestrateSettings) -> tuple[_Base, bytes]:
+    """Bản gốc → trang chưa nắn + PNG để ghi lên `upload_page`; PDF kèm khổ trang và nét vector.
+
+    Khổ trang và nét PDF đọc ngay ở đây (cả hai không dựng ảnh) để `px_per_paper_mm` và
+    `vectors.json` không phải giữ `data` sống qua các pha sau. Chạy trong `asyncio.to_thread`.
     """
     limit = settings.pipeline_max_pixels
     if kind == "pdf":
         size_pt = pdf_page_size_pt(data, page_index)
+        vectors = _page_vectors_or_none(data, page_index)
         page = render_pdf_page(data, page_index, dpi=settings.pipeline_pdf_dpi, max_pixels=limit)
-    else:
-        size_pt = None
-        page = load_raster(data, max_pixels=limit)
-    return _Base(page=page, size_pt=size_pt), encode_png(page)
+        return _Base(page=page, size_pt=size_pt, vectors=vectors), encode_png(page)
+    page = load_raster(data, max_pixels=limit)
+    return _Base(page=page, size_pt=None), encode_png(page)
 
 
 def _quad_scale(homography: Homography, quad: Quad) -> float:
@@ -256,6 +282,38 @@ async def _put_rectified_page(
     return key
 
 
+def _vectors_json(vectors: PdfPageVectors, homography: Homography, px_per_paper_mm: float) -> bytes | None:
+    """`vectors.json` của trang cuối, hay `None` khi trang không phải PDF vector. Chạy trong `asyncio.to_thread`."""
+    page_vectors = pixel_vectors(vectors, homography, px_per_paper_mm=px_per_paper_mm)
+    return None if page_vectors is None else page_vectors.to_json()
+
+
+async def _put_vectors(
+    plan: PagePlan,
+    vectors: PdfPageVectors | None,
+    homography: Homography,
+    px_per_paper_mm: float | None,
+    *,
+    storage: ObjectStorage,
+) -> str | None:
+    """Ghi nét PDF theo px trang cuối vào `runs/{run}/preprocess/vectors.json`; trả khoá, hay `None`.
+
+    Khoá cố định theo lượt nên giao lặp ghi đè cùng bytes (J06) và payload ML kiểm được nó ở chiều
+    ngược lại (`InferStepPayload.vectors_key`). Không phải PDF vừa dựng, hay PDF quét → `None`.
+    """
+    if vectors is None or px_per_paper_mm is None:
+        return None
+    data = await _offload(partial(_vectors_json, vectors, homography, px_per_paper_mm))
+    if data is None:
+        return None
+    source = plan.source
+    key = keys.run_artifact(
+        source.project_id, source.level_id, source.upload_id, source.run_id, PAGE_VECTORS_STEP, PAGE_VECTORS_NAME
+    )
+    await storage.put(key, data, content_type="application/json", max_bytes=VECTORS_MAX_BYTES)
+    return key
+
+
 async def prepare_page(
     plan: PagePlan, *, storage: ObjectStorage, settings: OrchestrateSettings, clock: Clock
 ) -> PreparedPage:
@@ -277,7 +335,7 @@ async def prepare_page(
             created_key=None,
         )
     base, page_key = await _load_base(plan, storage=storage, settings=settings)
-    page, size_pt = base.page, base.size_pt
+    page, size_pt, vectors = base.page, base.size_pt, base.vectors
     del base  # bỏ tham chiếu cuối tới PNG trang chưa nắn trước khi cấp phát trang nắn
     quad = await _offload(partial(_source_quad, plan, page))
     corners = _corners_of(plan, quad, page)
@@ -290,6 +348,7 @@ async def prepare_page(
     if size_pt is not None:
         dpi = effective_dpi(*size_pt, settings.pipeline_pdf_dpi, settings.pipeline_max_pixels)
         px_per_paper_mm = dpi / MM_PER_INCH * done.quad_scale
+    vectors_key = await _put_vectors(plan, vectors, done.homography, px_per_paper_mm, storage=storage)
     return PreparedPage(
         page_key=created_key or page_key,
         width_px=done.homography.width_px,
@@ -299,4 +358,5 @@ async def prepare_page(
         corners=corners,
         report=done.report,
         created_key=created_key,
+        vectors_key=vectors_key,
     )
