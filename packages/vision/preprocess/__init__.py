@@ -14,7 +14,13 @@ from packages.vision.preprocess.geometry import (
     rectify,
     validate_quad,
 )
-from packages.vision.preprocess.pdf import effective_dpi, pdf_page_count, pdf_page_size_pt, render_pdf_page
+from packages.vision.preprocess.pdf import (
+    effective_dpi,
+    pdf_page_count,
+    pdf_page_size_pt,
+    render_pdf_page,
+    render_pdf_thumbnails,
+)
 from packages.vision.preprocess.raster import encode_png, load_raster
 from packages.vision.preprocess.sniff import sniff_kind
 from packages.vision.preprocess.types import (
@@ -48,6 +54,7 @@ __all__ = [
     "quad_to_ratios",
     "rectify",
     "render_pdf_page",
+    "render_pdf_thumbnails",
     "sniff_kind",
     "validate_quad",
 ]

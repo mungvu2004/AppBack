@@ -58,6 +58,8 @@ class UploadRow(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(Text)
     rejected_code: Mapped[str | None] = mapped_column(Text, default=None)
     original_key: Mapped[str | None] = mapped_column(Text, default=None)
+    content_sha256: Mapped[str | None] = mapped_column(Text, default=None)
+    """SHA-256 hex của cả tệp gốc, ghi lúc #7 `complete` (UX41 P01); `NULL` với lượt cũ hơn."""
     created_by: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (

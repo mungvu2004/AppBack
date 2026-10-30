@@ -124,6 +124,7 @@
 | N38 | `GET /api/share/{token}` | `share_links_open` | `client.ts` (`SharedModel`) | C | — | — | FIX-2436 | `SharedModelPage` |
 | N39 | `POST /api/projects/{project_id}/exports` | `share_links_export` | `spatialGraph.ts` | Đ | `model.export` | — | FIX-SHARE | nút Xuất (chỉ đọc, cùng dạng N15) |
 | N40 | `DELETE /api/projects/{project_id}/creation` | `projects_cancel_create_project` | `index.ts` (`Project`) | G | thành viên | — | B2-01 | toast "Đã tạo" (Hoàn tác: người tạo, ≤ 10 phút) |
+| N41 | `POST /api/projects/{project_id}/drawings/page-thumbnails` | `drawings_page_thumbnails` | `uploads.ts` (`PageThumbnails`) | Đ | `floor.upload` | — | UX41-U05 | ô chọn trang PDF (thân = byte PDF ≤ 8 MiB, không ghi gì) |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 

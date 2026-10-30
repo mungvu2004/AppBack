@@ -138,5 +138,6 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   ml_list_job_logs: object(ADMIN_ML, 'TrainingLogPageSchema'), // N37
   share_links_open: object('@/api/client', 'SharedModelSchema'), // N38 (FIX-2436)
   share_links_export: object('@/api/schemas/spatialGraph', 'SpatialGraphDocumentSchema'), // N39 (FIX-SHARE)
+  drawings_page_thumbnails: object('@/api/schemas/uploads', 'PageThumbnailsSchema'), // N41 (UX41 U05)
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
 };

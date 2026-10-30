@@ -14,12 +14,13 @@ giao dịch (nhật ký, hàng đợi) mà FE có thể gửi lại.
 from typing import Final
 
 from fastapi import Depends
+from starlette.requests import Request
 from starlette.responses import Response
 
 from apps.api.core.deps import ClockDep, CurrentPrincipal, DbSession, Storage
 from apps.api.core.ratelimit import key_user, rate_limit
 from apps.api.core.routing import protected_router, route_options
-from apps.api.drawings import complete, uploads
+from apps.api.drawings import complete, thumbnails, uploads
 from apps.api.drawings.latest import router as latest_router
 from apps.api.drawings.progress import progress_wire
 from apps.api.drawings.run_history import router as run_history_router
@@ -105,3 +106,13 @@ async def drawings_read_progress(project_id: str, upload_id: str, db: DbSession)
     """#8 — `Progress` hiện tại của một lượt tải, mọi trạng thái (BE-BIND §4)."""
     facts = await uploads.load_upload(db, project_id=project_id, upload_id=upload_id)
     return ProgressOut.model_validate(await progress_wire(db, facts.id))
+
+
+@router.post("/projects/{project_id}/drawings/page-thumbnails", dependencies=[_upload_gate])
+@route_options(body_limit=thumbnails.THUMBNAIL_BODY_LIMIT, idempotency="off")
+async def drawings_page_thumbnails(request: Request) -> thumbnails.PageThumbnailsOut:
+    """N41 — thân là byte PDF thô; trả ảnh nhỏ từng trang cho ô chọn trang, không ghi gì (UX41 U05).
+
+    Cùng khoá `floor.upload` với #5: chỉ người được tải lên mới cần chọn trang.
+    """
+    return await thumbnails.page_thumbnails(await request.body())
