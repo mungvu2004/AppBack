@@ -188,8 +188,9 @@ def test_dashed_line_inside_the_mask_does_not_win_the_pair() -> None:
 
 
 def test_line_without_consensus_keeps_its_centre_but_reads_steady_members() -> None:
-    """Hai đoạn cùng trục nhưng nét đoạn sau lệch 5 px (> 2 lần sai lệch cho phép): cả đường không đồng thuận nên tim giữ nguyên;
-    đoạn đầu tự đồng thuận quanh tim cũ vẫn lấy 12, đoạn sau lệch tim thì giữ bề dày mặt nạ."""
+    """Hai đoạn cùng trục nhưng nét đoạn sau lệch 5 px (> 2 lần sai lệch cho phép): cả đường không đồng
+    thuận nên tim giữ nguyên; đoạn đầu tự đồng thuận quanh tim cũ vẫn lấy 12,
+    đoạn sau lệch tim thì giữ bề dày mặt nạ."""
     page = _page()
     page[100:102, 40:151] = 0
     page[112:114, 40:151] = 0

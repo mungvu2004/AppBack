@@ -57,7 +57,7 @@ def _statement_pairs(statement: dict) -> list[tuple[str, str]]:
 
 
 def test_minio_ml_policy_exact_read_write_pairs() -> None:
-    """Tập cặp (GetObject/PutObject, tiền tố) đúng **bằng** 5 cặp của hợp đồng §4."""
+    """Tập cặp (GetObject/PutObject, tiền tố) đúng **bằng** 6 cặp của hợp đồng §4 (UX41-B1 thêm `vectors.json`)."""
     policy = _load_policy("ml-policy.json")
     all_pairs = {
         pair
