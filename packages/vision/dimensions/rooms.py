@@ -129,21 +129,30 @@ def _near(token: str, key: str) -> bool:
 def _fuzzy_usage(key: str) -> RoomUsage | None:
     """Công năng của khoá không khớp nguyên, lần lượt:
 
-    1. khoá nhiều chữ là đầu của nhãn ("phong ngu master", "phong con gai");
+    1. khoá nhiều chữ là đầu của nhãn ("phong ngu master", "phong con gai"); chữ >= 4 bắt đầu bằng `log` → lô gia
+       ("LOGO", "LOGGU": OCR đọc sai đuôi "loggia", bench 30/10/2026);
     2. bỏ tiền tố `phong`/`p`/`ph` (cả khi sai 1 chữ), cả cụm còn lại khớp nguyên hay gần đúng một khoá duy nhất:
        sai 1, sai 2 khi cả hai >= 7 chữ ("tehsinh" không là "vesinh"); hai công năng cùng gần → bỏ bước này
-       ("ten sinh" gần cả "ve sinh" lẫn "tien sanh");
+       ("ten sinh" gần cả "ve sinh" lẫn "tien sanh"); sau tiền tố một chữ 3 ký tự: khoá 3 chữ gần nhất duy nhất,
+       sai <= 2 ("PHONG HGI" → ngủ: tiền tố đã nói đây là tên phòng);
     3. từng chữ theo thứ tự với khoá một chữ (`_near`), chữ đầu nhận ra được quyết.
     """
     words = key.split()
     for usage, keys in _KEYS.items():
         if any(" " in k and words[: len(k.split())] == k.split() for k in keys):
             return usage
-    if len(words) > 1 and (words[0] in _PREFIXES or _distance(words[0], "phong") <= 1):
+    if any(len(word) >= 4 and word.startswith("log") for word in words):
+        return "loggia"
+    prefixed = len(words) > 1 and (words[0] in _PREFIXES or _distance(words[0], "phong") <= 1)
+    if prefixed:
         words = words[1:]
     squashed = "".join(words)
     if squashed in _USAGE_BY_SQUASHED_KEY:
         return _USAGE_BY_SQUASHED_KEY[squashed]
+    if prefixed and len(words) == 1 and len(squashed) == 3:
+        gaps = sorted((_distance(squashed, k), usage) for k, usage in _USAGE_BY_SQUASHED_KEY.items() if len(k) == 3)
+        if gaps[0][0] <= 2 and gaps[1][0] > gaps[0][0]:
+            return gaps[0][1]
     if len(squashed) >= 4:
         close = {
             usage

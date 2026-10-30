@@ -2,7 +2,9 @@
 
 from collections import Counter
 from collections.abc import Callable
+from typing import Literal
 
+import pytest
 import shapely
 
 from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
@@ -55,12 +57,12 @@ def _grid_walls(clock: FakeClock, confidences: Callable[[int], float] | None = N
 
 
 def test_grid_gives_two_rooms_with_matching_area(fake_clock: FakeClock) -> None:
-    """Lưới 2 phòng → 2 phòng, `areaM2 == float(polygon_area_m2(outline))`, tên `phòng 1`/`phòng 2` theo (y, x)."""
+    """Lưới 2 phòng → 2 phòng, `areaM2 == float(polygon_area_m2(outline))`, hai ô 3 x 3 m trống tên → phòng ngủ."""
     walls = _grid_walls(fake_clock)
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert len(rooms) == 2
-    assert [r.name for r in rooms] == ["phòng 1", "phòng 2"]
+    assert [r.name for r in rooms] == ["phòng ngủ", "phòng ngủ 2"]
     for room in rooms:
         assert room.area_m2 == float(polygon_area_m2(room.outline))
 
@@ -395,7 +397,8 @@ def test_washer_in_bathroom_keeps_bathroom(fake_clock: FakeClock) -> None:
 
 
 def test_short_cabinet_and_big_wardrobe_room_name_nothing(fake_clock: FakeClock) -> None:
-    """Tủ bếp ngắn (lavabo 1 m) không là bếp; thiết bị vệ sinh ở phòng > 10 m² không là phòng tắm."""
+    """Tủ bếp ngắn (lavabo 1 m) không là bếp; thiết bị vệ sinh ở phòng > 10 m² không là phòng tắm: phòng 32 m² trống
+    tên nên thành phòng khách theo bố cục."""
     walls = [
         _wall(fake_clock, (0, 0), (8000, 0)),
         _wall(fake_clock, (0, 4000), (8000, 4000)),
@@ -406,20 +409,24 @@ def test_short_cabinet_and_big_wardrobe_room_name_nothing(fake_clock: FakeClock)
         DetectionPx(label="kitchen_cabinet", box=_box(500, 500, 1500, 1000), confidence=0.8),
         DetectionPx(label="sanitary_fixture", box=_box(2000, 500, 2400, 900), confidence=0.8),
     )
-    assert _usages(walls, (), detections, fake_clock) == ["other"]
+    assert _usages(walls, (), detections, fake_clock) == ["livingRoom"]
 
 
-def test_wardrobe_names_bedroom_only_in_bedroom_sizes(fake_clock: FakeClock) -> None:
-    """Tủ áo trong phòng 9 m² → phòng ngủ; trong phòng 32 m² (phòng khách có kệ) → không."""
+@pytest.mark.parametrize("furniture", ["wardrobe", "bed"])
+def test_wardrobe_names_bedroom_only_in_bedroom_sizes(
+    fake_clock: FakeClock, furniture: Literal["wardrobe", "bed"]
+) -> None:
+    """Tủ áo hay giường trong phòng 9 m² → phòng ngủ; trong phòng 32 m² (kệ tủ, sofa giường) → không, phòng trống tên
+    lớn nhất thành phòng khách."""
     big = [
         _wall(fake_clock, (0, 0), (8000, 0)),
         _wall(fake_clock, (0, 4000), (8000, 4000)),
         _wall(fake_clock, (0, 0), (0, 4000)),
         _wall(fake_clock, (8000, 0), (8000, 4000)),
     ]
-    wardrobe = (DetectionPx(label="wardrobe", box=_box(500, 500, 1500, 1100), confidence=0.8),)
+    wardrobe = (DetectionPx(label=furniture, box=_box(500, 500, 1500, 1100), confidence=0.8),)
     assert _usages(_grid_walls(fake_clock), (), wardrobe, fake_clock)[0] == "bedroom"
-    assert _usages(big, (), wardrobe, fake_clock) == ["other"]
+    assert _usages(big, (), wardrobe, fake_clock) == ["livingRoom"]
 
 
 def test_text_label_wins_over_fixtures(fake_clock: FakeClock) -> None:
@@ -534,4 +541,34 @@ def test_hull_notch_walled_on_two_sides_is_not_a_room(fake_clock: FakeClock) -> 
         ((0, 3000), (3000, 3000)),
     ]
     rooms = _rooms_of([_wall(fake_clock, start, end) for start, end in segments], (), fake_clock)
-    assert [room.usage for room in rooms] == ["other", "other"]
+    assert [room.usage for room in rooms] == ["livingRoom", "bedroom"]
+
+
+@pytest.mark.parametrize(("split", "usages"), [(4800, ["livingRoom", "loggia"]), (4400, ["livingRoom", "other"])])
+def test_narrow_rim_strip_is_loggia(fake_clock: FakeClock, split: int, usages: list[str]) -> None:
+    """Không chữ, không đồ: dải 1,2 x 4 m sát biên → lô gia; 1,6 x 4 m (cỡ phòng tắm, < 7 m²) → không tên."""
+    segments = [
+        ((0, 0), (6000, 0)),
+        ((0, 4000), (6000, 4000)),
+        ((0, 0), (0, 4000)),
+        ((6000, 0), (6000, 4000)),
+        ((split, 0), (split, 4000)),
+    ]
+    walls = [_wall(fake_clock, start, end) for start, end in segments]
+    assert _usages(walls, (), (), fake_clock) == usages
+
+
+def test_layout_hall_open_to_living_and_labelled_living_kept(fake_clock: FakeClock) -> None:
+    """Chữ "sảnh" trong phòng 24 m² → phòng khách; đã có nhãn phòng khách thì phòng trống tên lớn không thành khách."""
+    big = [
+        _wall(fake_clock, (0, 0), (6000, 0)),
+        _wall(fake_clock, (0, 4000), (6000, 4000)),
+        _wall(fake_clock, (0, 0), (0, 4000)),
+        _wall(fake_clock, (6000, 0), (6000, 4000)),
+    ]
+    hall = (TextPx(text="TIEN SANH", box=BoxPx(x_min=1000, y_min=1000, x_max=1400, y_max=1200), confidence=0.9),)
+    assert _usages(big, hall, (), fake_clock) == ["livingRoom"]
+    two = [*big, _wall(fake_clock, (0, 8000), (6000, 8000)), _wall(fake_clock, (0, 4000), (0, 8000))]
+    two.append(_wall(fake_clock, (6000, 4000), (6000, 8000)))
+    living = (TextPx(text="P KHACH", box=BoxPx(x_min=1000, y_min=5000, x_max=1400, y_max=5200), confidence=0.9),)
+    assert _usages(two, living, (), fake_clock) == ["other", "livingRoom"]

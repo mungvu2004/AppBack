@@ -60,6 +60,23 @@ _RIM_FILL = 0.7
 _RIM_WALLED = 0.5
 """Mảnh trống ở rìa thành lô gia khi 1,5-15 m², ≥ 70 % hộp bao, ≥ 3 cạnh hộp bao sát đường khép ≥ 50 %."""
 
+_STRIP_SHORT_MM = 1400.0
+_STRIP_RATIO = 2.5
+_STRIP_BAND_MM = 600.0
+_STRIP_RIM = 0.5
+"""Phòng không nhãn thành lô gia khi hẹp dài (cạnh ngắn hộp xoay ≤ 1,4 m, dài ≥ 2,5 lần) và ≥ 50 % chu vi nằm
+trong 600 mm quanh biên bao: bench căn hộ 30/10/2026 lô gia 0,9-1,3 x 2,6-4,1 m tỉ lệ ≥ 2,8 (một cái 2,0), phòng
+tắm 1,5-1,9 m tỉ lệ ≤ 2,0, kho / phòng phụ trong lòng căn hộ sát biên ≤ 45 % chu vi."""
+
+_LIVING_MIN_M2 = 12.0
+_HALL_MAX_M2 = 15.0
+_PLAIN_BEDROOM_M2 = (7.0, 20.0)
+_PLAIN_BEDROOM_SHORT_MM = 2700.0
+_PLAIN_BEDROOM_RATIO = 1.6
+"""Bố cục căn hộ cho phòng chưa có tên: không phòng nào là phòng khách → phòng trống tên lớn nhất ≥ 12 m²; "sảnh"
+rộng > 15 m² là sảnh mở vào phòng khách; phòng 7-20 m², cạnh ngắn ≥ 2,7 m, dài ≤ 1,6 lần → phòng ngủ (bench căn hộ
+30/10/2026: phòng ngủ không nhãn 9,7-10,9 m² cạnh ngắn 2,9-3,2 m; phòng phụ trống tên cạnh ngắn ≤ 2,5 m)."""
+
 _SEED_RAY_MM = 6000
 """Tia của phòng mọc từ nhãn dài nhất 6 m: xa hơn là chữ nằm ngoài căn hộ (tên bản vẽ, ghi chú)."""
 
@@ -358,6 +375,53 @@ def _rim_outlines(lines: Sequence[shapely.LineString], rooms: Sequence[Sequence[
     return found
 
 
+def _sides(polygon: shapely.Polygon) -> tuple[float, float]:
+    """Cạnh ngắn, cạnh dài của hộp xoay nhỏ nhất bao `polygon`."""
+    corners = shapely.get_coordinates(shapely.oriented_envelope(polygon))
+    short, long = sorted(math.dist(corners[i], corners[i + 1]) for i in range(2))
+    return short, long
+
+
+def _strip_labels(lines: Sequence[shapely.LineString], outlines: Sequence[Sequence[Point]]) -> list[RoomLabel | None]:
+    """Lô gia không nhãn đã khép kín (cửa kính và lan can dò thành tường): dải hẹp dài sát biên bao, xem `_STRIP_*`."""
+    if not lines:
+        return [None for _ in outlines]
+    hull = shapely.convex_hull(shapely.MultiLineString(list(lines)))
+    band = hull.exterior.buffer(_STRIP_BAND_MM) if isinstance(hull, shapely.Polygon) else hull.buffer(_STRIP_BAND_MM)
+    loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
+    labels: list[RoomLabel | None] = []
+    for outline in outlines:
+        polygon = shapely.Polygon([(p.x, p.y) for p in outline])
+        short, long = _sides(polygon)
+        narrow = 0 < short <= _STRIP_SHORT_MM and long >= _STRIP_RATIO * short
+        on_rim = narrow and polygon.exterior.intersection(band).length >= _STRIP_RIM * polygon.exterior.length
+        labels.append(loggia if on_rim else None)
+    return labels
+
+
+def _layout_labels(
+    outlines: Sequence[Sequence[Point]], areas_m2: Sequence[float], labels: Sequence[RoomLabel | None]
+) -> list[RoomLabel | None]:
+    """Phòng khách và phòng ngủ cho phòng chưa có tên theo bố cục căn hộ, xem `_LIVING_MIN_M2` và các ngưỡng kề."""
+    living = RoomLabel("livingRoom", ROOM_USAGE_NAMES["livingRoom"])
+    bedroom = RoomLabel("bedroom", ROOM_USAGE_NAMES["bedroom"])
+    out = [
+        living if label is not None and label.usage == "corridor" and area > _HALL_MAX_M2 else label
+        for label, area in zip(labels, areas_m2, strict=True)
+    ]
+    if not any(label is not None and label.usage == "livingRoom" for label in out):
+        blank = [i for i, label in enumerate(out) if label is None and areas_m2[i] >= _LIVING_MIN_M2]
+        if blank:
+            out[max(blank, key=lambda i: areas_m2[i])] = living
+    for i, (outline, area) in enumerate(zip(outlines, areas_m2, strict=True)):
+        if out[i] is not None or not _PLAIN_BEDROOM_M2[0] <= area <= _PLAIN_BEDROOM_M2[1]:
+            continue
+        short, long = _sides(shapely.Polygon([(p.x, p.y) for p in outline]))
+        if short >= _PLAIN_BEDROOM_SHORT_MM and long <= _PLAIN_BEDROOM_RATIO * short:
+            out[i] = bedroom
+    return out
+
+
 def _wall_id_lists(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[tuple[str, ...]]:
     """`wallIds` của mỗi `outline`: tường có trung điểm cách biên ≤ `ROOM_SNAP_MM`, thứ tự `walls`.
 
@@ -419,7 +483,7 @@ def _fixture_labels(
     """Công năng suy từ đồ đạc dò được trong biên, cho phòng không có nhãn chữ (bản vẽ không ghi tên, chữ "WC" nhỏ
     OCR bỏ sót), theo thứ tự: dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp; thiết bị vệ sinh/buồng tắm đứng và
     ≤ `_BATHROOM_MAX_M2` → phòng tắm; máy giặt (không kèm thiết bị vệ sinh) và ≤ `_BATHROOM_MAX_M2` → lô-gia;
-    tủ áo và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
+    giường hay tủ áo và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
 
     Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
     """
@@ -442,7 +506,7 @@ def _fixture_labels(
             usage = "bathroom"
         elif "washing_machine" in found and area_m2 <= _BATHROOM_MAX_M2:
             usage = "loggia"
-        elif "wardrobe" in found and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
+        elif found & {"bed", "wardrobe"} and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
             usage = "bedroom"
         else:
             usage = None
@@ -463,9 +527,10 @@ def build_rooms(
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
-    Tên: nhãn chữ trong phòng, không có thì suy từ đồ đạc (`_fixture_labels`). Mảnh dưới `MIN_ROOM_AREA_M2` →
-    `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE
-    `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
+    Tên: nhãn chữ trong phòng, không có thì suy từ đồ đạc (`_fixture_labels`), rồi dải hẹp sát biên
+    (`_strip_labels`), cuối cùng bố cục (`_layout_labels`). Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`.
+    Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng,
+    vì tường ở đó thật sự thiếu.
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
@@ -489,8 +554,16 @@ def build_rooms(
     from_fixtures = _fixture_labels(outlines, [area for _, area in kept], detections, scaling)
     loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
     from_rim = [loggia if tuple(outline) in rim_keys else None for outline in outlines]
+    from_strip = _strip_labels(lines, outlines)
     labels = name_rooms(
-        [text or rim or fixture for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)]
+        _layout_labels(
+            outlines,
+            [area for _, area in kept],
+            [
+                text or rim or fixture or strip
+                for text, rim, fixture, strip in zip(from_text, from_rim, from_fixtures, from_strip, strict=True)
+            ],
+        )
     )
     rooms = []
     for (outline, area_m2), ids, label in zip(kept, wall_ids, labels, strict=True):
