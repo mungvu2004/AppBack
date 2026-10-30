@@ -81,6 +81,12 @@ _SUGGESTION_CONFIDENCE: Final = 0.5
 _INK_WALL_MM: Final = 220.0
 """Tỉ lệ dự phòng cho bộ lọc cỡ của mực dư khi chưa đọc được tỉ lệ: p75 bề dày tường ≈ 220 mm (bench căn hộ)."""
 
+_UNSET_PROJECT_SCALE: Final = Decimal(1)
+"""`default_scale_mm_per_px` khi dự án chưa đặt (`DEFAULT_SETTINGS` của `project_settings.read`).
+
+1 mm/px không phải tỉ lệ ai chọn cho mặt bằng (căn 10 m sẽ rộng 10 000 px): chỉ là "chưa đặt". Áp nó làm
+tầng ra 0,3 m² (U01), nên khi chưa đọc được tỉ lệ thì dùng tạm ước lượng từ bề dày tường; vẫn `unresolved`."""
+
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
 
@@ -514,10 +520,16 @@ def build_layer(
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
     scale, source, samples, rejected = _resolved_scale(walls_px, texts, fallback_mm_per_px, base)
+    estimated = source == "project_default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
+    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm dùng `s_dựng` (bề dày tường), không phải 1 mm/px
+        scale, source = Decimal(repr(_build_scale(walls_px, float(scale)))).quantize(_QUANTUM), "pipeline"
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
-    suggestions = _suggestions(page, walls_px, detections, texts, final if source == "pipeline" else None)
-    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, source, suggestions)
+    trusted = source == "pipeline" and not estimated
+    suggestions = _suggestions(page, walls_px, detections, texts, final if trusted else None)
+    # Tỉ lệ ước từ tường chỉ đúng tầm ±30 %: không dựng `Dimension` từ mẫu "khớp" nó (bước 7).
+    attempt_source = source if trusted else "estimate"
+    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, attempt_source, suggestions)
     dropped = base.copy()
     layer, dimensions = _attempt(context, scaling=Scaling(build, final), clock=clock, dropped=dropped)
     if build != final:

@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from apps.api.project_settings.read import DEFAULT_SETTINGS
 from apps.worker.pipeline_build import build as build_module
 from apps.worker.pipeline_build.build import BuiltLayer, build_layer
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
@@ -69,6 +70,26 @@ def test_build_layer__no_text_falls_back_to_project_default(
     built = _run([_wall(100, 100, 1100, 100)], (), fake_clock)
     assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("5"))
     assert any(getattr(record, "code", None) == "SCALE_UNRESOLVED" for record in caplog.records)
+
+
+def test_build_layer__unset_project_scale_uses_wall_estimate(fake_clock: FakeClock) -> None:
+    """U01: dự án chưa đặt tỉ lệ (1 mm/px) → tỉ lệ tạm từ bề dày tường (150 mm / 15 px = 10), không `Dimension`."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    built = _run(walls, (), fake_clock, fallback="1")
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("10.000000"))
+    assert built.dimensions == ()
+    assert built.layer.walls[0].thickness_mm >= 100  # không còn tường 15 mm của tỉ lệ 1 mm/px
+
+
+def test_build_layer__unset_project_scale_without_walls_keeps_default(fake_clock: FakeClock) -> None:
+    """Không tường nào để ước → giữ `project_default` như cũ."""
+    built = _run([], (), fake_clock, fallback="1")
+    assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("1"))
+
+
+def test_unset_project_scale_matches_settings_default() -> None:
+    """Hằng "chưa đặt" của bước dựng phải đúng mặc định `project_settings`."""
+    assert build_module._UNSET_PROJECT_SCALE == DEFAULT_SETTINGS.default_scale_mm_per_px
 
 
 @pytest.mark.parametrize("fallback", ["0", "-1", "NaN"])

@@ -35,7 +35,7 @@ from apps.api.quality.schemas import (
 )
 from packages.core.clock import Clock
 from packages.core.error_codes import NOT_FOUND
-from packages.db.models.drawings import DrawingRow
+from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.quality import QualityAssessmentRow
 from packages.storage.port import ObjectStorage
@@ -195,7 +195,7 @@ def _findings_out(report: Mapping[str, Any], *, level_id: str, drop_frame: bool)
     trang mới (khoá mới) — FE không giấu phát hiện còn lại dưới dấu "đã xử lý". Khoá không có
     ULID nào (dòng đo cũ hay khoá dựng tay) thì `u` là **cả khoá**: id vẫn ổn định và khác nhau
     giữa các trang, còn hơn để `IndexError` biến một lượt đọc thành 500 (NO-226).
-    `drop_frame` bỏ `FRAME_NOT_FOUND` khi người dùng đã áp góc.
+    `drop_frame` bỏ `FRAME_NOT_FOUND` khi người dùng đã áp góc hay trang là PDF (P05).
     """
     found = _ULID.findall(report["pageKey"])
     ulid = found[-1] if found else report["pageKey"]
@@ -237,9 +237,11 @@ def _floor_out(row: Row[Any], *, source_url: str) -> FloorQualityOut:
         return FloorQualityOut(**base, findings=[])
     applied = row.corners is not None
     measurement = report["measurement"]
+    # P05: trang PDF dựng thẳng từ khổ giấy, mép trang là khung; không có khung vẽ không có nghĩa là méo.
+    drop_frame = applied or row.sniffed_kind == "pdf"
     return FloorQualityOut(
         **base,
-        findings=_findings_out(report, level_id=row.level_id, drop_frame=applied),
+        findings=_findings_out(report, level_id=row.level_id, drop_frame=drop_frame),
         measurement=None if measurement is None else MeasurementOut.model_validate(measurement),
         frame=_frame_out(report, corners_applied=applied),
     )
@@ -263,8 +265,10 @@ async def read_view(
             QualityAssessmentRow.drawing_id.label("assessed_drawing_id"),
             QualityAssessmentRow.report,
             QualityAssessmentRow.corners,
+            UploadRow.sniffed_kind,
         )
         .join(DrawingRow, DrawingRow.floor_pk == FloorRow.pk)
+        .join(UploadRow, UploadRow.id == DrawingRow.upload_id)
         .outerjoin(QualityAssessmentRow, QualityAssessmentRow.floor_pk == FloorRow.pk)
         .where(FloorRow.project_id == project_id, FloorRow.deleted_at.is_(None))
         .order_by(FloorRow.floor_order, FloorRow.pk)
