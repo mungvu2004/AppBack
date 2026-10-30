@@ -44,6 +44,9 @@ _MAX_GROW_RATIO: Final = 1.25
 """Bề dày mực lớn hơn ngần này lần bề dày mặt nạ thì không tin (mặt nạ vốn đo dư)."""
 _PAPER_PERCENTILE: Final = 90.0
 
+type _Cand = tuple[float, float, float]
+"""Một cách đọc của lát: `(|span - bề dày mặt nạ|, tim lệch, bề dày)`."""
+
 
 @dataclass(frozen=True, slots=True)
 class Frame:
@@ -94,6 +97,17 @@ def fit_profile(
 ) -> tuple[float, float] | None:
     """Một lát cắt → `(tim lệch, bề dày)` theo đơn vị của `offsets`; không đọc được thì `None`.
 
+    Lát đứng một mình: lấy cách đọc có span gần bề dày mặt nạ nhất trong `_candidates`.
+    """
+    found = _candidates(profile, offsets, thickness)
+    return None if not found else (min(found)[1], min(found)[2])
+
+
+def _candidates(
+    profile: NDArray[np.float64], offsets: NDArray[np.float64], thickness: float
+) -> list[_Cand]:
+    """Mọi cách đọc hợp lệ của một lát: `(|span - bề dày mặt nạ|, tim lệch, bề dày)`.
+
     Ngưỡng nửa sâu giữa giấy và mực tối nhất tách các dải tối. Ứng viên: một dải (tường tô đặc, bề dày
     là bề rộng dải) hay một cặp dải (tường viền hai nét, bề dày là khoảng **tim** hai nét, đúng cách bản
     vẽ ghi kích thước). Giữ ứng viên có mép ngoài-mép ngoài gần bề dày mặt nạ nhất, tim cách tim mặt nạ
@@ -103,7 +117,7 @@ def fit_profile(
     paper = float(np.percentile(profile, _PAPER_PERCENTILE))
     ink = float(profile.min())
     if paper - ink < _MIN_CONTRAST:
-        return None
+        return []
     level = (paper + ink) / 2.0
     step = float(offsets[1] - offsets[0])
     last = len(profile) - 1
@@ -117,7 +131,7 @@ def fit_profile(
         weight = paper - profile[idx]
         centre = float(np.sum(weight * idx) / np.sum(weight))
         bands.append((left, right, centre))
-    best: tuple[float, float, float] | None = None
+    found: list[_Cand] = []
     for i, first in enumerate(bands):
         for second in bands[i:]:
             span = (second[1] - first[0]) * step
@@ -130,10 +144,8 @@ def fit_profile(
                 continue
             if abs(offset) > 0.5 * thickness:
                 continue
-            score = abs(span - thickness)
-            if best is None or score < best[0]:
-                best = (score, offset, width)
-    return None if best is None else (best[1], best[2])
+            found.append((abs(span - thickness), offset, width))
+    return found
 
 
 def _strip(gray: NDArray[np.uint8], wall: AxisWall, frame: Frame) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -161,11 +173,25 @@ def _profiles(gray: NDArray[np.uint8], wall: AxisWall, frame: Frame) -> tuple[li
     count = min(_PROFILES, strip.shape[0] // _ROWS_PER_PROFILE)
     if count < _MIN_PROFILES:
         return [], 0
+    chunks = np.array_split(strip[: count * _ROWS_PER_PROFILE], count)
+    per = [_candidates(chunk.mean(axis=0), offsets, wall.thickness) for chunk in chunks]
+    flat = [cand for cands in per for cand in cands]
+    if not flat:
+        return [], count
+    tol = max(_TOL_PX, _TOL_RATIO * wall.thickness)
+
+    def near(cands: list[_Cand], ref: _Cand) -> list[_Cand]:
+        return [c for c in cands if abs(c[1] - ref[1]) <= tol and abs(c[2] - ref[2]) <= tol]
+
+    # Mặt nạ hay phủ cả nét đứt/nét kề song song nên "span gần mặt nạ nhất" từng lát dễ ghép nhầm cặp
+    # (villa UX41: nét đứt + một nét tường). Cặp nét tường thật có ở gần mọi lát, nét đứt thì không:
+    # neo vào cách đọc được nhiều lát ủng hộ nhất (hoà thì span gần mặt nạ nhất), mỗi lát lấy cách đọc gần neo.
+    anchor = max(flat, key=lambda c: (sum(bool(near(cands, c)) for cands in per), -c[0]))
     fits: list[tuple[float, float]] = []
-    for chunk in np.array_split(strip[: count * _ROWS_PER_PROFILE], count):
-        fit = fit_profile(chunk.mean(axis=0), offsets, wall.thickness)
-        if fit is not None:
-            fits.append((wall.value + fit[0], fit[1]))
+    for cands in per:
+        pick = min(near(cands, anchor) or cands, default=None)
+        if pick is not None:
+            fits.append((wall.value + pick[1], pick[2]))
     return fits, count
 
 
@@ -195,10 +221,14 @@ def refine_line(gray: NDArray[np.uint8], walls: Sequence[AxisWall], frame: Frame
     pooled = [(centre, 0.0) for fits, _ in per_wall for centre, _ in fits]
     line = _consensus(pooled, sum(total for _, total in per_wall), tol)
     if line is None or abs(line[0] - walls[0].value) > _MAX_SHIFT_RATIO * smallest:
-        return None
+        # Cả đường không đồng thuận (lát nhiễu ở một đoạn): tim giữ nguyên, đoạn nào tự đồng thuận
+        # quanh tim cũ vẫn lấy bề dày mực.
+        line = (walls[0].value, 0.0)
     thicknesses: list[float | None] = []
     for wall, (fits, total) in zip(walls, per_wall, strict=True):
         own = _consensus(fits, total, max(_TOL_PX, _TOL_RATIO * wall.thickness))
         ok = own is not None and abs(own[0] - line[0]) <= tol and 0.0 < own[1] <= _MAX_GROW_RATIO * wall.thickness
         thicknesses.append(own[1] if ok and own is not None else None)
+    if all(width is None for width in thicknesses) and line[0] == walls[0].value:
+        return None
     return LineFit(value=line[0], thicknesses=tuple(thicknesses))

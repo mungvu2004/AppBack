@@ -172,3 +172,31 @@ def test_vectorize_rejects_a_page_of_another_size() -> None:
     mask, _ = _room()
     with pytest.raises(ValueError, match="page_gray"):
         vectorize_with_stats(mask, np.full((10, 10), 255, np.uint8))
+
+
+def test_dashed_line_inside_the_mask_does_not_win_the_pair() -> None:
+    """Nét đứt 1 px cách tim 10 px, mặt nạ phủ cả nó (17 px): lát có gạch đứt ghép gạch + nét dưới (span 18
+    sát mặt nạ hơn 14), nhưng cặp nét tường có ở mọi lát nên thắng phiếu → 12, tim không dời (villa UX41)."""
+    page = _page()
+    _outline_wall(page)
+    for x in range(40, 281, 20):
+        page[96, x : x + 10] = 0
+    fit = refine_line(page, [_wall(thickness=17.0)], STRAIGHT)
+    assert fit is not None
+    assert fit.value == pytest.approx(CENTRE, abs=0.3)
+    assert fit.thicknesses[0] == pytest.approx(12.0, abs=0.3)
+
+
+def test_line_without_consensus_keeps_its_centre_but_reads_steady_members() -> None:
+    """Hai đoạn cùng trục nhưng nét đoạn sau lệch 3 px: cả đường không đồng thuận nên tim giữ nguyên;
+    đoạn đầu tự đồng thuận quanh tim cũ vẫn lấy 12, đoạn sau lệch tim thì giữ bề dày mặt nạ."""
+    page = _page()
+    page[100:102, 40:151] = 0
+    page[112:114, 40:151] = 0
+    page[103:105, 170:281] = 0
+    page[115:117, 170:281] = 0
+    fit = refine_line(page, [_wall(hi=150.0), _wall(lo=170.0)], STRAIGHT)
+    assert fit is not None
+    assert fit.value == CENTRE
+    assert fit.thicknesses[0] == pytest.approx(12.0, abs=0.3)
+    assert fit.thicknesses[1] is None
