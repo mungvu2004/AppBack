@@ -8,6 +8,8 @@ cái đang kiểm là lựa chọn DB và lượt `FLUSHDB`, không phải Redis
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Self
 from unittest.mock import MagicMock, patch
@@ -34,6 +36,7 @@ from packages.testing.fixtures.services import (
     XDIST_WORKER_COUNT_ENV,
     refused_url,
 )
+from packages.testing.fixtures.storage import drop_own_bucket
 from packages.testing.fixtures.worker_id import XDIST_WORKER_ENV
 
 URL = "redis://10.9.0.3:6379/0"
@@ -240,3 +243,83 @@ def test_create_and_drop_go_through_the_guard() -> None:
         db_fixtures._create_database(url, "appback")
     with pytest.raises(RuntimeError, match="không phải tên test"):
         db_fixtures._drop_database(url, "appback")
+
+
+# --- hai đường của từng fixture, độc lập với chế độ của lượt đang chạy ---------------------
+# Cổng chạy ở chế độ dùng chung thì đường container không chạy, ở chế độ container thì đường ngoài không
+# chạy: test dưới đây đặt/xoá biến tự mình để độ phủ không đổi theo việc stack f14 có bật hay không.
+
+
+@contextmanager
+def _fake_shared(_key: str, _factory: object, start: Callable[[], tuple[object, object]]) -> Iterator[object]:
+    """`_shared_container` giả: gọi `start` như tiến trình tới trước, không file khoá, không Docker."""
+    _container, value = start()
+    yield value
+
+
+def test_shared_postgres__external_skips_the_container(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    monkeypatch.setenv(SHARED_POSTGRES_ENV, "postgresql+asyncpg://u:p@10.9.0.2:5432/appback")
+    with patch.object(services, "_shared_container") as shared, services.shared_postgres(tmp_path_factory) as url:
+        assert url == services.external_postgres_url()
+    shared.assert_not_called()
+
+
+def test_shared_postgres__unset_starts_the_shared_container(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    monkeypatch.delenv(SHARED_POSTGRES_ENV, raising=False)
+    pg = MagicMock()
+    pg.get_connection_url.return_value = "postgresql+asyncpg://t:t@10.9.0.9:5432/test"
+    with (
+        patch.object(services, "_start", return_value=pg),
+        patch.object(services, "PostgresContainer"),
+        patch.object(services, "_shared_container", _fake_shared),
+        services.shared_postgres(tmp_path_factory) as url,
+    ):
+        assert url == "postgresql+asyncpg://t:t@10.9.0.9:5432/test"
+
+
+def test_shared_minio__external_skips_the_container(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    monkeypatch.setenv(SHARED_MINIO_ENV, "10.9.0.4:9000,key,se,cret")
+    with patch.object(services, "_shared_container") as shared, services.shared_minio(tmp_path_factory) as cfg:
+        assert cfg == ("10.9.0.4:9000", "key", "se,cret")
+    shared.assert_not_called()
+
+
+def test_shared_minio__unset_starts_the_shared_container(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    monkeypatch.delenv(SHARED_MINIO_ENV, raising=False)
+    minio = MagicMock()
+    minio.get_config.return_value = {"endpoint": "10.9.0.8:9000", "access_key": "a", "secret_key": "s"}
+    with (
+        patch.object(services, "_start", return_value=minio),
+        patch.object(services, "MinioContainer"),
+        patch.object(services, "_shared_container", _fake_shared),
+        services.shared_minio(tmp_path_factory) as cfg,
+    ):
+        assert cfg == ("10.9.0.8:9000", "a", "s")
+
+
+def test_external_minio_and_redis__unset_means_containers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(SHARED_MINIO_ENV, raising=False)
+    monkeypatch.delenv(SHARED_REDIS_BROKER_ENV, raising=False)
+    assert services.external_minio() is None
+    assert services._external_redis(SHARED_REDIS_BROKER_ENV, "noeviction") is None
+
+
+def test_drop_own_bucket__only_on_a_shared_minio(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MinIO riêng bị xoá cả khối nên không dọn; MinIO dùng chung thì xoá object rồi bucket của chính test."""
+    client = MagicMock()
+    client.list_objects.return_value = [MagicMock(object_name="k.txt")]
+    monkeypatch.delenv(SHARED_MINIO_ENV, raising=False)
+    drop_own_bucket(client, "test-0a")
+    client.remove_bucket.assert_not_called()
+    monkeypatch.setenv(SHARED_MINIO_ENV, "10.9.0.4:9000,key,secret")
+    drop_own_bucket(client, "test-0a")
+    client.remove_object.assert_called_once_with("test-0a", "k.txt")
+    client.remove_bucket.assert_called_once_with("test-0a")

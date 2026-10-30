@@ -351,9 +351,16 @@ def _shared_container[ValueT](
 
 @pytest.fixture(scope="session")
 def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    """Một Postgres cho cả lượt chạy; mỗi tiến trình xdist đã có database riêng (`db.py`).
+    """Một Postgres cho cả lượt chạy; mỗi tiến trình xdist đã có database riêng (`db.py`)."""
+    with shared_postgres(tmp_path_factory) as url:
+        yield url
 
-    Postgres ngoài (PERF-10): URL luôn trỏ database `postgres`, không bao giờ database của app.
+
+@contextmanager
+def shared_postgres(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """Thân của `postgres_url`, tách ra để test gọi thẳng cả hai đường (PERF-10).
+
+    Postgres ngoài: URL luôn trỏ database `postgres`, không bao giờ database của app.
     """
     external = external_postgres_url()
     if external:
@@ -461,7 +468,17 @@ def minio_endpoint(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[s
     """Trả (endpoint `host:port`, access_key, secret_key) — một MinIO cho cả lượt chạy.
 
     Dùng chung được vì `s3_storage` tạo **một bucket mỗi test** với tên ngẫu nhiên, nên hai tiến
-    trình xdist không bao giờ chạm cùng bucket. MinIO ngoài (PERF-10): biến là `endpoint,access_key,secret_key`.
+    trình xdist không bao giờ chạm cùng bucket.
+    """
+    with shared_minio(tmp_path_factory) as endpoint:
+        yield endpoint
+
+
+@contextmanager
+def shared_minio(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, str, str]]:
+    """Thân của `minio_endpoint`, tách ra để test gọi thẳng cả hai đường (PERF-10).
+
+    MinIO ngoài: biến là `endpoint,access_key,secret_key`.
     """
     external = external_minio()
     if external:
