@@ -17,17 +17,22 @@ from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import Any, Final, cast
 
-from sqlalchemy import ARRAY, ColumnElement, Text, case, delete, func, select, update
+from sqlalchemy import ARRAY, ColumnElement, Text, and_, case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.projects.wire import ProjectRollup, ProjectStatus, SummaryStatus
 from packages.core.clock import Clock
+from packages.db.models.floors import FloorRow
 from packages.db.models.projects import PIPELINE_STATES, Project, ProjectFloorSummary
+from packages.db.models.spatial import FloorDocumentRow
 
 _RUNNING_STATES: Final = ("pending", "running")
 """Lượt pipeline còn dở — `legacy_status` xét nó **trước** `failed` (B2-01 [6])."""
+
+_REAL_SCALE_SOURCES: Final = ("human", "pipeline")
+"""Nguồn tỉ lệ cho diện tích tin được; `project_default` chỉ là số mặc định, `none` là chưa có (U07)."""
 
 _EMPTY_ROLLUP: Final = ProjectRollup(
     floor_count=0,
@@ -37,6 +42,8 @@ _EMPTY_ROLLUP: Final = ProjectRollup(
     status="processing",
     legacy_status="draft",
     default_floor_id=None,
+    has_scale=True,
+    job_active=False,
 )
 """Dự án không có dòng đếm nào (chưa có tầng, hay mọi tầng đã ẩn)."""
 
@@ -182,11 +189,16 @@ async def touch_project(db: AsyncSession, *, project_id: str, clock: Clock) -> N
 def _derive_status(
     floor_count: int, walls_total: int, walls_reviewed: int, *, no_upload: bool, running: bool, failed: bool
 ) -> tuple[SummaryStatus, ProjectStatus]:
-    """Suy `(status, legacy_status)` từ bộ cờ của một dự án — một chỗ, đúng thứ tự xét ở [6]."""
+    """Suy `(status, legacy_status)` từ bộ cờ của một dự án — một chỗ, đúng thứ tự xét ở [6].
+
+    Đã có tường thì chỉ lượt đang chạy mới giữ `processing`: tầng trống hay lượt mới nhất
+    hỏng không làm tường sẵn có hết cần duyệt (U10, H-15 ghi "Đang xử lý" khi chưa chạy).
+    """
     all_reviewed = walls_total > 0 and walls_reviewed == walls_total
     status: SummaryStatus = "done"
     if not all_reviewed:
-        status = "processing" if floor_count == 0 or no_upload or running or failed else "qc"
+        not_started = walls_total == 0 and (floor_count == 0 or no_upload or failed)
+        status = "processing" if running or not_started else "qc"
     legacy: ProjectStatus = "draft"
     if running:
         legacy = "processing"
@@ -211,6 +223,9 @@ async def project_rollups(db: AsyncSession, project_ids: Sequence[str]) -> dict[
         return {}
     summary = ProjectFloorSummary
     reviewed_all = summary.walls_reviewed >= summary.walls_total
+    # Tầng đã chạy pipeline mà tài liệu chưa có tỉ lệ thật → diện tích là số px, không phải m².
+    scale_source = func.coalesce(FloorDocumentRow.scale_source, "none")
+    no_scale = and_(summary.has_upload, scale_source.not_in(_REAL_SCALE_SOURCES))
     stmt = (
         select(
             summary.project_id,
@@ -221,11 +236,21 @@ async def project_rollups(db: AsyncSession, project_ids: Sequence[str]) -> dict[
             func.bool_or(~summary.has_upload).label("no_upload"),
             func.bool_or(summary.pipeline_state.in_(_RUNNING_STATES)).label("running"),
             func.bool_or(summary.pipeline_state == "failed").label("failed"),
+            func.bool_or(no_scale).label("no_scale"),
             func.array_agg(
                 aggregate_order_by(summary.floor_level_id, reviewed_all, summary.floor_order, summary.floor_level_id),
                 type_=ARRAY(Text),
             )[1].label("default_floor_id"),
         )
+        .outerjoin(
+            FloorRow,
+            and_(
+                FloorRow.project_id == summary.project_id,
+                FloorRow.level_id == summary.floor_level_id,
+                FloorRow.deleted_at.is_(None),
+            ),
+        )
+        .outerjoin(FloorDocumentRow, FloorDocumentRow.floor_pk == FloorRow.pk)
         .where(summary.project_id.in_(list(project_ids)), summary.hidden.is_(False))
         .group_by(summary.project_id)
     )
@@ -247,5 +272,7 @@ async def project_rollups(db: AsyncSession, project_ids: Sequence[str]) -> dict[
             status=status,
             legacy_status=legacy,
             default_floor_id=row.default_floor_id,
+            has_scale=not row.no_scale,
+            job_active=row.running,
         )
     return rollups

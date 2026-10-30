@@ -135,8 +135,9 @@ def test_error_accepts_every_param() -> None:
         resource="libraryItem",
         file_name="a",
         layer="walls",
+        reason="revoked",
     )
-    assert set(err.wire_params()) == {"step", "floor", "count", "field", "resource", "fileName", "layer"}
+    assert set(err.wire_params()) == {"step", "floor", "count", "field", "resource", "fileName", "layer", "reason"}
 
 
 def test_wire_params_is_a_copy() -> None:
@@ -182,7 +183,14 @@ def test_error_rejects_bad_count(count: object) -> None:
 
 @pytest.mark.parametrize(
     ("name", "value"),
-    [("step", "upload"), ("step", ["preprocess"]), ("floor", ""), ("file_name", 1), ("layer", None)],
+    [
+        ("step", "upload"),
+        ("step", ["preprocess"]),
+        ("floor", ""),
+        ("file_name", 1),
+        ("layer", None),
+        ("reason", "gone"),
+    ],
 )
 def test_error_rejects_bad_value(name: str, value: object) -> None:
     params: dict[str, Any] = {name: value}

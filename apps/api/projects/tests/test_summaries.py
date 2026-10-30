@@ -24,7 +24,9 @@ from apps.api.projects.tests.sql_count import count_sql
 from apps.api.projects.wire import ProjectRollup
 from packages.db.models.projects import Project
 from packages.testing.factories.auth import make_user
+from packages.testing.factories.floors import make_floor
 from packages.testing.factories.projects import make_project
+from packages.testing.factories.spatial import make_floor_document
 from packages.testing.fixtures.clock import FakeClock
 
 FLOOR: Final = "L-0000000001"
@@ -83,7 +85,9 @@ async def _rollup(sessionmaker: async_sessionmaker[AsyncSession], project_id: st
         ([Floor(upload=False, state="none")], "processing", "draft", FLOOR),
         ([Floor(total=2, reviewed=1, state="pending")], "processing", "processing", FLOOR),
         ([Floor(total=2, reviewed=1, state="running")], "processing", "processing", FLOOR),
-        ([Floor(total=2, reviewed=1, state="failed")], "processing", "error", FLOOR),
+        ([Floor(total=2, reviewed=1, state="failed")], "qc", "error", FLOOR),
+        ([Floor(state="failed")], "processing", "error", FLOOR),
+        ([Floor(total=3), Floor(OTHER, order=1, upload=False, state="none")], "qc", "draft", FLOOR),
         ([Floor(total=4, reviewed=4)], "done", "approved", FLOOR),
         ([Floor()], "qc", "draft", FLOOR),
         ([Floor(total=2, reviewed=1), Floor(OTHER, order=1, total=1, reviewed=0)], "qc", "draft", FLOOR),
@@ -94,7 +98,9 @@ async def _rollup(sessionmaker: async_sessionmaker[AsyncSession], project_id: st
         "chua-upload",
         "pending",
         "running",
-        "failed",
+        "failed-van-con-tuong",
+        "failed-chua-co-tuong",
+        "co-tuong-va-tang-trong",
         "moi-tuong-da-duyet",
         "khong-tuong-nao",
         "hai-tang-dang-duyet",
@@ -114,6 +120,34 @@ async def test_rollup_status_covers_every_branch(
     rollup = await _rollup(db_sessionmaker, project.id)
     assert (rollup.status, rollup.legacy_status, rollup.default_floor_id) == (status, legacy, default_floor_id)
     assert rollup.floor_count == len(floors)
+
+
+@pytest.mark.parametrize(
+    ("scale_source", "has_scale"),
+    [("human", True), ("pipeline", True), ("project_default", False), ("none", False), (None, False)],
+)
+async def test_rollup_has_scale_and_job_active(
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    fake_clock: FakeClock,
+    scale_source: str | None,
+    has_scale: bool,
+) -> None:
+    """U07/U10: `has_scale` theo nguồn tỉ lệ của tầng đã chạy pipeline; `job_active` khi lượt đang chạy."""
+    project = await make_project(db_session, owner=await make_user(db_session))
+    floor = await make_floor(db_session, project=project)
+    await make_floor(db_session, project=project)  # tầng chưa tải: không làm `has_scale` sai
+    if scale_source is not None:
+        scale = None if scale_source == "none" else Decimal("5")
+        await make_floor_document(
+            db_session, floor_pk=floor.pk, scale=scale, scale_source=scale_source, clock=fake_clock
+        )
+    await set_upload_state(
+        db_session, project_id=project.id, floor_level_id=floor.level_id, has_upload=True, pipeline_state="running"
+    )
+    await db_session.commit()
+    rollup = await _rollup(db_sessionmaker, project.id)
+    assert (rollup.has_scale, rollup.job_active, rollup.floor_count) == (has_scale, True, 2)
 
 
 async def test_rollup_sums_null_areas_as_zero(
