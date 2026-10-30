@@ -71,15 +71,14 @@ def _object_matrix(obj: ctypes.c_void_p) -> Affine:
 
 
 def _path_segments(obj: ctypes.c_void_p, matrix: Affine, out: list[Row]) -> None:
-    """Thêm các đoạn thẳng của một path vào `out`; đường cong và path vô hình (không nét, không tô) bị bỏ.
+    """Thêm các đoạn thẳng của một path vào `out`; đường cong bị bỏ.
 
     `MoveTo` mở subpath, `LineTo` thêm đoạn, cờ `close` thêm đoạn khép về điểm đầu subpath — đúng
     cách PDFium lưu `re` (MoveTo + 3 LineTo + close). Bề dày nét nhân căn định thức của ma trận.
+    Path vô hình (`n`, không nét không tô) PDFium không dựng thành page object nên không cần lọc.
     """
     fill_mode, stroke = ctypes.c_int(0), ctypes.c_int(0)
     pdfium_c.FPDFPath_GetDrawMode(obj, ctypes.byref(fill_mode), ctypes.byref(stroke))
-    if not fill_mode.value and not stroke.value:
-        return
     width = ctypes.c_float(0.0)
     pdfium_c.FPDFPageObj_GetStrokeWidth(obj, ctypes.byref(width))
     a, b, c, d, e, f = matrix

@@ -44,8 +44,12 @@ def infer_payload(
     model_ref: ModelRef | None = None,
     step: str = STEP,
     px_per_paper_mm: float | None = None,
+    with_vectors: bool = False,
 ) -> InferStepPayload:
-    """Payload bước suy luận hợp lệ; model mặc định là dạng cổ điển của chính `step`."""
+    """Payload bước suy luận hợp lệ; model mặc định là dạng cổ điển của chính `step`.
+
+    `with_vectors` thêm `vectors_key` đúng khoá `vectors.json` của lượt (trang PDF vector, UX41 B1).
+    """
     prefix = f"projects/{some_id('prj')}/floors/L-ABCDEFGHIJ/uploads/{some_id('upl')}/"
     run = some_id("run")
     ref = model_ref or ModelRef(version_id=None, family=step, weights_key=None, pinned_name=None, checksum_sha256="")
@@ -58,6 +62,7 @@ def infer_payload(
         artifact_prefix=f"{prefix}runs/{run}/{step}/",
         model=ref,
         px_per_paper_mm=px_per_paper_mm,
+        vectors_key=f"{prefix}runs/{run}/preprocess/vectors.json" if with_vectors else None,
     )
 
 

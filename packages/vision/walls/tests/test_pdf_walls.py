@@ -1,4 +1,4 @@
-"""Tường đọc từ nét vector PDF (`pdf_vector.pdf_page_vectors` + `pdf_walls.vector_walls`).
+"""Tường đọc từ nét vector PDF (`pdf_page_vectors` → `pixel_vectors` → `vector_walls`).
 
 PDF dựng tay trong test (`synthetic.make_pdf`) ở tỉ lệ 1:50 nên đáp án biết trước theo mm thật:
 phòng 6000 x 4000, tường bao 200, vách 100, một ô cửa đi 900 có cánh và cung mở, hai đường kích
@@ -6,21 +6,26 @@ thước song song cách 350 mm (lọt khoảng bề dày tường) cùng chữ 
 Mặt nạ trọng tài giả SegFormer: ảnh dựng của chính các dải tường tô đặc.
 """
 
+import json
 import math
 
 import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from packages.vision.preprocess import pdf_vector
 from packages.vision.preprocess.errors import VisionError
 from packages.vision.preprocess.pdf import render_pdf_page
 from packages.vision.preprocess.pdf_vector import pdf_page_vectors
 from packages.vision.preprocess.tests.synthetic import make_pdf
-from packages.vision.walls.pdf_walls import VectorWalls, vector_walls
+from packages.vision.preprocess.types import Homography
+from packages.vision.walls import pdf_walls
+from packages.vision.walls.pdf_walls import PageVectors, VectorWalls, pixel_vectors, vector_walls
 
 PAGE = (1190.0, 842.0)
 MM = 72 / 25.4 / 50
 """Point giấy cho 1 mm thật ở 1:50."""
+PT_PER_PAPER_MM = 72 / 25.4
 OX, OY = 150.0, 200.0
 BLACK = (0.0, 0.0, 0.0)
 DPI = 100.0
@@ -75,10 +80,18 @@ def _ink(data: bytes) -> NDArray[np.bool_]:
     return np.asarray(pixels.mean(axis=2) < 128)
 
 
+def _page_vectors(data: bytes, shape: tuple[int, ...], scale_n: int | None = None) -> PageVectors | None:
+    """`pixel_vectors` của trang 0 khi trang cuối là chính ảnh dựng khổ `shape` (không nắn)."""
+    vectors = pdf_page_vectors(data, 0)
+    height, width = shape
+    px_per_paper_mm = width / vectors.width_pt * PT_PER_PAPER_MM
+    return pixel_vectors(vectors, Homography.identity(width, height), px_per_paper_mm=px_per_paper_mm, scale_n=scale_n)
+
+
 def _walls(data: bytes, evidence: NDArray[np.bool_], scale_n: int | None = None) -> VectorWalls | None:
-    """`vector_walls` của trang 0 theo khổ của `evidence`."""
-    height, width = evidence.shape
-    return vector_walls(pdf_page_vectors(data, 0), width_px=width, height_px=height, evidence=evidence, scale_n=scale_n)
+    """`vector_walls` của trang 0 theo khổ của `evidence`; trang không vector → `None`."""
+    page_vectors = _page_vectors(data, evidence.shape, scale_n)
+    return None if page_vectors is None else vector_walls(page_vectors, evidence=evidence)
 
 
 def _mm(px: float) -> float:
@@ -111,6 +124,7 @@ EXPECTED = [
     (5900, 100, 5900, 3900, 200),
 ]
 """Sáu tường: tim chạy tới tim tường vuông góc, ô cửa 1000..1900 còn nguyên, mặt trong bị vách cắt đã nối."""
+THICKNESS_MM = [100, 200, 200, 200, 200, 200]
 
 
 def test_double_line_plan_gives_exact_centrelines_and_thickness() -> None:
@@ -133,8 +147,7 @@ def test_filled_bands_follow_page_rotation(rotate: int) -> None:
     result = _walls(data, evidence, scale_n=50)
     assert result is not None
     assert len(result.walls) == 6
-    thick = sorted(round(_mm(w.thickness_px)) for w in result.walls)
-    assert thick == [100, 200, 200, 200, 200, 200]
+    assert sorted(round(_mm(w.thickness_px)) for w in result.walls) == THICKNESS_MM
     if rotate == 0:
         assert _summary(result, evidence.shape) == EXPECTED
 
@@ -149,27 +162,144 @@ def test_filled_bands_without_scale_note_use_paper_range() -> None:
 
 
 def test_dimension_lines_alone_are_not_walls() -> None:
-    """Trọng tài không thấy tường (mặt nạ rỗng) → `None`, người gọi lùi về đường raster."""
+    """Trọng tài không thấy tường (mặt nạ rỗng) → `None`, người gọi lùi về vector hoá mặt nạ."""
     data = _double_line_plan()
     evidence = np.zeros_like(_ink(data))
     assert _walls(data, evidence) is None
 
 
-def test_mask_of_other_size_falls_back() -> None:
-    """Mặt nạ khác khổ ảnh dựng là hai hệ toạ độ lệch nhau → không đoán, trả `None`."""
+def test_rectified_page_maps_strokes_into_page_pixels() -> None:
+    """Phép nắn (thu nửa) áp lên nét: tường nằm trong khổ trang cuối, bề dày đổi theo cùng tỉ lệ."""
     data = _bands_pdf()
+    full = _ink(data)
+    height, width = full.shape
+    target = (width // 2, height // 2)
+    homography = Homography.from_array(np.diag([0.5, 0.5, 1.0]), (width, height), target)
     vectors = pdf_page_vectors(data, 0)
-    assert vector_walls(vectors, width_px=10, height_px=10, evidence=np.ones((5, 5), bool)) is None
+    px_per_paper_mm = width / vectors.width_pt * PT_PER_PAPER_MM / 2
+    page_vectors = pixel_vectors(vectors, homography, px_per_paper_mm=px_per_paper_mm, scale_n=50)
+    assert page_vectors is not None
+    result = vector_walls(page_vectors, evidence=full[: target[1] * 2 : 2, : target[0] * 2 : 2])
+    assert result is not None
+    assert sorted(round(_mm(2 * w.thickness_px)) for w in result.walls) == THICKNESS_MM
+    points = [p for wall in result.walls for p in (wall.start, wall.end)]
+    assert all(0 <= x <= target[0] and 0 <= y <= target[1] for x, y in points)
 
 
-def test_raster_in_pdf_falls_back() -> None:
-    """PDF quét (một ảnh phủ cả trang, không nét) → `image_ratio` ≈ 1 và `None`."""
+def test_raster_in_pdf_has_no_vectors() -> None:
+    """PDF quét (một ảnh phủ cả trang, không nét) → `image_ratio` ≈ 1 và `pixel_vectors` là `None`."""
     image = b"q %g 0 0 %g 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\xff\xff\x00 EI Q\n" % PAGE
     data = make_pdf(1, size=PAGE, ops=image)
     vectors = pdf_page_vectors(data, 0)
     assert math.isclose(vectors.image_ratio, 1.0)
     assert len(vectors.segments) == 0
-    assert _walls(data, np.ones_like(_ink(data))) is None
+    assert _page_vectors(data, _ink(data).shape) is None
+
+
+def test_blank_page_has_no_vectors() -> None:
+    """Trang PDF không nét, không ảnh → không còn đoạn nào → `None` (không ghi `vectors.json` rỗng)."""
+    data = make_pdf(1, size=PAGE)
+    assert _page_vectors(data, _ink(data).shape) is None
+
+
+def test_page_vectors_json_round_trip_keeps_walls() -> None:
+    """`to_json` → `from_json` giữ nguyên đoạn, tỉ lệ và cho cùng tường (bước tường đọc lại đúng thứ đã ghi)."""
+    data = _double_line_plan()
+    evidence = _ink(_bands_pdf())
+    page_vectors = _page_vectors(data, evidence.shape)
+    assert page_vectors is not None
+    loaded = PageVectors.from_json(page_vectors.to_json())
+    assert np.array_equal(loaded.segments, page_vectors.segments)
+    assert loaded.thickness_px == pytest.approx(page_vectors.thickness_px, abs=1e-4)
+    assert loaded.scale_n == page_vectors.scale_n == 50
+    assert vector_walls(loaded, evidence=evidence) == vector_walls(page_vectors, evidence=evidence)
+
+
+def _body(**changes: object) -> bytes:
+    """Một `vectors.json` hợp lệ đã đổi vài khoá (giá trị `...` = bỏ khoá)."""
+    body: dict[str, object] = {"segments": [[0, 0, 10, 0], [0, 5, 10, 5]], "thicknessPx": [1.0, 9.0], "scaleN": 50}
+    body |= changes
+    return json.dumps({k: v for k, v in body.items() if v is not ...}).encode()
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"{",
+        b"\xff",
+        b"[]",
+        _body(extra=1),
+        _body(scaleN=...),
+        _body(scaleN=0),
+        _body(scaleN="50"),
+        _body(scaleN=True),
+        _body(segments=[[0, 0, 10, 0], [0, 5]]),
+        _body(segments=[[0, 0, 10]]),
+        _body(segments=[[0, 0, 10, None]]),
+        _body(segments=[["a", 0, 10, 0]]),
+        _body(segments=[[0, 0, 10, float("nan")]]),
+        _body(segments=[0, 0, 10, 0]),
+        _body(thicknessPx=[9.0, 1.0]),
+        _body(thicknessPx=[0.0, 1.0]),
+        _body(thicknessPx=[1.0]),
+    ],
+    ids=[
+        "bad_json",
+        "not_utf8",
+        "not_object",
+        "extra_key",
+        "missing_key",
+        "scale_zero",
+        "scale_string",
+        "scale_bool",
+        "ragged",
+        "three_columns",
+        "null_number",
+        "string_number",
+        "nan",
+        "flat",
+        "thickness_reversed",
+        "thickness_zero",
+        "thickness_one",
+    ],
+)
+def test_page_vectors_from_json_rejects_bad_objects(data: bytes) -> None:
+    """Object kho không tin: mọi dạng lệch → `ValueError` (bước tường lùi về mặt nạ), không lỗi khác."""
+    with pytest.raises(ValueError):  # noqa: PT011  # mỗi dạng lệch một thông điệp; chỉ kiểu là hợp đồng
+        PageVectors.from_json(data)
+
+
+def test_page_vectors_from_json_caps_segments(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quá `MAX_SEGMENTS` đoạn → `ValueError` (K13), đúng trần thì qua."""
+    monkeypatch.setattr(pdf_walls, "MAX_SEGMENTS", 2)
+    assert len(PageVectors.from_json(_body()).segments) == 2
+    with pytest.raises(ValueError, match="n ≤ 2"):
+        PageVectors.from_json(_body(segments=[[0, 0, 10, 0]] * 3))
+
+
+def test_empty_page_vectors_give_no_walls() -> None:
+    """`segments` rỗng đọc được thành `(0, 4)` và không ra tường nào → `None`."""
+    loaded = PageVectors.from_json(_body(segments=[], scaleN=None))
+    assert loaded.segments.shape == (0, 4)
+    assert loaded.scale_n is None
+    assert vector_walls(loaded, evidence=np.ones((50, 50), dtype=np.bool_)) is None
+
+
+def test_nested_forms_stop_at_depth_limit() -> None:
+    """Form XObject lồng: nét trong form được đọc, nhưng sâu hơn `_MAX_FORM_DEPTH` tầng thì bỏ."""
+    line = b"100 100 m 300 100 l S\n"
+    forms = [line + b"/Fn Do\n"] * (pdf_vector._MAX_FORM_DEPTH + 2)
+    vectors = pdf_page_vectors(make_pdf(1, size=PAGE, ops=b"/Fn Do\n", forms=forms), 0)
+    assert len(vectors.segments) == pdf_vector._MAX_FORM_DEPTH
+
+
+def test_segment_cap_stops_reading(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chạm trần `_MAX_SEGMENTS` → dừng đọc object kế tiếp (K13): còn ít đoạn hơn trang đầy đủ."""
+    data = _bands_pdf()
+    full = len(pdf_page_vectors(data, 0).segments)
+    monkeypatch.setattr(pdf_vector, "_MAX_SEGMENTS", 1)
+    capped = len(pdf_page_vectors(data, 0).segments)
+    assert 0 < capped < full
 
 
 def test_bad_page_index_is_validation() -> None:

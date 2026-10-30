@@ -14,14 +14,19 @@ import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 kh
 import pytest
 from numpy.typing import NDArray
 
+from apps.ml.runtime.settings import MlSettings
+from apps.ml.runtime.tasks_util import InferContext
 from apps.ml.walls import step as step_module
+from apps.ml.walls import tasks as tasks_module
 from apps.ml.walls.step import CLASSIC_CONFIDENCE_CAP, segment_page, to_wall_px
 from apps.ml.walls.tasks import MODEL_VERSION_FAMILY_MISMATCH, _prepare
-from apps.ml.walls.tests.helpers import classic_ref, infer_payload, storage_ref
+from apps.ml.walls.tests.helpers import classic_ref, infer_payload, put_sync, storage_ref
 from apps.ml.walls.tests.onnx_fixtures import make_threshold_segformer
 from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.artifacts import MAX_WALLS, decode_mask, walls_from_json
 from packages.ml_contracts.synthetic import render_plan
+from packages.storage.local import LocalDiskStorage
+from packages.vision.walls.pdf_walls import PageVectors
 from packages.vision.walls.types import WallSegment
 
 PLAN = render_plan(101)
@@ -161,3 +166,113 @@ def test_prepare_rejects_a_payload_of_another_family() -> None:
     with pytest.raises(PermanentError) as caught:
         asyncio.run(_prepare(payload))
     assert caught.value.code == MODEL_VERSION_FAMILY_MISMATCH
+
+
+# --- trang PDF vector (UX41 B1) -------------------------------------------------------------
+
+FRAME_SIDE = 200
+FRAME_BANDS = ((20, 20, 180, 30), (20, 170, 180, 180), (20, 20, 30, 180), (170, 20, 180, 180))
+"""Bốn dải tường dày 10 px `(x0, y0, x1, y1)` quanh một phòng — vừa là mặt nạ vừa là nét PDF."""
+
+
+def frame_mask() -> NDArray[np.bool_]:
+    """Mặt nạ của bốn dải tường."""
+    mask = np.zeros((FRAME_SIDE, FRAME_SIDE), dtype=np.bool_)
+    for x0, y0, x1, y1 in FRAME_BANDS:
+        mask[y0:y1, x0:x1] = True
+    return mask
+
+
+def frame_vectors() -> PageVectors:
+    """Nét PDF của bốn dải: bốn cạnh mỗi hình chữ nhật, như PDFium đọc `re f`, bề dày 5..20 px."""
+    edges = [
+        edge
+        for x0, y0, x1, y1 in FRAME_BANDS
+        for edge in ((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0))
+    ]
+    return PageVectors(np.asarray(edges, dtype=np.float64), (5.0, 20.0), None)
+
+
+def frame_page() -> NDArray[np.uint8]:
+    """Ảnh trang cùng khổ mặt nạ (bộ tách giả bỏ qua nội dung ảnh)."""
+    return np.zeros((FRAME_SIDE, FRAME_SIDE, 3), dtype=np.uint8)
+
+
+def test_segment_page_builds_walls_from_pdf_vectors_when_the_mask_agrees(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Có nét PDF và mặt nạ xác nhận: tường từ nét (bề dày đúng 10 px), `walls.png` vẫn là mặt nạ."""
+    use_segmenter(monkeypatch, frame_mask())
+    output = segment_page(frame_page(), classic_ref(), backend="fake", session=None, vectors=frame_vectors())
+    assert output.walls_from == "vector"
+    walls = walls_from_json(output.artifacts["walls.json"]).walls
+    assert len(walls) == 4
+    assert {wall.thickness_px for wall in walls} == {10.0}
+    mask = decode_mask(output.artifacts["walls.png"], width_px=FRAME_SIDE, height_px=FRAME_SIDE)
+    assert np.array_equal(mask, frame_mask())
+    assert output.dropped == {"cap": 0}
+
+
+def test_segment_page_falls_back_to_the_mask_when_vectors_are_not_walls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mặt nạ không xác nhận nét PDF nào (mặt nạ rỗng) → vector hoá mặt nạ như trang raster."""
+    use_segmenter(monkeypatch, np.zeros((FRAME_SIDE, FRAME_SIDE), dtype=np.bool_))
+    output = segment_page(frame_page(), classic_ref(), backend="fake", session=None, vectors=frame_vectors())
+    assert output.walls_from == "mask"
+    assert walls_of(output) == ()
+    assert {"spur", "short", "cap"} <= set(output.dropped)
+
+
+def test_segment_page_without_vectors_uses_the_mask(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không có nét PDF (trang raster): luôn vector hoá mặt nạ, kể cả khi mặt nạ là tường đẹp."""
+    use_segmenter(monkeypatch, frame_mask())
+    output = segment_page(frame_page(), classic_ref(), backend="fake", session=None)
+    assert output.walls_from == "mask"
+    assert walls_of(output)
+
+
+def test_segment_page_caps_vector_walls_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trần `MAX_WALLS` áp cho cả tường từ nét PDF: giữ dài nhất, đếm `cap`."""
+    use_segmenter(monkeypatch, frame_mask())
+    monkeypatch.setattr(step_module, "MAX_WALLS", 2)
+    output = segment_page(frame_page(), classic_ref(), backend="fake", session=None, vectors=frame_vectors())
+    assert output.walls_from == "vector"
+    assert len(walls_of(output)) == 2
+    assert output.dropped == {"cap": 2}
+
+
+def vector_context(monkeypatch: pytest.MonkeyPatch, storage: LocalDiskStorage) -> None:
+    """Ngữ cảnh worker trỏ vào kho thật của test, bộ giả (không nạp model)."""
+    context = InferContext(storage=storage, settings=MlSettings(ml_backend="fake"))
+    monkeypatch.setattr(tasks_module, "infer_context", lambda: context)
+
+
+def test_prepare_reads_the_page_vectors(local_storage: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`vectors_key` có object hợp lệ → `prepare` trả đúng nét đã ghi (bước tiền xử lý → bước tường)."""
+    vector_context(monkeypatch, local_storage)
+    payload = infer_payload(width=FRAME_SIDE, height=FRAME_SIDE, with_vectors=True)
+    assert payload.vectors_key is not None
+    put_sync(local_storage, payload.vectors_key, frame_vectors().to_json(), "application/json")
+    session, vectors = asyncio.run(_prepare(payload))
+    assert session is None
+    assert vectors is not None
+    assert np.array_equal(vectors.segments, frame_vectors().segments)
+    assert vectors.thickness_px == (5.0, 20.0)
+
+
+@pytest.mark.parametrize("stored", [None, b"{", b"x" * 64], ids=["missing", "corrupt", "too_large"])
+def test_prepare_ignores_unusable_vectors(
+    local_storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    stored: bytes | None,
+) -> None:
+    """`vectors.json` thiếu, hỏng hay quá trần → `None` và một cảnh báo không mang khoá; bước không hỏng."""
+    vector_context(monkeypatch, local_storage)
+    monkeypatch.setattr(tasks_module, "VECTORS_MAX_BYTES", 32)
+    caplog.set_level(logging.WARNING, logger="apps.ml.walls.tasks")
+    payload = infer_payload(width=FRAME_SIDE, height=FRAME_SIDE, with_vectors=True)
+    assert payload.vectors_key is not None
+    if stored is not None:
+        put_sync(local_storage, payload.vectors_key, stored, "application/json")
+    assert asyncio.run(_prepare(payload)) == (None, None)
+    (record,) = [item for item in caplog.records if item.message == "walls_vectors_unusable"]
+    assert record.__dict__["run_id"] == payload.run_id
+    assert payload.vectors_key not in record.getMessage()

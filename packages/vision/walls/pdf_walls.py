@@ -1,7 +1,9 @@
 """Tường đọc thẳng từ nét vector của PDF: tim thẳng tuyệt đối, bề dày đúng bằng khoảng cách hai mặt tường.
 
-Đầu vào là `PdfPageVectors` (mọi đoạn thẳng của trang, point hiển thị) và một mặt nạ **bằng chứng**
-cùng khổ ảnh dựng của trang (mặt nạ SegFormer của bước tường). Hình học lấy từ PDF, còn mặt nạ chỉ
+Hai pha ở hai tiến trình. `pixel_vectors` (bước tiền xử lý, còn giữ bản PDF) đổi `PdfPageVectors`
+(point hiển thị) sang **pixel trang cuối** qua phép dựng + nắn, bỏ đoạn ngắn và dựng khoảng bề dày px;
+kết quả đi qua kho dạng `PageVectors.to_json`. `vector_walls` (bước tường) nhận `PageVectors` và một
+mặt nạ **bằng chứng** cùng khổ trang (mặt nạ của bước tường). Hình học lấy từ PDF, còn mặt nạ chỉ
 làm trọng tài: mực nào là tường. Các bước:
 
 1. Bỏ đoạn ngắn hơn `2 · bề dày nhỏ nhất`, gộp đoạn trùng (nét + cạnh vùng tô cùng chỗ).
@@ -14,25 +16,26 @@ làm trọng tài: mực nào là tường. Các bước:
    nhau ≤ bề dày (mặt trong bị tường ngăn cắt ở chữ T), kéo/cắt đầu tường về tim tường vuông góc.
 
 Bề dày cho phép lấy từ tỉ lệ `1:N` (tham số hay ghi chú `TL 1:N` trong lớp chữ PDF) — không có thì
-dùng khoảng theo mm giấy rộng hơn. Trả `None` (người gọi lùi về đường raster) khi trang là ảnh quét
-hay không đủ tường qua trọng tài.
+dùng khoảng theo mm giấy rộng hơn. `pixel_vectors` trả `None` khi trang là ảnh quét hay không còn nét;
+`vector_walls` trả `None` (người gọi lùi về vector hoá mặt nạ) khi không đủ tường qua trọng tài.
 """
 
+import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Self
 
 import numpy as np
 from numpy.typing import NDArray
 
 from packages.vision.dimensions.lengths import parse_scale_note
 from packages.vision.preprocess.pdf_vector import PdfPageVectors
+from packages.vision.preprocess.types import Homography
 from packages.vision.walls.types import WallSegment
 
-__all__ = ["VectorWalls", "vector_walls"]
+__all__ = ["MAX_SEGMENTS", "VECTORS_MAX_BYTES", "PageVectors", "VectorWalls", "pixel_vectors", "vector_walls"]
 
-PT_PER_MM: Final = 72.0 / 25.4
 WALL_MM_RANGE: Final = (60.0, 450.0)
 """Bề dày tường thật (mm) khi biết tỉ lệ: dưới vách 100 một chút tới trên tường 400; > 450 là cột."""
 PAPER_MM_RANGE: Final = (0.4, 9.0)
@@ -46,11 +49,71 @@ _MAX_IMAGE_RATIO: Final = 0.5
 MIN_WALLS: Final = 4
 """Ít hơn ngần này tường qua trọng tài thì không tin đường vector (trang không phải mặt bằng vector)."""
 _SAMPLES: Final = (8, 256)
+MAX_SEGMENTS: Final = 200_000
+"""Trần số đoạn của một `PageVectors` (K13) — cùng trần với lượt đọc PDF."""
+VECTORS_MAX_BYTES: Final = 16 * 1024 * 1024
+"""Trần bytes `vectors.json` (K13): `MAX_SEGMENTS` đoạn x 4 số, 2 chữ số lẻ ≈ 7 MB."""
+_JSON_KEYS: Final = frozenset({"segments", "thicknessPx", "scaleN"})
+
+
+@dataclass(frozen=True, slots=True)
+class PageVectors:
+    """Nét vector của trang theo **pixel trang cuối** (đã dựng, đã nắn) — đầu vào của `vector_walls`.
+
+    `segments` `(n, 4)`: `x0, y0, x1, y1` đã bỏ đoạn ngắn và đoạn trùng; `thickness_px`: khoảng bề
+    dày tường `(nhỏ, lớn)` theo px trang; `scale_n`: mẫu số `1:N` đã dựng khoảng đó, `None` khi không biết.
+    """
+
+    segments: NDArray[np.float64]
+    thickness_px: tuple[float, float]
+    scale_n: int | None
+
+    def to_json(self) -> bytes:
+        """Dạng lưu kho `{segments, thicknessPx, scaleN}`; toạ độ làm tròn 2 chữ số như `_clean`."""
+        body = {
+            "segments": np.round(self.segments, 2).tolist(),
+            "thicknessPx": [round(v, 4) for v in self.thickness_px],
+            "scaleN": self.scale_n,
+        }
+        return json.dumps(body, separators=(",", ":")).encode()
+
+    @classmethod
+    def from_json(cls, data: bytes) -> Self:
+        """Đọc lại `to_json` của một object kho (không tin).
+
+        Sai dạng, số không hữu hạn, khoảng bề dày sai thứ tự hay quá `MAX_SEGMENTS` đoạn → `ValueError`.
+        """
+        body = json.loads(data)
+        if not isinstance(body, dict) or set(body) != _JSON_KEYS:
+            raise ValueError("vectors.json phải có đúng ba khoá segments, thicknessPx, scaleN")
+        scale_n = body["scaleN"]
+        if scale_n is not None and (type(scale_n) is not int or scale_n < 1):
+            raise ValueError("scaleN phải là số nguyên dương hay null")
+        segments = _finite_array(body["segments"])
+        if segments.size == 0:
+            segments = segments.reshape(0, 4)
+        if segments.ndim != 2 or segments.shape[1] != 4 or len(segments) > MAX_SEGMENTS:
+            raise ValueError(f"segments phải là mảng (n, 4), n ≤ {MAX_SEGMENTS}")
+        thickness = _finite_array(body["thicknessPx"])
+        if thickness.shape != (2,) or not 0 < thickness[0] <= thickness[1]:
+            raise ValueError("thicknessPx phải là [nhỏ, lớn] dương, nhỏ ≤ lớn")
+        return cls(segments, (float(thickness[0]), float(thickness[1])), scale_n)
+
+
+def _finite_array(value: object) -> NDArray[np.float64]:
+    """Mảng số thực hữu hạn từ giá trị JSON; dạng lệch (lởm chởm, chuỗi, null) hay NaN/∞ → `ValueError`."""
+    try:
+        array = np.asarray(value, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("mảng số sai dạng") from exc
+    if not np.isfinite(array).all():
+        raise ValueError("mảng số có NaN hay vô cực")
+    return array
 
 
 @dataclass(frozen=True, slots=True)
 class VectorWalls:
-    """Tường theo pixel ảnh dựng của trang, tỉ lệ đã dùng, và số cặp ứng viên trước trọng tài."""
+    """Tường theo pixel trang, tỉ lệ đã dùng, và số cặp ứng viên trước trọng tài."""
 
     walls: tuple[WallSegment, ...]
     scale_n: int | None
@@ -59,7 +122,7 @@ class VectorWalls:
 
 @dataclass(slots=True)
 class _Wall:
-    """Tường đang dựng (point hiển thị): hướng đơn vị `u`, tim `offset` theo pháp tuyến, khoảng `s0..s1` dọc `u`."""
+    """Tường đang dựng (px trang): hướng đơn vị `u`, tim `offset` theo pháp tuyến, khoảng `s0..s1` dọc `u`."""
 
     u: tuple[float, float]
     offset: float
@@ -79,16 +142,16 @@ class _Wall:
         return (self.u[0] * s + nx * self.offset, self.u[1] * s + ny * self.offset)
 
 
-def _thickness_range_pt(scale_n: int | None) -> tuple[float, float]:
-    """Khoảng bề dày (point giấy) theo tỉ lệ `1:N`, hay theo mm giấy khi không biết tỉ lệ."""
+def _paper_mm_range(scale_n: int | None) -> tuple[float, float]:
+    """Khoảng bề dày tường theo mm **giấy**: theo tỉ lệ `1:N`, hay `PAPER_MM_RANGE` khi không biết tỉ lệ."""
     if scale_n is None:
-        return PAPER_MM_RANGE[0] * PT_PER_MM, PAPER_MM_RANGE[1] * PT_PER_MM
-    return WALL_MM_RANGE[0] / scale_n * PT_PER_MM, WALL_MM_RANGE[1] / scale_n * PT_PER_MM
+        return PAPER_MM_RANGE
+    return WALL_MM_RANGE[0] / scale_n, WALL_MM_RANGE[1] / scale_n
 
 
 def _clean(segments: NDArray[np.float64], min_len: float) -> NDArray[np.float64]:
-    """Đoạn đủ dài, đầu mút xếp thứ tự và bỏ trùng (sai khác < 0,01 pt) — `(n, 4)`."""
-    seg = segments[:, :4]
+    """Đoạn đủ dài, đầu mút xếp thứ tự và bỏ trùng (sai khác < 0,01 px) — `(n, 4)`; không sửa `segments`."""
+    seg = np.array(segments[:, :4], dtype=np.float64)
     seg = seg[np.hypot(seg[:, 2] - seg[:, 0], seg[:, 3] - seg[:, 1]) >= min_len]
     swap = (seg[:, 0] > seg[:, 2]) | ((seg[:, 0] == seg[:, 2]) & (seg[:, 1] > seg[:, 3]))
     seg[swap] = seg[swap][:, [2, 3, 0, 1]]
@@ -159,15 +222,14 @@ def _wall_of(a: NDArray[np.float64], b: NDArray[np.float64]) -> _Wall:
     )
 
 
-def _agreement(wall: _Wall, evidence: NDArray[np.bool_], sx: float, sy: float) -> float:
-    """Tỉ lệ điểm mẫu trên tim (đổi sang pixel) rơi vào mặt nạ bằng chứng; ngoài ảnh tính là không."""
+def _agreement(wall: _Wall, evidence: NDArray[np.bool_]) -> float:
+    """Tỉ lệ điểm mẫu trên tim rơi vào mặt nạ bằng chứng; ngoài ảnh tính là không."""
     height, width = evidence.shape
-    length_px = (wall.s1 - wall.s0) * max(sx, sy)
-    count = int(min(max(length_px, _SAMPLES[0]), _SAMPLES[1]))
+    count = int(min(max(wall.s1 - wall.s0, _SAMPLES[0]), _SAMPLES[1]))
     s = np.linspace(wall.s0, wall.s1, count)
     nx, ny = wall.normal
-    xs = np.floor((wall.u[0] * s + nx * wall.offset) * sx).astype(int)
-    ys = np.floor((wall.u[1] * s + ny * wall.offset) * sy).astype(int)
+    xs = np.floor(wall.u[0] * s + nx * wall.offset).astype(int)
+    ys = np.floor(wall.u[1] * s + ny * wall.offset).astype(int)
     inside = (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height)
     hits = np.zeros(count, dtype=bool)
     hits[inside] = evidence[ys[inside], xs[inside]]
@@ -264,44 +326,70 @@ def _close_corners(walls: list[_Wall]) -> None:
                 setattr(wall, end, best)
 
 
-def vector_walls(
+def pixel_vectors(
     vectors: PdfPageVectors,
+    homography: Homography,
     *,
-    width_px: int,
-    height_px: int,
-    evidence: NDArray[np.bool_],
+    px_per_paper_mm: float,
     scale_n: int | None = None,
-) -> VectorWalls | None:
-    """Tường của trang vector theo pixel ảnh dựng `width_px x height_px`; `None` = lùi về đường raster.
+) -> PageVectors | None:
+    """Nét của trang PDF theo pixel trang cuối; `None` = trang không phải bản vẽ vector.
 
-    `evidence` là mặt nạ tường cùng khổ ảnh dựng (SegFormer). `scale_n` thiếu thì đọc `TL 1:N` trong
-    lớp chữ PDF. `None` khi ảnh nhúng phủ ≥ `_MAX_IMAGE_RATIO` trang hay ít hơn `MIN_WALLS` tường qua
-    trọng tài. Cùng đầu vào → cùng kết quả (không ngẫu nhiên, thứ tự xếp ổn định).
+    `homography` là phép nắn từ ảnh dựng (`source_*` = khổ ảnh `render_pdf_page`) sang trang cuối
+    (`Homography.identity` khi không nắn); point hiển thị → px ảnh dựng theo tỉ lệ khổ hai bên.
+    `px_per_paper_mm` của trang cuối dựng khoảng bề dày; `scale_n` thiếu thì đọc `TL 1:N` trong lớp
+    chữ. `None` khi ảnh nhúng phủ ≥ `_MAX_IMAGE_RATIO` trang (PDF quét) hay không còn đoạn nào sau khi
+    bỏ đoạn có tâm ngoài trang cuối (khung tên bị cắt khi nắn, điểm sau mặt phẳng nắn) và đoạn ngắn.
     """
-    if vectors.image_ratio >= _MAX_IMAGE_RATIO or evidence.shape != (height_px, width_px):
+    if vectors.image_ratio >= _MAX_IMAGE_RATIO:
         return None
     if scale_n is None:
         scale_n = parse_scale_note([vectors.text])
-    t_min, t_max = _thickness_range_pt(scale_n)
+    low_mm, high_mm = _paper_mm_range(scale_n)
+    t_min, t_max = low_mm * px_per_paper_mm, high_mm * px_per_paper_mm
+    sx = homography.source_width_px / vectors.width_pt
+    sy = homography.source_height_px / vectors.height_pt
+    to_page = homography.as_array() @ np.diag([sx, sy, 1.0])
+    points = vectors.segments[:, :4].reshape(-1, 2)
+    projected = np.c_[points, np.ones(len(points))] @ to_page.T
+    w = projected[:, 2:3]
+    with np.errstate(divide="ignore", invalid="ignore"):  # điểm sau mặt phẳng nắn (w ≤ 0) → NaN, rớt ở `inside`
+        seg = np.where(w > 0, projected[:, :2] / w, np.nan).reshape(-1, 4)
+    mid_x, mid_y = (seg[:, 0] + seg[:, 2]) / 2, (seg[:, 1] + seg[:, 3]) / 2
+    inside = (mid_x >= 0) & (mid_x <= homography.width_px) & (mid_y >= 0) & (mid_y <= homography.height_px)
+    seg = _clean(seg[inside][:MAX_SEGMENTS], _MIN_OVERLAP_RATIO * t_min)
+    if len(seg) == 0:
+        return None
+    return PageVectors(seg, (t_min, t_max), scale_n)
+
+
+def vector_walls(vectors: PageVectors, *, evidence: NDArray[np.bool_]) -> VectorWalls | None:
+    """Tường của trang vector theo pixel trang; `None` = người gọi lùi về vector hoá mặt nạ.
+
+    `evidence` là mặt nạ tường cùng khổ trang (bước tường). `None` khi ít hơn `MIN_WALLS` tường qua
+    trọng tài. Đầu tường kẹp vào khổ trang (`WallPx` không nhận toạ độ âm). Cùng đầu vào → cùng kết
+    quả (không ngẫu nhiên, thứ tự xếp ổn định).
+    """
+    t_min, t_max = vectors.thickness_px
     seg = _clean(vectors.segments, _MIN_OVERLAP_RATIO * t_min)
     candidates = _pairs(seg, t_min, t_max)
-    sx, sy = width_px / vectors.width_pt, height_px / vectors.height_pt
     for wall in candidates:
-        wall.score = _agreement(wall, evidence, sx, sy)
+        wall.score = _agreement(wall, evidence)
     judged = [w for w in candidates if w.score >= _MIN_AGREEMENT]
     walls = _merge(_suppress(judged))
     if len(walls) < MIN_WALLS:
         return None
     _close_corners(walls)
+    height, width = evidence.shape
     out = []
     for wall in sorted(walls, key=lambda w: (round(w.point(w.s0)[1], 2), round(w.point(w.s0)[0], 2))):
         (x0, y0), (x1, y1) = wall.point(wall.s0), wall.point(wall.s1)
         out.append(
             WallSegment(
-                start=(round(x0 * sx, 2), round(y0 * sy, 2)),
-                end=(round(x1 * sx, 2), round(y1 * sy, 2)),
-                thickness_px=round(wall.thickness * (sx + sy) / 2, 2),
+                start=(round(min(max(x0, 0.0), width), 2), round(min(max(y0, 0.0), height), 2)),
+                end=(round(min(max(x1, 0.0), width), 2), round(min(max(y1, 0.0), height), 2)),
+                thickness_px=round(wall.thickness, 2),
                 confidence=round(min(1.0, wall.score), 3),
             )
         )
-    return VectorWalls(walls=tuple(out), scale_n=scale_n, candidates=len(candidates))
+    return VectorWalls(walls=tuple(out), scale_n=vectors.scale_n, candidates=len(candidates))

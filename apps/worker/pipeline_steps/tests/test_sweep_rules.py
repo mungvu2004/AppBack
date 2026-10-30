@@ -121,6 +121,24 @@ async def test_sweep_resends_remaining_families_when_walls_used(
     assert steps == {family for family in MODEL_FAMILIES if family != "wallSegmentation"}
 
 
+async def test_sweep_resends_walls_with_the_run_vectors_key(
+    sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """UX41 B1: bước gửi lại mang `vectors_key` cố định của lượt (`runs/{run}/preprocess/vectors.json`).
+
+    Object có hay không là việc của bước tường (vắng → lùi mặt nạ), nên quét bù không cần đọc kho.
+    """
+    arranged = await arrange_run(db_sessionmaker, local_storage, fake_clock)
+    await set_idle(db_sessionmaker, arranged.run_id, fake_clock, seconds=IDLE_S)
+
+    await sweep(db_sessionmaker, fake_clock)
+
+    payloads = [InferStepPayload.model_validate(body) for body in queued_payloads(sweep_env, ML_QUEUE)]
+    (walls,) = [p for p in payloads if p.step == "wallSegmentation"]
+    run_root = walls.artifact_prefix.removesuffix("wallSegmentation/")
+    assert walls.vectors_key == f"{run_root}preprocess/vectors.json"
+
+
 async def test_sweep_resends_quality_check(
     sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
