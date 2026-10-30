@@ -719,3 +719,17 @@ async def test_write_layer_keeps_edited_when_body_omits(db_session: AsyncSession
     result = await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, layer=sent)
 
     assert [wall.edited for wall in result.layer.walls] == [True, True]
+
+
+def test_kept_detected_thickness__survives_user_thickness_edit() -> None:
+    """U48: người sửa `thicknessMm` (và client làm rơi hay sửa `detectedThicknessMm`) → số máy đo giữ theo id."""
+    level_id = "L-DUMMYLEVEL"
+    measured = make_wall(level_id).model_copy(update={"detected_thickness_mm": 221})
+    drawn = make_wall(level_id, entity_id="W-TESTWALL02", source="human")
+    current = simple_layer(level_id, walls=[measured])
+    edited = measured.model_copy(update={"thickness_mm": 200, "detected_thickness_mm": None})
+    forged = drawn.model_copy(update={"detected_thickness_mm": 999})
+
+    kept = writer._kept_detected_thickness(current, simple_layer(level_id, walls=[edited, forged]))
+
+    assert [(wall.thickness_mm, wall.detected_thickness_mm) for wall in kept.walls] == [(200, 221), (200, None)]

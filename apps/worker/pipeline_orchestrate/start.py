@@ -121,6 +121,7 @@ async def _write_page(db: AsyncSession, run: RunRow, page: PreparedPage, clock: 
         width_px=page.width_px,
         height_px=page.height_px,
         clock=clock,
+        px_per_paper_mm=page.px_per_paper_mm,
     )
     if drawing is None:
         return False

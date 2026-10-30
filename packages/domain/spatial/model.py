@@ -239,6 +239,8 @@ class Wall(Reviewed):
     kind: Literal["loadBearing", "partition", "envelope"]
     opening_ids: tuple[OpeningIdStr, ...]
     paint: WallPaint | None = None
+    detected_thickness_mm: PositiveMm | None = None
+    """Bề dày máy đo (chưa bắt về bảng chuẩn) lúc dựng (U48); người sửa `thicknessMm` không đổi nó, B3-03 giữ."""
 
 
 class Opening(Reviewed):

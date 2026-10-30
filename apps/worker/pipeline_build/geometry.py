@@ -583,6 +583,7 @@ def _assemble(
             level_id=level_id,
             centreline=Segment(start=seg.start, end=seg.end),
             thickness_mm=seg.thickness_mm,
+            detected_thickness_mm=max(1, js_round(seg.measured_mm)),
             height_mm=DEFAULT_WALL_HEIGHT_MM,
             kind="partition",
             opening_ids=tuple(per_wall[index]),

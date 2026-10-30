@@ -132,3 +132,11 @@ def test_dimensions_include_reviewed_scale_line() -> None:
     (scaled,) = rescale_dimensions((approved,), 6.0, 12.0, include_reviewed=True)
     assert scaled.line == Segment(start=Point(x=0, y=-1000), end=Point(x=2000, y=-1000))
     assert (scaled.value_mm, scaled.reviewed) == (approved.value_mm, True)
+
+
+def test_detected_thickness_follows_scale() -> None:
+    """U48: bề dày máy đo cũng là px · tỉ lệ nên co giãn cùng `thicknessMm`; vắng thì vẫn vắng."""
+    measured = WALL.model_copy(update={**UNREVIEWED, "detected_thickness_mm": 221})
+    scaled = rescale_unreviewed(LAYER.model_copy(update={"walls": (measured,)}), 6.0, 12.0)
+    assert scaled.walls[0].detected_thickness_mm == 442
+    assert rescale_unreviewed(LAYER, 6.0, 12.0).walls[0].detected_thickness_mm is None
