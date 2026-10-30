@@ -27,15 +27,15 @@ PDF_LOCK: Final = threading.Lock()
 
 POINTS_PER_INCH: Final = 72.0
 
-# Mở tệp hỏng: chỉ mật khẩu/bảo mật là "không đọc nổi"; FILE/FORMAT/UNKNOWN là tệp hỏng (U04, U07).
-_UNREADABLE_ERR_CODES: Final = frozenset((pdfium_c.FPDF_ERR_PASSWORD, pdfium_c.FPDF_ERR_SECURITY))
+# Mở tệp hỏng: mật khẩu/bảo mật → `PDF_ENCRYPTED` (UX41 U29); FILE/FORMAT/UNKNOWN là tệp hỏng (U07).
+_ENCRYPTED_ERR_CODES: Final = frozenset((pdfium_c.FPDF_ERR_PASSWORD, pdfium_c.FPDF_ERR_SECURITY))
 
 
 def _open_document(data: bytes) -> pdfium.PdfDocument:
     """Mở tài liệu bằng mật khẩu người dùng rỗng; **phải** gọi khi đang giữ `PDF_LOCK`.
 
     Không phải PDF theo `sniff_kind` → `FILE_TYPE_MISMATCH`; mở thất bại → phân loại theo
-    `FPDF_GetLastError()`; mở được mà 0 trang (`/Count 0`) → `PDF_UNREADABLE`. PDF có
+    `FPDF_GetLastError()` (mật khẩu → `PDF_ENCRYPTED`); mở được mà 0 trang (`/Count 0`) → `PDF_UNREADABLE`. PDF có
     `/Encrypt` mà mở được bằng mật khẩu rỗng (chỉ đặt mật khẩu chủ) đi tiếp bình thường.
     Mở bằng API thô thay cho `pdfium.PdfDocument(data)` vì `_open_pdf` của pypdfium2 5.14 đọc
     `FPDF_GetLastError()` cả khi mở **thành công** mà 0 trang — PDFium không xoá mã đó, nên
@@ -48,7 +48,7 @@ def _open_document(data: bytes) -> pdfium.PdfDocument:
     if not raw:
         err_code = pdfium_c.FPDF_GetLastError()
         cause = pdfium.PdfiumError(f"Failed to load document (PDFium: {err_code}).", err_code=err_code)
-        raise VisionError("PDF_UNREADABLE" if err_code in _UNREADABLE_ERR_CODES else "FILE_CORRUPT") from cause
+        raise VisionError("PDF_ENCRYPTED" if err_code in _ENCRYPTED_ERR_CODES else "FILE_CORRUPT") from cause
     if pdfium_c.FPDF_GetPageCount(raw) < 1:
         pdfium_c.FPDF_CloseDocument(raw)
         raise VisionError("PDF_UNREADABLE")

@@ -93,6 +93,7 @@ class ProgressOut(WireModel):
     started_at: WireDatetime | None = None
     ended_at: WireDatetime | None = None
     error: str | None = None
+    queue_ahead: int | None = Field(default=None, ge=0)
 
 
 class LatestFloorUploadOut(WireModel):

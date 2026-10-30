@@ -36,6 +36,7 @@ CORE_CODES = {
     "IDEMPOTENCY_IN_PROGRESS": 503,
     "IMAGE_TOO_LARGE": 422,
     "PDF_UNREADABLE": 422,
+    "PDF_ENCRYPTED": 422,
     "FILE_CORRUPT": 422,
     "FILE_TYPE_MISMATCH": 422,
     "UPLOAD_INCOMPLETE": 422,
@@ -56,7 +57,7 @@ def registry() -> ErrorRegistry:
 def test_error_codes_module_defines_exactly_core_codes() -> None:
     defined = {v.code: v.status for v in vars(error_codes).values() if isinstance(v, ErrorCode)}
     assert defined == CORE_CODES
-    assert len(defined) == 26
+    assert len(defined) == 27
     assert all(name == code.code for name, code in vars(error_codes).items() if isinstance(code, ErrorCode))
 
 

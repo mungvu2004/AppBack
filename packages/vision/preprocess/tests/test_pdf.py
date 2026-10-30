@@ -53,7 +53,7 @@ def test_pdf_page_count_u04_user_password() -> None:
     """Có mật khẩu người dùng → không mở nổi, và đó là lỗi bảo mật chứ không phải tệp hỏng."""
     with pytest.raises(VisionError) as excinfo:
         pdf_page_count(synthetic.make_pdf(1, encrypt="user_password"))
-    assert str(excinfo.value) == "PDF_UNREADABLE"
+    assert str(excinfo.value) == "PDF_ENCRYPTED"
 
 
 def test_pdf_page_count_u07_header_then_garbage() -> None:

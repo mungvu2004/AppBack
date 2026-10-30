@@ -108,7 +108,9 @@ async def test_drawings_complete_upload__C01(
     upload_id, response = await upload_through(api_client, stage, data)
 
     assert response.status_code == 200, response.text
-    assert response.json() == {"id": upload_id, "status": "pending", "step": "preprocess", "progressPercent": 0}
+    wire = response.json()
+    assert wire.pop("queueAhead") >= 0  # lượt vừa mở đã có chỗ trong hàng đợi (UX41 U02)
+    assert wire == {"id": upload_id, "status": "pending", "step": "preprocess", "progressPercent": 0}
     row = await _upload_row(db_sessionmaker, upload_id)
     assert row.status == "complete"
     assert row.sniffed_kind == "png"
@@ -338,7 +340,7 @@ async def test_complete_rejects_unreadable_pdf(
     db_sessionmaker: async_sessionmaker[AsyncSession],
     sync_bus_reset: None,
 ) -> None:
-    """PDF có mật khẩu người dùng → 422 `PDF_UNREADABLE` (mã của gói ảnh đi thẳng ra dây)."""
+    """PDF có mật khẩu người dùng → 422 `PDF_ENCRYPTED` (mã của gói ảnh đi thẳng ra dây, UX41 U29)."""
     stage = await make_stage(db_session)
 
     upload_id, response = await upload_through(
@@ -346,8 +348,8 @@ async def test_complete_rejects_unreadable_pdf(
     )
 
     assert response.status_code == 422, response.text
-    assert response.json()["code"] == "PDF_UNREADABLE"
-    assert (await _upload_row(db_sessionmaker, upload_id)).rejected_code == "PDF_UNREADABLE"
+    assert response.json()["code"] == "PDF_ENCRYPTED"
+    assert (await _upload_row(db_sessionmaker, upload_id)).rejected_code == "PDF_ENCRYPTED"
 
 
 async def test_complete_logs_pdfium_cause_for_corrupt_pdf(
