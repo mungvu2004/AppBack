@@ -1,4 +1,5 @@
-"""Luật hậu xử lý đầu ra AI: thiết bị áp tường (luật 1) và cửa sổ chỉ trên tường ngoài (luật 2).
+"""Luật hậu xử lý đầu ra AI: thiết bị áp tường (luật 1), cửa sổ chỉ trên tường ngoài (luật 2), tường mép ngoài
+là tường bao (luật 3).
 
 Gương `FIXTURE-OFF-WALL` và `WINDOW-ON-INNER-WALL` của FE (`fitout/index.ts`) để luật QC
 không bắn trên đầu ra AI. Chỉ đụng thực thể `source="ai"` và `reviewed=False` (K21);
@@ -211,7 +212,7 @@ def _fix_windows(layer: SpatialLayer) -> tuple[tuple[Wall, ...], tuple[Opening, 
 
 
 def apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
-    """Áp luật 1 rồi luật 2 lên lớp vừa dựng từ pipeline; trả lớp mới, không sửa `layer`.
+    """Áp luật 1, luật 2 rồi luật 3 lên lớp vừa dựng từ pipeline; trả lớp mới, không sửa `layer`.
 
     Idempotent: `f(f(x)) == f(x)`, vì luật 1 đưa khe về ≤ 50 và hạ tin cậy bằng `min`,
     luật 2 chỉ đổi tường thành `envelope` (bị bỏ qua từ lượt sau) hoặc hạ tin cậy bằng `min`.
@@ -219,4 +220,28 @@ def apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
     """
     furniture = _snap_fixtures(layer)
     walls, openings = _fix_windows(layer)
+    walls = _envelope_exterior(walls, layer.rooms)
     return SpatialLayer(walls=walls, openings=openings, rooms=layer.rooms, furniture=furniture, roofs=layer.roofs)
+
+
+def _envelope_exterior(walls: tuple[Wall, ...], rooms: Sequence[Room]) -> tuple[Wall, ...]:
+    """Luật 3: tường `partition` AI chưa duyệt có đúng một bên là phòng → `envelope`, giữ tin cậy.
+
+    Bước dựng gán mọi tường `partition`; thiếu luật này tường bao không có cửa sổ hiện "vách ngăn" (P04).
+    Bản trùng id quyết theo bản đứng đầu như luật 2: bản đầu không được đổi thì không bản nào đổi.
+    Chạy sau luật 2 nên tường bao có cửa sổ vẫn hạ tin cậy ở luật 2; lượt sau bỏ qua `envelope` → idempotent.
+    """
+    if not rooms:
+        return walls
+    index = _RoomIndex(rooms)
+    first: dict[str, Wall] = {}
+    for wall in walls:
+        first.setdefault(wall.id, wall)
+
+    def promoted(wall: Wall) -> bool:
+        """Tường AI `partition` (và bản đầu cùng id) được đổi, nằm ở mép ngoài các phòng."""
+        if wall.kind != "partition" or not (_editable(wall) and _editable(first[wall.id])):
+            return False
+        return wall_side_by(wall, index.contains) == "exterior"
+
+    return tuple(wall.model_copy(update={"kind": "envelope"}) if promoted(wall) else wall for wall in walls)
