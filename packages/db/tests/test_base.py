@@ -23,6 +23,7 @@ from packages.db.base import (
 from packages.db.models import load_all_models
 
 MM_SUFFIX = "_mm"
+RATE_MARK = "_per_"
 FLOAT_REASON_MIN = 10
 
 
@@ -39,7 +40,9 @@ def check_conventions(metadata: MetaData) -> list[str]:
         for column in table.columns:
             if isinstance(column.type, DateTime) and not column.type.timezone:
                 problems.append(f"{table.name}.{column.name}: DateTime thiếu timezone=True")
-            if column.name.endswith(MM_SUFFIX) and not isinstance(column.type, Integer | BigInteger):
+            # `<a>_per_<b>_mm` là tỉ số có mẫu theo mm (vd `px_per_paper_mm`, UX41 U01), không phải độ dài.
+            is_length = column.name.endswith(MM_SUFFIX) and RATE_MARK not in column.name
+            if is_length and not isinstance(column.type, Integer | BigInteger):
                 problems.append(f"{table.name}.{column.name}: mm phải là số nguyên")
             if isinstance(column.type, Float):
                 reason = column.info.get("float_reason")
@@ -65,6 +68,7 @@ class Good(SampleBase, TimestampMixin, SoftDeleteMixin):
     code: Mapped[str] = mapped_column(String(32))
     width_mm: Mapped[int] = mm_column()
     area_m2: Mapped[Any] = area_column()
+    px_per_paper_mm: Mapped[float] = mapped_column(Float, info={"float_reason": "tỉ số px/mm, không phải độ dài"})
 
 
 class Child(SampleBase, TimestampMixin):

@@ -9,11 +9,14 @@ from typing import Final, Literal
 from packages.core import error_codes
 from packages.core.errors import AppError, ErrorCode
 
-VisionErrorCode = Literal["IMAGE_TOO_LARGE", "PDF_UNREADABLE", "FILE_CORRUPT", "FILE_TYPE_MISMATCH", "VALIDATION"]
+VisionErrorCode = Literal[
+    "IMAGE_TOO_LARGE", "PDF_UNREADABLE", "PDF_ENCRYPTED", "FILE_CORRUPT", "FILE_TYPE_MISMATCH", "VALIDATION"
+]
 
 _CODES: Final[dict[str, ErrorCode]] = {
     "IMAGE_TOO_LARGE": error_codes.IMAGE_TOO_LARGE,
     "PDF_UNREADABLE": error_codes.PDF_UNREADABLE,
+    "PDF_ENCRYPTED": error_codes.PDF_ENCRYPTED,
     "FILE_CORRUPT": error_codes.FILE_CORRUPT,
     "FILE_TYPE_MISMATCH": error_codes.FILE_TYPE_MISMATCH,
     "VALIDATION": error_codes.VALIDATION,
@@ -29,7 +32,7 @@ class VisionError(Exception):
     """
 
     def __init__(self, code: VisionErrorCode, *, field: str | None = None) -> None:
-        """Chốt `code` thuộc đúng 5 mã của bảng và đặt `str(e) == code`; mã lạ → `ValueError`
+        """Chốt `code` thuộc đúng 6 mã của bảng và đặt `str(e) == code`; mã lạ → `ValueError`
         vì gõ sai mã là lỗi lập trình, không phải lỗi dữ liệu vào cần trả 422."""
         if code not in _CODES:
             raise ValueError(f"mã lỗi ảnh lạ: {code!r}")

@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from apps.api.project_settings.read import DEFAULT_SETTINGS
 from apps.worker.pipeline_build import build as build_module
 from apps.worker.pipeline_build.build import BuiltLayer, build_layer
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
@@ -40,6 +41,7 @@ def _run(
     *,
     detections: Sequence[DetectionPx] = (),
     fallback: str = "5",
+    px_per_paper_mm: float | None = None,
 ) -> BuiltLayer:
     """Gọi `build_layer` trên khổ 1600x1200 mặc định; tham số còn lại giữ nguyên giữa các ca."""
     return build_wrapped(
@@ -49,6 +51,7 @@ def _run(
         fallback_mm_per_px=Decimal(fallback),
         clock=clock,
         level_id=LEVEL_ID,
+        px_per_paper_mm=px_per_paper_mm,
         **SIZE,
     )
 
@@ -69,6 +72,26 @@ def test_build_layer__no_text_falls_back_to_project_default(
     built = _run([_wall(100, 100, 1100, 100)], (), fake_clock)
     assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("5"))
     assert any(getattr(record, "code", None) == "SCALE_UNRESOLVED" for record in caplog.records)
+
+
+def test_build_layer__unset_project_scale_uses_wall_estimate(fake_clock: FakeClock) -> None:
+    """U01: dự án chưa đặt tỉ lệ (1 mm/px) → tỉ lệ tạm từ bề dày tường (150 mm / 15 px = 10), không `Dimension`."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    built = _run(walls, (), fake_clock, fallback="1")
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("10.000000"))
+    assert built.dimensions == ()
+    assert built.layer.walls[0].thickness_mm >= 100  # không còn tường 15 mm của tỉ lệ 1 mm/px
+
+
+def test_build_layer__unset_project_scale_without_walls_keeps_default(fake_clock: FakeClock) -> None:
+    """Không tường nào để ước → giữ `project_default` như cũ."""
+    built = _run([], (), fake_clock, fallback="1")
+    assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("1"))
+
+
+def test_unset_project_scale_matches_settings_default() -> None:
+    """Hằng "chưa đặt" của bước dựng phải đúng mặc định `project_settings`."""
+    assert DEFAULT_SETTINGS.default_scale_mm_per_px == build_module._UNSET_PROJECT_SCALE
 
 
 @pytest.mark.parametrize("fallback", ["0", "-1", "NaN"])
@@ -210,3 +233,35 @@ def test_build_layer__few_chain_samples_fall_back_to_wall_pairing(fake_clock: Fa
     built = _run(plan.walls, texts, fake_clock, detections=plan.detections)
     assert built.scale_source == "pipeline"
     assert abs(float(built.scale_mm_per_px) - plan.mm_per_px) / plan.mm_per_px <= 0.02
+
+
+def _note(value: str) -> TextPx:
+    """Ghi chú tỉ lệ ở khung tên (xa mọi tường), không có `span_px`."""
+    return TextPx(text=value, box=BoxPx(x_min=1300, y_min=1150, x_max=1500, y_max=1170), confidence=0.9)
+
+
+def test_build_layer__scale_note_with_paper_size(fake_clock: FakeClock) -> None:
+    """U01: PDF 150 DPI (≈ 5,9 px/mm giấy) + `TL 1/100` → `s` = 100 / 5,9 ≈ 16,9 mm/px, `pipeline`, thắng ước lượng."""
+    px_per_paper_mm = 150 / 25.4
+    walls = [_wall(100, 100, 1100, 100, 12.0), _wall(100, 100, 100, 900, 12.0)]
+    note = _note("MẶT BẰNG TẦNG 1 - TL 1/100")
+    built = _run(walls, [note], fake_clock, fallback="1", px_per_paper_mm=px_per_paper_mm)
+    assert built.scale_source == "pipeline"
+    assert built.scale_mm_per_px == Decimal(repr(100 / px_per_paper_mm)).quantize(Decimal("0.000001"))
+
+
+@pytest.mark.parametrize(
+    ("note", "px_per_paper_mm", "thickness_px"),
+    [
+        ("TL 1/100", None, 12.0),  # ảnh raster: không biết khổ giấy
+        ("PHÒNG KHÁCH", 150 / 25.4, 12.0),  # không có ghi chú
+        ("TL 1/10", 150 / 25.4, 12.0),  # tường trung vị 20 mm: ghi chú đọc hỏng
+    ],
+)
+def test_build_layer__scale_note_ignored(
+    note: str, px_per_paper_mm: float | None, thickness_px: float, fake_clock: FakeClock
+) -> None:
+    """Thiếu khổ giấy, thiếu ghi chú hay ghi chú vô lý → giữ `project_default` như cũ."""
+    walls = [_wall(100, 100, 1100, 100, thickness_px), _wall(100, 100, 100, 900, thickness_px)]
+    built = _run(walls, [_note(note)], fake_clock, px_per_paper_mm=px_per_paper_mm)
+    assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("5"))

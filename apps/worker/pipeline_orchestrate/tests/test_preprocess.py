@@ -6,14 +6,17 @@ nhị phân trong repo, không tải mạng. `choose_path` là hàm thuần nên
 `AssessmentRow` trực tiếp, không cần DB.
 """
 
+import logging
 import math
 from collections.abc import Callable
 from typing import Any
 
+import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
 import pytest
 from PIL import Image
 
 from apps.api.quality.assessments import AssessmentRow, Corners
+from apps.worker.pipeline_orchestrate import preprocess as preprocess_module
 from apps.worker.pipeline_orchestrate.preprocess import (
     PagePlan,
     PageSource,
@@ -29,9 +32,10 @@ from packages.messaging.tasks import PermanentError
 from packages.ml_contracts.synthetic import render_plan
 from packages.storage import keys
 from packages.storage.port import ObjectStorage
-from packages.vision.preprocess import DEFAULT_DPI, effective_dpi
+from packages.vision.preprocess import DEFAULT_DPI, VisionError, effective_dpi
 from packages.vision.preprocess.tests.synthetic import encode, jpeg_with_orientation, make_pdf
 from packages.vision.quality.assess import QualityReport
+from packages.vision.walls.pdf_walls import PageVectors
 
 MM_PER_INCH = 25.4
 A4_PT = (595.0, 842.0)
@@ -200,9 +204,91 @@ async def test_prepare_page__px_per_paper_mm_none_for_raster(local_storage: Obje
     plan = PagePlan(source=source, kind="user", corners=INSET_CORNERS)
     prepared = await _prepare(local_storage, fake_clock, plan)
     assert prepared.px_per_paper_mm is None
+    assert prepared.vectors_key is None  # raster: không có nét PDF
     assert isinstance(prepared.report, QualityReport)
     assert prepared.created_key is not None
     assert await local_storage.stat(prepared.created_key) is not None
+
+
+def _vectors_key(source: PageSource) -> str:
+    """Khoá `vectors.json` của lượt (`runs/{run}/preprocess/vectors.json`)."""
+    return keys.run_artifact(
+        source.project_id, source.level_id, source.upload_id, source.run_id, "preprocess", "vectors.json"
+    )
+
+
+async def test_prepare_page__vector_pdf_stores_page_vectors(local_storage: ObjectStorage, fake_clock: Clock) -> None:
+    """UX41 B1: PDF vector (ii) → nét PDF theo px trang **đã nắn** ở `runs/{run}/preprocess/vectors.json`.
+
+    Bốn dải tường tô đặc 6 pt nằm trong vùng góc người dùng: mọi đoạn rơi trong khổ trang nắn, và
+    khoảng bề dày dựng từ chính `px_per_paper_mm` của trang (không có `TL 1:N` → khoảng mm giấy).
+    """
+    source = _source("pdf")
+    assert source.original_key is not None
+    black = (0.0, 0.0, 0.0)
+    rects = [
+        (150.0, 250.0, 300.0, 6.0, black),
+        (150.0, 594.0, 300.0, 6.0, black),
+        (150.0, 250.0, 6.0, 350.0, black),
+        (444.0, 250.0, 6.0, 350.0, black),
+    ]
+    await _put(local_storage, source.original_key, make_pdf(1, rects=rects))
+    prepared = await _prepare(local_storage, fake_clock, PagePlan(source=source, kind="user", corners=INSET_CORNERS))
+    assert prepared.vectors_key == _vectors_key(source)
+    stored = b"".join([chunk async for chunk in local_storage.open_read(prepared.vectors_key)])
+    vectors = PageVectors.from_json(stored)
+    assert len(vectors.segments) >= 8  # ít nhất hai cạnh dài mỗi dải
+    xs, ys = vectors.segments[:, 0::2], vectors.segments[:, 1::2]
+    assert 0 <= xs.min() <= xs.max() <= prepared.width_px
+    assert 0 <= ys.min() <= ys.max() <= prepared.height_px
+    ppm = prepared.px_per_paper_mm
+    assert ppm is not None
+    assert vectors.scale_n is None
+    assert vectors.thickness_px == pytest.approx((0.4 * ppm, 9.0 * ppm), abs=1e-3)
+
+
+async def test_prepare_page__scanned_pdf_has_no_vectors(local_storage: ObjectStorage, fake_clock: Clock) -> None:
+    """PDF quét (một ảnh phủ cả trang) → không ghi `vectors.json`, `vectors_key` là `None`."""
+    source = _source("pdf")
+    assert source.original_key is not None
+    image = b"q %g 0 0 %g 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\xff\xff\x00 EI Q\n" % A4_PT
+    await _put(local_storage, source.original_key, make_pdf(1, ops=image))
+    prepared = await _prepare(local_storage, fake_clock, PagePlan(source=source, kind="auto"))
+    assert prepared.px_per_paper_mm is not None
+    assert prepared.vectors_key is None
+    assert await local_storage.stat(_vectors_key(source)) is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [VisionError("FILE_CORRUPT"), pdfium.PdfiumError("Failed to load text page.")],
+    ids=["vision_error", "pdfium_error"],
+)
+async def test_prepare_page__unreadable_vectors_do_not_fail_the_page(
+    local_storage: ObjectStorage,
+    fake_clock: Clock,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+) -> None:
+    """Đọc nét PDF hỏng (trang vẫn dựng được) → trang chuẩn bị như thường, `vectors_key` `None`, một cảnh báo."""
+
+    def broken(data: bytes, page_index: int) -> None:
+        """`pdf_page_vectors` hỏng giữa chừng (PDFium không đọc được lớp chữ/nét)."""
+        raise error
+
+    monkeypatch.setattr(preprocess_module, "pdf_page_vectors", broken)
+    caplog.set_level(logging.WARNING, logger=preprocess_module.__name__)
+    source = _source("pdf")
+    assert source.original_key is not None
+    await _put(local_storage, source.original_key, make_pdf(1))
+    prepared = await _prepare(local_storage, fake_clock, PagePlan(source=source, kind="auto"))
+    assert prepared.px_per_paper_mm is not None
+    assert prepared.vectors_key is None
+    assert await local_storage.stat(_vectors_key(source)) is None
+    (record,) = [item for item in caplog.records if item.message == "preprocess_vectors_unreadable"]
+    assert record.__dict__["reason"] == type(error).__name__
+    assert source.upload_id not in record.getMessage()
 
 
 async def test_prepare_page__jpeg_exif_rotation_swaps_size(local_storage: ObjectStorage, fake_clock: Clock) -> None:
@@ -246,16 +332,16 @@ async def test_prepare_page__odd_raster_modes_complete(
     assert isinstance(prepared.report, QualityReport)
 
 
-async def test_prepare_page__encrypted_pdf_raises_pdf_unreadable(
+async def test_prepare_page__encrypted_pdf_raises_pdf_encrypted(
     local_storage: ObjectStorage, fake_clock: Clock
 ) -> None:
-    """U04: PDF có `user_password` → `PermanentError("PDF_UNREADABLE")` (không thử lại)."""
+    """U04: PDF có `user_password` → `PermanentError("PDF_ENCRYPTED")` (không thử lại)."""
     source = _source("pdf")
     assert source.original_key is not None
     await _put(local_storage, source.original_key, make_pdf(1, encrypt="user_password"))
     with pytest.raises(PermanentError) as caught:
         await _prepare(local_storage, fake_clock, PagePlan(source=source, kind="auto"))
-    assert caught.value.code == "PDF_UNREADABLE"
+    assert caught.value.code == "PDF_ENCRYPTED"
 
 
 async def test_prepare_page__huge_pdf_page_fits_max_pixels(local_storage: ObjectStorage, fake_clock: Clock) -> None:

@@ -27,15 +27,15 @@ PDF_LOCK: Final = threading.Lock()
 
 POINTS_PER_INCH: Final = 72.0
 
-# Mở tệp hỏng: chỉ mật khẩu/bảo mật là "không đọc nổi"; FILE/FORMAT/UNKNOWN là tệp hỏng (U04, U07).
-_UNREADABLE_ERR_CODES: Final = frozenset((pdfium_c.FPDF_ERR_PASSWORD, pdfium_c.FPDF_ERR_SECURITY))
+# Mở tệp hỏng: mật khẩu/bảo mật → `PDF_ENCRYPTED` (UX41 U29); FILE/FORMAT/UNKNOWN là tệp hỏng (U07).
+_ENCRYPTED_ERR_CODES: Final = frozenset((pdfium_c.FPDF_ERR_PASSWORD, pdfium_c.FPDF_ERR_SECURITY))
 
 
 def _open_document(data: bytes) -> pdfium.PdfDocument:
     """Mở tài liệu bằng mật khẩu người dùng rỗng; **phải** gọi khi đang giữ `PDF_LOCK`.
 
     Không phải PDF theo `sniff_kind` → `FILE_TYPE_MISMATCH`; mở thất bại → phân loại theo
-    `FPDF_GetLastError()`; mở được mà 0 trang (`/Count 0`) → `PDF_UNREADABLE`. PDF có
+    `FPDF_GetLastError()` (mật khẩu → `PDF_ENCRYPTED`); mở được mà 0 trang (`/Count 0`) → `PDF_UNREADABLE`. PDF có
     `/Encrypt` mà mở được bằng mật khẩu rỗng (chỉ đặt mật khẩu chủ) đi tiếp bình thường.
     Mở bằng API thô thay cho `pdfium.PdfDocument(data)` vì `_open_pdf` của pypdfium2 5.14 đọc
     `FPDF_GetLastError()` cả khi mở **thành công** mà 0 trang — PDFium không xoá mã đó, nên
@@ -48,7 +48,7 @@ def _open_document(data: bytes) -> pdfium.PdfDocument:
     if not raw:
         err_code = pdfium_c.FPDF_GetLastError()
         cause = pdfium.PdfiumError(f"Failed to load document (PDFium: {err_code}).", err_code=err_code)
-        raise VisionError("PDF_UNREADABLE" if err_code in _UNREADABLE_ERR_CODES else "FILE_CORRUPT") from cause
+        raise VisionError("PDF_ENCRYPTED" if err_code in _ENCRYPTED_ERR_CODES else "FILE_CORRUPT") from cause
     if pdfium_c.FPDF_GetPageCount(raw) < 1:
         pdfium_c.FPDF_CloseDocument(raw)
         raise VisionError("PDF_UNREADABLE")
@@ -157,3 +157,24 @@ def render_pdf_page(
             pdf.close()
     capped, _sx, _sy = cap_pixels(pixels, max_pixels)
     return RgbImage(np.ascontiguousarray(capped, dtype=np.uint8))
+
+
+def render_pdf_thumbnails(data: bytes, *, max_pixels: int, max_pages: int) -> list[RgbImage]:
+    """Ảnh nhỏ RGB của `max_pages` trang đầu, mở tài liệu **một** lần (UX41 U05).
+
+    Cùng đường dựng với `render_pdf_page` (nền trắng, áp `/Rotate`, trần `max_pixels`),
+    chỉ khác là giữ `PDF_LOCK` suốt cả lượt thay vì mở lại tài liệu cho từng trang.
+    Lỗi như `_open_document`.
+    """
+    images: list[RgbImage] = []
+    with PDF_LOCK:
+        pdf = _open_document(data)
+        try:
+            for page_index in range(min(len(pdf), max_pages)):
+                width_pt, height_pt = _page_size_pt(pdf, page_index)
+                scale = effective_dpi(width_pt, height_pt, DEFAULT_DPI, max_pixels) / POINTS_PER_INCH
+                capped, _sx, _sy = cap_pixels(_render_page(pdf, page_index, scale), max_pixels)
+                images.append(RgbImage(np.ascontiguousarray(capped, dtype=np.uint8)))
+        finally:
+            pdf.close()
+    return images

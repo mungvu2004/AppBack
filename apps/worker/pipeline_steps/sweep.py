@@ -40,6 +40,7 @@ from packages.db.hooks import after_commit_idle, on_after_commit
 from packages.messaging.celery_app import queue_for, send_task
 from packages.messaging.payloads.pipeline import RunStepPayload
 from packages.ml_contracts.families import MODEL_FAMILIES
+from packages.ml_contracts.payloads import PAGE_VECTORS_NAME, PAGE_VECTORS_STEP
 
 _log: Final = logging.getLogger(__name__)
 
@@ -136,6 +137,8 @@ async def _resend(db: AsyncSession, run: RunRow, pins: RunPins, clock: Clock) ->
         width_px=ctx.drawing.width_px,
         height_px=ctx.drawing.height_px,
         px_per_paper_mm=None,
+        # UX41 B1: khoá cố định theo lượt; trang không có nét PDF thì object vắng và bước tường lùi về mặt nạ.
+        vectors_key=f"{ctx.run_prefix}{PAGE_VECTORS_STEP}/{PAGE_VECTORS_NAME}",
     )
     return True
 

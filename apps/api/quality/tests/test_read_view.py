@@ -204,6 +204,24 @@ async def test_read_view__frame_applied_found_and_missing(
     assert [f["code"] for f in by_id[missing.floor.level_id]["findings"]] == ["FRAME_NOT_FOUND"]
 
 
+async def test_read_view__pdf_page_drops_frame_not_found(
+    db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """P05: trang PDF không khung → bỏ `FRAME_NOT_FOUND`, giữ phát hiện khác; ảnh raster vẫn giữ."""
+    project = await _project(db_session)
+    pdf = await make_drawn_floor(db_session, local_storage, project=project)
+    raster = await make_drawn_floor(db_session, local_storage, project=project)
+    pdf.upload.sniffed_kind = "pdf"
+    await db_session.flush()
+    report = sample_report(finding("FRAME_NOT_FOUND"), finding("LOW_CONTRAST"), frame=None)
+    await measure_floor(db_session, fake_clock, pdf, report)
+    await measure_floor(db_session, fake_clock, raster, report)
+    floors = (await _wire(db_session, local_storage, project, pdf.floor.level_id))["floors"]
+    by_id = {f["floorId"]: f for f in floors}
+    assert [f["code"] for f in by_id[pdf.floor.level_id]["findings"]] == ["LOW_CONTRAST"]
+    assert [f["code"] for f in by_id[raster.floor.level_id]["findings"]] == ["FRAME_NOT_FOUND", "LOW_CONTRAST"]
+
+
 async def test_read_view__replaced_drawing_is_unmeasured(
     db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:

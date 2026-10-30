@@ -66,6 +66,7 @@ _PARAMS: Final[Mapping[str, tuple[str, Callable[[object], bool]]]] = {
     "resource": ("resource", lambda v: isinstance(v, str) and v in RESOURCES),
     "file_name": ("fileName", _non_empty_str),
     "layer": ("layer", _non_empty_str),
+    "reason": ("reason", lambda v: v in ("revoked", "expired")),  # 404 liên kết chia sẻ (U59)
 }
 
 

@@ -6,6 +6,7 @@
       "Action": ["s3:GetObject"],
       "Resource": [
         "arn:aws:s3:::__BUCKET__/projects/*/floors/*/uploads/*/pages/*",
+        "arn:aws:s3:::__BUCKET__/projects/*/floors/*/uploads/*/runs/*/preprocess/vectors.json",
         "arn:aws:s3:::__BUCKET__/ml/models/*",
         "arn:aws:s3:::__BUCKET__/ml/datasets/*"
       ]

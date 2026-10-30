@@ -297,11 +297,23 @@ def _perpendicular(a: _Seg, b: _Seg) -> bool:
     return abs(ua[0] * ub[0] + ua[1] * ub[1]) <= limit
 
 
+def _onto(line: _Seg, point: Point) -> Point:
+    """Chân vuông góc của `point` trên đường thẳng chứa tim `line` (mm nguyên)."""
+    along = _along(line, (point.x, point.y))
+    unit = _unit(line)
+    return Point(x=js_round(line.start.x + unit[0] * along), y=js_round(line.start.y + unit[1] * along))
+
+
 def _absorb(keep: _Seg, drop: _Seg) -> None:
-    """Gộp `drop` vào `keep`: hai đầu xa nhau nhất, bề dày lớn hơn, `confidence` nhỏ hơn."""
+    """Gộp `drop` vào `keep`: hai đầu xa nhau nhất, bề dày lớn hơn, `confidence` nhỏ hơn.
+
+    Hai đầu chiếu lên tim của tường **dài hơn** (UX41-A): lấy thẳng hai đầu xa nhất của hai tường lệch
+    ngang vài mm thì tường gộp nghiêng và rời đường trục mà vector hoá đã gióng chung.
+    """
     pairs = [(p, q) for p in (keep.start, keep.end) for q in (drop.start, drop.end)]
     far = max(pairs, key=lambda pair: math.dist((pair[0].x, pair[0].y), (pair[1].x, pair[1].y)))
-    keep.start, keep.end = far
+    base = keep if _length(keep) >= _length(drop) else drop
+    keep.start, keep.end = _onto(base, far[0]), _onto(base, far[1])
     keep.thickness_mm = max(keep.thickness_mm, drop.thickness_mm)
     keep.measured_mm = max(keep.measured_mm, drop.measured_mm)
     keep.confidence = min(keep.confidence, drop.confidence)
@@ -583,6 +595,7 @@ def _assemble(
             level_id=level_id,
             centreline=Segment(start=seg.start, end=seg.end),
             thickness_mm=seg.thickness_mm,
+            detected_thickness_mm=max(1, js_round(seg.measured_mm)),
             height_mm=DEFAULT_WALL_HEIGHT_MM,
             kind="partition",
             opening_ids=tuple(per_wall[index]),

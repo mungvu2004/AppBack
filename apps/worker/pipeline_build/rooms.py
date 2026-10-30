@@ -74,7 +74,16 @@ _BATHROOM_MAX_M2 = 10.0
 
 _BEDROOM_MIN_M2 = 6.0
 _BEDROOM_MAX_M2 = 25.0
-"""Tủ áo trong phòng 6-25 m² mới là phòng ngủ: nhỏ hơn là kho / phòng thay đồ, lớn hơn là phòng khách có kệ tủ."""
+"""Tủ áo trong phòng 6-25 m² mới là phòng ngủ: nhỏ hơn là kho / phòng thay đồ, lớn hơn là phòng khách có kệ tủ.
+
+Giường trong phòng ≥ 6 m² là phòng ngủ trước mọi luật khác: thiết bị vệ sinh dò nhầm (ghế, bàn học) không biến
+phòng ngủ thành phòng tắm (H-08 ch-01: phòng ngủ 9,5 m² thành "phòng tắm 3")."""
+
+_DINING_LABELS = frozenset({"table", "chair"})
+"""Tủ bếp (kể cả ngắn) cùng bàn/ghế ăn trong phòng > 10 m² → bếp; tủ áo cạnh tủ bếp không làm phòng ngủ.
+
+Dãy tủ đo ở tỉ lệ đoán (`project_default`) có thể ngắn hơn `_KITCHEN_RUN_MM`: H-08 ch-01 khu khách-bếp-ăn có
+tủ bếp 2,1 m (1,8 m ở tỉ lệ đoán) và một kệ dò thành tủ áo nên thành "phòng ngủ"."""
 
 _CLOSER_TRIM_MM = 1.0
 """Cắt bớt mỗi đầu đoạn nối khe khi xét cắt tường: chạm đúng đầu mút (chân chữ T) không tính là cắt."""
@@ -417,9 +426,10 @@ def _fixture_labels(
     scaling: Scaling,
 ) -> list[RoomLabel | None]:
     """Công năng suy từ đồ đạc dò được trong biên, cho phòng không có nhãn chữ (bản vẽ không ghi tên, chữ "WC" nhỏ
-    OCR bỏ sót), theo thứ tự: dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp; thiết bị vệ sinh/buồng tắm đứng và
-    ≤ `_BATHROOM_MAX_M2` → phòng tắm; máy giặt (không kèm thiết bị vệ sinh) và ≤ `_BATHROOM_MAX_M2` → lô-gia;
-    tủ áo và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
+    OCR bỏ sót), theo thứ tự: giường và ≥ `_BEDROOM_MIN_M2` → phòng ngủ; dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp;
+    thiết bị vệ sinh/buồng tắm đứng và ≤ `_BATHROOM_MAX_M2` → phòng tắm; máy giặt (không kèm thiết bị vệ sinh) và
+    ≤ `_BATHROOM_MAX_M2` → lô-gia; tủ bếp + bàn/ghế ăn và > `_BATHROOM_MAX_M2` → bếp; tủ áo (không kèm tủ bếp) và
+    `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
 
     Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
     """
@@ -436,13 +446,18 @@ def _fixture_labels(
             found_in[int(room)].add(label)
     labels: list[RoomLabel | None] = []
     for found, area_m2 in zip(found_in, areas_m2, strict=True):
-        if "kitchen_run" in found:
-            usage: RoomUsage | None = "kitchen"
+        cabinet = bool(found & {"kitchen_cabinet", "kitchen_run"})
+        if "bed" in found and area_m2 >= _BEDROOM_MIN_M2:
+            usage: RoomUsage | None = "bedroom"
+        elif "kitchen_run" in found:
+            usage = "kitchen"
         elif found & {"sanitary_fixture", "shower"} and area_m2 <= _BATHROOM_MAX_M2:
             usage = "bathroom"
         elif "washing_machine" in found and area_m2 <= _BATHROOM_MAX_M2:
             usage = "loggia"
-        elif "wardrobe" in found and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
+        elif cabinet and found & _DINING_LABELS and area_m2 > _BATHROOM_MAX_M2:
+            usage = "kitchen"
+        elif "wardrobe" in found and not cabinet and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
             usage = "bedroom"
         else:
             usage = None

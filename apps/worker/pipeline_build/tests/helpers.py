@@ -35,6 +35,7 @@ def build_wrapped(
     clock: FakeClock,
     level_id: str = SPATIAL_LEVEL_ID,
     page: PageRaster | None = None,
+    px_per_paper_mm: float | None = None,
 ) -> BuiltLayer:
     """`build_layer` với ba kết quả ML dựng từ dãy thường; mọi test dựng lớp đi qua đây."""
     return build_layer(
@@ -47,6 +48,7 @@ def build_wrapped(
         fallback_mm_per_px=fallback_mm_per_px,
         clock=clock,
         page=page,
+        px_per_paper_mm=px_per_paper_mm,
     )
 
 

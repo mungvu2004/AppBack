@@ -493,3 +493,16 @@ def test_build_walls__diagonal_endpoint_pulled_to_near_perpendicular(fake_clock:
     pulled = result.walls[0].centreline.end
     assert abs(pulled.x - 3000) <= 2
     assert abs(pulled.y - 3000) <= 2
+
+
+def test_build_walls__gap_merge_keeps_the_longer_walls_line(fake_clock: FakeClock) -> None:
+    """UX41-A: hai đoạn lệch tim 30 mm qua khe cửa → tường gộp nằm trên tim đoạn dài hơn, không nghiêng."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 1500, 1000), wall_px(2400, 1030, 4500, 1030)],
+        [det("door", 1500, 950, 2400, 1080)],
+        fake_clock,
+        dropped,
+    )
+    (wall,) = result.walls
+    assert (wall.centreline.start, wall.centreline.end) == (Point(x=0, y=1030), Point(x=4500, y=1030))

@@ -10,7 +10,13 @@ import pytest
 from PIL import Image
 
 from packages.vision.preprocess.errors import VisionError
-from packages.vision.preprocess.pdf import effective_dpi, pdf_page_count, pdf_page_size_pt, render_pdf_page
+from packages.vision.preprocess.pdf import (
+    effective_dpi,
+    pdf_page_count,
+    pdf_page_size_pt,
+    render_pdf_page,
+    render_pdf_thumbnails,
+)
 from packages.vision.preprocess.tests import synthetic
 
 _RED = (1.0, 0.0, 0.0)
@@ -53,7 +59,7 @@ def test_pdf_page_count_u04_user_password() -> None:
     """Có mật khẩu người dùng → không mở nổi, và đó là lỗi bảo mật chứ không phải tệp hỏng."""
     with pytest.raises(VisionError) as excinfo:
         pdf_page_count(synthetic.make_pdf(1, encrypt="user_password"))
-    assert str(excinfo.value) == "PDF_UNREADABLE"
+    assert str(excinfo.value) == "PDF_ENCRYPTED"
 
 
 def test_pdf_page_count_u07_header_then_garbage() -> None:
@@ -216,3 +222,19 @@ def test_pdf_u07_broken_page_leaves_other_pages_usable() -> None:
     image = render_pdf_page(data, 0, dpi=36.0)
     assert image.width_px > 0
     assert image.height_px > 0
+
+
+def test_render_pdf_thumbnails_caps_pages_and_pixels() -> None:
+    """Ảnh nhỏ (UX41 U05): đủ `max_pages` trang đầu, mỗi ảnh dưới trần điểm ảnh, giữ tỉ lệ A4."""
+    images = render_pdf_thumbnails(synthetic.make_pdf(5), max_pixels=80_000, max_pages=3)
+    assert len(images) == 3
+    for image in images:
+        assert image.width_px * image.height_px <= 80_000
+        assert image.width_px / image.height_px == pytest.approx(synthetic.A4_PT[0] / synthetic.A4_PT[1], rel=0.02)
+
+
+def test_render_pdf_thumbnails_file_type_mismatch() -> None:
+    """Không phải PDF → `FILE_TYPE_MISMATCH`, như `render_pdf_page`."""
+    with pytest.raises(VisionError) as excinfo:
+        render_pdf_thumbnails(b"not a pdf at all", max_pixels=80_000, max_pages=20)
+    assert str(excinfo.value) == "FILE_TYPE_MISMATCH"

@@ -154,6 +154,8 @@ def test_summary_without_floors_omits_default_floor_id() -> None:
         "wallsTotalCount",
         "updatedAt",
         "members",
+        "hasScale",
+        "jobActive",
     }
 
 

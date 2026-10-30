@@ -68,7 +68,8 @@ async def test_share_links_roles_and_lifecycle(api_client: httpx.AsyncClient, db
     revoked = await api_client.delete(item, headers=headers_of(admin))
     assert revoked.status_code == 200
     assert revoked.json()["status"] == "revoked"
-    assert (await api_client.get(f"/api/share/{token}")).status_code == 404
+    gone = await api_client.get(f"/api/share/{token}")
+    assert (gone.status_code, gone.json()["code"], gone.json()["reason"]) == (404, "NOT_FOUND", "revoked")
 
 
 async def test_share_link_expired_and_unknown_token(
@@ -83,9 +84,12 @@ async def test_share_link_expired_and_unknown_token(
     token = created.json()["url"].rsplit("/", 1)[1]
     assert (await api_client.get(f"/api/share/{token}")).status_code == 200
     fake_clock.advance(timedelta(hours=2))
-    assert (await api_client.get(f"/api/share/{token}")).status_code == 404
+    expired = await api_client.get(f"/api/share/{token}")
+    assert (expired.status_code, expired.json()["reason"]) == (404, "expired")
     assert (await api_client.get(path, headers=headers_of(engineer))).json()[0]["status"] == "expired"
-    assert (await api_client.get("/api/share/not-a-real-token")).status_code == 404
+    unknown = await api_client.get("/api/share/not-a-real-token")
+    assert unknown.status_code == 404
+    assert "reason" not in unknown.json()
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import ColumnElement, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -25,6 +25,14 @@ from packages.db.models.projects import Project, ProjectMembership
 
 EDITOR_ROLES: Final = ("admin", "engineer")
 """Vai được sửa dữ liệu dự án; `viewer` còn lại **không** cứu dự án khỏi mồ côi (B1-05)."""
+
+
+def _is_editor() -> ColumnElement[bool]:
+    """Vai hiệu lực trong dự án sửa được — gương SQL của `access.project_role` (U24).
+
+    Admin hệ thống luôn sửa được; người khác theo vai dự án nếu có, không thì vai hệ thống.
+    """
+    return or_(User.role == "admin", func.coalesce(ProjectMembership.role, User.role).in_(EDITOR_ROLES))
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,12 +58,17 @@ async def is_member(db: AsyncSession, project_id: str, user_id: str) -> bool:
     return (await db.execute(stmt)).first() is not None
 
 
-async def add_member(db: AsyncSession, *, project_id: str, user_id: str, added_by: str, clock: Clock) -> bool:
-    """Thêm thành viên (`ON CONFLICT DO NOTHING`); `True` khi dòng là **mới**, `False` khi đã có."""
+async def add_member(
+    db: AsyncSession, *, project_id: str, user_id: str, added_by: str, clock: Clock, role: str | None = None
+) -> bool:
+    """Thêm thành viên (`ON CONFLICT DO NOTHING`); `True` khi dòng là **mới**, `False` khi đã có.
+
+    `role` là vai trong dự án (U24); `None` = theo vai hệ thống. Dòng đã có giữ nguyên vai cũ.
+    """
     now = clock.now()
     stmt = (
         pg_insert(ProjectMembership)
-        .values(project_id=project_id, user_id=user_id, added_by=added_by, created_at=now, updated_at=now)
+        .values(project_id=project_id, user_id=user_id, added_by=added_by, role=role, created_at=now, updated_at=now)
         .on_conflict_do_nothing()
         .returning(ProjectMembership.user_id)
     )
@@ -83,7 +96,7 @@ async def lock_editor_ids(db: AsyncSession, project_id: str) -> list[str]:
         .join(User, User.id == ProjectMembership.user_id)
         .where(
             ProjectMembership.project_id == project_id,
-            User.role.in_(EDITOR_ROLES),
+            _is_editor(),
             User.status == "active",
             User.deleted_at.is_(None),
         )
@@ -97,8 +110,12 @@ MEMBER_USER_COLUMNS: Final = (User.id, User.email, User.name, User.role, User.av
 """Cột `users` mà `member_users` nạp — đủ cho `wire.user_outs` và `wire.summary_member_out`."""
 
 
-async def member_users(db: AsyncSession, project_ids: Sequence[str]) -> dict[str, list[User]]:
-    """Thành viên **chưa xoá mềm** của từng dự án, một truy vấn; dự án không có ai → `[]`.
+type MemberRow = tuple[User, str | None]
+"""Một thành viên: dòng `users` và vai trong dự án (`None` = theo vai hệ thống, U24)."""
+
+
+async def member_users(db: AsyncSession, project_ids: Sequence[str]) -> dict[str, list[MemberRow]]:
+    """Thành viên **chưa xoá mềm** của từng dự án kèm vai dự án, một truy vấn; dự án không có ai → `[]`.
 
     Lô rỗng trả `{}` **không** chạy câu nào: một trang danh sách rỗng không đáng một vòng DB
     cho `IN ()`.
@@ -109,15 +126,15 @@ async def member_users(db: AsyncSession, project_ids: Sequence[str]) -> dict[str
     if not project_ids:
         return {}
     stmt = (
-        select(ProjectMembership.project_id, User)
+        select(ProjectMembership.project_id, User, ProjectMembership.role)
         .join(User, User.id == ProjectMembership.user_id)
         .options(load_only(*MEMBER_USER_COLUMNS))
         .where(ProjectMembership.project_id.in_(project_ids), User.deleted_at.is_(None))
         .order_by(ProjectMembership.project_id, ProjectMembership.user_id)
     )
-    by_project: dict[str, list[User]] = {project_id: [] for project_id in project_ids}
-    for project_id, user in (await db.execute(stmt)).all():
-        by_project[project_id].append(user)
+    by_project: dict[str, list[MemberRow]] = {project_id: [] for project_id in project_ids}
+    for project_id, user, role in (await db.execute(stmt)).all():
+        by_project[project_id].append((user, role))
     return by_project
 
 
@@ -180,7 +197,7 @@ async def remove_user_from_all_projects(db: AsyncSession, user_id: str, *, clock
         .join(User, User.id == ProjectMembership.user_id)
         .where(
             ProjectMembership.project_id == Project.id,
-            User.role.in_(EDITOR_ROLES),
+            _is_editor(),
             User.status == "active",
             User.deleted_at.is_(None),
         )

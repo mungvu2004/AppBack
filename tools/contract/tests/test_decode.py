@@ -15,7 +15,7 @@ from tools.contract.tests import wire
 
 SAMPLES: Final[dict[str, HttpSample]] = {
     "project": HttpSample("project", "projects_read_project", 200, wire.project()),
-    "project_extra_key": HttpSample("x", "projects_read_project", 200, wire.project(ownerId=wire.USER_ID)),
+    "project_extra_key": HttpSample("x", "projects_read_project", 200, wire.project(ghostKey=wire.USER_ID)),
     "project_null_optional": HttpSample("x", "projects_read_project", 200, wire.project(address=None)),
     "project_unknown_enum": HttpSample("x", "projects_read_project", 200, wire.project(status="archived")),
     "error_known_resource": HttpSample(

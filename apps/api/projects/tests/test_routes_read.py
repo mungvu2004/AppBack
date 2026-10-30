@@ -115,6 +115,7 @@ async def test_projects_read_project__C01(api_client: httpx.AsyncClient, db_sess
     response = await api_client.get(project_path(project.id), headers=headers_of(owner))
     assert response.status_code == 200
     assert response.json()["id"] == project.id
+    assert response.json()["ownerId"] == owner.id  # U49: hộp Chia sẻ gắn "Chủ sở hữu" theo khoá này
 
 
 async def test_projects_read_project__C06(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:

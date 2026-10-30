@@ -89,6 +89,16 @@ def ref_apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
         w.model_copy(update={"kind": "envelope", **_cap(w)}) if w.id in promoted and _can_edit(w) else w
         for w in layer.walls
     )
+    walls = tuple(
+        w.model_copy(update={"kind": "envelope"})
+        if layer.rooms
+        and w.kind == "partition"
+        and _can_edit(w)
+        and _can_edit(next(x for x in walls if x.id == w.id))
+        and wall_side(w, layer.rooms) == "exterior"
+        else w
+        for w in walls
+    )
     return SpatialLayer(walls=walls, openings=tuple(openings), rooms=layer.rooms, furniture=furniture)
 
 

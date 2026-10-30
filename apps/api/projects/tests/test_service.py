@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from apps.api.access.kinds import ActivityKind
 from apps.api.core.auth import Principal
 from apps.api.projects import service
+from apps.api.projects.memberships import MemberRow
 from apps.api.projects.schemas import ProjectUpdateIn
 from apps.api.projects.service import _project_outs, _storage_of, _write_changes
 from apps.api.projects.tests.test_routes_common import headers_of, project_path, seed_project
@@ -108,17 +109,26 @@ async def test_storage_of__none_without_app_and_returns_state_storage() -> None:
 
 
 async def test_project_outs__splits_the_signed_batch_back_per_project(local_storage: LocalDiskStorage) -> None:
-    """NO-207: avatar của thành viên ký một lô rồi chia lại đúng dự án, kể cả dự án 0 thành viên."""
+    """NO-207: avatar của thành viên ký một lô rồi chia lại đúng dự án, kể cả dự án 0 thành viên.
+
+    Mỗi thành viên là `MemberRow` (dòng `users`, vai dự án — UX41 U24): vai đi cùng người, `ownerId` = người tạo.
+    """
     first, empty, last = _project(), _project(), _project()
     first.id, empty.id, last.id = "prj_" + "1" * 26, "prj_" + "2" * 26, "prj_" + "3" * 26
     users = [_user(f"U{n}") for n in range(3)]
     for n, user in enumerate(users):
         user.id = f"usr_{n:026d}"
         user.avatar_key = avatar(user.id, "0" * 26, "png")
-    members = {first.id: users[:2], empty.id: [], last.id: users[2:]}
+    members: dict[str, list[MemberRow]] = {
+        first.id: [(users[0], "engineer"), (users[1], None)],
+        empty.id: [],
+        last.id: [(users[2], "viewer")],
+    }
     rollups = {p.id: _rollup() for p in (first, empty, last)}
 
     outs = await _project_outs([first, empty, last], members, rollups, {}, local_storage)
 
     assert [[m.name for m in out.members] for out in outs] == [["U0", "U1"], [], ["U2"]]
     assert all(m.avatar_url for out in outs for m in out.members)
+    assert [[m.project_role for m in out.members] for out in outs] == [["engineer", None], [], ["viewer"]]
+    assert [out.owner_id for out in outs] == [p.created_by for p in (first, empty, last)]

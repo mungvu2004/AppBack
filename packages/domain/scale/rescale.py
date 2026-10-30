@@ -56,8 +56,13 @@ def _segment(segment: Segment, k: float) -> Segment:
 
 
 def _wall(wall: Wall, k: float) -> Mapping[str, object]:
-    """Đường tim và bề dày; `heightMm` là chiều đứng nên giữ."""
-    return {"centreline": _segment(wall.centreline, k), "thickness_mm": _mm(wall.thickness_mm, k)}
+    """Đường tim, bề dày và bề dày máy đo (cùng là px · tỉ lệ); `heightMm` là chiều đứng nên giữ."""
+    detected = wall.detected_thickness_mm
+    return {
+        "centreline": _segment(wall.centreline, k),
+        "thickness_mm": _mm(wall.thickness_mm, k),
+        "detected_thickness_mm": None if detected is None else max(1, _mm(detected, k)),
+    }
 
 
 def _opening(opening: Opening, k: float) -> Mapping[str, object]:

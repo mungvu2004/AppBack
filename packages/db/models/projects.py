@@ -26,6 +26,9 @@ PROJECTS: Final = "projects"
 MEMBERSHIPS: Final = "project_memberships"
 FLOOR_SUMMARIES: Final = "project_floor_summaries"
 
+MEMBER_ROLES: Final = ("engineer", "viewer")
+"""Vai theo dự án (U24): `engineer` = sửa, `viewer` = xem. `NULL` = theo vai hệ thống (hành vi cũ)."""
+
 PIPELINE_STATES: Final = ("none", "pending", "running", "failed", "completed")
 """Trạng thái lượt pipeline mới nhất của một tầng — nguồn duy nhất cho CHECK, `summaries` và test."""
 
@@ -54,8 +57,13 @@ class ProjectMembership(Base, TimestampMixin):
     project_id: Mapped[str] = mapped_column(Text, ForeignKey(f"{PROJECTS}.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(Text, ForeignKey(f"{USERS}.id"), primary_key=True)
     added_by: Mapped[str] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text, default=None)
+    """Vai trong dự án này (U24); `None` → vai hệ thống. Quản trị hệ thống luôn giữ quyền quản trị."""
 
-    __table_args__ = (Index(f"ix_{MEMBERSHIPS}_user_id", "user_id"),)
+    __table_args__ = (
+        Index(f"ix_{MEMBERSHIPS}_user_id", "user_id"),
+        CheckConstraint(one_of("role", MEMBER_ROLES), name="role"),
+    )
 
 
 class ProjectFloorSummary(Base, TimestampMixin):

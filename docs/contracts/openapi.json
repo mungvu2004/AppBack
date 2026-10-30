@@ -36,6 +36,16 @@
           "email": {
             "title": "Email",
             "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1360,6 +1370,17 @@
         "additionalProperties": false,
         "description": "`DrawingSchema` — chỉ khai ở đây, B2-04 là nơi dựng (cổng `floor.drawings`).",
         "properties": {
+          "contentSha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contentsha256"
+          },
           "heightMm": {
             "title": "Heightmm",
             "type": "integer"
@@ -1746,6 +1767,18 @@
               }
             ],
             "title": "Scalestatus"
+          },
+          "sourceDpi": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcedpi"
           }
         },
         "required": [
@@ -3398,6 +3431,13 @@
         "title": "MeasurementRecordIn",
         "type": "object"
       },
+      "MemberRole": {
+        "enum": [
+          "engineer",
+          "viewer"
+        ],
+        "type": "string"
+      },
       "ModelFamilyOut": {
         "additionalProperties": false,
         "description": "`ModelFamilySchema`. Vắng `activeVersionId` = họ tường đang chạy đường cổ điển.",
@@ -4137,6 +4177,25 @@
       "OrderField": {
         "type": "integer"
       },
+      "PageThumbnailsOut": {
+        "additionalProperties": false,
+        "description": "`{pages: [\"data:image/png;base64,…\", …]}`, phần tử thứ i là trang i (đếm từ 0).",
+        "properties": {
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "title": "PageThumbnailsOut",
+        "type": "object"
+      },
       "PasswordResetConfirmBody": {
         "additionalProperties": false,
         "description": "Thân N9: `PasswordResetConfirmSchema {token, newPassword}`.",
@@ -4422,6 +4481,18 @@
             "title": "Progresspercent",
             "type": "integer"
           },
+          "queueAhead": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queueahead"
+          },
           "startedAt": {
             "anyOf": [
               {
@@ -4585,6 +4656,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "ownerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownerid"
           },
           "status": {
             "$ref": "#/components/schemas/ProjectStatus"
@@ -4820,9 +4902,31 @@
             "title": "Floorcount",
             "type": "integer"
           },
+          "hasScale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasscale"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "jobActive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobactive"
           },
           "members": {
             "items": {
@@ -6816,6 +6920,16 @@
             "title": "Name",
             "type": "string"
           },
+          "projectRole": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "role": {
             "enum": [
               "admin",
@@ -7053,6 +7167,20 @@
             "title": "Confidence",
             "type": "number"
           },
+          "detectedThicknessMm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectedthicknessmm"
+          },
           "edited": {
             "default": false,
             "title": "Edited",
@@ -7219,6 +7347,17 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "detectedThicknessMm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectedthicknessmm"
           },
           "edited": {
             "anyOf": [
@@ -9340,6 +9479,49 @@
         "summary": "Projects Cancel Create Project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/drawings/page-thumbnails": {
+      "post": {
+        "description": "N41 — thân là byte PDF thô; trả ảnh nhỏ từng trang cho ô chọn trang, không ghi gì (UX41 U05).\n\nCùng khoá `floor.upload` với #5: chỉ người được tải lên mới cần chọn trang.",
+        "operationId": "drawings_page_thumbnails_api_projects__project_id__drawings_page_thumbnails_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageThumbnailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drawings Page Thumbnails",
+        "tags": [
+          "drawings"
         ]
       }
     },

@@ -8,6 +8,7 @@ from packages.vision.preprocess.errors import VisionError, VisionErrorCode
 _CASES: list[tuple[VisionErrorCode, object]] = [
     ("IMAGE_TOO_LARGE", error_codes.IMAGE_TOO_LARGE),
     ("PDF_UNREADABLE", error_codes.PDF_UNREADABLE),
+    ("PDF_ENCRYPTED", error_codes.PDF_ENCRYPTED),
     ("FILE_CORRUPT", error_codes.FILE_CORRUPT),
     ("FILE_TYPE_MISMATCH", error_codes.FILE_TYPE_MISMATCH),
     ("VALIDATION", error_codes.VALIDATION),

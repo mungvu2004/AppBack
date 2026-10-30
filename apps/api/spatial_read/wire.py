@@ -90,6 +90,8 @@ class WallOut(_ReviewedOut):
     level_id: str
     centreline: SegmentOut
     thickness_mm: Millimetres
+    detected_thickness_mm: Millimetres | None = None
+    """Bề dày máy đo lúc dựng (U48), không đổi khi người sửa `thicknessMm`; tường người vẽ vắng."""
     height_mm: Millimetres
     kind: Literal["loadBearing", "partition", "envelope"]
     opening_ids: list[str]
@@ -282,6 +284,8 @@ class FloorLayerDocumentOut(WireModel):
     revision: Annotated[int, Field(ge=0)]
     level: LevelOut
     scale_status: Literal["unresolved"] | None = None
+    source_dpi: Annotated[float, Field(gt=0)] | None = None
+    """DPI của trang pipeline đã dựng (PDF biết khổ giấy), `null` với ảnh raster; FE đổi `1:N` → mm/px (U01)."""
     readiness: ReadinessOut
     layer: SpatialLayerOut
     axes: list[AxisOut]

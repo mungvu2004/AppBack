@@ -15,6 +15,7 @@ và vì thế chạy **trước** mọi câu tìm tầng (K08) — người ngo�
 from typing import Final
 
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import Response
@@ -39,10 +40,12 @@ from apps.api.spatial_read.wire import (
     layer_out,
 )
 from packages.core.error_codes import NOT_FOUND
+from packages.db.models.drawings import DrawingRow
 from packages.db.models.floors import FloorRow
 
 router = protected_router(tags=["spatial"])
 ROUTERS: Final = (router,)
+_MM_PER_INCH: Final = 25.4
 
 
 async def _floor_or_404(db: AsyncSession, project_id: str, floor_id: str) -> FloorRow:
@@ -51,6 +54,13 @@ async def _floor_or_404(db: AsyncSession, project_id: str, floor_id: str) -> Flo
     if floor is None:
         raise NOT_FOUND.error(resource="floor")
     return floor
+
+
+async def _source_dpi(db: AsyncSession, floor_pk: int) -> float | None:
+    """`sourceDpi` của N16: `px_per_paper_mm · 25,4` của bản vẽ hiện hành; ảnh raster hay chưa có bản vẽ → `None`."""
+    stmt = select(DrawingRow.px_per_paper_mm).where(DrawingRow.floor_pk == floor_pk)
+    value = (await db.execute(stmt)).scalar_one_or_none()
+    return None if value is None else round(value * _MM_PER_INCH, 3)
 
 
 async def _floor_out_or_404(db: AsyncSession, project_id: str, floor_pk: int, *, app: object) -> FloorOut:
@@ -106,6 +116,7 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         revision=document.revision,
         level=level_out(out, document, source),
         scale_status=scale_status(source),
+        source_dpi=await _source_dpi(db, floor.pk),
         readiness=readiness_of(run=run, scale_source=source, layer=document.layer),
         layer=layer_out(document.layer),
         axes=axes_out(document.axes),
