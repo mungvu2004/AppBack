@@ -210,3 +210,23 @@ def test_build_layer__few_chain_samples_fall_back_to_wall_pairing(fake_clock: Fa
     built = _run(plan.walls, texts, fake_clock, detections=plan.detections)
     assert built.scale_source == "pipeline"
     assert abs(float(built.scale_mm_per_px) - plan.mm_per_px) / plan.mm_per_px <= 0.02
+
+
+@pytest.mark.parametrize(
+    ("values", "spans", "expected"),
+    [
+        (("12130", "11310"), (491.5, 458.0), "pipeline"),  # ch-09 bench: hai kích thước tổng khớp 0,04 %
+        (("12130", "11310"), (491.5, 440.0), "project_default"),  # lệch 3,6 %
+        (("3300", "3300"), (150.0, 150.0), "project_default"),  # cùng một số: có thể là hai bản sao đọc sai
+        (("1200", "2700"), (60.0, 135.0), "project_default"),  # cỡ đồ đạc, không phải kích thước tường
+    ],
+)
+def test_build_layer__two_agreeing_chain_samples_decide_scale(
+    values: tuple[str, str], spans: tuple[float, float], expected: str, fake_clock: FakeClock
+) -> None:
+    """Không ghép được tường, chỉ hai mẫu chuỗi: đủ khi hai số tường khác nhau ≥ 3 m và tỉ số lệch ≤ 0,5 %."""
+    texts = [_chain_text(values[0], 200, spans[0]), _chain_text(values[1], 800, spans[1])]
+    built = _run([_wall(100, 100, 1100, 100)], texts, fake_clock)
+    assert built.scale_source == expected
+    if expected == "pipeline":
+        assert abs(float(built.scale_mm_per_px) - 24.68) < 0.02

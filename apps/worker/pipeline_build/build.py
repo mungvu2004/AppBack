@@ -29,6 +29,7 @@ from packages.core.pipeline import PipelineCode
 from packages.domain.rules_ai import apply_post_rules
 from packages.domain.scale import (
     RescaleError,
+    ScaleResult,
     ScaleSample,
     classify_scale_range,
     infer_scale,
@@ -71,6 +72,12 @@ _SAMPLE_ID: Final = re.compile(r"^t(\d+)-w(\d+)-s(\d+|all)$")
 _DIMENSION_TOLERANCE: Final = 0.02
 _BUILD_SCALE_TARGET_MM: Final = 150.0
 """Bề dày vách mong muốn khi phải tự chọn tỉ lệ dựng (B5-05 [6] bước 2)."""
+
+_PAIR_SPREAD: Final = 0.005
+_PAIR_MIN_MM: Final = 3000.0
+"""Hai mẫu chuỗi kích thước đủ quyết tỉ lệ khi infer cần ≥ 3 mà thiếu: hai số khác nhau, mỗi số ≥ 3 m (kích thước
+tường, không phải đồ đạc), tỉ số lệch ≤ 0,5 %. Bench căn hộ 30/10/2026 ch-09: OCR chỉ đọc hai kích thước tổng
+12130 / 11310, 24,68 và 24,69 mm/px, đáp án 24,66. Vẫn là số đo, không đoán (K19)."""
 
 _BUILD_SCALE_MIN: Final = 1.0
 _BUILD_SCALE_MAX: Final = 200.0
@@ -211,8 +218,8 @@ def _resolved_scale(
     """Bước 2: tỉ lệ dây `s`, nguồn, mẫu và id mẫu bị loại; ngoài khoảng → `scaleOutOfRange`.
 
     Mẫu chuỗi kích thước (`span_px` đo trên ảnh, cụm tỉ số đông nhất) quyết trước; không đủ
-    thì mới tới mẫu ghép chữ-tường. Trả cả hai loại mẫu: bước 7 chỉ dựng `Dimension` từ mẫu
-    ghép tường (id `t…-w…`), mẫu chuỗi bị `_SAMPLE_ID` bỏ qua.
+    thì mới tới mẫu ghép chữ-tường, cuối cùng hai mẫu chuỗi khớp nhau (`_agreeing_pair`). Trả cả hai
+    loại mẫu: bước 7 chỉ dựng `Dimension` từ mẫu ghép tường (id `t…-w…`), mẫu chuỗi bị `_SAMPLE_ID` bỏ qua.
 
     Không có tỉ lệ suy được, ngoài khoảng, hay `s` về 0 sau quantize → `fallback_mm_per_px`
     và log `SCALE_UNRESOLVED` (K19: không bao giờ đoán một tỉ lệ khác).
@@ -222,6 +229,8 @@ def _resolved_scale(
     result = infer_scale(chained)
     if result.mm_per_px is None:
         result = infer_scale(paired)
+    if result.mm_per_px is None:
+        result = _agreeing_pair(chained) or result
     samples = (*paired, *chained)
     if result.mm_per_px is not None:
         if classify_scale_range(result.mm_per_px) == "inRange":
@@ -235,6 +244,21 @@ def _resolved_scale(
         extra={"code": PipelineCode.SCALE_UNRESOLVED.value, "reason": result.reason},
     )
     return fallback_mm_per_px, "project_default", samples, result.rejected_ids
+
+
+def _agreeing_pair(chained: Sequence[ScaleSample]) -> ScaleResult | None:
+    """Tỉ lệ từ đúng hai mẫu chuỗi khớp nhau (`_PAIR_SPREAD`, `_PAIR_MIN_MM`), không thì `None`."""
+    if len(chained) != 2 or chained[0].real_length_mm == chained[1].real_length_mm:
+        return None
+    if min(sample.real_length_mm for sample in chained) < _PAIR_MIN_MM:
+        return None
+    low, high = sorted(_ratio(sample) for sample in chained)
+    if high - low > _PAIR_SPREAD * low:
+        return None
+    centre = (low + high) / 2
+    return ScaleResult(
+        mm_per_px=centre, confidence=0.0, reason=None, sample_count=2, rejected_ids=(), suggested_mm_per_px=centre
+    )
 
 
 def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
