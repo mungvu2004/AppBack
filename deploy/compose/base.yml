@@ -50,7 +50,9 @@ services:
 
   redis-broker:
     logging: *logging
-    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    # `--databases 128` (PERF-10): cổng test dùng chung Redis của stack dev/QA, mỗi tiến trình xdist một khối DB
+    # sau các DB app dùng (`packages/testing/fixtures/services.py`); DB rỗng gần như không tốn bộ nhớ.
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes", "--databases", "128"]
     networks:
       - appback
       - ml-internal
@@ -62,7 +64,7 @@ services:
 
   redis-cache:
     logging: *logging
-    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--databases", "128"]
     networks:
       - appback
     healthcheck:

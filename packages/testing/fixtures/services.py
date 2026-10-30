@@ -9,6 +9,13 @@ FIX-114: Postgres và MinIO — hai thứ nặng nhất — dựng **một bản
 Redis cũng vậy, mỗi tiến trình một khối DB (`redis_db_base`). Mailpit vẫn một bản mỗi
 tiến trình: lý do ở docstring `_shared_container`.
 
+PERF-10: `run.sh` thấy stack f14 đang chạy thì đặt `TEST_SHARED_*` (dưới đây); Postgres, hai Redis, MinIO
+dùng thẳng dịch vụ của stack đó, không dựng container nào. Không có biến → y như trước (CI không đổi).
+Rào an toàn: Postgres chỉ nối database `postgres` và chỉ tạo/xoá database tên test (`db.assert_test_database`);
+Redis dời khối DB qua các DB app dùng (`REDIS_APP_BLOCKS`), phải đúng chính sách + đủ `databases`, không thì
+về container riêng; MinIO chỉ chạm bucket ngẫu nhiên test tự tạo. Mailpit vẫn container riêng: `mailpit_inbox`
+dọn **cả** hộp thư, trên f14 là xoá thư của app.
+
 Factory `ephemeral_*` (function, không phải fixture pytest): test tạo một bản
 riêng để giả lập C13 (phụ thuộc hỏng) bằng cách gọi `.stop()`. **Chỉ dừng
 được, không bật lại** — muốn hồi phục thì trỏ client sang fixture dùng chung
@@ -24,13 +31,16 @@ import re
 import socket
 import sys
 import tempfile
+import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
+import redis
 from docker.errors import APIError, NotFound  # type: ignore[import-untyped]  # không có stub
 from filelock import FileLock
 
@@ -49,7 +59,7 @@ from testcontainers.redis import RedisContainer  # type: ignore[import-untyped] 
 from packages.core.pinned_images import MINIO_IMAGE as MINIO_IMAGE
 from packages.core.pinned_images import POSTGRES_IMAGE as POSTGRES_IMAGE
 from packages.core.pinned_images import REDIS_IMAGE as REDIS_IMAGE
-from packages.messaging.redis import BROKER_DB, CACHE_DB, SAFE_DB, STREAM_DB, with_db
+from packages.messaging.redis import BROKER_DB, CACHE_DB, SAFE_DB, STREAM_DB, sync_result, with_db
 from packages.testing.fixtures.worker_id import xdist_worker_id
 
 MAILPIT_IMAGE = "axllent/mailpit:v1.20.0"
@@ -65,6 +75,17 @@ mặc định = 4 lần số tiến trình). execnet cấp mã tăng dần, khô
 `gwN` với N ≥ số tiến trình — khối DB của nó vẫn phải có trên Redis dùng chung."""
 
 SHARED_STATE_PREFIX = "shared-service-"
+
+# PERF-10: dịch vụ ngoài (stack f14) thay container dùng chung — `run.sh` đặt, `in_container.sh` gỡ khi lượt khác
+# đang giữ stack. Giá trị: URL Postgres/Redis; MinIO là `endpoint,access_key,secret_key`; mạng là mạng Docker
+# của stack, container verify tự nối vào (`_join_network`).
+SHARED_POSTGRES_ENV = "TEST_SHARED_POSTGRES_URL"
+SHARED_REDIS_BROKER_ENV = "TEST_SHARED_REDIS_BROKER_URL"
+SHARED_REDIS_CACHE_ENV = "TEST_SHARED_REDIS_CACHE_URL"
+SHARED_MINIO_ENV = "TEST_SHARED_MINIO"
+SHARED_NETWORK_ENV = "TEST_SHARED_NETWORK"
+REDIS_APP_BLOCKS = 1
+"""Số khối `REDIS_ROLE_DBS` đầu của Redis ngoài để lại cho app (URL `/0` + vai → DB 0…`REDIS_ROLE_DBS - 1`)."""
 
 # Ryuk (bộ dọn của testcontainers) chạy **một bản mỗi tiến trình** và xoá mọi container mang nhãn
 # phiên của tiến trình đó ngay khi tiến trình thoát. Dịch vụ dùng chung ở dưới sống lâu hơn tiến
@@ -218,6 +239,55 @@ def _remove_container(container_id: str) -> None:
             raise
 
 
+@cache
+def _join_network(network: str) -> None:
+    """Nối container verify đang chạy (hostname = id container) vào mạng `network` của stack ngoài (PERF-10).
+
+    `verify.yml` giữ `network_mode: bridge` (testcontainers cần IP bridge, NO-007) và `compose run` không nhận
+    mạng thêm, nên container tự nối lúc cần. Sáu tiến trình xdist cùng nối: bên thua thấy đã nối rồi. Cache theo
+    tên mạng, không theo "chưa đặt biến": test đơn vị gỡ biến không được làm fixture thật sau đó bỏ qua bước nối.
+    """
+    client = DockerClient().client
+    me = socket.gethostname()
+
+    def joined() -> bool:
+        """Container này đã ở trong `network` chưa."""
+        return network in client.api.inspect_container(me)["NetworkSettings"]["Networks"]
+
+    if joined():
+        return
+    try:
+        client.networks.get(network).connect(me)
+    except APIError:
+        if not joined():
+            raise
+
+
+def external_service(env: str) -> str | None:
+    """Giá trị biến dịch vụ ngoài `env` (PERF-10), đã nối mạng của stack nếu có; `None` khi không đặt."""
+    value = os.environ.get(env, "").strip()
+    if not value:
+        return None
+    if network := os.environ.get(SHARED_NETWORK_ENV, "").strip():
+        _join_network(network)
+    return value
+
+
+def external_postgres_url() -> str | None:
+    """URL Postgres ngoài, **luôn** trỏ database quản trị `postgres` — không bao giờ database của app (PERF-10)."""
+    url = external_service(SHARED_POSTGRES_ENV)
+    return urlunsplit(urlsplit(url)._replace(path="/postgres", query="", fragment="")) if url else None
+
+
+def external_minio() -> tuple[str, str, str] | None:
+    """(endpoint, access_key, secret_key) của MinIO ngoài từ `endpoint,access_key,secret_key` (PERF-10)."""
+    value = external_service(SHARED_MINIO_ENV)
+    if not value:
+        return None
+    endpoint, access_key, secret_key = value.split(",", 2)  # khoá bí mật có thể chứa dấu phẩy, hai phần đầu thì không
+    return endpoint, access_key, secret_key
+
+
 @contextmanager
 def _shared_container[ValueT](
     key: str,
@@ -282,6 +352,20 @@ def _shared_container[ValueT](
 @pytest.fixture(scope="session")
 def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Một Postgres cho cả lượt chạy; mỗi tiến trình xdist đã có database riêng (`db.py`)."""
+    with shared_postgres(tmp_path_factory) as url:
+        yield url
+
+
+@contextmanager
+def shared_postgres(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """Thân của `postgres_url`, tách ra để test gọi thẳng cả hai đường (PERF-10).
+
+    Postgres ngoài: URL luôn trỏ database `postgres`, không bao giờ database của app.
+    """
+    external = external_postgres_url()
+    if external:
+        yield external
+        return
 
     def start() -> tuple[DockerContainer, str]:
         """Dựng container Postgres dùng chung và trả (container, URL)."""
@@ -292,24 +376,73 @@ def postgres_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         yield url
 
 
-def redis_db_base() -> int:
+def redis_db_base(skip_blocks: int = 0) -> int:
     """DB gốc của tiến trình này trên Redis dùng chung: `gwN` → khối thứ N; ngoài xdist → 0 (NO-270).
 
     Mỗi khối rộng `REDIS_ROLE_DBS` nên mọi vai `with_db` dời lên (kể cả test lấy URL cache làm URL
-    broker) vẫn nằm trong khối của chính tiến trình.
+    broker) vẫn nằm trong khối của chính tiến trình. `skip_blocks`: số khối đầu để lại (Redis ngoài, PERF-10).
     """
     worker = xdist_worker_id()
-    return int(worker.removeprefix("gw")) * REDIS_ROLE_DBS if worker else 0
+    return ((int(worker.removeprefix("gw")) if worker else 0) + skip_blocks) * REDIS_ROLE_DBS
+
+
+def _xdist_ids() -> int:
+    """Số mã `gwN` lượt này có thể tiêu (`XDIST_IDS_PER_WORKER` mỗi tiến trình)."""
+    return int(os.environ.get(XDIST_WORKER_COUNT_ENV, "1")) * XDIST_IDS_PER_WORKER
+
+
+def external_redis_problem(config: dict[str, str], policy: str) -> str | None:
+    """Vì sao Redis ngoài có `CONFIG GET` = `config` **không** dùng được cho vai `policy`; `None` khi được.
+
+    Phải đúng chính sách bộ nhớ (test kiểm hành vi `noeviction`/`allkeys-lru`) và đủ `databases` cho khối app
+    + một khối mỗi mã `gwN`; thiếu thì khối của tiến trình rơi ra ngoài dải (PERF-10).
+    """
+    need = (REDIS_APP_BLOCKS + _xdist_ids()) * REDIS_ROLE_DBS
+    if config.get("maxmemory-policy") != policy:
+        return f"maxmemory-policy {config.get('maxmemory-policy')} ≠ {policy}"
+    if int(config.get("databases", "0")) < need:
+        return f"databases {config.get('databases')} < {need} (khối app + {_xdist_ids()} mã gwN, khối {REDIS_ROLE_DBS})"
+    return None
+
+
+def _external_redis(env: str, policy: str) -> str | None:
+    """URL `/0` của Redis ngoài cho vai `policy` đã qua kiểm, hay `None` → container riêng, có cảnh báo."""
+    url = external_service(env)
+    if not url:
+        return None
+    try:
+        with redis.Redis.from_url(url, socket_connect_timeout=5, socket_timeout=5, decode_responses=True) as client:
+            config = sync_result(client.config_get("maxmemory-policy"), dict) | sync_result(
+                client.config_get("databases"), dict
+            )
+    except redis.RedisError as exc:
+        problem: str | None = f"không hỏi được cấu hình: {exc}"
+    else:
+        problem = external_redis_problem(config, policy)
+    if problem:
+        warnings.warn(f"{env}: {problem} — dùng container Redis riêng (PERF-10)", stacklevel=2)
+        return None
+    return url
 
 
 @contextmanager
-def _shared_redis(policy: str, tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    """Một Redis chính sách `policy` cho cả lượt `pytest -n`; URL trỏ vào khối DB của tiến trình này."""
+def _shared_redis(policy: str, tmp_path_factory: pytest.TempPathFactory, external: str | None = None) -> Iterator[str]:
+    """Một Redis chính sách `policy` cho cả lượt `pytest -n`; URL trỏ vào khối DB của tiến trình này.
+
+    Redis ngoài `external` (PERF-10): khối dời qua khối app và được `FLUSHDB` trước khi dùng — lượt trước bị
+    giết có thể để khoá lại, còn container mới thì luôn sạch.
+    """
+    if external:
+        base = redis_db_base(REDIS_APP_BLOCKS)
+        for db in range(base, base + REDIS_ROLE_DBS):
+            with redis.Redis.from_url(with_db(external, db)) as client:
+                client.flushdb()
+        yield with_db(external, base)
+        return
 
     def start() -> tuple[DockerContainer, str]:
         """Dựng container Redis dùng chung, đủ một khối DB cho mỗi tiến trình xdist; trả (container, URL `/0`)."""
-        ids = int(os.environ.get(XDIST_WORKER_COUNT_ENV, "1")) * XDIST_IDS_PER_WORKER
-        container = _start(_redis(policy, max(REDIS_DEFAULT_DATABASES, REDIS_ROLE_DBS * ids)))
+        container = _start(_redis(policy, max(REDIS_DEFAULT_DATABASES, REDIS_ROLE_DBS * _xdist_ids())))
         return container, _redis_url(container)
 
     with _shared_container(f"redis-{policy}", tmp_path_factory, start) as url:
@@ -319,14 +452,14 @@ def _shared_redis(policy: str, tmp_path_factory: pytest.TempPathFactory) -> Iter
 @pytest.fixture(scope="session")
 def redis_broker_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """URL Redis (chính sách `noeviction`) cho broker Celery, dùng chung cả lượt chạy."""
-    with _shared_redis("noeviction", tmp_path_factory) as url:
+    with _shared_redis("noeviction", tmp_path_factory, _external_redis(SHARED_REDIS_BROKER_ENV, "noeviction")) as url:
         yield url
 
 
 @pytest.fixture(scope="session")
 def redis_cache_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """URL Redis (chính sách `allkeys-lru`) cho cache, dùng chung cả lượt chạy."""
-    with _shared_redis("allkeys-lru", tmp_path_factory) as url:
+    with _shared_redis("allkeys-lru", tmp_path_factory, _external_redis(SHARED_REDIS_CACHE_ENV, "allkeys-lru")) as url:
         yield url
 
 
@@ -337,6 +470,20 @@ def minio_endpoint(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[s
     Dùng chung được vì `s3_storage` tạo **một bucket mỗi test** với tên ngẫu nhiên, nên hai tiến
     trình xdist không bao giờ chạm cùng bucket.
     """
+    with shared_minio(tmp_path_factory) as endpoint:
+        yield endpoint
+
+
+@contextmanager
+def shared_minio(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, str, str]]:
+    """Thân của `minio_endpoint`, tách ra để test gọi thẳng cả hai đường (PERF-10).
+
+    MinIO ngoài: biến là `endpoint,access_key,secret_key`.
+    """
+    external = external_minio()
+    if external:
+        yield external
+        return
 
     def start() -> tuple[DockerContainer, list[str]]:
         """Dựng container MinIO dùng chung và trả (container, cấu hình S3)."""

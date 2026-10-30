@@ -183,7 +183,8 @@ def test_volume_work_được_tạo_tường_minh_trước_lượt_compose(workt
     bin_dir = tmp_path / "bin"
     log = bin_dir / "docker-calls"
     _fake_command(bin_dir, "docker", f'echo "$*" >> "{log}"')
-    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    # Tắt dò stack dùng chung (PERF-10): test này chỉ kiểm thứ tự volume → build → compose.
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "VERIFY_SHARED_STACK": "off"}
     result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
         [BASH, str(worktree / "tools" / "verify" / "run.sh"), "verify"],
         env=env,
@@ -261,3 +262,72 @@ def test_verify__junit_perf_mồ_côi_bị_dọn_cùng_log(worktree: Path, tmp_p
 
     kept = [n.replace(".log", ".perf.junit.xml") for n in names[3:]]
     assert sorted(p.name for p in log_dir.glob("*.perf.junit.xml")) == sorted(kept)
+
+
+# `docker` giả cho PERF-10: trả lời `inspect` về stack f14 (chạy hay không theo `$STACK_RUNNING`, env, IP),
+# mọi lệnh khác ghi `TEST_SHARED_*` mà `compose` nhận được.
+_STACK_DOCKER = """
+if [ "$1" = inspect ]; then
+  case "$3" in
+    *State.Running*) echo "$STACK_RUNNING" ;;
+    *Config.Env*) case "$4" in
+        *postgres*) printf 'POSTGRES_USER=app\\nPOSTGRES_PASSWORD=p@ss:w/rd\\n' ;;
+        *minio*) printf 'MINIO_ROOT_USER=mu\\nMINIO_ROOT_PASSWORD=ms,x\\n' ;;
+      esac ;;
+    *IPAddress*) case "$4" in
+        *postgres*) echo 10.9.0.2 ;; *broker*) echo 10.9.0.3 ;; *cache*) echo 10.9.0.4 ;; *minio*) echo 10.9.0.5 ;;
+      esac ;;
+  esac
+  exit 0
+fi
+env | grep '^TEST_SHARED_' | sort > "$SHARED_ENV_FILE"
+"""
+
+
+def _run_with_stack(root: Path, tmp_path: Path, **env_extra: str) -> tuple[dict[str, str], str]:
+    """`run.sh verify` với `docker` giả của stack; trả `TEST_SHARED_*` compose nhận được và stdout+stderr."""
+    bin_dir = tmp_path / "bin"
+    _fake_command(bin_dir, "docker", _STACK_DOCKER)
+    env_file = tmp_path / "shared-env"
+    base = {k: v for k, v in os.environ.items() if not k.startswith("TEST_SHARED_") and k != "VERIFY_SHARED_STACK"}
+    env = {**base, **env_extra, "SHARED_ENV_FILE": str(env_file), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
+        [BASH, str(root / "tools" / "verify" / "run.sh"), "verify"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    pairs = (line.partition("=") for line in env_file.read_text(encoding="utf-8").splitlines())
+    return {name: value for name, _, value in pairs}, result.stdout + result.stderr
+
+
+def test_verify__running_stack_hands_its_services_to_the_tests(worktree: Path, tmp_path: Path) -> None:
+    """PERF-10: f14 chạy → compose nhận địa chỉ IP trên `f14_appback` + mật khẩu đọc từ env container stack.
+
+    User/mật khẩu được mã hoá phần trăm trong URL; mật khẩu không hiện ra stdout/stderr (log cổng).
+    """
+    shared, output = _run_with_stack(worktree, tmp_path, STACK_RUNNING="true")
+
+    assert shared == {
+        "TEST_SHARED_NETWORK": "f14_appback",
+        "TEST_SHARED_POSTGRES_URL": "postgresql+asyncpg://app:p%40ss%3Aw%2Frd@10.9.0.2:5432/postgres",
+        "TEST_SHARED_REDIS_BROKER_URL": "redis://10.9.0.3:6379/0",
+        "TEST_SHARED_REDIS_CACHE_URL": "redis://10.9.0.4:6379/0",
+        "TEST_SHARED_MINIO": "10.9.0.5:9000,mu,ms,x",
+    }
+    assert "p@ss" not in output
+    assert "p%40ss" not in output
+    assert "ms,x" not in output
+
+
+@pytest.mark.parametrize(
+    "env_extra",
+    [{"STACK_RUNNING": "false"}, {"STACK_RUNNING": "true", "VERIFY_SHARED_STACK": "off"}],
+    ids=["stack-tắt", "off"],
+)
+def test_verify__no_stack_means_own_containers(worktree: Path, tmp_path: Path, env_extra: dict[str, str]) -> None:
+    """Stack không chạy, hay `VERIFY_SHARED_STACK=off`: không biến nào → test dựng container như trước."""
+    shared, _ = _run_with_stack(worktree, tmp_path, **env_extra)
+    assert shared == {}

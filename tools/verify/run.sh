@@ -113,6 +113,40 @@ export VERIFY_SRC_DIR VERIFY_CONTRACT_SAMPLES_DIR
 
 COMPOSE=(docker compose -p "appback-verify-$VERIFY_NAME" -f "$VERIFY_SRC_DIR/deploy/compose/verify.yml")
 
+# PERF-10: stack compose đang chạy (mặc định `f14`, `VERIFY_SHARED_STACK=off` để tắt) → test dùng thẳng Postgres,
+# hai Redis, MinIO của nó thay vì dựng 4 container (`packages/testing/fixtures/services.py`). Địa chỉ là IP trên
+# mạng `<stack>_appback` (container verify tự nối vào lúc test cần); mật khẩu đọc từ env của container stack lúc
+# chạy và vào container verify qua biến môi trường (`verify.yml`), không qua đối số hay log.
+# Thiếu một trong bốn dịch vụ → không đặt gì, test dựng container như cũ.
+: "${VERIFY_SHARED_STACK:=f14}"
+urlenc() {  # mã hoá phần trăm (user/mật khẩu trong URL)
+  local s="$1" out="" c i
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    case "$c" in [a-zA-Z0-9._~-]) out+="$c" ;; *) printf -v c '%%%02X' "'$c"; out+="$c" ;; esac
+  done
+  printf '%s' "$out"
+}
+stack_running() { [[ "$(docker inspect -f '{{.State.Running}}' "$VERIFY_SHARED_STACK-$1-1" 2> /dev/null)" == true ]]; }
+stack_ip() {
+  docker inspect -f "{{(index .NetworkSettings.Networks \"${VERIFY_SHARED_STACK}_appback\").IPAddress}}" \
+    "$VERIFY_SHARED_STACK-$1-1"
+}
+stack_env() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$VERIFY_SHARED_STACK-$1-1" | sed -n "s/^$2=//p"; }
+if [[ "$VERIFY_SHARED_STACK" != off ]] && stack_running postgres && stack_running redis-broker \
+  && stack_running redis-cache && stack_running minio; then
+  pg_user="$(urlenc "$(stack_env postgres POSTGRES_USER)")"
+  pg_password="$(urlenc "$(stack_env postgres POSTGRES_PASSWORD)")"
+  TEST_SHARED_NETWORK="${VERIFY_SHARED_STACK}_appback"
+  TEST_SHARED_POSTGRES_URL="postgresql+asyncpg://$pg_user:$pg_password@$(stack_ip postgres):5432/postgres"
+  TEST_SHARED_REDIS_BROKER_URL="redis://$(stack_ip redis-broker):6379/0"
+  TEST_SHARED_REDIS_CACHE_URL="redis://$(stack_ip redis-cache):6379/0"
+  TEST_SHARED_MINIO="$(stack_ip minio):9000,$(stack_env minio MINIO_ROOT_USER),$(stack_env minio MINIO_ROOT_PASSWORD)"
+  export TEST_SHARED_NETWORK TEST_SHARED_POSTGRES_URL TEST_SHARED_REDIS_BROKER_URL TEST_SHARED_REDIS_CACHE_URL \
+    TEST_SHARED_MINIO
+  echo "dịch vụ test: dùng Postgres/Redis/MinIO của stack '$VERIFY_SHARED_STACK' (VERIFY_SHARED_STACK=off để tắt)" >&2
+fi
+
 # Volume `/work` dùng chung giữa mọi worktree (NO-108) là `external` trong verify.yml: tạo tường minh ở đây
 # (đã có thì không làm gì) để lượt đầu trên máy sạch chạy được và compose không cảnh báo nhãn project (NO-185).
 docker volume create appback-work > /dev/null
