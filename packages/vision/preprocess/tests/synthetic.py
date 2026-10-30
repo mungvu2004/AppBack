@@ -124,22 +124,25 @@ def make_pdf(
     rotate: int = 0,
     size: tuple[float, float] = A4_PT,
     rects: Sequence[Rect] = (),
+    ops: bytes = b"",
 ) -> bytes:
     """PDF tối giản `pages` trang cùng khổ `size` (point), cùng `/Rotate`, cùng nội dung.
 
     `pages=0` cho `/Count 0` (tài liệu hợp lệ nhưng không trang). `encrypt` chọn
     bộ lọc Standard RC4-40: `owner_only` mở được bằng mật khẩu người dùng rỗng,
     `user_password` thì không. `rects` là `(x, y, rộng, cao, (r, g, b))` với màu
-    trong `[0, 1]` và gốc toạ độ ở góc **dưới**-trái như PDF quy định.
+    trong `[0, 1]` và gốc toạ độ ở góc **dưới**-trái như PDF quy định. `ops` là lệnh
+    content stream thô nối sau `rects` (nét `m l S`, chữ `/F1` Helvetica, ảnh `BI … EI`).
     """
     key, encrypt_dict = (None, b"") if encrypt == "none" else _standard_security(*_PASSWORDS[encrypt])
-    content = _content_stream(rects)
+    content = _content_stream(rects) + ops
+    resources = b"<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>" if ops else b"<<>>"
     width, height = size
     kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
     objects = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[%s]/Count %d>>" % (kids, pages)]
     objects += [
-        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 %s %s]/Rotate %d/Contents %d 0 R/Resources<<>>>>"
-        % (_number(width), _number(height), rotate, 3 + pages + i)
+        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 %s %s]/Rotate %d/Contents %d 0 R/Resources%s>>"
+        % (_number(width), _number(height), rotate, 3 + pages + i, resources)
         for i in range(pages)
     ]
     for i in range(pages):
