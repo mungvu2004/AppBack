@@ -13,7 +13,7 @@ import itertools
 import math
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 import cv2
@@ -72,6 +72,12 @@ tường 220 mm nên đầu mút cạnh khe cửa không bị kéo qua khe.
 """
 _LINE_CLUSTER_RATIO: Final = 0.5
 """Đoạn cùng trục có toạ độ tim cách nhau ≤ ngần này lần bề dày nhỏ nhất là một đường tường (bước 8b)."""
+_JOG_OFFSET_RATIO: Final = 1.5
+"""Chữ Z: hai tường song song nối bằng một đoạn chéo, lệch tim ≤ ngần này lần bề dày lớn nhất → một đường (bước 10c)."""
+_PIECE_THICKNESS_RATIO: Final = 1.25
+"""Hai khúc cùng đường có bề dày lớn/nhỏ ≤ ngần này là một tường (bước 10d): 200/220 gộp, 100/150 không."""
+_PIECE_TOUCH_PX: Final = 1.0
+"""Hai khúc cùng đường hở nhau ≤ ngần này (px) là chạm nhau; khe cửa rộng hơn nhiều nên không bị lấp (bước 10d)."""
 MAX_WALLS: Final = 20_000
 """Trần số tường của `WallsResult` (B5-01); `keep_longest` cắt về đúng trần này."""
 
@@ -875,6 +881,116 @@ def _absorb_corner_diagonals(
     return keep, short, pins
 
 
+def _straighten_jogs(segs: list[_Seg]) -> list[_Seg]:
+    """Bước 10c: bản vẽ vuông góc, chữ Z nhỏ (tường — đoạn chéo — tường song song lệch ≤ 1,5 bề dày) → thẳng.
+
+    Ô kỹ thuật hay hộp gen áp tường làm xương lệch sang bên vài px rồi quay lại: `_clash` chặn
+    `_absorb_corner_diagonals` nhập hai khoá nên đoạn chéo còn lại thành tường xiên trong 3D. Ở đây
+    đoạn ngắn hơn dời lên tim đoạn dài và kéo tới đầu mút của đoạn dài, đoạn chéo bỏ; đầu các tường
+    vuông góc tại đầu kia của đoạn ngắn dời theo để góc L vẫn khép. Mỗi đầu đoạn chéo phải nối đúng một
+    tường, hai tường cùng trục: chéo nối nhiều tường là giao thật, giữ nguyên.
+    """
+    if not _mostly_orthogonal(segs, [seg.axis for seg in segs]):
+        return segs
+    incident = _ends_by_key(segs)
+    gone: set[int] = set()
+    for diag in segs:
+        if diag.axis != "d":
+            continue
+        sides = [
+            [(s, head) for s, head in incident[key] if s is not diag and id(s) not in gone]
+            for key in (diag.a_key, diag.b_key)
+        ]
+        if any(len(side) != 1 for side in sides):
+            continue
+        (one, one_head), (two, two_head) = sides[0][0], sides[1][0]
+        if one.axis == "d" or one.axis != two.axis or one is two:
+            continue
+        reach = _JOG_OFFSET_RATIO * max(one.thickness, two.thickness, diag.thickness)
+        if abs(_line_value(one) - _line_value(two)) > reach:
+            continue
+        (short, short_head), (long_, long_head) = sorted(
+            ((one, one_head), (two, two_head)), key=lambda side: side[0].length()
+        )
+        far_key = short.b_key if short_head else short.a_key
+        target = (long_.ax, long_.ay) if long_head else (long_.bx, long_.by)
+        moved = replace(short)  # thử trên bản sao: đổi chiều hay thành dài 0 thì bỏ
+        _set_line(moved, _line_value(long_))
+        _set_end(moved, short_head, target)
+        (ux, uy), (vx, vy) = _direction(moved), _direction(short)
+        if moved.length() == 0.0 or ux * vx + uy * vy <= 0.0:
+            continue
+        old_far = (short.bx, short.by) if short_head else (short.ax, short.ay)
+        new_far = (moved.bx, moved.by) if short_head else (moved.ax, moved.ay)
+        short.ax, short.ay, short.bx, short.by = moved.ax, moved.ay, moved.bx, moved.by
+        for seg, head in incident[far_key]:
+            if seg is not short and ((seg.ax, seg.ay) if head else (seg.bx, seg.by)) == old_far:
+                _set_end(seg, head, new_far)
+        gone.add(id(diag))
+    return [seg for seg in segs if id(seg) not in gone]
+
+
+def _span(seg: _Seg) -> tuple[float, float]:
+    """Khoảng dọc trục của đoạn ngang/dọc: `(thấp, cao)` theo `x` (ngang) hay `y` (dọc)."""
+    return (min(seg.ax, seg.bx), max(seg.ax, seg.bx)) if seg.axis == "h" else (min(seg.ay, seg.by), max(seg.ay, seg.by))
+
+
+def _span_keys(seg: _Seg) -> tuple[_Key, _Key]:
+    """Khoá đầu thấp và đầu cao theo `_span`."""
+    a_low = (seg.ax <= seg.bx) if seg.axis == "h" else (seg.ay <= seg.by)
+    return (seg.a_key, seg.b_key) if a_low else (seg.b_key, seg.a_key)
+
+
+def _set_span(seg: _Seg, low: tuple[float, _Key], high: tuple[float, _Key]) -> None:
+    """Đặt khoảng dọc trục của đoạn ngang/dọc kèm khoá hai đầu (đầu `a` ở thấp)."""
+    if seg.axis == "h":
+        seg.ax, seg.bx = low[0], high[0]
+    else:
+        seg.ay, seg.by = low[0], high[0]
+    seg.a_key, seg.b_key = low[1], high[1]
+
+
+def _merge_line_pieces(segs: list[_Seg]) -> list[_Seg]:
+    """Bước 10d: khúc ngang/dọc trên cùng một đường chạm hay chồng nhau → một tường.
+
+    Bề dày gần nhau (≤ `_PIECE_THICKNESS_RATIO`) thì gộp thành một đoạn (bề dày, tim, độ tin trung bình
+    trọng số độ dài); khúc nằm trọn trong khúc khác mà không dày hơn quá tỉ lệ đó thì bỏ (hai nhánh xương
+    song song chồng một đoạn). Khúc dày hẳn hơn (cột trên vách) giữ riêng. Khúc cách nhau quá
+    `_PIECE_TOUCH_PX` (khe cửa) không chạm.
+    """
+    out = [seg for seg in segs if seg.axis == "d"]
+    for axis in ("h", "v"):
+        pieces = sorted((s for s in segs if s.axis == axis), key=lambda s: (_line_value(s), _span(s)))
+        lines: list[list[_Seg]] = []
+        for seg in pieces:
+            if lines and _line_value(seg) - _line_value(lines[-1][0]) <= _PIECE_TOUCH_PX:
+                lines[-1].append(seg)
+            else:
+                lines.append([seg])
+        for line in lines:
+            line.sort(key=_span)
+            run: list[_Seg] = [line[0]]
+            for seg in line[1:]:
+                head = max(run, key=lambda s: _span(s)[1])  # khúc vươn xa nhất, không phải cột dày vừa giữ riêng
+                low, high = _span(seg)
+                thin, thick = sorted((seg.thickness, head.thickness))
+                close = thick <= _PIECE_THICKNESS_RATIO * thin
+                if high <= _span(head)[1] and seg.thickness <= _PIECE_THICKNESS_RATIO * head.thickness:
+                    continue
+                if close and low <= _span(head)[1] + _PIECE_TOUCH_PX:
+                    members = [head, seg]
+                    weights = [m.length() for m in members]
+                    value = _weighted(members, [_line_value(m) for m in members], weights)
+                    head.thickness = _weighted(members, [m.thickness for m in members], weights)
+                    head.conf = _weighted(members, [m.conf for m in members], weights)
+                    _set_span(head, (_span(head)[0], _span_keys(head)[0]), (high, _span_keys(seg)[1]))
+                    _set_line(head, value)
+                    continue
+                run.append(seg)
+            out.extend(run)
+    return out
+
+
 def _extend_leaves(shared: dict[_Key, list[tuple[_Seg, bool]]], graph: _Graph) -> None:
     """Đầu mút bậc 1 riêng của một đoạn: kéo dài thêm distance tại đó (bước 9).
 
@@ -991,6 +1107,8 @@ def vectorize_with_stats(mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] |
     _snap_free_ends(shared, fused)
     for seg, width in widths:
         seg.thickness = width
+    # Gộp trước để khúc trùng không làm đầu chữ Z có hai tường, gộp lại sau để nối khúc vừa nắn thẳng.
+    fused = _merge_line_pieces(_straighten_jogs(_merge_line_pieces(fused)))
     _rotate(fused, tilt, centre)
     walls, dropped_short = _finalise(fused, mask.shape)
     return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + corner + dropped_short})
