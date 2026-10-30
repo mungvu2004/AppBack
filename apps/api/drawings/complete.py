@@ -201,9 +201,7 @@ def _page_count(data: bytes) -> int:
         raise exc.to_app_error() from exc
 
 
-async def _build_original(
-    storage: ObjectStorage, facts: UploadFacts, chunks: Sequence[_Chunk]
-) -> tuple[str, str]:
+async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Sequence[_Chunk]) -> tuple[str, str]:
     """Bước 3-5: nhận diện, ghi `original.*`, đếm trang; trả `(loại đã nhận diện, sha256 hex)`.
 
     SHA-256 của cả tệp gốc (UX41 P01) băm ngay trên luồng ghi, không đọc lại tệp: FE so

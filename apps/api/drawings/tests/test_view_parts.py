@@ -99,9 +99,7 @@ async def test_load_without_scale_gate_uses_pixels(db_session: AsyncSession, loc
     assert item.url
 
 
-async def test_load_carries_upload_content_sha256(
-    db_session: AsyncSession, local_storage: LocalDiskStorage
-) -> None:
+async def test_load_carries_upload_content_sha256(db_session: AsyncSession, local_storage: LocalDiskStorage) -> None:
     """UX41 P01: `contentSha256` là dấu băm của lượt tải sinh bản vẽ; lượt cũ chưa băm → vắng."""
     scene = await make_scene(db_session)
     upload = await make_complete_upload(db_session, local_storage, project=scene.project, floor=scene.floor, data=PNG)
