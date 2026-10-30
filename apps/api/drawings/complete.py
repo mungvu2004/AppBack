@@ -11,8 +11,9 @@ Tệp hỏng ở chặng 2 → hàm **trả** `Response` 422 chứ không ném: 
 handler ném, mà dòng `rejected` phải được giữ lại (BE-00 §7, [6] #7 bước 6).
 """
 
+import hashlib
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Final
@@ -155,9 +156,13 @@ def _check_kind(sniffed: str, facts: UploadFacts) -> None:
 
 
 async def _concat(
-    storage: ObjectStorage, chunks: Sequence[_Chunk], marker: _EndMarker, buffer: bytearray | None
+    storage: ObjectStorage,
+    chunks: Sequence[_Chunk],
+    marker: _EndMarker,
+    buffer: bytearray | None,
+    hash_part: Callable[[bytes], None],
 ) -> AsyncIterator[bytes]:
-    """Nối object của các khúc thành **một** luồng, vừa chảy vừa dò dấu kết thúc.
+    """Nối object của các khúc thành **một** luồng, vừa chảy vừa dò dấu kết thúc và băm SHA-256.
 
     `buffer` chỉ khác `None` cho PDF: `pdf_page_count` nhận `bytes`, không nhận luồng, nên
     đó là lần duy nhất cả tệp nằm trong RAM (trần = `UPLOAD_MAX_BYTES`).
@@ -165,6 +170,7 @@ async def _concat(
     for chunk in chunks:
         async for part in storage.open_read(chunk.object_key):
             marker.feed(part)
+            hash_part(part)
             if buffer is not None:
                 buffer.extend(part)
             yield part
@@ -195,8 +201,13 @@ def _page_count(data: bytes) -> int:
         raise exc.to_app_error() from exc
 
 
-async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Sequence[_Chunk]) -> str:
-    """Bước 3-5: nhận diện, ghi `original.*`, đếm trang; trả loại đã nhận diện.
+async def _build_original(
+    storage: ObjectStorage, facts: UploadFacts, chunks: Sequence[_Chunk]
+) -> tuple[str, str]:
+    """Bước 3-5: nhận diện, ghi `original.*`, đếm trang; trả `(loại đã nhận diện, sha256 hex)`.
+
+    SHA-256 của cả tệp gốc (UX41 P01) băm ngay trên luồng ghi, không đọc lại tệp: FE so
+    nó với tệp người dùng vừa chọn để báo "giống hệt bản vẽ đang dùng".
 
     `max_bytes` = kích thước khai, nên khúc bị đánh tráo bằng nội dung dài hơn cũng không
     ghi được quá một tệp (`PAYLOAD_TOO_LARGE` từ chính kho). Lỗi 4xx ở đây là lỗi tệp và
@@ -207,9 +218,10 @@ async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Se
     _check_kind(sniffed, facts)
     marker = _EndMarker(sniffed)
     buffer = bytearray() if sniffed == "pdf" else None
+    digest = hashlib.sha256()
     await storage.put(
         facts.original_key,
-        _concat(storage, chunks, marker, buffer),
+        _concat(storage, chunks, marker, buffer, digest.update),
         content_type=KIND_MIME[sniffed],
         max_bytes=facts.declared_size_bytes,
     )
@@ -217,7 +229,7 @@ async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Se
         raise FILE_CORRUPT.error()
     if buffer is not None:
         _check_pages(bytes(buffer), facts)
-    return sniffed
+    return sniffed, digest.hexdigest()
 
 
 async def _lock_upload(db: AsyncSession, upload_id: str) -> UploadRow | None:
@@ -247,6 +259,7 @@ async def _finish(
     facts: UploadFacts,
     chunks: Sequence[_Chunk],
     sniffed: str,
+    content_sha256: str,
     principal: Principal,
     clock: Clock,
 ) -> dict[str, object]:
@@ -270,6 +283,7 @@ async def _finish(
 
     row.status = "complete"
     row.sniffed_kind = sniffed
+    row.content_sha256 = content_sha256
     row.original_key = facts.original_key
     await db.flush()
     await start_run(db, upload_id=facts.id, clock=clock)
@@ -309,9 +323,17 @@ async def complete_upload(
 
     await db.rollback()
     try:
-        sniffed = await _build_original(storage, facts, chunks)
+        sniffed, content_sha256 = await _build_original(storage, facts, chunks)
     except AppError as exc:
         if exc.code.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
             raise  # kho/phụ thuộc hỏng tạm thời: giữ `receiving` để #7 gửi lại được (NO-419)
         return await _reject(db, storage, facts, exc)
-    return await _finish(db, facts=facts, chunks=chunks, sniffed=sniffed, principal=principal, clock=clock)
+    return await _finish(
+        db,
+        facts=facts,
+        chunks=chunks,
+        sniffed=sniffed,
+        content_sha256=content_sha256,
+        principal=principal,
+        clock=clock,
+    )

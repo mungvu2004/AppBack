@@ -99,6 +99,22 @@ async def test_load_without_scale_gate_uses_pixels(db_session: AsyncSession, loc
     assert item.url
 
 
+async def test_load_carries_upload_content_sha256(
+    db_session: AsyncSession, local_storage: LocalDiskStorage
+) -> None:
+    """UX41 P01: `contentSha256` là dấu băm của lượt tải sinh bản vẽ; lượt cũ chưa băm → vắng."""
+    scene = await make_scene(db_session)
+    upload = await make_complete_upload(db_session, local_storage, project=scene.project, floor=scene.floor, data=PNG)
+    await make_drawing(db_session, local_storage, upload=upload, png=PNG)
+    before = await _outs(db_session, [scene.floor.pk], app=None)
+    assert before[str(scene.floor.pk)][0].content_sha256 is None
+
+    upload.content_sha256 = "ab" * 32
+    await db_session.flush()
+    after = await _outs(db_session, [scene.floor.pk], app=None)
+    assert after[str(scene.floor.pk)][0].content_sha256 == "ab" * 32
+
+
 async def test_load_applies_scale_gate(
     db_session: AsyncSession, local_storage: LocalDiskStorage, api_app: FastAPI
 ) -> None:

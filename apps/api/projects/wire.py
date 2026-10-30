@@ -64,6 +64,8 @@ class DrawingOut(WireModel):
     scale: float | None = None
     uploaded_at: WireDatetime
     uploader_id: str
+    content_sha256: str | None = None
+    """SHA-256 hex của tệp gốc (UX41 P01); vắng khoá với lượt tải trước khi có cột."""
 
 
 class FloorOut(WireModel):

@@ -157,3 +157,24 @@ def render_pdf_page(
             pdf.close()
     capped, _sx, _sy = cap_pixels(pixels, max_pixels)
     return RgbImage(np.ascontiguousarray(capped, dtype=np.uint8))
+
+
+def render_pdf_thumbnails(data: bytes, *, max_pixels: int, max_pages: int) -> list[RgbImage]:
+    """Ảnh nhỏ RGB của `max_pages` trang đầu, mở tài liệu **một** lần (UX41 U05).
+
+    Cùng đường dựng với `render_pdf_page` (nền trắng, áp `/Rotate`, trần `max_pixels`),
+    chỉ khác là giữ `PDF_LOCK` suốt cả lượt thay vì mở lại tài liệu cho từng trang.
+    Lỗi như `_open_document`.
+    """
+    images: list[RgbImage] = []
+    with PDF_LOCK:
+        pdf = _open_document(data)
+        try:
+            for page_index in range(min(len(pdf), max_pages)):
+                width_pt, height_pt = _page_size_pt(pdf, page_index)
+                scale = effective_dpi(width_pt, height_pt, DEFAULT_DPI, max_pixels) / POINTS_PER_INCH
+                capped, _sx, _sy = cap_pixels(_render_page(pdf, page_index, scale), max_pixels)
+                images.append(RgbImage(np.ascontiguousarray(capped, dtype=np.uint8)))
+        finally:
+            pdf.close()
+    return images

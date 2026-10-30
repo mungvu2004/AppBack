@@ -6,6 +6,7 @@ thông điệp `pipeline.cpu` trên Redis thật — lặp có khoá và lặp k
 """
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import AsyncIterable, Iterator
 from typing import Any, Final, cast
@@ -114,6 +115,7 @@ async def test_drawings_complete_upload__C01(
     row = await _upload_row(db_sessionmaker, upload_id)
     assert row.status == "complete"
     assert row.sniffed_kind == "png"
+    assert row.content_sha256 == hashlib.sha256(data).hexdigest()  # UX41 P01: băm cả tệp gốc
     assert row.original_key is not None
     stored = await local_storage.stat(row.original_key)
     assert stored is not None
