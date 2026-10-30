@@ -40,7 +40,20 @@ lượng tử (1,4; 2,0) nên không sát số đo nào. Tiêu chí tỉ lệ `T
 110 mm chạm tường bao 220 mm (T/J = 0,40) và mọi vách rất mảnh chạm tường rất dày (NO-288).
 """
 _AXIS_SHARE: Final = 0.85
-"""Bản vẽ có ≥ ngần này tổng độ dài tường ngang/dọc thì coi là bản vẽ vuông góc (bước 10b)."""
+"""Bản vẽ có ≥ ngần này tổng độ dài tường ngang/dọc thì coi là bản vẽ vuông góc (bước 7, 10b)."""
+_AXIS_OFFSET_RATIO: Final = 1.0
+"""Bản vẽ vuông góc: hai đầu lệch ngang ≤ ngần này lần bề dày đoạn thì ép trục, bất kể góc (bước 7).
+
+Nút giao (cột tô đặc, cụm giao) có trọng tâm lệch khỏi tim tường tới ½ bề dày, cột to hơn tường
+áp mặt thì (cột - tường)/2: đoạn 1,2 m của tường 300 mm nghiêng ~7° dù tường thật thẳng trục.
+Tường chéo thật lệch ngang gấp nhiều lần bề dày (tường 1,5 m lệch 1 m, tường 300 mm).
+"""
+_AXIS_OFFSET_SLOPE: Final = 0.5
+"""Luật lệch ngang chỉ áp khi lệch ngang ≤ ngần này lần phần dọc trục (≈ 26,6°, bước 7).
+
+Đoạn gần 45° ngắn cỡ bề dày là vát góc DP cắt qua cột/khối giao: để `_absorb_corner_diagonals`
+xử lý theo nút, ép trục nó chỉ đẻ thêm mẩu ngang/dọc chồng lên góc.
+"""
 _CORNER_DIAG_RATIO: Final = 3.0
 """Đoạn chéo ngắn hơn ngần này lần bề dày của nó trên bản vẽ vuông góc là vụn ở góc (bước 10b)."""
 MAX_WALLS: Final = 20_000
@@ -364,16 +377,51 @@ def _branch_segments(
     return segments
 
 
-def _snap_axis(seg: _Seg) -> str:
-    """Ép về ngang/dọc khi lệch trục ≤ 5°, tại toạ độ trung bình; > 5° giữ góc (bước 7)."""
-    angle = math.degrees(math.atan2(abs(seg.by - seg.ay), abs(seg.bx - seg.ax)))
-    if angle <= _AXIS_TOL_DEG:
-        seg.ay = seg.by = (seg.ay + seg.by) / 2.0
+def _axis_of(seg: _Seg, offset_ratio: float) -> str:
+    """Trục của đoạn: lệch ≤ 5°, hay lệch ngang ≤ `offset_ratio` x bề dày và ≤ ½ phần dọc trục."""
+    dx, dy = abs(seg.bx - seg.ax), abs(seg.by - seg.ay)
+    angle = math.degrees(math.atan2(dy, dx))
+    reach = offset_ratio * seg.thickness
+    if angle <= _AXIS_TOL_DEG or dy <= min(reach, _AXIS_OFFSET_SLOPE * dx):
         return "h"
-    if angle >= 90.0 - _AXIS_TOL_DEG:
-        seg.ax = seg.bx = (seg.ax + seg.bx) / 2.0
+    if angle >= 90.0 - _AXIS_TOL_DEG or dx <= min(reach, _AXIS_OFFSET_SLOPE * dy):
         return "v"
     return "d"
+
+
+def _mostly_orthogonal(segs: list[_Seg], axes: list[str]) -> bool:
+    """≥ `_AXIS_SHARE` tổng độ dài là đoạn ngang/dọc theo `axes` (cùng thứ tự với `segs`).
+
+    Không tính đoạn chéo ngắn hơn `_CORNER_DIAG_RATIO` x bề dày: đó là vụn góc ở cột/khối giao, không
+    phải dấu hiệu bản vẽ có tường chéo. Phòng nhỏ có cột to ở bốn góc từng có vụn chéo chiếm > 15 %.
+    """
+    counted = [
+        (seg, axis)
+        for seg, axis in zip(segs, axes, strict=True)
+        if axis != "d" or seg.length() >= _CORNER_DIAG_RATIO * seg.thickness
+    ]
+    total = sum(seg.length() for seg, _ in counted)
+    straight = sum(seg.length() for seg, axis in counted if axis != "d")
+    return total > 0.0 and straight >= _AXIS_SHARE * total
+
+
+def _snap_axes(segs: list[_Seg]) -> None:
+    """Ép ngang/dọc tại toạ độ trung bình hai đầu; còn lại giữ góc (bước 7).
+
+    Luật 5° luôn áp. Luật lệch ngang (`_AXIS_OFFSET_RATIO`) chỉ thêm khi bản vẽ đã vuông góc theo
+    luật 5° (`_AXIS_SHARE`): bản vẽ có nhiều tường chéo/cong giữ nguyên như cũ, không bị nắn mẩu
+    cung gần tiếp tuyến hay tường chéo ngắn. Đo tỉ lệ bằng luật 5° chứ không luật rộng để chính
+    các mẩu nghiêng không tự kéo bản vẽ qua ngưỡng.
+    """
+    axes = [_axis_of(seg, 0.0) for seg in segs]
+    if _mostly_orthogonal(segs, axes):
+        axes = [_axis_of(seg, _AXIS_OFFSET_RATIO) for seg in segs]
+    for seg, axis in zip(segs, axes, strict=True):
+        seg.axis = axis
+        if axis == "h":
+            seg.ay = seg.by = (seg.ay + seg.by) / 2.0
+        elif axis == "v":
+            seg.ax = seg.bx = (seg.ax + seg.bx) / 2.0
 
 
 def _direction(seg: _Seg) -> tuple[float, float]:
@@ -607,8 +655,7 @@ def _absorb_corner_diagonals(
     - không đầu nào nối → bỏ, đếm `short`.
     Trả các đoạn còn lại (khoá đã quy về đại diện), số đoạn bỏ và điểm ghim theo khoá.
     """
-    total = sum(seg.length() for seg in segs)
-    if total == 0.0 or sum(seg.length() for seg in segs if seg.axis != "d") < _AXIS_SHARE * total:
+    if not _mostly_orthogonal(segs, [seg.axis for seg in segs]):
         return segs, 0, {}
     incident: defaultdict[_Key, list[_Seg]] = defaultdict(list)
     for seg in segs:
@@ -724,8 +771,7 @@ def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
     graph, spur = _prune_spurs(skel, dist)
     short = _lonely_clusters(skel, graph)
     raw = [seg for index, path in enumerate(graph.branches) for seg in _branch_segments(index, path, graph, dist, mask)]
-    for seg in raw:
-        seg.axis = _snap_axis(seg)
+    _snap_axes(raw)
     fused, tiny = _drop_short([_fuse(members) for members in _groups(raw)], graph)
     fused, corner, pins = _absorb_corner_diagonals(fused, graph)
     _align_shared_axes(fused)

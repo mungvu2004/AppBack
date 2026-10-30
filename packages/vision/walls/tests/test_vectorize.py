@@ -378,3 +378,54 @@ def test_finalise__duplicate_segment_keeps_the_more_confident_one() -> None:
     assert len(walls) == 1
     assert walls[0].confidence == 0.9
     assert short == 0
+
+
+def _column_room(column: int, side: int) -> NDArray[np.bool_]:
+    """Phòng vuông cạnh `side` (tim tường), cột đặc `column` x `column` ở bốn góc, áp mặt ngoài tường."""
+    canvas = _canvas()
+    half, low, high = THICK // 2, 60, 60 + side
+    corners = [(low, low), (high, low), (high, high), (low, high)]
+    for start, end in zip(corners, corners[1:] + corners[:1], strict=True):
+        _draw(canvas, min(start, end), max(start, end))
+    for x, y in corners:
+        left = x - half if x == low else x + half - column
+        top = y - half if y == low else y + half - column
+        cv2.rectangle(canvas, (left, top), (left + column - 1, top + column - 1), 1, cv2.FILLED)
+    return np.asarray(canvas > 0)
+
+
+@pytest.mark.parametrize("column", [20, 24, 28])
+@pytest.mark.parametrize("side", [50, 100])
+def test_vectorize__room_with_corner_columns_is_all_orthogonal(column: int, side: int) -> None:
+    """UX41: cột tô đặc to hơn tường ở bốn góc không đẻ vụn chéo; ra đúng bốn tường ngang/dọc khép góc."""
+    walls = vectorize(_column_room(column, side))
+    assert all(_axis_aligned(wall) for wall in walls), walls
+    assert len(walls) == 4
+    assert _shares(walls, 2, tol=2.0) == 4
+
+
+def test_vectorize__short_wall_pulled_by_a_column_stays_horizontal() -> None:
+    """UX41: vách ngắn (~3,5 x bề dày) từ cột lệch tâm tới khe cửa — trọng tâm nút kéo lệch ~7°, vẫn phải ngang."""
+    canvas = _canvas()
+    half = THICK // 2
+    _draw(canvas, (40, 40), (360, 40))
+    _draw(canvas, (100, 40), (100, 260))
+    cv2.rectangle(canvas, (88, 142), (111, 165), 1, cv2.FILLED)
+    cv2.rectangle(canvas, (100, 150 - half), (140, 150 + half - 1), 1, cv2.FILLED)
+    walls = vectorize(np.asarray(canvas > 0))
+    assert all(_axis_aligned(wall) for wall in walls), walls
+    stub = next(w for w in walls if w.start[1] == w.end[1] and abs(w.start[1] - 150) <= 3.0)
+    assert abs(stub.start[0] - 100) <= 2.0
+    assert abs(stub.end[0] - 140) <= 3.0
+
+
+@pytest.mark.parametrize(("end", "angle"), [((350, 300), 45.0), ((350, 135), 10.0)])
+def test_vectorize__real_diagonal_stays_diagonal_on_an_orthogonal_plan(end: tuple[int, int], angle: float) -> None:
+    """UX41: tường chéo 45° và tường chéo thoải dài (lệch ngang ≈ 3 x bề dày) trong khung vuông góc giữ góc."""
+    corners = [(40, 40), (760, 40), (760, 560), (40, 560)]
+    frame = list(zip(corners, corners[1:] + corners[:1], strict=True))
+    walls = vectorize(_bars(*frame, ((150, 100), end), shape=(600, 800)))
+    diagonal = [wall for wall in walls if not _axis_aligned(wall)]
+    assert len(diagonal) == 1
+    dx, dy = diagonal[0].end[0] - diagonal[0].start[0], diagonal[0].end[1] - diagonal[0].start[1]
+    assert abs(math.degrees(math.atan2(abs(dy), abs(dx))) - angle) <= 1.0
