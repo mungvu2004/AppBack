@@ -8,6 +8,7 @@ Bề dày lấy từ `distanceTransform` nên là số đo thật, **không** l�
 Mọi bước chỉ phụ thuộc mặt nạ đầu vào nên kết quả tất định.
 """
 
+import bisect
 import itertools
 import math
 from collections import Counter, defaultdict
@@ -556,6 +557,16 @@ def _snap_free_ends(shared: dict[_Key, list[tuple[_Seg, bool]]], segs: list[_Seg
     giao điểm vài px. Chỉ xét tường vuông góc mà tầm (nới `_FREE_END_REACH_RATIO` bề dày) phủ đầu mút;
     chọn tim gần nhất; không dời nếu đoạn đổi chiều hay thành dài 0.
     """
+    # Chỉ mục tim theo trục: mỗi đầu mút chỉ xét tường vuông góc có tim trong tầm lớn nhất, không quét cả
+    # `segs` (lưới 141x150 thanh: 21 150 đoạn, O(n²) mất 38 s). Tim không đổi trong vòng lặp: `_set_end` chỉ
+    # dời đầu mút dọc theo đoạn. Hoà khoảng cách thì giữ tường đứng trước trong `segs` như bản quét cũ.
+    by_axis: dict[str, list[tuple[float, int, _Seg]]] = {"h": [], "v": []}
+    for index, wall in enumerate(segs):
+        if wall.axis in by_axis:
+            by_axis[wall.axis].append((_line_value(wall), index, wall))
+    lines = {axis: [item[0] for item in sorted(items)] for axis, items in by_axis.items()}
+    walls = {axis: sorted(items) for axis, items in by_axis.items()}
+    thickest = max((seg.thickness for seg in segs), default=0.0)
     for ends in shared.values():
         if len(ends) != 1 or ends[0][0].axis == "d":
             continue
@@ -563,11 +574,12 @@ def _snap_free_ends(shared: dict[_Key, list[tuple[_Seg, bool]]], segs: list[_Seg
         point = [seg.ax, seg.ay] if head else [seg.bx, seg.by]
         anchor = (seg.bx, seg.by) if head else (seg.ax, seg.ay)
         along = 1 if seg.axis == "v" else 0
-        best: tuple[float, float] | None = None
-        for wall in segs:
-            if wall.axis in ("d", seg.axis):
-                continue
-            line = _line_value(wall)
+        other = "h" if seg.axis == "v" else "v"
+        widest = max(0.5 * (seg.thickness + thickest), _FREE_END_REACH_RATIO * max(seg.thickness, thickest))
+        lo = bisect.bisect_left(lines[other], point[along] - widest)
+        hi = bisect.bisect_right(lines[other], point[along] + widest)
+        best: tuple[float, int, float] | None = None
+        for line, index, wall in walls[other][lo:hi]:
             overshoot = (line - anchor[along]) * (point[along] - line) > 0.0
             reach = (
                 0.5 * (seg.thickness + wall.thickness)
@@ -577,11 +589,11 @@ def _snap_free_ends(shared: dict[_Key, list[tuple[_Seg, bool]]], segs: list[_Seg
             low, high = sorted(((wall.ax, wall.ay)[1 - along], (wall.bx, wall.by)[1 - along]))
             gap = abs(point[along] - line)
             covered = low - reach <= point[1 - along] <= high + reach
-            if covered and 0.0 < gap <= reach and (best is None or gap < best[0]):
-                best = (gap, line)
-        if best is None or (point[along] - anchor[along]) * (best[1] - anchor[along]) <= 0.0:
+            if covered and 0.0 < gap <= reach and (best is None or (gap, index) < best[:2]):
+                best = (gap, index, line)
+        if best is None or (point[along] - anchor[along]) * (best[2] - anchor[along]) <= 0.0:
             continue
-        point[along] = best[1]
+        point[along] = best[2]
         _set_end(seg, head, (point[0], point[1]))
 
 
