@@ -319,3 +319,62 @@ def test_finalise__ends_that_collapse_after_rounding_are_dropped() -> None:
     walls, short = _finalise([seg], (1000, 1000))
     assert walls == ()
     assert short == 1
+
+
+def _axis_aligned(wall: WallSegment) -> bool:
+    """Đoạn nằm đúng ngang hay đúng dọc."""
+    return wall.start[0] == wall.end[0] or wall.start[1] == wall.end[1]
+
+
+def test_vectorize__snapped_wall_stays_vertical_at_a_diagonal_corner() -> None:
+    """K-02: thanh lệch 3° (đã ép dọc) nối thanh chéo 28° — nút dọc + chéo không kéo lệch thanh dọc lại."""
+    walls = vectorize(_bars(((100, 240), (109, 70)), ((109, 70), (330, 190))))
+    assert len(walls) == 2
+    upright = max(walls, key=lambda w: abs(w.end[1] - w.start[1]))
+    assert upright.start[0] == upright.end[0]
+    assert _shares(walls, 2) == 1
+
+
+def test_vectorize__corner_chamfer_is_absorbed_on_an_orthogonal_plan() -> None:
+    """K-02: vát chéo ngắn (< 3 x bề dày) ở góc chữ L của bản vẽ vuông góc → hai tường gặp nhau đúng góc."""
+    walls = vectorize(_bars(((72, 60), (360, 60)), ((60, 72), (60, 260)), ((60, 72), (72, 60))))
+    assert len(walls) == 2
+    assert all(_axis_aligned(wall) for wall in walls)
+    assert _shares(walls, 2) == 1
+
+
+def test_vectorize__short_diagonal_stub_at_a_corner_is_dropped() -> None:
+    """K-02: râu chéo ngắn chĩa ra từ góc chữ L (một đầu tự do) bị bỏ và đếm `short`."""
+    result = vectorize_with_stats(_bars(((60, 60), (60, 240)), ((60, 240), (340, 240)), ((60, 240), (45, 262))))
+    assert len(result.walls) == 2
+    assert all(_axis_aligned(wall) for wall in result.walls)
+    assert result.dropped["short"] >= 1
+
+
+def test_vectorize__kinked_wall_still_reaches_the_through_wall() -> None:
+    """K-02: vách dọc bẻ chéo ngắn ngay trước tường xuyên → vách vẫn dọc và chạm tim tường xuyên."""
+    walls = vectorize(_bars(((40, 60), (360, 60)), ((180, 260), (180, 84)), ((180, 84), (192, 60))))
+    assert len(walls) == 2
+    assert all(_axis_aligned(wall) for wall in walls)
+    stem = max(walls, key=lambda w: abs(w.end[1] - w.start[1]))
+    through = max(walls, key=lambda w: abs(w.end[0] - w.start[0]))
+    assert abs(min(stem.start[1], stem.end[1]) - through.start[1]) <= 2.0
+
+
+def test_vectorize__isolated_short_diagonal_is_dropped_on_an_orthogonal_plan() -> None:
+    """Vụn chéo cô lập (< 3 x bề dày) cạnh khung vuông góc bị bỏ; tường chéo dài vẫn giữ (thử 30° ở trên)."""
+    corners = [(60, 60), (340, 60), (340, 240), (60, 240)]
+    frame = list(zip(corners, corners[1:] + corners[:1], strict=True))
+    result = vectorize_with_stats(_bars(*frame, ((150, 140), (170, 160))))
+    assert len(result.walls) == 4
+    assert result.dropped["short"] >= 1
+
+
+def test_finalise__duplicate_segment_keeps_the_more_confident_one() -> None:
+    """K-02 (BITG/EM8D): hai đoạn cùng hai đầu mút (kể cả ngược chiều) → giữ một, độ tin cao hơn."""
+    low = _Seg(10.0, 10.0, 60.0, 40.0, 4.0, 0.6, (0, 0, 0), (0, 1, 0))
+    high = _Seg(60.0, 40.0, 10.0, 10.0, 8.0, 0.9, (0, 1, 0), (0, 0, 0))
+    walls, short = _finalise([low, high], (100, 100))
+    assert len(walls) == 1
+    assert walls[0].confidence == 0.9
+    assert short == 0
