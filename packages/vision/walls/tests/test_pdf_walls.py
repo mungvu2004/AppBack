@@ -99,7 +99,7 @@ def _mm(px: float) -> float:
     return px / (DPI / 72) / MM
 
 
-def _summary(result: VectorWalls | None, shape: tuple[int, ...]) -> list[tuple[float, float, float, float, float]]:
+def _summary(result: VectorWalls | None, shape: tuple[int, ...]) -> list[tuple[int, ...]]:
     """Tường theo mm thật quanh gốc mặt bằng: `(x0, y0, x1, y1, bề dày)` làm tròn 1 mm, đã xếp.
 
     Pixel → point theo đúng tỉ lệ ảnh dựng `shape` (PDFium làm tròn khổ ảnh lên, khác `DPI / 72` vài phần vạn).

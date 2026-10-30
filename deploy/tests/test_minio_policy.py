@@ -11,6 +11,7 @@ from deploy.tests.support import require_path
 
 _EXPECTED_PAIRS = {
     ("s3:GetObject", "projects/*/floors/*/uploads/*/pages/*"),
+    ("s3:GetObject", "projects/*/floors/*/uploads/*/runs/*/preprocess/vectors.json"),  # UX41-B1
     ("s3:GetObject", "ml/models/*"),
     ("s3:GetObject", "ml/datasets/*"),
     ("s3:PutObject", "projects/*/floors/*/uploads/*/runs/*"),
@@ -55,7 +56,7 @@ def _statement_pairs(statement: dict) -> list[tuple[str, str]]:
     return pairs
 
 
-def test_minio_ml_policy_exact_five_read_write_pairs() -> None:
+def test_minio_ml_policy_exact_read_write_pairs() -> None:
     """Tập cặp (GetObject/PutObject, tiền tố) đúng **bằng** 5 cặp của hợp đồng §4."""
     policy = _load_policy("ml-policy.json")
     all_pairs = {

@@ -322,7 +322,7 @@ def _close_corners(walls: list[_Wall]) -> None:
                 target = s - dist / cross
                 if best is None or abs(target - s) < abs(best - s):
                     best = target
-            if best is not None and (end == "s0" and best < wall.s1 or end == "s1" and best > wall.s0):
+            if best is not None and ((end == "s0" and best < wall.s1) or (end == "s1" and best > wall.s0)):
                 setattr(wall, end, best)
 
 
