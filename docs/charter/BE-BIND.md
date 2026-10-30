@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 42 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 43 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
