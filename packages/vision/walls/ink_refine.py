@@ -103,9 +103,7 @@ def fit_profile(
     return None if not found else (min(found)[1], min(found)[2])
 
 
-def _candidates(
-    profile: NDArray[np.float64], offsets: NDArray[np.float64], thickness: float
-) -> list[_Cand]:
+def _candidates(profile: NDArray[np.float64], offsets: NDArray[np.float64], thickness: float) -> list[_Cand]:
     """Mọi cách đọc hợp lệ của một lát: `(|span - bề dày mặt nạ|, tim lệch, bề dày)`.
 
     Ngưỡng nửa sâu giữa giấy và mực tối nhất tách các dải tối. Ứng viên: một dải (tường tô đặc, bề dày
