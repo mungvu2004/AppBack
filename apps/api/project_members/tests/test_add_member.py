@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
@@ -22,6 +23,7 @@ from apps.api.project_members.tests.support import (
     seed_project,
     updated_at,
 )
+from packages.db.models.projects import ProjectMembership
 from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows, assert_one_activity
 from packages.testing.fixtures.services import refused_url
@@ -56,7 +58,34 @@ async def test_members_add_member__C03(api_client: httpx.AsyncClient, db_session
     """Khoá lạ trong thân → 422 `VALIDATION` (strict)."""
     actor = await make_user(db_session, role="admin")
     project = await seed_project(db_session, owner=actor)
-    body = {"email": "a@example.com", "role": "admin"}
+    body = {"email": "a@example.com", "isOwner": True}
+    response = await api_client.post(members_path(project.id), json=body, headers=headers_of(actor))
+    assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
+
+
+async def test_members_add_member__project_role_is_stored_and_returned(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """U24: `role` chọn vai trong dự án này; trả `projectRole`, ghi vào membership."""
+    actor, target = await make_user(db_session, role="admin"), await make_user(db_session, role="engineer")
+    project = await seed_project(db_session, owner=actor)
+    body = {"email": target.email, "role": "viewer"}
+    response = await api_client.post(members_path(project.id), json=body, headers=headers_of(actor))
+    assert response.status_code == 201
+    assert (response.json()["role"], response.json()["projectRole"]) == ("engineer", "viewer")
+    stmt = select(ProjectMembership.role).where(
+        ProjectMembership.project_id == project.id, ProjectMembership.user_id == target.id
+    )
+    assert (await db_session.execute(stmt)).scalar_one() == "viewer"
+
+
+async def test_members_add_member__project_role_admin_is_rejected(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """U24: vai dự án chỉ `engineer|viewer` — không ai cấp quyền quản trị qua N3."""
+    actor, target = await make_user(db_session, role="admin"), await make_user(db_session)
+    project = await seed_project(db_session, owner=actor)
+    body = {"email": target.email, "role": "admin"}
     response = await api_client.post(members_path(project.id), json=body, headers=headers_of(actor))
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION")
 

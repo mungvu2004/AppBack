@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -25,7 +25,8 @@ from packages.domain.permissions import PERMISSION_KEYS, SYSTEM_SCOPED_KEYS, Per
 type ProjectGate = PermissionKey | Literal["admin"]
 """Khoá của `require_project`: khoá quyền theo dự án, hoặc `admin` = thành viên **và** vai admin.
 
-Chưa có vai theo dự án: thành viên hành động bằng vai hệ thống. `admin` khoá thao tác mà FE
+Thành viên hành động bằng `project_role(...)`: vai trong dự án (U24) nếu có, không thì vai hệ
+thống; quản trị hệ thống luôn là `admin`. `admin` khoá thao tác mà FE
 chỉ mở cho admin (vùng nguy hiểm, BUG-513) — không thêm khoá vào ma trận gương FE (H3).
 """
 
@@ -41,13 +42,25 @@ async def project_from_path(request: Request, principal: Principal, db: AsyncSes
     return project_id
 
 
+def project_role(system_role: str, member_role: str | None) -> str:
+    """Vai hiệu lực trong một dự án (U24): admin hệ thống giữ `admin`; còn lại vai dự án nếu có."""
+    if system_role == ADMIN or member_role is None:
+        return system_role
+    return member_role
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectAccess:
-    """Kết quả của `require_project`: dự án đã xác nhận cùng người gọi đã kiểm quyền."""
+    """Kết quả của `require_project`: dự án đã xác nhận cùng người gọi đã kiểm quyền.
+
+    `role` là vai hiệu lực trong dự án (`project_role`) — dùng nó, không dùng `principal.role`,
+    cho mọi luật quyền theo dự án.
+    """
 
     project_id: str
     project_name: str
     principal: Principal
+    role: str
 
 
 def require_project(
@@ -68,9 +81,9 @@ def require_project(
     async def dependency(request: Request, principal: CurrentPrincipal, db: DbSession) -> ProjectAccess:
         """Chạy resolver rồi kiểm thành viên + quyền; trả `ProjectAccess` hoặc ném 404/403."""
         project_id = await resolver(request, principal, db)
-        name = (
+        row = (
             await db.execute(
-                select(Project.name)
+                select(Project.name, ProjectMembership.role)
                 .join(ProjectMembership, ProjectMembership.project_id == Project.id)
                 .where(
                     Project.id == project_id,
@@ -78,24 +91,29 @@ def require_project(
                     ProjectMembership.user_id == principal.user_id,
                 )
             )
-        ).scalar_one_or_none()
-        return _checked_access(project_id, name, permission, principal)
+        ).one_or_none()
+        return _checked_access(project_id, row, permission, principal)
 
     return dependency
 
 
 def _checked_access(
-    project_id: str, name: str | None, permission: ProjectGate | None, principal: Principal
+    project_id: str, row: Row[tuple[str, str | None]] | None, permission: ProjectGate | None, principal: Principal
 ) -> ProjectAccess:
-    """404 nếu không có dòng (không phải thành viên hoặc dự án đã xoá), rồi 403 nếu thiếu `permission`."""
-    if name is None:
+    """404 nếu không có dòng (không phải thành viên hoặc dự án đã xoá), rồi 403 nếu thiếu `permission`.
+
+    `row` là `(tên dự án, vai trong dự án)`; quyền đọc theo vai hiệu lực `project_role` (U24).
+    """
+    if row is None:
         raise NOT_FOUND.error(resource="project")
+    name, member_role = row[0], row[1]
+    role = project_role(principal.role, member_role)
     if permission is None:
         allowed = True
     elif permission == ADMIN:
-        allowed = principal.role == ADMIN
+        allowed = role == ADMIN
     else:
-        allowed = can(principal.role, permission)
+        allowed = can(role, permission)
     if not allowed:
         raise FORBIDDEN.error()
-    return ProjectAccess(project_id=project_id, project_name=name, principal=principal)
+    return ProjectAccess(project_id=project_id, project_name=name, principal=principal, role=role)

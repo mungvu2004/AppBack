@@ -7,6 +7,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -16,10 +17,11 @@ from apps.api.core.openapi import Operation, operations
 from apps.api.core.permissions import ANY_MEMBER
 from apps.api.core.routing import protected_router
 from apps.api.core.wire import WireModel, WireRequest
-from apps.api.projects.access import ProjectAccess, require_project
+from apps.api.projects.access import ProjectAccess, project_role, require_project
 from apps.api.projects.tests.sql_count import count_sql
 from packages.core.error_codes import VERSION_CONFLICT
 from packages.core.settings import get_core_settings
+from packages.db.models.projects import ProjectMembership
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.api import auth_headers, make_api_client
@@ -188,6 +190,38 @@ async def test_engineer_member_has_settings_edit(
     project_id, headers = await _setup_member(db_session, fake_clock, role="engineer")
     response = await access_client.get(f"{PREFIX}/{project_id}/settings", headers=headers)
     assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize(
+    ("system_role", "project_role_", "expected"),
+    [("engineer", "viewer", 403), ("viewer", "engineer", 200), ("admin", "viewer", 200)],
+)
+async def test_project_role_decides_settings_edit(
+    access_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    fake_clock: FakeClock,
+    system_role: str,
+    project_role_: str,
+    expected: int,
+) -> None:
+    """U24: vai trong dự án thắng vai hệ thống; admin hệ thống vẫn là admin."""
+    project_id, headers = await _setup_member(db_session, fake_clock, role=system_role)
+    # Đặt cho cả dự án: chủ dự án là admin hệ thống nên vai dự án không đổi gì với họ.
+    await db_session.execute(
+        update(ProjectMembership).where(ProjectMembership.project_id == project_id).values(role=project_role_)
+    )
+    await db_session.commit()
+    response = await access_client.get(f"{PREFIX}/{project_id}/settings", headers=headers)
+    assert response.status_code == expected, response.text
+
+
+@pytest.mark.parametrize(
+    ("system_role", "member_role", "expected"),
+    [("admin", "viewer", "admin"), ("engineer", None, "engineer"), ("engineer", "viewer", "viewer")],
+)
+def test_project_role(system_role: str, member_role: str | None, expected: str) -> None:
+    """U24: `project_role` — gương Python của `memberships._is_editor`."""
+    assert project_role(system_role, member_role) == expected
 
 
 async def test_bad_project_id_pattern_is_not_found_without_query(

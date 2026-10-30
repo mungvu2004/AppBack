@@ -71,6 +71,6 @@ async def spatial_write_layer(
         actor_id=access.principal.user_id,
         actor_name=await _actor_name(db, access.principal.user_id),
         clock=clock,
-        may_approve=can(access.principal.role, "qc.approve"),
+        may_approve=can(access.role, "qc.approve"),
     )
     return FloorLayerWriteResultSchema(revision=result.revision, layer=layer_out(result.layer))
