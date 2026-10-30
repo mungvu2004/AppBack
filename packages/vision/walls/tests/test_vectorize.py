@@ -13,7 +13,15 @@ import pytest
 from numpy.typing import NDArray
 
 from packages.vision.walls.types import VectorizeResult, WallSegment
-from packages.vision.walls.vectorize import _finalise, _Seg, keep_longest, vectorize, vectorize_with_stats
+from packages.vision.walls.vectorize import (
+    _finalise,
+    _merge_line_pieces,
+    _Seg,
+    _straighten_jogs,
+    keep_longest,
+    vectorize,
+    vectorize_with_stats,
+)
 
 THICK = 12
 """Bề dày tường mẫu (px); đủ dày để `distanceTransform` cho trung vị ổn định."""
@@ -497,3 +505,108 @@ def test_vectorize__diagonal_stays_diagonal_in_a_rotated_room() -> None:
     assert len(diagonal) == 1
     dx, dy = diagonal[0].end[0] - diagonal[0].start[0], diagonal[0].end[1] - diagonal[0].start[1]
     assert abs(math.degrees(math.atan2(abs(dy), abs(dx))) - 47.0) <= 1.5
+
+
+def _piece(ax: float, ay: float, bx: float, by: float, thickness: float, keys: tuple[int, int], axis: str) -> _Seg:
+    """`_Seg` dựng tay cho bước 10c/10d: khoá `(1, k, 0)` theo cặp số cho sẵn."""
+    return _Seg(ax, ay, bx, by, thickness, 0.9, (1, keys[0], 0), (1, keys[1], 0), axis)
+
+
+def _spans(segs: list[_Seg]) -> list[tuple[float, float, float, float, float]]:
+    """Toạ độ và bề dày, sắp xếp để so không phụ thuộc thứ tự."""
+    return sorted((s.ax, s.ay, s.bx, s.by, s.thickness) for s in segs)
+
+
+def test_merge_line_pieces__touching_overlapping_and_contained() -> None:
+    """Khúc chạm/chồng cùng bề dày gộp một; khúc mảnh nằm trong bỏ; cột dày, khúc khác dày, khe cửa giữ riêng."""
+    segs = [
+        _piece(0, 50, 40, 50, 10, (1, 2), "h"),
+        _piece(40, 50, 90, 50, 11, (2, 3), "h"),  # chạm, 10/11 → gộp
+        _piece(85, 50, 120, 50, 10, (4, 5), "h"),  # chồng → gộp
+        _piece(10, 50, 30, 50, 9, (6, 7), "h"),  # nằm trong, mảnh hơn → bỏ
+        _piece(60, 50, 70, 50, 30, (8, 9), "h"),  # cột dày nằm trong → giữ
+        _piece(120, 50, 160, 50, 20, (5, 10), "h"),  # chạm nhưng dày gấp đôi → riêng
+        _piece(200, 50, 240, 50, 20, (11, 12), "h"),  # cách khe cửa → riêng
+        _piece(0, 0, 30, 40, 10, (13, 14), "d"),  # chéo đi qua nguyên vẹn
+        _piece(300, 0, 300, 40, 10, (15, 16), "v"),
+    ]
+    out = _merge_line_pieces(segs)
+    assert len(out) == 6
+    merged = next(s for s in out if s.axis == "h" and s.ax == 0)
+    assert (merged.bx, merged.a_key, merged.b_key) == (120, (1, 1, 0), (1, 5, 0))
+    assert 10.0 < merged.thickness < 11.0
+    assert sorted((s.ax, s.bx) for s in out if s.axis == "h") == [(0, 120), (60, 70), (120, 160), (200, 240)]
+
+
+def test_straighten_jogs__z_becomes_one_line_and_l_corner_follows() -> None:
+    """Chữ Z lệch 12 px (≤ 1,5 bề dày): đoạn ngắn lên tim đoạn dài, chéo bỏ, góc L ở đầu kia dời theo."""
+    top = _piece(50, 0, 100, 0, 10, (0, 1), "h")
+    short = _piece(100, 0, 100, 40, 10, (1, 2), "v")
+    diag = _piece(100, 40, 112, 60, 10, (2, 3), "d")
+    long_ = _piece(112, 60, 112, 200, 10, (3, 4), "v")
+    out = _merge_line_pieces(_straighten_jogs([top, short, diag, long_]))
+    assert all(s.axis != "d" for s in out)
+    assert _spans(out) == [(50, 0, 112, 0, 10), (112, 0, 112, 200, 10)]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param([], id="offset-too-wide"),
+        pytest.param([_piece(140, 40, 160, 40, 10, (2, 9), "h")], id="junction-at-diag-end"),
+    ],
+)
+def test_straighten_jogs__real_offsets_and_junctions_kept(extra: list[_Seg]) -> None:
+    """Lệch 40 px (> 1,5 bề dày) là hai tường thật; đầu chéo nối hai tường là giao thật → giữ đoạn chéo."""
+    offset = 40 if not extra else 12
+    segs = [
+        _piece(100, 0, 100, 40, 10, (1, 2), "v"),
+        _piece(100, 40, 100 + offset, 60, 10, (2, 3), "d"),
+        _piece(100 + offset, 60, 100 + offset, 300, 10, (3, 4), "v"),
+        *extra,
+    ]
+    assert sum(s.axis == "d" for s in _straighten_jogs(segs)) == 1
+
+
+@pytest.mark.parametrize(
+    "segs",
+    [
+        pytest.param(
+            [
+                _piece(100, 30, 100, 40, 10, (1, 2), "v"),
+                _piece(100, 40, 112, 20, 10, (2, 3), "d"),
+                _piece(112, 20, 112, 200, 10, (3, 4), "v"),
+            ],
+            id="would-flip",
+        ),
+        pytest.param(
+            [
+                _piece(0, 40, 100, 40, 10, (1, 2), "h"),
+                _piece(100, 40, 112, 60, 10, (2, 3), "d"),
+                _piece(112, 60, 112, 200, 10, (3, 4), "v"),
+            ],
+            id="h-then-v",
+        ),
+        pytest.param(
+            [
+                _piece(100, 0, 100, 40, 10, (1, 2), "v"),
+                _piece(100, 40, 106, 50, 10, (2, 3), "d"),
+                _piece(106, 50, 112, 60, 10, (3, 4), "d"),
+                _piece(112, 60, 112, 200, 10, (4, 5), "v"),
+            ],
+            id="diag-chain",
+        ),
+        pytest.param(
+            [
+                _piece(0, 0, 300, 200, 10, (1, 2), "d"),
+                _piece(300, 200, 312, 220, 10, (2, 3), "d"),
+                _piece(312, 220, 312, 240, 10, (3, 4), "v"),
+            ],
+            id="not-orthogonal",
+        ),
+    ],
+)
+def test_straighten_jogs__left_alone(segs: list[_Seg]) -> None:
+    """Không nắn: đoạn ngắn sẽ đổi chiều, hai tường khác trục (góc L), chuỗi chéo, bản vẽ không vuông góc."""
+    before = _spans(segs)
+    assert _spans(_straighten_jogs(segs)) == before

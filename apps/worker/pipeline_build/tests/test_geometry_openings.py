@@ -506,3 +506,16 @@ def test_build_walls__gap_merge_keeps_the_longer_walls_line(fake_clock: FakeCloc
     )
     (wall,) = result.walls
     assert (wall.centreline.start, wall.centreline.end) == (Point(x=0, y=1030), Point(x=4500, y=1030))
+
+
+def test_build_walls__gap_merge_takes_the_longer_walls_thickness(fake_clock: FakeClock) -> None:
+    """Vách 2,8 m dày 100 nối qua khe cửa với mẩu 500 dày 200 → tường gộp dày 100, không bị nâng lên 200."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 2800, 1000, 100.0), wall_px(3700, 1000, 4200, 1000, 200.0)],
+        [det("door", 2800, 900, 3700, 1100)],
+        fake_clock,
+        dropped,
+    )
+    (wall,) = result.walls
+    assert (wall.centreline.start.x, wall.centreline.end.x, wall.thickness_mm) == (0, 4200, 100)

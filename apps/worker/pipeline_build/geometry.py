@@ -305,17 +305,23 @@ def _onto(line: _Seg, point: Point) -> Point:
 
 
 def _absorb(keep: _Seg, drop: _Seg) -> None:
-    """Gộp `drop` vào `keep`: hai đầu xa nhau nhất, bề dày lớn hơn, `confidence` nhỏ hơn.
+    """Gộp `drop` vào `keep`: hai đầu xa nhau nhất, `confidence` nhỏ hơn.
 
     Hai đầu chiếu lên tim của tường **dài hơn** (UX41-A): lấy thẳng hai đầu xa nhất của hai tường lệch
     ngang vài mm thì tường gộp nghiêng và rời đường trục mà vector hoá đã gióng chung.
+    Bề dày: hai tường chồng nhau lấy bề dày lớn hơn (nhánh mảnh trùng tường dày); hai tường cách nhau
+    một khe (nối qua cửa) lấy bề dày tường dài hơn — lấy lớn hơn thì vách bếp 2,8 m thành tường 200 chỉ
+    vì đầu bên kia khe là mẩu cột 0,5 m.
     """
     pairs = [(p, q) for p in (keep.start, keep.end) for q in (drop.start, drop.end)]
     far = max(pairs, key=lambda pair: math.dist((pair[0].x, pair[0].y), (pair[1].x, pair[1].y)))
     base = keep if _length(keep) >= _length(drop) else drop
+    k_low, k_high = sorted(_along(base, (p.x, p.y)) for p in (keep.start, keep.end))
+    d_low, d_high = sorted(_along(base, (p.x, p.y)) for p in (drop.start, drop.end))
+    apart = k_high < d_low or d_high < k_low
     keep.start, keep.end = _onto(base, far[0]), _onto(base, far[1])
-    keep.thickness_mm = max(keep.thickness_mm, drop.thickness_mm)
-    keep.measured_mm = max(keep.measured_mm, drop.measured_mm)
+    keep.thickness_mm = base.thickness_mm if apart else max(keep.thickness_mm, drop.thickness_mm)
+    keep.measured_mm = base.measured_mm if apart else max(keep.measured_mm, drop.measured_mm)
     keep.confidence = min(keep.confidence, drop.confidence)
     keep.inputs = keep.inputs + drop.inputs
     drop.alive = False
