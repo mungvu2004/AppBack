@@ -141,7 +141,7 @@ U01, U02, U04, U06 nằm trong task tiền xử lý: `test_<task>__U01`.
 | U01 | Ảnh có EXIF xoay | xử lý theo hướng đã xoay |
 | U02 | CMYK, 16-bit, kênh alpha | chuẩn hoá về RGB 8-bit |
 | U03 | Bom giải nén / ảnh quá nhiều điểm ảnh | 422 `IMAGE_TOO_LARGE`, không cạn bộ nhớ |
-| U04 | PDF mã hoá hoặc 0 trang | 422 `PDF_UNREADABLE` |
+| U04 | PDF mã hoá (mật khẩu người dùng) hoặc 0 trang | 422 `PDF_ENCRYPTED` (mật khẩu) · `PDF_UNREADABLE` (0 trang) |
 | U05 | `pageIndex` ngoài số trang | 422 `VALIDATION`, `field:"pageIndex"` |
 | U06 | Khổ trang cực lớn | dựng theo DPI có trần |
 | U07 | Tệp cụt | 422 `FILE_CORRUPT`. Kiểm trên luồng đọc toàn tệp bằng `bytes.find` (giữ vài byte cuối của khúc trước): PNG có `IEND`; JPEG có `FF D9` sau 2 byte đầu; PDF có `%%EOF` trong 1 KiB cuối. Nhận nhầm JPEG cụt có ảnh thu nhỏ EXIF là chấp nhận được (tiền xử lý bắt tiếp) |

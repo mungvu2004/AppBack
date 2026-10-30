@@ -8,6 +8,7 @@ from packages.vision.dimensions.lengths import (
     LengthReading,
     parse_length_fraction,
     parse_length_mm,
+    parse_scale_note,
     read_length,
 )
 from packages.vision.dimensions.pairing import pair_dimension_lines, wall_spans
@@ -29,6 +30,7 @@ __all__ = [
     "pair_dimension_lines",
     "parse_length_fraction",
     "parse_length_mm",
+    "parse_scale_note",
     "read_length",
     "room_label_key",
     "wall_spans",

@@ -7,6 +7,11 @@ nên J06/M01 (cùng vào → cùng bytes) không phụ thuộc nhánh nào.
 
 Nhánh cổ điển kẹp `confidence ≤ CLASSIC_CONFIDENCE_CAP`: đó là heuristic hình thái, B5-05
 không được đọc nó chắc ngang một model đã huấn luyện.
+
+Trang PDF vector (UX41 B1) có thêm `PageVectors`: tường dựng từ nét PDF (`vector_walls`) với mặt
+nạ làm trọng tài — tim thẳng tuyệt đối, bề dày đúng nét. Trọng tài không nhận đủ tường thì vector
+hoá mặt nạ như trang raster. `walls.png` luôn là mặt nạ; trần `MAX_WALLS` và `NOT_A_FLOOR_PLAN`
+áp cho cả hai nguồn.
 """
 
 import logging
@@ -15,6 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
+import cv2
 import numpy as np
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 from numpy.typing import NDArray
@@ -28,10 +34,18 @@ from packages.ml_contracts.payloads import ModelRef
 from packages.ml_contracts.ports import RgbImage
 from packages.vision.preprocess.types import RgbImage as CheckedRgbImage
 from packages.vision.walls.classic import classic_wall_mask, default_min_thickness_px
+from packages.vision.walls.pdf_walls import PageVectors, vector_walls
 from packages.vision.walls.types import WallSegment
 from packages.vision.walls.vectorize import keep_longest, vectorize_with_stats
 
-__all__ = ["CLASSIC_CONFIDENCE_CAP", "MIN_WALL_LENGTH_RATIO", "WallsStepOutput", "segment_page", "to_wall_px"]
+__all__ = [
+    "CLASSIC_CONFIDENCE_CAP",
+    "INK_REFINE_BRANCHES",
+    "MIN_WALL_LENGTH_RATIO",
+    "WallsStepOutput",
+    "segment_page",
+    "to_wall_px",
+]
 
 _log: Final = logging.getLogger(__name__)
 
@@ -48,19 +62,28 @@ tới 27.07 nên không phân biệt được, nhánh giả chỉ phục vụ tr
 """
 
 type Used = Literal["onnx", "classic", "fake"]
+type WallsFrom = Literal["vector", "mask"]
+
+INK_REFINE_BRANCHES: Final[frozenset[str]] = frozenset({"onnx"})
+"""Nhánh được đọc lại tim/bề dày tường từ nét mực trang (UX41-B2, `packages.vision.walls.ink_refine`).
+
+Chỉ `onnx`: mặt nạ SegFormer đo tường hai nét từ mép ngoài tới mép ngoài (dư một bề rộng nét, U19). Mặt
+nạ cổ điển dựng từ chính mực, nhánh giả vẽ trang tổng hợp: không có gì để sửa mà đổi bytes J06. Rỗng = tắt.
+"""
 
 
 @dataclass(frozen=True, slots=True)
 class WallsStepOutput:
-    """Artifact của bước, kèm nhánh đã dùng và số phần tử bỏ (`spur`, `short`, `cap`).
+    """Artifact của bước, kèm nhánh đã dùng, nguồn tường và số phần tử bỏ (`spur`, `short`, `cap`).
 
-    `used` và `dropped` không đi vào artifact — chúng là số đo cho log và test, còn
+    `used`, `walls_from` và `dropped` không đi vào artifact — chúng là số đo cho log và test, còn
     `run_step` chỉ lấy `artifacts`.
     """
 
     artifacts: dict[str, bytes]
     used: Used
     dropped: Mapping[str, int]
+    walls_from: WallsFrom = "mask"
 
 
 def to_wall_px(seg: WallSegment) -> WallPx:
@@ -122,13 +145,15 @@ def segment_page(
     session: ort.InferenceSession | None,
     px_per_paper_mm: float | None = None,
     run_id: str | None = None,
+    vectors: PageVectors | None = None,
 ) -> WallsStepOutput:
-    """Tách tường một trang đã nắn; cùng ảnh + cùng nhánh → cùng bytes artifact (J06, M01).
+    """Tách tường một trang đã nắn; cùng ảnh + cùng nhánh + cùng `vectors` → cùng bytes artifact (J06, M01).
 
     Mặt nạ khác khổ ảnh là model sai hợp đồng, không phải trang xấu →
-    `MODEL_FORMAT_UNSUPPORTED`. Model đã huấn luyện thấy tổng tường ngắn hơn
-    `MIN_WALL_LENGTH_RATIO` lần cạnh dài trang → `NOT_A_FLOOR_PLAN`. Quá `MAX_WALLS` đoạn thì
-    giữ các đoạn dài nhất và đếm `cap`, vì `WallsResult` từ chối nhiều hơn thế.
+    `MODEL_FORMAT_UNSUPPORTED`. Có `vectors` (PDF vector) và trọng tài mặt nạ nhận đủ tường →
+    tường từ nét PDF (`walls_from="vector"`), không thì vector hoá mặt nạ. Model đã huấn luyện thấy
+    tổng tường ngắn hơn `MIN_WALL_LENGTH_RATIO` lần cạnh dài trang → `NOT_A_FLOOR_PLAN`. Quá
+    `MAX_WALLS` đoạn thì giữ các đoạn dài nhất và đếm `cap`, vì `WallsResult` từ chối nhiều hơn thế.
     """
     started = time.monotonic()
     mask, used = _mask_of(image, model, backend=backend, session=session, px_per_paper_mm=px_per_paper_mm)
@@ -136,11 +161,17 @@ def segment_page(
     if mask.shape != image.shape[:2]:
         raise PermanentError(MODEL_FORMAT_UNSUPPORTED)
     vectorized = time.monotonic()
-    result = vectorize_with_stats(mask)
-    walls = result.walls
+    from_pdf = None if vectors is None else vector_walls(vectors, evidence=mask)
+    walls_from: WallsFrom = "mask" if from_pdf is None else "vector"
+    if from_pdf is None:
+        gray = np.asarray(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY), np.uint8) if used in INK_REFINE_BRANCHES else None
+        result = vectorize_with_stats(mask, gray)
+        walls, dropped_by = result.walls, result.dropped
+    else:
+        walls, dropped_by = from_pdf.walls, {}
     if used == "onnx" and _total_length(walls) < MIN_WALL_LENGTH_RATIO * max(mask.shape):
         raise PermanentError(NOT_A_FLOOR_PLAN)
-    dropped = {**result.dropped, "cap": max(0, len(walls) - MAX_WALLS)}
+    dropped = {**dropped_by, "cap": max(0, len(walls) - MAX_WALLS)}
     if dropped["cap"]:
         walls = keep_longest(walls, MAX_WALLS)
     if used == "classic":
@@ -156,6 +187,7 @@ def segment_page(
         extra={
             "run_id": run_id,
             "used": used,
+            "walls_from": walls_from,
             "walls": len(walls),
             "dropped": dropped,
             "mask_ms": mask_ms,
@@ -163,7 +195,7 @@ def segment_page(
             "encode_ms": _since(encoded),
         },
     )
-    return WallsStepOutput(artifacts=artifacts, used=used, dropped=dropped)
+    return WallsStepOutput(artifacts=artifacts, used=used, dropped=dropped, walls_from=walls_from)
 
 
 def _total_length(walls: Sequence[WallSegment]) -> float:

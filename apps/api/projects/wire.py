@@ -26,6 +26,8 @@ from packages.db.models.projects import Project
 from packages.domain.permissions import Role
 from packages.storage.port import ObjectStorage
 
+type MemberRole = Literal["engineer", "viewer"]
+"""Vai trong một dự án (U24): sửa hoặc xem."""
 type ProjectStatus = Literal["draft", "processing", "approved", "error"]
 """`ProjectSchema.status` của #23-#27 (`wireProjectStatusSchema`) — `legacy_status` của rollup."""
 type SummaryStatus = Literal["processing", "qc", "done"]
@@ -47,6 +49,8 @@ class UserOut(WireModel):
     name: str
     role: Role
     avatar_url: str | None = None
+    # U24: vai trong dự án — chỉ ở danh sách thành viên và khi đã đặt; vắng = theo vai hệ thống.
+    project_role: MemberRole | None = None
 
 
 class DrawingOut(WireModel):
@@ -60,6 +64,8 @@ class DrawingOut(WireModel):
     scale: float | None = None
     uploaded_at: WireDatetime
     uploader_id: str
+    content_sha256: str | None = None
+    """SHA-256 hex của tệp gốc (UX41 P01); vắng khoá với lượt tải trước khi có cột."""
 
 
 class FloorOut(WireModel):
@@ -90,6 +96,8 @@ class ProjectOut(WireModel):
     status: ProjectStatus
     floors: list[FloorOut]
     members: list[UserOut]
+    owner_id: str | None = None
+    """`projects.created_by` — người tạo là chủ sở hữu; FE so với `members[].id` (U49)."""
 
 
 class SummaryMemberOut(WireModel):
@@ -116,6 +124,8 @@ class ProjectSummaryOut(WireModel):
     updated_at: WireDatetime
     members: list[SummaryMemberOut]
     default_floor_id: str | None = None
+    has_scale: bool | None = None
+    job_active: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,25 +144,41 @@ class ProjectRollup:
     status: SummaryStatus
     legacy_status: ProjectStatus
     default_floor_id: str | None
+    has_scale: bool = True
+    """`False` khi một tầng đã chạy pipeline chưa có tỉ lệ `human`/`pipeline` (U07)."""
+    job_active: bool = False
+    """Có tầng đang có lượt pipeline `pending|running` (U10)."""
 
 
-async def user_outs(rows: Sequence[User], storage: ObjectStorage | None) -> list[UserOut]:
+async def user_outs(
+    rows: Sequence[User], storage: ObjectStorage | None, project_roles: Sequence[str | None] | None = None
+) -> list[UserOut]:
     """Nhiều dòng `users` → `UserSchema`, `avatarUrl` ký cả lô một lần qua kho khi có (NO-135, NO-207).
+
+    `project_roles` (cùng thứ tự `rows`) điền `projectRole` cho danh sách thành viên dự án (U24).
 
     `storage=None` (test gọi thẳng service, không qua app) → `avatarUrl` vắng, không ném lỗi:
     chữ ký URL không phải luật nghiệp vụ, chỉ là trình bày.
     """
     keys = [row.avatar_key for row in rows]
     avatars = await sign_avatar_urls(storage, keys) if storage is not None else [None] * len(rows)
+    roles = project_roles if project_roles is not None else [None] * len(rows)
     return [
-        UserOut(id=row.id, email=row.email, name=row.name, role=cast("Role", row.role), avatar_url=avatar)
-        for row, avatar in zip(rows, avatars, strict=True)
+        UserOut(
+            id=row.id,
+            email=row.email,
+            name=row.name,
+            role=cast("Role", row.role),
+            avatar_url=avatar,
+            project_role=cast("MemberRole | None", project_role),
+        )
+        for row, avatar, project_role in zip(rows, avatars, roles, strict=True)
     ]
 
 
-async def user_out(row: User, storage: ObjectStorage | None) -> UserOut:
+async def user_out(row: User, storage: ObjectStorage | None, project_role: str | None = None) -> UserOut:
     """Một dòng `users` → `UserSchema`; cùng đường ký với `user_outs`."""
-    return (await user_outs([row], storage))[0]
+    return (await user_outs([row], storage, [project_role]))[0]
 
 
 def summary_member_out(row: User) -> SummaryMemberOut:
@@ -160,7 +186,7 @@ def summary_member_out(row: User) -> SummaryMemberOut:
     return SummaryMemberOut(id=row.id, name=row.name)
 
 
-def project_summary_out(project: Project, rollup: ProjectRollup, members: list[User]) -> ProjectSummaryOut:
+def project_summary_out(project: Project, rollup: ProjectRollup, members: Sequence[User]) -> ProjectSummaryOut:
     """Dự án + rollup + thành viên → một mục của `CursorPage` N1.
 
     `members` đã được người gọi tải theo lô và sắp sẵn (`user_id ASC`, bỏ người xoá mềm) —
@@ -177,4 +203,6 @@ def project_summary_out(project: Project, rollup: ProjectRollup, members: list[U
         updated_at=project.updated_at,
         members=[summary_member_out(row) for row in members],
         default_floor_id=rollup.default_floor_id,
+        has_scale=rollup.has_scale,
+        job_active=rollup.job_active,
     )

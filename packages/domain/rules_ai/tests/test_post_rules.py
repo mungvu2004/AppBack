@@ -264,6 +264,24 @@ def test_window_probe_on_room_bounding_box_edge__same_as_public_wall_side() -> N
     assert apply_post_rules(source).walls[0].kind == "envelope"
 
 
+def test_exterior_wall_without_window__becomes_envelope_confidence_kept() -> None:
+    """Luật 3 (P04): tường AI mép ngoài không cửa sổ → `envelope`, tin cậy giữ; tường giữa hai phòng giữ `partition`."""
+    source = _rooms_layer((OUTER, MIDDLE), ())
+    result = apply_post_rules(source)
+    assert result == ref_apply_post_rules(source)
+    kinds = [(w.kind, w.confidence) for w in result.walls]
+    assert kinds == [("envelope", OUTER.confidence), ("partition", MIDDLE.confidence)]
+    assert apply_post_rules(result) == result
+
+
+@pytest.mark.parametrize("flags", [{"source": "human", "reviewed": False}, {"source": "ai", "reviewed": True}])
+def test_exterior_wall_not_editable__kind_kept(flags: dict[str, Any]) -> None:
+    """Tường mép ngoài của người vẽ hoặc đã duyệt: luật 3 không đổi (K21)."""
+    protected = wall(1, (0, 0), (4000, 0), **flags)
+    source = _rooms_layer((protected,), ())
+    assert apply_post_rules(source) == source
+
+
 def _mixed_layer() -> SpatialLayer:
     """Lớp có cả luật 1 (đồ khe 120) lẫn luật 2 (cửa sổ tường ngoài và tường trong)."""
     source = _rooms_layer((OUTER, MIDDLE), (opening(1, 1), opening(2, 2)))

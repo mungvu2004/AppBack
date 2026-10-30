@@ -239,11 +239,25 @@ def test_infer_step_accepts() -> None:
         {"run_id": "run_1"},
         {"schema_version": 2},
         {"unexpected": 1},
+        {"vectors_key": f"{OTHER_UPLOAD}runs/{RUN}/preprocess/vectors.json"},
+        {"vectors_key": f"{UPLOAD}runs/{some_id('run')}/preprocess/vectors.json"},
+        {"vectors_key": f"{UPLOAD}runs/{RUN}/wallSegmentation/vectors.json"},
+        {"vectors_key": f"{UPLOAD}runs/{RUN}/preprocess/walls.json"},
+        {"vectors_key": f"{UPLOAD}runs/{RUN}/preprocess//vectors.json"},
     ],
 )
 def test_infer_step_rejects(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         infer(**changes)
+
+
+def test_infer_step_vectors_key_round_trips() -> None:
+    """UX41 B1: `vectors_key` của chính lượt qua được dây JSON nguyên vẹn; thiếu thì `None` (trang raster)."""
+    payload = infer(vectors_key=f"{UPLOAD}runs/{RUN}/preprocess/vectors.json", px_per_paper_mm=7.5)
+    again = InferStepPayload.model_validate_json(payload.model_dump_json())
+    assert again == payload
+    assert again.vectors_key == f"{UPLOAD}runs/{RUN}/preprocess/vectors.json"
+    assert infer().vectors_key is None
 
 
 # --- StepResultPayload -----------------------------------------------------------------

@@ -20,7 +20,7 @@ from apps.api.drawings.scales import NO_SCALE, load_scales, scale_mm
 from apps.api.drawings.urls import signer
 from apps.api.projects.parts import FLOOR_DRAWINGS, ViewPart
 from apps.api.projects.wire import DrawingOut
-from packages.db.models.drawings import DrawingRow
+from packages.db.models.drawings import DrawingRow, UploadRow
 
 
 async def load(
@@ -35,14 +35,21 @@ async def load(
     pks = [int(key) for key in keys]
     if not pks:
         return {}
-    rows = list((await db.execute(select(DrawingRow).where(DrawingRow.floor_pk.in_(pks)))).scalars().all())
+    # Dấu băm tệp gốc (UX41 P01) nằm ở `uploads`: nối ngay trong truy vấn này, vẫn một truy vấn cho cả lô.
+    stmt = (
+        select(DrawingRow, UploadRow.content_sha256)
+        .join(UploadRow, UploadRow.id == DrawingRow.upload_id)
+        .where(DrawingRow.floor_pk.in_(pks))
+    )
+    pairs = list((await db.execute(stmt)).tuples().all())
+    rows = [row for row, _sha in pairs]
     if not rows:  # không bản vẽ nào → không cần kho ký URL (NO-265: liệt kê tầng trống không phụ thuộc kho)
         return {}
     scales = await load_scales(db, [row.floor_pk for row in rows], app=app)
     storage = signer()
     urls = await drawing_urls(storage, [row.page_key for row in rows])  # một lô cho mọi tầng (NO-207)
     out: dict[str, Sequence[WireModel]] = {}
-    for row, url in zip(rows, urls, strict=True):
+    for (row, content_sha256), url in zip(pairs, urls, strict=True):
         scale = scales.get(row.floor_pk, NO_SCALE)
         out[str(row.floor_pk)] = [
             DrawingOut(
@@ -53,6 +60,7 @@ async def load(
                 height_mm=scale_mm(row.height_px, scale),
                 uploaded_at=row.uploaded_at,
                 uploader_id=row.uploader_id,
+                content_sha256=content_sha256,
             )
         ]
     return out

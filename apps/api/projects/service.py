@@ -28,7 +28,7 @@ from apps.api.access.kinds import ActivityKind
 from apps.api.core.auth import Principal
 from apps.api.core.pagination import CursorPage, PageParams, decode_cursor, encode_cursor
 from apps.api.core.wire import WireModel
-from apps.api.projects.memberships import add_member, member_users
+from apps.api.projects.memberships import MemberRow, add_member, member_users
 from apps.api.projects.parts import PROJECT_CREATE_FLOORS, PROJECT_FLOORS, create_hook, view_part
 from apps.api.projects.schemas import ProjectCreateIn, ProjectUpdateIn, floor_drafts
 from apps.api.projects.settings import get_projects_settings
@@ -46,7 +46,6 @@ from packages.core.error_codes import FORBIDDEN, NOT_FOUND
 from packages.core.errors import ERRORS
 from packages.core.ids import new_id
 from packages.db.models.access import ActivityLog
-from packages.db.models.auth import User
 from packages.db.models.projects import Project, ProjectMembership
 from packages.storage.port import ObjectStorage
 
@@ -116,14 +115,15 @@ def _storage_of(app: object | None) -> ObjectStorage | None:
 
 async def _project_outs(
     projects: Sequence[Project],
-    members: Mapping[str, list[User]],
+    members: Mapping[str, list[MemberRow]],
     rollups: Mapping[str, ProjectRollup],
     floors: Mapping[str, Sequence[WireModel]],
     storage: ObjectStorage | None,
 ) -> list[ProjectOut]:
     """Ba mảnh đã tải theo lô → `ProjectOut`; dự án vắng khoá trong `floors` nghĩa là `[]` (B2-01 [6])."""
     # Ký avatar của thành viên mọi dự án trong một lô (NO-207), rồi chia lại theo dự án.
-    signed = iter(await user_outs([row for project in projects for row in members[project.id]], storage))
+    rows = [row for project in projects for row in members[project.id]]
+    signed = iter(await user_outs([user for user, _ in rows], storage, [role for _, role in rows]))
     outs = []
     for project in projects:
         member_outs = [next(signed) for _ in members[project.id]]
@@ -140,6 +140,7 @@ async def _project_outs(
                 # khai `FloorOut` (`parts.py`), khai sai kiểu thì hỏng ngay ở test của B2-03.
                 floors=cast("list[FloorOut]", list(floors.get(project.id, ()))),
                 members=member_outs,
+                owner_id=project.created_by,
             )
         )
     return outs
@@ -196,14 +197,17 @@ def _summaries_stmt(user_id: str, page: PageParams, filters: Mapping[str, object
 def _summary_page(
     items: Sequence[Project],
     rollups: Mapping[str, ProjectRollup],
-    members: Mapping[str, list[User]],
+    members: Mapping[str, list[MemberRow]],
     filters: Mapping[str, object],
     *,
     has_more: bool,
 ) -> CursorPage[ProjectSummaryOut]:
     """Một trang N1; `nextCursor` chỉ có khi còn dòng phía sau (W2: hết trang thì vắng khoá)."""
     return CursorPage(
-        items=[project_summary_out(project, rollups[project.id], members[project.id]) for project in items],
+        items=[
+            project_summary_out(project, rollups[project.id], [user for user, _ in members[project.id]])
+            for project in items
+        ],
         next_cursor=encode_cursor(LIST_SUMMARIES_OP, filters, {CURSOR_POSITION: items[-1].id}) if has_more else None,
     )
 

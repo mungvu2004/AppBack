@@ -64,6 +64,7 @@ async def members_add_member(
         email=body.email,
         clock=clock,
         app=request.app,
+        role=body.role,
     )
     if not created:
         response.status_code = 200

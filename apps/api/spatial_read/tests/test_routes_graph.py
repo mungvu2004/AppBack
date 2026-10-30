@@ -163,14 +163,22 @@ async def test_spatial_read_graph_query_count_is_flat(
 async def test_spatial_read_graph__reads_floors_table_once(
     api_client: httpx.AsyncClient, db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """NO-223: `pk` đi cùng `FloorOut` từ một câu `floors` duy nhất, không câu `{level_id: pk}` thứ hai."""
+    """NO-223: `pk` đi cùng `FloorOut` từ một câu `floors` duy nhất, không câu `{level_id: pk}` thứ hai.
+
+    Vòng `project_rollups` (gốc `project_floor_summaries`) nối `floors` chỉ để gộp `hasScale`
+    (UX41 U07) — đó là vòng đếm đã có sẵn trong 5 vòng của N15, không phải lượt tra `pk`, nên bỏ khỏi phép đếm.
+    """
     scene = await make_scene(db_session, floors=2)
     for index, floor in enumerate(scene.floors):
         await _fill(db_session, floor, index, fake_clock)
     await db_session.commit()
     with count_sql() as counter:
         await api_client.get(graph_path(scene.project.id), headers=headers_of(scene.owner))
-    floors_reads = [sql for sql in counter.statements if re.search(r"\b(?:FROM|JOIN)\s+floors\b", sql)]
+    floors_reads = [
+        sql
+        for sql in counter.statements
+        if re.search(r"\b(?:FROM|JOIN)\s+floors\b", sql) and not re.search(r"\bFROM\s+project_floor_summaries\b", sql)
+    ]
     assert len(floors_reads) == 1, floors_reads
 
 

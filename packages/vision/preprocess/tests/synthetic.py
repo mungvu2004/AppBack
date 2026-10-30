@@ -124,27 +124,48 @@ def make_pdf(
     rotate: int = 0,
     size: tuple[float, float] = A4_PT,
     rects: Sequence[Rect] = (),
+    ops: bytes = b"",
+    forms: Sequence[bytes] = (),
 ) -> bytes:
     """PDF tối giản `pages` trang cùng khổ `size` (point), cùng `/Rotate`, cùng nội dung.
 
     `pages=0` cho `/Count 0` (tài liệu hợp lệ nhưng không trang). `encrypt` chọn
     bộ lọc Standard RC4-40: `owner_only` mở được bằng mật khẩu người dùng rỗng,
     `user_password` thì không. `rects` là `(x, y, rộng, cao, (r, g, b))` với màu
-    trong `[0, 1]` và gốc toạ độ ở góc **dưới**-trái như PDF quy định.
+    trong `[0, 1]` và gốc toạ độ ở góc **dưới**-trái như PDF quy định. `ops` là lệnh
+    content stream thô nối sau `rects` (nét `m l S`, chữ `/F1` Helvetica, ảnh `BI … EI`).
+    `forms` là chuỗi Form XObject (không mã hoá, `/BBox` bằng khổ trang): trang thấy `forms[0]`
+    và `forms[i]` thấy `forms[i + 1]` dưới cùng tên `/Fn` — gọi bằng `/Fn Do` để lồng nhau.
     """
     key, encrypt_dict = (None, b"") if encrypt == "none" else _standard_security(*_PASSWORDS[encrypt])
-    content = _content_stream(rects)
+    content = _content_stream(rects) + ops
+    first_form = 3 + 2 * pages
+
+    def next_form(index: int) -> bytes:
+        """Mục `/XObject` trỏ `forms[index]` dưới tên `/Fn`; hết chuỗi thì rỗng."""
+        return b"/XObject<</Fn %d 0 R>>" % (first_form + index) if index < len(forms) else b""
+
+    font = b"/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>" if ops else b""
+    resources = b"<<" + font + next_form(0) + b">>"
     width, height = size
     kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
     objects = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[%s]/Count %d>>" % (kids, pages)]
     objects += [
-        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 %s %s]/Rotate %d/Contents %d 0 R/Resources<<>>>>"
-        % (_number(width), _number(height), rotate, 3 + pages + i)
+        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 %s %s]/Rotate %d/Contents %d 0 R/Resources%s>>"
+        % (_number(width), _number(height), rotate, 3 + pages + i, resources)
         for i in range(pages)
     ]
     for i in range(pages):
         payload = content if key is None else _rc4(_object_key(key, 3 + pages + i), content)
         objects.append(b"<</Length %d>>\nstream\n" % len(payload) + payload + b"\nendstream")
+    for index, body in enumerate(forms):
+        head = b"<</Type/XObject/Subtype/Form/BBox[0 0 %s %s]/Resources<<%s>>/Length %d>>\nstream\n" % (
+            _number(width),
+            _number(height),
+            next_form(index + 1),
+            len(body),
+        )
+        objects.append(head + body + b"\nendstream")
     if key is not None:
         objects.append(encrypt_dict)
         return _serialize(objects, b"/Encrypt %d 0 R" % len(objects))

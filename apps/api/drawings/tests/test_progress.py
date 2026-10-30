@@ -198,6 +198,55 @@ async def test_progress_wire_takes_the_newest_run_of_the_upload(db_session: Asyn
     assert wire["progressPercent"] == 55
 
 
+def _pending_wire() -> dict[str, object]:
+    """Khung `pending` gốc của `UPLOAD_ID`."""
+    return {"id": UPLOAD_ID, "status": "pending", "step": "preprocess", "progressPercent": 0}
+
+
+def test_progress_of_carries_queue_ahead_only_for_live_runs() -> None:
+    """UX41 U02: `queueAhead` đi kèm lượt `pending`/`running`; lượt xong, hỏng hay chưa có thì vắng."""
+    assert progress_of(UPLOAD_ID, **_fields(), queue_ahead=2)["queueAhead"] == 2
+    pending = progress_of(UPLOAD_ID, **_fields(run_status="pending"), queue_ahead=0)
+    assert pending == _pending_wire() | {"queueAhead": 0}
+    assert "queueAhead" not in progress_of(UPLOAD_ID, **_fields(run_status="completed"), queue_ahead=3)
+    assert "queueAhead" not in progress_of(UPLOAD_ID, **_fields(run_status="failed", error_code="X"), queue_ahead=3)
+    assert "queueAhead" not in progress_of(UPLOAD_ID, upload_status="receiving", rejected_code=None, **_NO_RUN)
+    assert ProgressOut.model_validate(progress_of(UPLOAD_ID, **_fields(), queue_ahead=1)).queue_ahead == 1
+
+
+async def test_progress_wire_counts_live_runs_opened_earlier(db_session: AsyncSession) -> None:
+    """UX41 U02: lượt sống mở trước (kể cả dự án khác) đứng trước; lượt xong hoặc mở sau không tính."""
+    clock = SystemClock()
+    scene = await make_scene(db_session)
+    other = await make_scene(db_session)
+
+    async def run_at(upload_floor: Any, at: datetime, status: str) -> str:
+        upload = await make_upload(
+            db_session, project=upload_floor.project, floor=upload_floor.floor, status="complete"
+        )
+        db_session.add(
+            PipelineRunRow(
+                id=new_id("run", clock),
+                upload_id=upload.id,
+                floor_pk=upload_floor.floor.pk,
+                status=status,
+                current_step="wallSegmentation",
+                progress_percent=5,
+                created_at=at,
+            )
+        )
+        await db_session.flush()
+        return upload.id
+
+    first = await run_at(other, STARTED, "running")
+    await run_at(other, STARTED.replace(minute=1), "completed")
+    mine = await run_at(scene, STARTED.replace(minute=2), "running")
+    await run_at(other, STARTED.replace(minute=3), "pending")
+
+    assert (await progress_wire(db_session, first))["queueAhead"] == 0
+    assert (await progress_wire(db_session, mine))["queueAhead"] == 1
+
+
 async def test_progress_wire_rejects_unknown_upload(db_session: AsyncSession) -> None:
     """Không có dòng upload là lỗi lập trình của người gọi, không phải 404."""
     with pytest.raises(ValueError, match="không có lượt tải"):

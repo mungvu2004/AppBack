@@ -36,6 +36,10 @@ MAX_ARTIFACT_KEYS: Final = 8
 MAX_METRIC_POINTS: Final = 500
 MAX_LOG_PARAMS: Final = 16
 MAX_LOG_PARAM_CHARS: Final = 200
+PAGE_VECTORS_STEP: Final = "preprocess"
+PAGE_VECTORS_NAME: Final = "vectors.json"
+"""Nét PDF theo px trang (`packages.vision.walls.pdf_walls.PageVectors`) ở
+`<lượt tải lên>/runs/{run_id}/preprocess/vectors.json`: bước tiền xử lý ghi, bước tường đọc."""
 
 StepId = ModelFamily | Literal["spatialDataBuild"]
 _METRIC_NAMES: Final = frozenset(get_args(MetricName))
@@ -114,7 +118,11 @@ class ModelRef(FrozenModel):
 
 
 class InferStepPayload(MlPayload):
-    """Một bước suy luận trên trang đã nắn (task `ml.infer.*`, B5-02…B5-04)."""
+    """Một bước suy luận trên trang đã nắn (task `ml.infer.*`, B5-02…B5-04).
+
+    `vectors_key` chỉ có khi trang là PDF vector vừa dựng (UX41 B1): bước tường dựng tường từ nét
+    PDF thay vì vector hoá mặt nạ; bước khác bỏ qua. Phải đúng khoá `PAGE_VECTORS_NAME` của chính lượt.
+    """
 
     run_id: RunId
     step: ModelFamily
@@ -124,14 +132,19 @@ class InferStepPayload(MlPayload):
     artifact_prefix: Annotated[str, AfterValidator(check_prefix)]
     model: ModelRef
     px_per_paper_mm: Annotated[float, Field(ge=1, le=100, allow_inf_nan=False)] | None = None
+    vectors_key: ObjectKey | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
-        """Bước = họ model; trang và artifact cùng lượt tải lên; khổ trong trần mặt nạ."""
+        """Bước = họ model; trang, artifact và nét PDF cùng lượt tải lên; khổ trong trần mặt nạ."""
         if self.step != self.model.family:
             raise ValueError("step phải trùng model.family")
-        if self.artifact_prefix != run_prefix(upload_prefix_of(self.page_key), self.run_id, self.step):
+        upload = upload_prefix_of(self.page_key)
+        if self.artifact_prefix != run_prefix(upload, self.run_id, self.step):
             raise ValueError("artifact_prefix phải là <lượt tải lên>/runs/{run_id}/{step}/ của chính trang")
+        vectors = run_prefix(upload, self.run_id, PAGE_VECTORS_STEP) + PAGE_VECTORS_NAME
+        if self.vectors_key is not None and self.vectors_key != vectors:
+            raise ValueError("vectors_key phải là <lượt tải lên>/runs/{run_id}/preprocess/vectors.json")
         if self.width_px * self.height_px > MASK_MAX_PIXELS:
             raise ValueError(f"khổ trang vượt {MASK_MAX_PIXELS} điểm")
         return self

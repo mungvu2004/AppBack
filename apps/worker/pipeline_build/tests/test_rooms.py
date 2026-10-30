@@ -422,6 +422,31 @@ def test_wardrobe_names_bedroom_only_in_bedroom_sizes(fake_clock: FakeClock) -> 
     assert _usages(big, (), wardrobe, fake_clock) == ["other"]
 
 
+def test_bed_names_bedroom_before_a_stray_sanitary_fixture(fake_clock: FakeClock) -> None:
+    """Giường + thiết bị vệ sinh dò nhầm trong phòng 9 m² → phòng ngủ, không phải phòng tắm (H-08)."""
+    detections = (
+        DetectionPx(label="bed", box=_box(500, 500, 2100, 2500), confidence=0.9),
+        DetectionPx(label="sanitary_fixture", box=_box(2300, 2300, 2700, 2700), confidence=0.3),
+    )
+    assert _usages(_grid_walls(fake_clock), (), detections, fake_clock)[0] == "bedroom"
+
+
+def test_short_cabinet_with_dining_set_names_kitchen_not_bedroom(fake_clock: FakeClock) -> None:
+    """Khu khách-bếp 32 m²: tủ bếp 1,8 m + bàn ăn + kệ dò thành tủ áo → bếp, không phải phòng ngủ (H-08)."""
+    walls = [
+        _wall(fake_clock, (0, 0), (8000, 0)),
+        _wall(fake_clock, (0, 4000), (8000, 4000)),
+        _wall(fake_clock, (0, 0), (0, 4000)),
+        _wall(fake_clock, (8000, 0), (8000, 4000)),
+    ]
+    detections = (
+        DetectionPx(label="kitchen_cabinet", box=_box(500, 500, 2300, 1100), confidence=0.9),
+        DetectionPx(label="table", box=_box(3000, 1500, 4400, 2300), confidence=0.7),
+        DetectionPx(label="wardrobe", box=_box(6000, 3000, 6600, 3600), confidence=0.6),
+    )
+    assert _usages(walls, (), detections, fake_clock) == ["kitchen"]
+
+
 def test_text_label_wins_over_fixtures(fake_clock: FakeClock) -> None:
     """Chữ `PHONG NGU` thắng thiết bị vệ sinh cùng phòng (WC riêng trong phòng ngủ)."""
     texts = (_text("PHONG NGU", 1500, 1500),)

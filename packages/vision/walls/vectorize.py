@@ -20,6 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 from skimage.morphology import skeletonize
 
+from packages.vision.walls.ink_refine import AxisWall, Frame, refine_line
 from packages.vision.walls.types import PointPx, VectorizeResult, WallSegment
 
 _OFFSETS: Final = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
@@ -39,6 +40,37 @@ có distance 2,0, vách 110 mm trên `render_plan` có 4,0-7,0. 1,7 nằm giữa
 lượng tử (1,4; 2,0) nên không sát số đo nào. Tiêu chí tỉ lệ `T/J < 0,5` cũ cắt nhầm vách
 110 mm chạm tường bao 220 mm (T/J = 0,40) và mọi vách rất mảnh chạm tường rất dày (NO-288).
 """
+_AXIS_SHARE: Final = 0.85
+"""Bản vẽ có ≥ ngần này tổng độ dài tường ngang/dọc thì coi là bản vẽ vuông góc (bước 7, 10b)."""
+_AXIS_OFFSET_RATIO: Final = 1.0
+"""Bản vẽ vuông góc: hai đầu lệch ngang ≤ ngần này lần bề dày đoạn thì ép trục, bất kể góc (bước 7).
+
+Nút giao (cột tô đặc, cụm giao) có trọng tâm lệch khỏi tim tường tới ½ bề dày, cột to hơn tường
+áp mặt thì (cột - tường)/2: đoạn 1,2 m của tường 300 mm nghiêng ~7° dù tường thật thẳng trục.
+Tường chéo thật lệch ngang gấp nhiều lần bề dày (tường 1,5 m lệch 1 m, tường 300 mm).
+"""
+_AXIS_OFFSET_SLOPE: Final = 0.5
+"""Luật lệch ngang chỉ áp khi lệch ngang ≤ ngần này lần phần dọc trục (≈ 26,6°, bước 7).
+
+Đoạn gần 45° ngắn cỡ bề dày là vát góc DP cắt qua cột/khối giao: để `_absorb_corner_diagonals`
+xử lý theo nút, ép trục nó chỉ đẻ thêm mẩu ngang/dọc chồng lên góc.
+"""
+_CORNER_DIAG_RATIO: Final = 3.0
+"""Đoạn chéo ngắn hơn ngần này lần bề dày của nó trên bản vẽ vuông góc là vụn ở góc (bước 10b)."""
+_DOMINANT_WINDOW_DEG: Final = 10.0
+"""Đoạn lệch trục gần nhất ≤ ngần này mới góp vào ước lượng hướng chủ đạo của bản vẽ (bước 7a)."""
+_DOMINANT_MIN_DEG: Final = 0.5
+"""Hướng chủ đạo lệch trục ảnh dưới ngần này thì coi như thẳng ảnh, không xoay (bước 7a)."""
+_DOMINANT_FAMILY_SHARE: Final = 0.15
+"""Mỗi họ (gần ngang, gần dọc) phải chiếm ≥ ngần này độ dài mới xoay: thanh lẻ không có hệ trục riêng."""
+_FREE_END_REACH_RATIO: Final = 1.5
+"""Đầu mút riêng cách tim tường vuông góc ≤ ngần này lần bề dày lớn hơn thì đặt lên tim (bước 9b).
+
+Tim tới tim 1,5 bề dày = hụt (lố) mặt tường tới 1 bề dày; khe cửa hẹp nhất (600 mm) gấp ≥ 2,7 lần
+tường 220 mm nên đầu mút cạnh khe cửa không bị kéo qua khe.
+"""
+_LINE_CLUSTER_RATIO: Final = 0.5
+"""Đoạn cùng trục có toạ độ tim cách nhau ≤ ngần này lần bề dày nhỏ nhất là một đường tường (bước 8b)."""
 MAX_WALLS: Final = 20_000
 """Trần số tường của `WallsResult` (B5-01); `keep_longest` cắt về đúng trần này."""
 
@@ -76,6 +108,8 @@ class _Seg:
     a_key: _Key
     b_key: _Key
     axis: str = "d"
+    fit_deg: float = math.nan
+    """Góc (độ) đường thẳng khớp các điểm xương giữa đoạn (bỏ 1 bề dày mỗi đầu); `nan` khi quá ngắn."""
 
     def length(self) -> float:
         """Độ dài đường tim hiện tại."""
@@ -345,6 +379,7 @@ def _branch_segments(
         if i == j:
             continue
         span = thickness[i : j + 1] if i < j else np.concatenate((thickness[i:], thickness[: j + 1]))
+        inner = pts[i : j + 1] if i < j else np.concatenate((pts[i:], pts[: j + 1]))
         segments.append(
             _Seg(
                 ax=coords[head][0],
@@ -355,21 +390,199 @@ def _branch_segments(
                 conf=_confidence(mask, coords[head], coords[tail]),
                 a_key=keys[head],
                 b_key=keys[tail],
+                fit_deg=_fit_deg(inner, float(np.median(span))),
             )
         )
     return segments
 
 
-def _snap_axis(seg: _Seg) -> str:
-    """Ép về ngang/dọc khi lệch trục ≤ 5°, tại toạ độ trung bình; > 5° giữ góc (bước 7)."""
-    angle = math.degrees(math.atan2(abs(seg.by - seg.ay), abs(seg.bx - seg.ax)))
-    if angle <= _AXIS_TOL_DEG:
-        seg.ay = seg.by = (seg.ay + seg.by) / 2.0
+def _fit_deg(points: NDArray[np.int32], thickness: float) -> float:
+    """Góc (độ) của `cv2.fitLine` qua điểm xương giữa đoạn, bỏ 1 bề dày mỗi đầu (bước 7a).
+
+    Đầu mút đoạn là trọng tâm nút giao, lệch tim tới ½ bề dày: góc theo hai đầu của cạnh phòng 240 px
+    xoay 2° ra 1,4°. Điểm xương giữa cạnh nằm trên tim nên khớp đúng góc. Còn < 5 điểm thì `nan`.
+    """
+    trim = math.ceil(thickness)
+    inner = points[trim : len(points) - trim]
+    if len(inner) < 5:
+        return math.nan
+    vx, vy = (float(v) for v in cv2.fitLine(inner.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).ravel()[:2])
+    return math.degrees(math.atan2(vy, vx))
+
+
+def _axis_of(seg: _Seg, offset_ratio: float) -> str:
+    """Trục của đoạn: lệch ≤ 5°, hay lệch ngang ≤ `offset_ratio` x bề dày và ≤ ½ phần dọc trục."""
+    dx, dy = abs(seg.bx - seg.ax), abs(seg.by - seg.ay)
+    angle = math.degrees(math.atan2(dy, dx))
+    reach = offset_ratio * seg.thickness
+    if angle <= _AXIS_TOL_DEG or dy <= min(reach, _AXIS_OFFSET_SLOPE * dx):
         return "h"
-    if angle >= 90.0 - _AXIS_TOL_DEG:
-        seg.ax = seg.bx = (seg.ax + seg.bx) / 2.0
+    if angle >= 90.0 - _AXIS_TOL_DEG or dx <= min(reach, _AXIS_OFFSET_SLOPE * dy):
         return "v"
     return "d"
+
+
+def _mostly_orthogonal(segs: list[_Seg], axes: list[str]) -> bool:
+    """≥ `_AXIS_SHARE` tổng độ dài là đoạn ngang/dọc theo `axes` (cùng thứ tự với `segs`).
+
+    Không tính đoạn chéo ngắn hơn `_CORNER_DIAG_RATIO` x bề dày: đó là vụn góc ở cột/khối giao, không
+    phải dấu hiệu bản vẽ có tường chéo. Phòng nhỏ có cột to ở bốn góc từng có vụn chéo chiếm > 15 %.
+    """
+    counted = [
+        (seg, axis)
+        for seg, axis in zip(segs, axes, strict=True)
+        if axis != "d" or seg.length() >= _CORNER_DIAG_RATIO * seg.thickness
+    ]
+    total = sum(seg.length() for seg, _ in counted)
+    straight = sum(seg.length() for seg, axis in counted if axis != "d")
+    return total > 0.0 and straight >= _AXIS_SHARE * total
+
+
+def _snap_axes(segs: list[_Seg]) -> None:
+    """Ép ngang/dọc tại toạ độ trung bình hai đầu; còn lại giữ góc (bước 7).
+
+    Luật 5° luôn áp. Luật lệch ngang (`_AXIS_OFFSET_RATIO`) chỉ thêm khi bản vẽ đã vuông góc theo
+    luật 5° (`_AXIS_SHARE`): bản vẽ có nhiều tường chéo/cong giữ nguyên như cũ, không bị nắn mẩu
+    cung gần tiếp tuyến hay tường chéo ngắn. Đo tỉ lệ bằng luật 5° chứ không luật rộng để chính
+    các mẩu nghiêng không tự kéo bản vẽ qua ngưỡng.
+    """
+    axes = [_axis_of(seg, 0.0) for seg in segs]
+    if _mostly_orthogonal(segs, axes):
+        axes = [_axis_of(seg, _AXIS_OFFSET_RATIO) for seg in segs]
+    for seg, axis in zip(segs, axes, strict=True):
+        seg.axis = axis
+        if axis == "h":
+            seg.ay = seg.by = (seg.ay + seg.by) / 2.0
+        elif axis == "v":
+            seg.ax = seg.bx = (seg.ax + seg.bx) / 2.0
+
+
+def _dominant_angle(segs: list[_Seg]) -> float:
+    """Góc (độ) của hệ trục riêng bản vẽ so với trục ảnh; 0 khi không xoay (bước 7a, UX41-A).
+
+    Bản quét xoay 1-3° thì luật 5° ép từng đoạn về trục **ảnh** ở toạ độ trung bình, góc lệch
+    nhau vài px. Lấy các đoạn dài (≥ 3 x bề dày) lệch trục gần nhất ≤ 10°: trung vị có trọng số độ
+    dài (một tường chéo 10° không kéo cả bản vẽ), rồi trung bình trọng số các đoạn cách trung vị
+    ≤ 1° cho mịn. Không xoay khi lệch < 0,5°, khi một họ ngang/dọc chiếm < 15 % (thanh lẻ) hay
+    khi các đoạn gần trục chưa đủ `_AXIS_SHARE` tổng độ dài (bản vẽ không vuông góc).
+    """
+    near: list[tuple[float, float, int]] = []
+    total = 0.0
+    for seg in segs:
+        length = seg.length()
+        if length < _CORNER_DIAG_RATIO * seg.thickness:
+            continue
+        total += length
+        angle = (
+            seg.fit_deg if not math.isnan(seg.fit_deg) else math.degrees(math.atan2(seg.by - seg.ay, seg.bx - seg.ax))
+        )
+        tilt = (angle + 45.0) % 90.0 - 45.0
+        if abs(tilt) <= _DOMINANT_WINDOW_DEG:
+            near.append((tilt, length, round((angle - tilt) / 90.0) % 2))
+    near_total = sum(length for _, length, _ in near)
+    if not near or near_total < _AXIS_SHARE * total:
+        return 0.0
+    family_min = min(sum(length for _, length, fam in near if fam == family) for family in (0, 1))
+    if family_min < _DOMINANT_FAMILY_SHARE * near_total:
+        return 0.0
+    ranked = sorted(near)
+    acc = 0.0
+    median = ranked[-1][0]
+    for tilt, length, _ in ranked:
+        acc += length
+        if acc >= near_total / 2.0:
+            median = tilt
+            break
+    close = [(tilt, length) for tilt, length, _ in near if abs(tilt - median) <= 1.0]
+    angle = sum(tilt * length for tilt, length in close) / sum(length for _, length in close)
+    return angle if abs(angle) >= _DOMINANT_MIN_DEG else 0.0
+
+
+def _rotate(segs: list[_Seg], angle_deg: float, centre: tuple[float, float]) -> None:
+    """Xoay tại chỗ mọi đầu mút quanh `centre` một góc `angle_deg` (độ, cùng chiều `atan2` của ảnh)."""
+    if angle_deg == 0.0:
+        return
+    cos, sin = math.cos(math.radians(angle_deg)), math.sin(math.radians(angle_deg))
+    cx, cy = centre
+    for seg in segs:
+        ax, ay, bx, by = seg.ax - cx, seg.ay - cy, seg.bx - cx, seg.by - cy
+        seg.ax, seg.ay = cx + ax * cos - ay * sin, cy + ax * sin + ay * cos
+        seg.bx, seg.by = cx + bx * cos - by * sin, cy + bx * sin + by * cos
+
+
+def _line_value(seg: _Seg) -> float:
+    """Toạ độ tim của đoạn đã ép trục: `y` của đoạn ngang, `x` của đoạn dọc."""
+    return seg.ay if seg.axis == "h" else seg.ax
+
+
+def _set_line(seg: _Seg, value: float) -> None:
+    """Đặt toạ độ tim của đoạn đã ép trục (cả hai đầu)."""
+    if seg.axis == "h":
+        seg.ay = seg.by = value
+    else:
+        seg.ax = seg.bx = value
+
+
+def _cluster_lines(segs: list[_Seg]) -> None:
+    """Bước 8b: đoạn ngang (dọc) có tim cách nhau ≤ ½ bề dày nhỏ nhất → một đường, một toạ độ.
+
+    Không cần chung đầu mút: hai bên khe cửa, hai phòng trên cùng một trục lưới. Xếp theo toạ độ,
+    cụm mới khi cách đoạn **đầu** cụm quá ngưỡng (không nối chuỗi trôi dần); toạ độ chung là trung bình
+    trọng số độ dài. Hai tường song song cách nhau một bề dày vượt ngưỡng nên vẫn tách.
+    """
+    for axis in ("h", "v"):
+        group: list[_Seg] = []
+        for seg in [*sorted((s for s in segs if s.axis == axis), key=_line_value), None]:
+            if group and (
+                seg is None
+                or _line_value(seg) - _line_value(group[0])
+                > _LINE_CLUSTER_RATIO * min(member.thickness for member in [*group, seg])
+            ):
+                value = _weighted(group, [_line_value(m) for m in group], [m.length() for m in group])
+                for member in group:
+                    _set_line(member, value)
+                group = []
+            if seg is not None:
+                group.append(seg)
+
+
+def _snap_free_ends(shared: dict[_Key, list[tuple[_Seg, bool]]], segs: list[_Seg]) -> None:
+    """Bước 9b: đầu mút riêng của đoạn ngang/dọc hụt mặt tường vuông góc ≤ 1 bề dày → đặt lên tim đó.
+
+    Lố qua tim chỉ cắt khi đầu mút còn trong thân tường (≤ ½ tổng hai bề dày, vụn kéo lá ở bước 9):
+    mẩu tường dài hơn thế sau chữ T là vách thật tới mép khe cửa (seed 104 của `render_plan`).
+
+    Chữ T có nút bị `_fuse` nuốt vào tường xuyên, đầu lá đã kéo ở bước 9, góc L hở: đầu mút còn cách
+    giao điểm vài px. Chỉ xét tường vuông góc mà tầm (nới `_FREE_END_REACH_RATIO` bề dày) phủ đầu mút;
+    chọn tim gần nhất; không dời nếu đoạn đổi chiều hay thành dài 0.
+    """
+    for ends in shared.values():
+        if len(ends) != 1 or ends[0][0].axis == "d":
+            continue
+        seg, head = ends[0]
+        point = [seg.ax, seg.ay] if head else [seg.bx, seg.by]
+        anchor = (seg.bx, seg.by) if head else (seg.ax, seg.ay)
+        along = 1 if seg.axis == "v" else 0
+        best: tuple[float, float] | None = None
+        for wall in segs:
+            if wall.axis in ("d", seg.axis):
+                continue
+            line = _line_value(wall)
+            overshoot = (line - anchor[along]) * (point[along] - line) > 0.0
+            reach = (
+                0.5 * (seg.thickness + wall.thickness)
+                if overshoot
+                else _FREE_END_REACH_RATIO * max(seg.thickness, wall.thickness)
+            )
+            low, high = sorted(((wall.ax, wall.ay)[1 - along], (wall.bx, wall.by)[1 - along]))
+            gap = abs(point[along] - line)
+            covered = low - reach <= point[1 - along] <= high + reach
+            if covered and 0.0 < gap <= reach and (best is None or gap < best[0]):
+                best = (gap, line)
+        if best is None or (point[along] - anchor[along]) * (best[1] - anchor[along]) <= 0.0:
+            continue
+        point[along] = best[1]
+        _set_end(seg, head, (point[0], point[1]))
 
 
 def _direction(seg: _Seg) -> tuple[float, float]:
@@ -518,26 +731,136 @@ def _set_end(seg: _Seg, head: bool, point: tuple[float, float]) -> None:
         seg.bx, seg.by = point
 
 
-def _shared_point(ends: list[tuple[_Seg, bool]]) -> tuple[float, float]:
-    """Giao điểm hai đường tim khi có cả ngang lẫn dọc, không thì trung bình các đầu mút."""
+def _shared_point(ends: list[tuple[_Seg, bool]], pin: tuple[float, float] | None = None) -> tuple[float, float]:
+    """`x` của đoạn dọc, `y` của đoạn ngang có mặt tại nút; trục nào thiếu lấy `pin`, không thì trung bình.
+
+    Lấy riêng từng toạ độ chứ không chỉ khi đủ cặp ngang + dọc: nút dọc + chéo mà lấy trung bình
+    cả `x` thì đoạn dọc đã ép trục bị kéo lệch lại (K-02, vách lệch 2,6°). `_align_shared_axes`
+    đã cho mọi đoạn ngang (dọc) chung nút cùng một `y` (`x`), nên đoạn nào cũng cho cùng giá trị.
+    """
     horizontal = next((s for s, _ in ends if s.axis == "h"), None)
     vertical = next((s for s, _ in ends if s.axis == "v"), None)
-    if horizontal is not None and vertical is not None:
-        return (vertical.ax, horizontal.ay)
-    return (
+    fallback = pin or (
         sum(s.ax if head else s.bx for s, head in ends) / len(ends),
         sum(s.ay if head else s.by for s, head in ends) / len(ends),
     )
+    return (
+        vertical.ax if vertical is not None else fallback[0],
+        horizontal.ay if horizontal is not None else fallback[1],
+    )
 
 
-def _place_shared(shared: dict[_Key, list[tuple[_Seg, bool]]]) -> None:
-    """Đặt lại **mọi** đầu mút dùng chung sau khi đã ép trục và gộp (bước 8)."""
-    for ends in shared.values():
-        if len(ends) < 2:
+def _place_shared(shared: dict[_Key, list[tuple[_Seg, bool]]], pins: dict[_Key, tuple[float, float]]) -> None:
+    """Đặt lại **mọi** đầu mút dùng chung (và đầu đã ghim ở bước 10b) sau khi ép trục và gộp (bước 8)."""
+    for key, ends in shared.items():
+        if len(ends) < 2 and key not in pins:
             continue
-        point = _shared_point(ends)
+        point = _shared_point(ends, pins.get(key))
         for seg, head in ends:
             _set_end(seg, head, point)
+
+
+def _align_shared_axes(segs: list[_Seg]) -> None:
+    """Đoạn ngang (dọc) nối nhau qua đầu mút chung → cùng một `y` (`x`), trung bình trọng số độ dài.
+
+    Hai đoạn ngang chỉ chung khoá sau khi `_drop_short`/bước 10b nhập khoá thì không qua `_fuse`,
+    nên còn lệch nhau vài px; không gióng lại thì `_place_shared` kéo một đầu và đoạn ngắn hơn nghiêng.
+    """
+    for axis in ("h", "v"):
+        lines = [seg for seg in segs if seg.axis == axis]
+        parent = list(range(len(lines)))
+        first: dict[_Key, int] = {}
+        for i, seg in enumerate(lines):
+            for key in (seg.a_key, seg.b_key):
+                parent[_root(parent, i)] = _root(parent, first.setdefault(key, i))
+        buckets: defaultdict[int, list[_Seg]] = defaultdict(list)
+        for i, seg in enumerate(lines):
+            buckets[_root(parent, i)].append(seg)
+        for group in buckets.values():
+            weights = [seg.length() for seg in group]
+            if axis == "h":
+                value = _weighted(group, [seg.ay for seg in group], weights)
+                for seg in group:
+                    seg.ay = seg.by = value
+            else:
+                value = _weighted(group, [seg.ax for seg in group], weights)
+                for seg in group:
+                    seg.ax = seg.bx = value
+
+
+def _clash(members: list[_Seg]) -> bool:
+    """Nhập nút sẽ ép hai đoạn ngang (dọc) cách nhau > ½ bề dày về cùng một đường: không được nhập."""
+    for axis in ("h", "v"):
+        lines = [seg for seg in members if seg.axis == axis]
+        values = [seg.ay if axis == "h" else seg.ax for seg in lines]
+        if lines and max(values) - min(values) > 0.5 * max(seg.thickness for seg in lines):
+            return True
+    return False
+
+
+def _end_of(seg: _Seg, key: _Key, alias: dict[_Key, _Key]) -> tuple[float, float]:
+    """Toạ độ đầu mút của `seg` mang khoá (đã quy về đại diện) `key`."""
+    return (seg.ax, seg.ay) if _resolve(alias, seg.a_key) == key else (seg.bx, seg.by)
+
+
+def _absorb_corner_diagonals(
+    segs: list[_Seg], graph: _Graph
+) -> tuple[list[_Seg], int, dict[_Key, tuple[float, float]]]:
+    """Bước 10b: bản vẽ vuông góc → bỏ hay hấp thụ đoạn chéo ngắn (< 3 x bề dày) ở góc (K-02).
+
+    Chỉ chạy khi ≥ 85 % tổng độ dài là ngang/dọc; tường chéo dài giữ nguyên. Từng đoạn, ngắn trước:
+    - hai đầu đều nối đoạn khác → nhập hai khoá như vát góc của `_drop_short` (trừ khi `_clash`);
+    - một đầu là nút giao không còn ai dùng (khoá chữ T đã bị `_fuse` nuốt) → các đoạn ở đầu kia
+      dời sang khoá đó và ghim nó ở toạ độ cũ, để tường vẫn chạm tường xuyên;
+    - một đầu tự do khác (lá, đỉnh DP mồ côi) → râu chéo, bỏ và đếm `short`;
+    - không đầu nào nối → bỏ, đếm `short`.
+    Trả các đoạn còn lại (khoá đã quy về đại diện), số đoạn bỏ và điểm ghim theo khoá.
+    """
+    if not _mostly_orthogonal(segs, [seg.axis for seg in segs]):
+        return segs, 0, {}
+    incident: defaultdict[_Key, list[_Seg]] = defaultdict(list)
+    for seg in segs:
+        incident[seg.a_key].append(seg)
+        incident[seg.b_key].append(seg)
+    alias: dict[_Key, _Key] = {}
+    pins: dict[_Key, tuple[float, float]] = {}
+    gone: set[int] = set()
+    short = 0
+    candidates = [seg for seg in segs if seg.axis == "d" and seg.length() < _CORNER_DIAG_RATIO * seg.thickness]
+    for seg in sorted(candidates, key=_Seg.length):
+        head, tail = _resolve(alias, seg.a_key), _resolve(alias, seg.b_key)
+        if head == tail:
+            continue
+        near_head = [s for s in incident[head] if s is not seg]
+        near_tail = [s for s in incident[tail] if s is not seg]
+        if near_head and near_tail:
+            # Đoạn nối thẳng cùng hai khoá sẽ thành dài 0 khi nhập; hai đường cùng trục lệch xa thì bị ép.
+            if {id(s) for s in near_head} & {id(s) for s in near_tail} or _clash(near_head + near_tail):
+                continue
+            survivor, merged = head, tail
+        elif near_head or near_tail:
+            free = tail if near_head else head
+            if free[0] == 0 and not graph.node_leaf[free[1]]:
+                survivor, merged = free, (head if near_head else tail)
+                pins[free] = _end_of(seg, free, alias)
+            else:
+                survivor = merged = free
+        else:
+            survivor = merged = head
+        incident[head], incident[tail] = near_head, near_tail
+        gone.add(id(seg))
+        if survivor == merged:
+            short += 1
+            continue
+        alias[merged] = survivor
+        incident[survivor] = incident[survivor] + incident.pop(merged)
+        if merged in pins:
+            pins.setdefault(survivor, pins.pop(merged))
+    keep = [seg for seg in segs if id(seg) not in gone]
+    for seg in keep:
+        seg.a_key = _resolve(alias, seg.a_key)
+        seg.b_key = _resolve(alias, seg.b_key)
+    return keep, short, pins
 
 
 def _extend_leaves(shared: dict[_Key, list[tuple[_Seg, bool]]], graph: _Graph) -> None:
@@ -563,8 +886,12 @@ def _clamp(point: tuple[float, float], shape: tuple[int, int]) -> PointPx:
 
 
 def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegment, ...], int]:
-    """Kẹp biên, làm tròn, bỏ đoạn suy biến SAU làm tròn và sắp theo `(start, end)` (bước 9-11)."""
-    walls: list[WallSegment] = []
+    """Kẹp biên, làm tròn, bỏ đoạn suy biến SAU làm tròn và sắp theo `(start, end)` (bước 9-11).
+
+    Hai đoạn cùng hai đầu mút (hai nhánh xương song song giữa cùng hai nút, K-02) chỉ giữ một:
+    độ tin cao hơn, hoà thì dày hơn. Không đếm vào `short` vì không mất tường nào.
+    """
+    walls: dict[tuple[int, int, int, int], WallSegment] = {}
     short = 0
     for seg in segs:
         a = _clamp((seg.ax, seg.ay), shape)
@@ -576,25 +903,60 @@ def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegme
             continue
         if end < start:
             start, end = end, start
-        walls.append(
-            WallSegment(
-                start=start,
-                end=end,
-                thickness_px=round(seg.thickness, 2),
-                confidence=round(min(1.0, max(0.0, seg.conf)), 3),
-            )
+        wall = WallSegment(
+            start=start,
+            end=end,
+            thickness_px=round(seg.thickness, 2),
+            confidence=round(min(1.0, max(0.0, seg.conf)), 3),
         )
-    return tuple(sorted(walls, key=lambda w: (w.start, w.end))), short
+        # ponytail: lưới 1 px, cặp trùng nằm vắt qua mép ô làm tròn thì sót; cần thì so láng giềng.
+        slot = (round(start[0]), round(start[1]), round(end[0]), round(end[1]))
+        kept = walls.get(slot)
+        if kept is None or (wall.confidence, wall.thickness_px) > (kept.confidence, kept.thickness_px):
+            walls[slot] = wall
+    return tuple(sorted(walls.values(), key=lambda w: (w.start, w.end))), short
 
 
-def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
+def _refine_from_ink(segs: list[_Seg], gray: NDArray[np.uint8], frame: Frame) -> list[tuple[_Seg, float]]:
+    """Bước 8c (UX41-B2): dời tim từng **đường** ngang/dọc về giữa nét mực; trả bề dày mực để gán sau.
+
+    Chạy sau `_cluster_lines` nên các đoạn một đường có cùng toạ độ và dời cùng nhau, rồi `_place_shared`
+    đặt lại mọi nút chung trên tim mới. Bề dày chỉ gán sau bước 9b vì tầm bắt đầu mút của `_snap_free_ends`
+    đã chỉnh theo bề dày mặt nạ. Đoạn chéo và đường thiếu chứng cứ giữ nguyên (xem `ink_refine`).
+    """
+    lines: defaultdict[tuple[str, float], list[_Seg]] = defaultdict(list)
+    for seg in segs:
+        if seg.axis != "d":
+            lines[(seg.axis, _line_value(seg))].append(seg)
+    widths: list[tuple[_Seg, float]] = []
+    for (axis, value), members in lines.items():
+        walls = [
+            AxisWall("h", value, min(m.ax, m.bx), max(m.ax, m.bx), m.thickness)
+            if axis == "h"
+            else AxisWall("v", value, min(m.ay, m.by), max(m.ay, m.by), m.thickness)
+            for m in members
+        ]
+        fit = refine_line(gray, walls, frame)
+        if fit is None:
+            continue
+        for member, width in zip(members, fit.thicknesses, strict=True):
+            _set_line(member, fit.value)
+            if width is not None:
+                widths.append((member, width))
+    return widths
+
+
+def vectorize_with_stats(mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] | None = None) -> VectorizeResult:
     """Vector hoá mặt nạ tường thành đoạn tim kèm số phần tử đã bỏ.
 
     `dropped` luôn có đủ hai khoá `spur` (nhánh cụt, bước 4) và `short` (đoạn ngắn hơn
     bề dày, hay cụm xương không còn nhánh, bước 10). Mặt nạ rỗng → không đoạn nào.
-    Mảng không phải bool 2 chiều → `ValueError`.
+    Mảng không phải bool 2 chiều → `ValueError`. Có `page_gray` (ảnh xám `uint8` cùng khổ trang)
+    thì tim và bề dày tường thẳng trục đọc lại từ nét mực (bước 8c); khác khổ → `ValueError`.
     """
     _validate(mask)
+    if page_gray is not None and (page_gray.shape != mask.shape or page_gray.dtype != np.uint8):
+        raise ValueError("page_gray phải là ảnh xám uint8 cùng khổ mặt nạ")
     if not mask.any():
         return VectorizeResult(walls=(), dropped={"spur": 0, "short": 0})
     dist: NDArray[np.float32] = np.asarray(cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5), np.float32)
@@ -602,14 +964,24 @@ def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
     graph, spur = _prune_spurs(skel, dist)
     short = _lonely_clusters(skel, graph)
     raw = [seg for index, path in enumerate(graph.branches) for seg in _branch_segments(index, path, graph, dist, mask)]
-    for seg in raw:
-        seg.axis = _snap_axis(seg)
+    tilt = _dominant_angle(raw)
+    centre = ((mask.shape[1] - 1) / 2.0, (mask.shape[0] - 1) / 2.0)
+    _rotate(raw, -tilt, centre)
+    _snap_axes(raw)
     fused, tiny = _drop_short([_fuse(members) for members in _groups(raw)], graph)
+    fused, corner, pins = _absorb_corner_diagonals(fused, graph)
+    _align_shared_axes(fused)
+    _cluster_lines(fused)
+    widths = [] if page_gray is None else _refine_from_ink(fused, page_gray, Frame(tilt, centre))
     shared = _ends_by_key(fused)
-    _place_shared(shared)
+    _place_shared(shared, pins)
     _extend_leaves(shared, graph)
+    _snap_free_ends(shared, fused)
+    for seg, width in widths:
+        seg.thickness = width
+    _rotate(fused, tilt, centre)
     walls, dropped_short = _finalise(fused, mask.shape)
-    return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + dropped_short})
+    return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + corner + dropped_short})
 
 
 def vectorize(mask: NDArray[np.bool_]) -> tuple[WallSegment, ...]:

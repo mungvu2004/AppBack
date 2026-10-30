@@ -127,6 +127,7 @@ async def upsert_drawing(
     width_px: int,
     height_px: int,
     clock: Clock,
+    px_per_paper_mm: float | None = None,
 ) -> DrawingRow | None:
     """Đặt bản vẽ đang dùng của một tầng từ kết quả một lượt chạy ([6] "Bản vẽ").
 
@@ -134,6 +135,7 @@ async def upsert_drawing(
     khác: kết quả muộn của một lượt cũ không được phép đè ảnh mới hơn (BE-00 §7).
     Cùng lượt tải → cập nhật tại chỗ, **giữ `id`** (QC đang mở màn không mất tham chiếu);
     lượt tải khác → xoá dòng cũ rồi chèn `id` mới, vì ảnh là một bản vẽ khác hẳn.
+    `px_per_paper_mm` luôn ghi đè (kể cả `None`): trang nắn lại thì tỉ số cũ không còn đúng (U01).
     """
     if width_px < 1 or height_px < 1:
         raise ValueError(f"kích thước bản vẽ phải >= 1, nhận {width_px}x{height_px}")
@@ -148,6 +150,7 @@ async def upsert_drawing(
     if existing is not None and existing.upload_id == upload_id:
         existing.page_key, existing.width_px, existing.height_px = page_key, width_px, height_px
         existing.name, existing.uploaded_at, existing.uploader_id = name, uploaded_at, uploader_id
+        existing.px_per_paper_mm = px_per_paper_mm
         await db.flush()
         return existing
     if existing is not None:
@@ -163,6 +166,7 @@ async def upsert_drawing(
         height_px=height_px,
         uploaded_at=uploaded_at,
         uploader_id=uploader_id,
+        px_per_paper_mm=px_per_paper_mm,
     )
     db.add(row)
     await db.flush()

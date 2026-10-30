@@ -68,6 +68,7 @@ async def add_project_member(
     email: str,
     clock: Clock,
     app: object | None,
+    role: str | None = None,
 ) -> tuple[UserOut, bool]:
     """N3: thêm người theo email; trả `(UserOut, created)` — `created=False` là đã là thành viên (200).
 
@@ -76,7 +77,7 @@ async def add_project_member(
     """
     stmt = select(User).where(User.email_normalized == normalize_email(email), User.deleted_at.is_(None))
     user = _require_available((await db.execute(stmt)).scalar_one_or_none())
-    created = await add_member(db, project_id=project_id, user_id=user.id, added_by=actor_id, clock=clock)
+    created = await add_member(db, project_id=project_id, user_id=user.id, added_by=actor_id, clock=clock, role=role)
     if created:
         await record_activity(
             db,
@@ -91,7 +92,7 @@ async def add_project_member(
             db, project_id=project_id, project_name=project_name, user_id=user.id, actor_id=actor_id, clock=clock
         )
         await touch_project(db, project_id=project_id, clock=clock)
-    return await user_out(user, storage), created
+    return await user_out(user, storage, role if created else None), created
 
 
 async def remove_project_member(

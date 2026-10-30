@@ -240,7 +240,7 @@ async def restore_version(
         actor_id=actor_id,
         base_version=base_version,
         clock=clock,
-        may_approve=can(access.principal.role, "qc.approve"),
+        may_approve=can(access.role, "qc.approve"),
     )
     if new_revision != doc.revision:
         await record_activity(

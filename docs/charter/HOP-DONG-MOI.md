@@ -185,13 +185,15 @@ Thực thể bị xoá: một mục `field:"__deleted__"` không có `value`. Th
 | `updatedAt` | `isoInstantSchema` | có | |
 | `members` | `{id, name}[]` strict | có | `id` là `usr_`+ULID; `name` min 1 |
 | `defaultFloorId` | `entityId` | không | tầng `order` nhỏ nhất **còn tường chưa duyệt**, không có thì tầng `order` nhỏ nhất; vắng khi 0 tầng |
+| `hasScale` | boolean | không | `false` khi một tầng đã chạy pipeline chưa có tỉ lệ `human`/`pipeline` (cột `floor_documents.scale_source`) (U07) |
+| `jobActive` | boolean | không | có tầng với lượt pipeline mới nhất `pending \| running` (U10) |
 
 **Luật suy `status`:**
 - `done` khi đủ điều kiện refine.
 - Ngược lại, `processing` khi:
-  - 0 tầng; hoặc
-  - có tầng chưa có lượt tải nào; hoặc
-  - có lượt pipeline mới nhất `pending | running | failed`.
+  - có lượt pipeline mới nhất `pending | running`; hoặc
+  - chưa có tường nào **và** (0 tầng; hoặc có tầng chưa có lượt tải nào; hoặc có lượt mới nhất `failed`).
+  Đã có tường thì tầng trống hay lượt hỏng không giữ `processing` (U10).
 - Ngược lại, `qc`.
 
 **Nguồn tính (BE):** bảng đếm **theo tầng** `project_floor_summaries` (`floor_order`, `walls_total`, `walls_reviewed`, `area_m2`, `has_upload`, `pipeline_state`, `hidden`), do B2-01 tạo kèm cổng ghi; `floor_count`, `area_m2` dự án, `default_floor_id`, `status` suy lúc đọc bằng một `GROUP BY` (bỏ dòng `hidden`).

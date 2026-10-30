@@ -30,7 +30,7 @@ from apps.worker.pipeline_orchestrate import tasks
 from apps.worker.pipeline_orchestrate.settings import OrchestrateSettings
 from apps.worker.pipeline_orchestrate.start import fail_pipeline_start_core, run_pipeline_start
 from apps.worker.pipeline_orchestrate.tests._helpers import ML_QUEUE, floor_drawings, open_run, run_row
-from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, IMAGE_TOO_LARGE, PDF_UNREADABLE
+from packages.core.error_codes import DEPENDENCY_UNAVAILABLE, IMAGE_TOO_LARGE, PDF_ENCRYPTED
 from packages.core.errors import AppError
 from packages.core.settings import reset_settings_cache
 from packages.db.models.drawings import DrawingRow, PipelineRunRow
@@ -373,17 +373,17 @@ async def test_orchestrate_pipeline_start__U02(
 async def test_orchestrate_pipeline_start__U04(
     db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
-    """PDF có `user_password` (mật khẩu người dùng không rỗng) → không mở được → `PDF_UNREADABLE`."""
+    """PDF có `user_password` (mật khẩu người dùng không rỗng) → không mở được → `PDF_ENCRYPTED`."""
     data = make_pdf(1, encrypt="user_password")
     _scene, run = await _upload_and_run(
         db_sessionmaker, local_storage, data=data, file_name="locked.pdf", clock=fake_clock
     )
     payload = PipelineStartPayload(run_id=run.id, upload_id=run.upload_id)
-    with pytest.raises(PermanentError, match=PDF_UNREADABLE.code):
+    with pytest.raises(PermanentError, match=PDF_ENCRYPTED.code):
         await run_pipeline_start(payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
-    await fail_pipeline_start_core(payload, PDF_UNREADABLE.code, sessionmaker=db_sessionmaker, clock=fake_clock)
+    await fail_pipeline_start_core(payload, PDF_ENCRYPTED.code, sessionmaker=db_sessionmaker, clock=fake_clock)
     row = await _run_row(db_sessionmaker, run.id)
-    assert (row.status, row.error_code) == ("failed", PDF_UNREADABLE.code)
+    assert (row.status, row.error_code) == ("failed", PDF_ENCRYPTED.code)
 
 
 @pytest.mark.asyncio(loop_scope="function")

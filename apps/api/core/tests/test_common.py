@@ -116,7 +116,10 @@ def _grant_everything(app: FastAPI, principal: Principal) -> None:
     cho cả hai loại cổng.
     """
     granted = ProjectAccess(
-        project_id=PATH_VALUES["project_id"], project_name=GRANTED_PROJECT_NAME, principal=principal
+        project_id=PATH_VALUES["project_id"],
+        project_name=GRANTED_PROJECT_NAME,
+        principal=principal,
+        role=principal.role,
     )
     for dependency in registered():
         app.dependency_overrides[dependency] = lambda: granted

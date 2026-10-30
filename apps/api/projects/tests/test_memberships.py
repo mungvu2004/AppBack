@@ -71,8 +71,8 @@ async def test_member_users_runs_one_query_and_drops_deleted_people(
     assert counter.count == 1, counter.statements
     # PERF-03 P11: chỉ nạp cột của `UserSchema`, không kéo JSONB `preferences` của từng người.
     assert "preferences" not in str(counter.statements[0]), counter.statements
-    assert [user.id for user in by_project[first.id]] == [owner.id]
-    assert [user.id for user in by_project[second.id]] == [owner.id]
+    assert [user.id for user, _ in by_project[first.id]] == [owner.id]
+    assert [(user.id, role) for user, role in by_project[second.id]] == [(owner.id, None)]
     assert by_project["prj_khong-co"] == []
 
 
@@ -85,7 +85,7 @@ async def test_member_users_sorts_by_user_id(
     project = await make_project(db_session, owner=owner, members=mates)
     await db_session.commit()
     async with db_sessionmaker() as fresh:
-        ids = [user.id for user in (await member_users(fresh, [project.id]))[project.id]]
+        ids = [user.id for user, _ in (await member_users(fresh, [project.id]))[project.id]]
     assert ids == sorted(ids)
     assert set(ids) == {owner.id, *(mate.id for mate in mates)}
 
@@ -194,3 +194,30 @@ async def test_remove_user_from_all_projects_of_a_stranger_changes_nothing(
     """Người chưa ở dự án nào → danh sách rỗng, không lệnh ghi nào hỏng."""
     stranger = await make_user(db_session)
     assert await remove_user_from_all_projects(db_session, stranger.id, clock=fake_clock) == []
+
+
+async def test_lock_editor_ids_follows_project_role(
+    db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock
+) -> None:
+    """U24: vai dự án thắng vai hệ thống khi đếm người sửa; admin hệ thống luôn là người sửa."""
+    admin = await make_user(db_session, role="admin")
+    project = await make_project(db_session, owner=admin)
+    picks = {"engineer": "viewer", "viewer": "engineer", "admin": "viewer"}
+    people = {system: await make_user(db_session, role=system) for system in picks}
+    for system, person in people.items():
+        await add_member(
+            db_session,
+            project_id=project.id,
+            user_id=person.id,
+            added_by=admin.id,
+            clock=fake_clock,
+            role=picks[system],
+        )
+    await db_session.commit()
+    async with db_sessionmaker() as fresh:
+        editors = await lock_editor_ids(fresh, project.id)
+    assert editors == sorted([admin.id, people["viewer"].id, people["admin"].id])
+    async with db_sessionmaker() as fresh:
+        roles = {user.id: role for user, role in (await member_users(fresh, [project.id]))[project.id]}
+    assert roles[people["viewer"].id] == "engineer"
+    assert roles[admin.id] is None

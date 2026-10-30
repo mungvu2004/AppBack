@@ -15,7 +15,7 @@
 > - S1/S2 chia chủ S-case.
 >
 > **Đường v1** là đường thật sau F-01a (tiền tố `/api`, E1) và F-03 (lồng tạo và liệt kê tầng, T3). Tham số đường viết snake_case (W21).
-> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 42 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
+> `kiem_bo_prompt.py` đòi: đủ 49 + 2 + 43 dòng; mỗi thao tác đúng **một** chủ hoặc "v2"; khối [2] của chủ nhắc đúng `METHOD /api/…`.
 > **Khoá:** `—` = mọi vai đã đăng nhập (miễn C07), `thành viên` = mọi vai là thành viên dự án, `admin` = `require_admin` (route trong dự án: `require_project("admin")` — thành viên **và** vai admin, 404 trước 403).
 
 ## 1. Hợp đồng CŨ — 49 thao tác HTTP + 2 kênh SSE
@@ -124,6 +124,7 @@
 | N38 | `GET /api/share/{token}` | `share_links_open` | `client.ts` (`SharedModel`) | C | — | — | FIX-2436 | `SharedModelPage` |
 | N39 | `POST /api/projects/{project_id}/exports` | `share_links_export` | `spatialGraph.ts` | Đ | `model.export` | — | FIX-SHARE | nút Xuất (chỉ đọc, cùng dạng N15) |
 | N40 | `DELETE /api/projects/{project_id}/creation` | `projects_cancel_create_project` | `index.ts` (`Project`) | G | thành viên | — | B2-01 | toast "Đã tạo" (Hoàn tác: người tạo, ≤ 10 phút) |
+| N41 | `POST /api/projects/{project_id}/drawings/page-thumbnails` | `drawings_page_thumbnails` | `uploads.ts` (`PageThumbnails`) | Đ | `floor.upload` | — | UX41-U05 | ô chọn trang PDF (thân = byte PDF ≤ 8 MiB, không ghi gì) |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 
