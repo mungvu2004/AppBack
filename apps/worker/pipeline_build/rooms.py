@@ -60,6 +60,10 @@ _RIM_FILL = 0.7
 _RIM_WALLED = 0.5
 """Mảnh trống ở rìa thành lô gia khi 1,5-15 m², ≥ 70 % hộp bao, ≥ 3 cạnh hộp bao sát đường khép ≥ 50 %."""
 
+_RIM_OPEN_MM = 300.0
+"""Mảnh rìa bỏ dải mỏng dưới 600 mm trước khi xét: khe giữa tường ngoài và biên bao lồi nối vào ô lô gia làm độ đầy
+hộp bao còn ~0,55 (bench căn hộ 30/10/2026, ch-07, ch-12); lô gia rộng ≥ 0,9 m không mất gì."""
+
 _STRIP_SHORT_MM = 1400.0
 _STRIP_RATIO = 2.5
 _STRIP_BAND_MM = 600.0
@@ -108,6 +112,26 @@ def _extend(wall: Wall, amount: float) -> shapely.LineString:
     )
 
 
+def _behind_fragment(
+    tip_idx: np.ndarray, near: np.ndarray, starts: np.ndarray, ends: np.ndarray, tips: Geoms, obstacles: Geoms
+) -> np.ndarray:
+    """Cặp (đầu tường, tường gần) mà tường gần là mẩu cùng phương (|cos| ≥ `_PARALLEL_COS`) nằm sau đầu tường: model
+    dò một vách mảnh thành nhiều mẩu chồng nhau (bench căn hộ 30/10/2026 ch-09, vách lô gia), đầu ngoài cùng không
+    được coi là đã chạm, nếu không khe cửa phía trước nó không bao giờ được nối. `bridges` không là mẩu tường."""
+    count = len(starts)
+    wall_near = near < count
+    owner = tip_idx % count
+    direction = ends - starts
+    direction /= np.maximum(np.hypot(*direction.T), 1e-9)[:, None]
+    outward = np.where((tip_idx < count)[:, None], -direction[owner], direction[owner])
+    other = direction[np.where(wall_near, near, 0)]
+    parallel = np.abs(np.einsum("ij,ij->i", direction[owner], other)) >= _PARALLEL_COS
+    foot = shapely.get_coordinates(shapely.shortest_line(tips[tip_idx], obstacles[near])).reshape(-1, 2, 2)
+    behind = np.einsum("ij,ij->i", foot[:, 1] - foot[:, 0], outward) < 0
+    result: np.ndarray = wall_near & parallel & behind
+    return result
+
+
 def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
     """Đoạn nối khe góc/chữ T không có hộp ô mở (BUG-IT-008), để khép phòng; tường không đổi.
 
@@ -127,8 +151,10 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     tips: Geoms = np.asarray(shapely.points(np.concatenate([starts, ends])), dtype=object)
     owner = np.tile(np.arange(len(walls)), 2)
     tip_idx, near = obstacle_tree.query(tips, predicate="dwithin", distance=ROOM_SNAP_MM)
+    other_near = near != owner[tip_idx]
+    tip_idx, near = tip_idx[other_near], near[other_near]
     touching = np.zeros(len(tips), dtype=np.bool_)
-    touching[tip_idx[near != owner[tip_idx]]] = True
+    touching[tip_idx[~_behind_fragment(tip_idx, near, starts, ends, tips, obstacles)]] = True
     free = np.flatnonzero(~touching)
     free_idx, target = shapely.STRtree(centrelines).query(tips[free], predicate="dwithin", distance=ROOM_GAP_CLOSE_MM)
     tip = free[free_idx]
@@ -332,8 +358,9 @@ def _seeded_outlines(
 
 def _rim_outlines(lines: Sequence[shapely.LineString], rooms: Sequence[Sequence[Point]]) -> list[list[Point]]:
     """Lô gia không có nhãn: ô do đường khép và biên bao lồi của chúng chia ra (mặt ngoài lan can thay bằng biên bao),
-    chưa thuộc phòng nào, chạm biên bao, rộng `_RIM_M2`, gần chữ nhật (≥ `_RIM_FILL` hộp bao) và ≥ 3 cạnh hộp bao có
-    ≥ `_RIM_WALLED` sát đường khép (phần lồi của biên bao ngoài căn hộ chỉ sát tường một hai mặt).
+    bỏ dải mỏng (`_RIM_OPEN_MM`), chưa thuộc phòng nào, chạm biên bao, rộng `_RIM_M2`, gần chữ nhật (≥ `_RIM_FILL`
+    hộp bao) và ≥ 3 cạnh hộp bao có ≥ `_RIM_WALLED` sát đường khép (phần lồi của biên bao ngoài căn hộ chỉ sát tường
+    một hai mặt).
 
     Chỉ chia ô bằng đường trong `_RIM_DEPTH_MM` quanh biên bao, tra phòng và đường bằng `STRtree` (K18: trần
     20 000 tường không được gộp toàn bộ).
@@ -351,9 +378,12 @@ def _rim_outlines(lines: Sequence[shapely.LineString], rooms: Sequence[Sequence[
     merged = shapely.unary_union([*near_rim, hull.exterior])
     faces = shapely.polygonize(list(merged.geoms) if hasattr(merged, "geoms") else [merged])
     found: list[list[Point]] = []
-    for face in faces.geoms:
-        if not isinstance(face, shapely.Polygon):
+    for raw in faces.geoms:
+        opened = raw.buffer(-_RIM_OPEN_MM, join_style="mitre").buffer(_RIM_OPEN_MM, join_style="mitre")
+        parts = [g for g in getattr(opened, "geoms", [opened]) if isinstance(g, shapely.Polygon) and not g.is_empty]
+        if not parts:
             continue
+        face = max(parts, key=lambda g: g.area)
         if not _RIM_M2[0] <= face.area / 1e6 <= _RIM_M2[1] or not face.intersects(rim):
             continue
         overlap = sum(face.intersection(polygons[int(i)]).area for i in room_tree.query(face, predicate="intersects"))

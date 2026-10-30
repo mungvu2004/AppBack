@@ -7,6 +7,7 @@ from typing import Literal
 import pytest
 import shapely
 
+from apps.worker.pipeline_build import rooms as rooms_module
 from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
 from apps.worker.pipeline_build.geometry import Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
@@ -572,3 +573,34 @@ def test_layout_hall_open_to_living_and_labelled_living_kept(fake_clock: FakeClo
     two.append(_wall(fake_clock, (6000, 4000), (6000, 8000)))
     living = (TextPx(text="P KHACH", box=BoxPx(x_min=1000, y_min=5000, x_max=1400, y_max=5200), confidence=0.9),)
     assert _usages(two, living, (), fake_clock) == ["other", "livingRoom"]
+
+
+def test_rim_loggia_ignores_sliver_under_slanted_hull(fake_clock: FakeClock, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Biên bao nghiêng để lại dải mỏng trên tường phòng ngủ, nối vào ô lô gia: bỏ dải đó thì ô vẫn là lô gia."""
+    segments = [
+        ((0, 300), (4000, 300)),
+        ((0, 300), (0, 4000)),
+        ((0, 4000), (7000, 4000)),
+        ((7000, 0), (7000, 4000)),
+        ((4000, 300), (4000, 4000)),
+        ((4000, 1200), (7000, 1200)),
+    ]
+    walls = [_wall(fake_clock, start, end) for start, end in segments]
+    assert "loggia" in _usages(walls, (), (), fake_clock)
+    monkeypatch.setattr(rooms_module, "_RIM_OPEN_MM", 0.0)
+    assert "loggia" not in _usages(walls, (), (), fake_clock)
+
+
+def test_overlapping_fragment_behind_tip_still_closes_gap(fake_clock: FakeClock) -> None:
+    """Vách dò thành hai mẩu chồng nhau: đầu mẩu ngắn cách mẩu dài 100 mm phía sau vẫn là đầu tự do, khe 1,1 m tới
+    tường trên được nối → hai phòng."""
+    segments = [
+        ((0, 0), (6000, 0)),
+        ((0, 4000), (6000, 4000)),
+        ((0, 0), (0, 4000)),
+        ((6000, 0), (6000, 4000)),
+        ((3000, 4000), (3000, 1200)),
+        ((3000, 1200), (3000, 1100)),
+    ]
+    rooms = _rooms_of([_wall(fake_clock, start, end) for start, end in segments], (), fake_clock)
+    assert len(rooms) == 2
