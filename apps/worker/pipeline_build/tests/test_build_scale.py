@@ -89,7 +89,7 @@ def test_build_layer__unset_project_scale_without_walls_keeps_default(fake_clock
 
 def test_unset_project_scale_matches_settings_default() -> None:
     """Hằng "chưa đặt" của bước dựng phải đúng mặc định `project_settings`."""
-    assert build_module._UNSET_PROJECT_SCALE == DEFAULT_SETTINGS.default_scale_mm_per_px
+    assert DEFAULT_SETTINGS.default_scale_mm_per_px == build_module._UNSET_PROJECT_SCALE
 
 
 @pytest.mark.parametrize("fallback", ["0", "-1", "NaN"])

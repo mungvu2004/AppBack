@@ -11,7 +11,7 @@ khoá dây chứ không `WireModel`.
 from datetime import datetime
 from typing import Final
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.instants import to_wire
@@ -85,7 +85,7 @@ async def _queue_ahead(db: AsyncSession, run_id: str, created_at: datetime) -> i
     stmt = select(func.count()).where(
         PipelineRunRow.status.in_(QUEUED_RUN_STATUSES),
         PipelineRunRow.superseded_by.is_(None),
-        tuple_(PipelineRunRow.created_at, PipelineRunRow.id) < tuple_(created_at, run_id),
+        tuple_(PipelineRunRow.created_at, PipelineRunRow.id) < tuple_(literal(created_at), literal(run_id)),
     )
     return int((await db.execute(stmt)).scalar_one())
 
