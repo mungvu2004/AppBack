@@ -36,6 +36,16 @@
           "email": {
             "title": "Email",
             "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3397,6 +3407,13 @@
         ],
         "title": "MeasurementRecordIn",
         "type": "object"
+      },
+      "MemberRole": {
+        "enum": [
+          "engineer",
+          "viewer"
+        ],
+        "type": "string"
       },
       "ModelFamilyOut": {
         "additionalProperties": false,
@@ -6815,6 +6832,16 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "projectRole": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "role": {
             "enum": [
