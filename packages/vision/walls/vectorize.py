@@ -20,6 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 from skimage.morphology import skeletonize
 
+from packages.vision.walls.ink_refine import AxisWall, Frame, refine_line
 from packages.vision.walls.types import PointPx, VectorizeResult, WallSegment
 
 _OFFSETS: Final = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
@@ -916,14 +917,46 @@ def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegme
     return tuple(sorted(walls.values(), key=lambda w: (w.start, w.end))), short
 
 
-def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
+def _refine_from_ink(segs: list[_Seg], gray: NDArray[np.uint8], frame: Frame) -> list[tuple[_Seg, float]]:
+    """Bước 8c (UX41-B2): dời tim từng **đường** ngang/dọc về giữa nét mực; trả bề dày mực để gán sau.
+
+    Chạy sau `_cluster_lines` nên các đoạn một đường có cùng toạ độ và dời cùng nhau, rồi `_place_shared`
+    đặt lại mọi nút chung trên tim mới. Bề dày chỉ gán sau bước 9b vì tầm bắt đầu mút của `_snap_free_ends`
+    đã chỉnh theo bề dày mặt nạ. Đoạn chéo và đường thiếu chứng cứ giữ nguyên (xem `ink_refine`).
+    """
+    lines: defaultdict[tuple[str, float], list[_Seg]] = defaultdict(list)
+    for seg in segs:
+        if seg.axis != "d":
+            lines[(seg.axis, _line_value(seg))].append(seg)
+    widths: list[tuple[_Seg, float]] = []
+    for (axis, value), members in lines.items():
+        walls = [
+            AxisWall("h", value, min(m.ax, m.bx), max(m.ax, m.bx), m.thickness)
+            if axis == "h"
+            else AxisWall("v", value, min(m.ay, m.by), max(m.ay, m.by), m.thickness)
+            for m in members
+        ]
+        fit = refine_line(gray, walls, frame)
+        if fit is None:
+            continue
+        for member, width in zip(members, fit.thicknesses, strict=True):
+            _set_line(member, fit.value)
+            if width is not None:
+                widths.append((member, width))
+    return widths
+
+
+def vectorize_with_stats(mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] | None = None) -> VectorizeResult:
     """Vector hoá mặt nạ tường thành đoạn tim kèm số phần tử đã bỏ.
 
     `dropped` luôn có đủ hai khoá `spur` (nhánh cụt, bước 4) và `short` (đoạn ngắn hơn
     bề dày, hay cụm xương không còn nhánh, bước 10). Mặt nạ rỗng → không đoạn nào.
-    Mảng không phải bool 2 chiều → `ValueError`.
+    Mảng không phải bool 2 chiều → `ValueError`. Có `page_gray` (ảnh xám `uint8` cùng khổ trang)
+    thì tim và bề dày tường thẳng trục đọc lại từ nét mực (bước 8c); khác khổ → `ValueError`.
     """
     _validate(mask)
+    if page_gray is not None and (page_gray.shape != mask.shape or page_gray.dtype != np.uint8):
+        raise ValueError("page_gray phải là ảnh xám uint8 cùng khổ mặt nạ")
     if not mask.any():
         return VectorizeResult(walls=(), dropped={"spur": 0, "short": 0})
     dist: NDArray[np.float32] = np.asarray(cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5), np.float32)
@@ -939,10 +972,13 @@ def vectorize_with_stats(mask: NDArray[np.bool_]) -> VectorizeResult:
     fused, corner, pins = _absorb_corner_diagonals(fused, graph)
     _align_shared_axes(fused)
     _cluster_lines(fused)
+    widths = [] if page_gray is None else _refine_from_ink(fused, page_gray, Frame(tilt, centre))
     shared = _ends_by_key(fused)
     _place_shared(shared, pins)
     _extend_leaves(shared, graph)
     _snap_free_ends(shared, fused)
+    for seg, width in widths:
+        seg.thickness = width
     _rotate(fused, tilt, centre)
     walls, dropped_short = _finalise(fused, mask.shape)
     return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + corner + dropped_short})

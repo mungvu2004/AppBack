@@ -15,6 +15,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
+import cv2
 import numpy as np
 import onnxruntime as ort  # type: ignore[import-untyped]  # onnxruntime 1.30 không có py.typed
 from numpy.typing import NDArray
@@ -31,7 +32,14 @@ from packages.vision.walls.classic import classic_wall_mask, default_min_thickne
 from packages.vision.walls.types import WallSegment
 from packages.vision.walls.vectorize import keep_longest, vectorize_with_stats
 
-__all__ = ["CLASSIC_CONFIDENCE_CAP", "MIN_WALL_LENGTH_RATIO", "WallsStepOutput", "segment_page", "to_wall_px"]
+__all__ = [
+    "CLASSIC_CONFIDENCE_CAP",
+    "INK_REFINE_BRANCHES",
+    "MIN_WALL_LENGTH_RATIO",
+    "WallsStepOutput",
+    "segment_page",
+    "to_wall_px",
+]
 
 _log: Final = logging.getLogger(__name__)
 
@@ -48,6 +56,13 @@ tới 27.07 nên không phân biệt được, nhánh giả chỉ phục vụ tr
 """
 
 type Used = Literal["onnx", "classic", "fake"]
+
+INK_REFINE_BRANCHES: Final[frozenset[str]] = frozenset({"onnx"})
+"""Nhánh được đọc lại tim/bề dày tường từ nét mực trang (UX41-B2, `packages.vision.walls.ink_refine`).
+
+Chỉ `onnx`: mặt nạ SegFormer đo tường hai nét từ mép ngoài tới mép ngoài (dư một bề rộng nét, U19). Mặt
+nạ cổ điển dựng từ chính mực, nhánh giả vẽ trang tổng hợp: không có gì để sửa mà đổi bytes J06. Rỗng = tắt.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,7 +151,8 @@ def segment_page(
     if mask.shape != image.shape[:2]:
         raise PermanentError(MODEL_FORMAT_UNSUPPORTED)
     vectorized = time.monotonic()
-    result = vectorize_with_stats(mask)
+    gray = np.asarray(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY), np.uint8) if used in INK_REFINE_BRANCHES else None
+    result = vectorize_with_stats(mask, gray)
     walls = result.walls
     if used == "onnx" and _total_length(walls) < MIN_WALL_LENGTH_RATIO * max(mask.shape):
         raise PermanentError(NOT_A_FLOOR_PLAN)
