@@ -140,6 +140,7 @@ async def _project_outs(
                 # khai `FloorOut` (`parts.py`), khai sai kiểu thì hỏng ngay ở test của B2-03.
                 floors=cast("list[FloorOut]", list(floors.get(project.id, ()))),
                 members=member_outs,
+                owner_id=project.created_by,
             )
         )
     return outs

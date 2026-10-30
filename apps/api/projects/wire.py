@@ -90,6 +90,8 @@ class ProjectOut(WireModel):
     status: ProjectStatus
     floors: list[FloorOut]
     members: list[UserOut]
+    owner_id: str | None = None
+    """`projects.created_by` — người tạo là chủ sở hữu; FE so với `members[].id` (U49)."""
 
 
 class SummaryMemberOut(WireModel):
@@ -116,6 +118,8 @@ class ProjectSummaryOut(WireModel):
     updated_at: WireDatetime
     members: list[SummaryMemberOut]
     default_floor_id: str | None = None
+    has_scale: bool | None = None
+    job_active: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +138,10 @@ class ProjectRollup:
     status: SummaryStatus
     legacy_status: ProjectStatus
     default_floor_id: str | None
+    has_scale: bool = True
+    """`False` khi một tầng đã chạy pipeline chưa có tỉ lệ `human`/`pipeline` (U07)."""
+    job_active: bool = False
+    """Có tầng đang có lượt pipeline `pending|running` (U10)."""
 
 
 async def user_outs(rows: Sequence[User], storage: ObjectStorage | None) -> list[UserOut]:
@@ -177,4 +185,6 @@ def project_summary_out(project: Project, rollup: ProjectRollup, members: list[U
         updated_at=project.updated_at,
         members=[summary_member_out(row) for row in members],
         default_floor_id=rollup.default_floor_id,
+        has_scale=rollup.has_scale,
+        job_active=rollup.job_active,
     )

@@ -198,8 +198,11 @@ async def share_links_open(token: str, request: Request, db: DbSession, clock: C
         )
     ).first()
     now = clock.now()
-    if found is None or _status(found[0], now) != "active":
+    if found is None:
         raise NOT_FOUND.error(resource="shareLink")
+    status = _status(found[0], now)
+    if status != "active":
+        raise NOT_FOUND.error(resource="shareLink", reason=status)  # U59: nói đúng lý do, vẫn 404
     row, name = found
     return SharedModelOut(
         link=_out(row, request, now), project_name=name, graph=await spatial_graph(db, row.project_id, app=request.app)
