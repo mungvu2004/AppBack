@@ -56,7 +56,7 @@ from packages.ml_contracts.artifacts import (
     WallPx,
     WallsResult,
 )
-from packages.vision.dimensions import pair_dimension_lines, parse_length_mm, wall_spans
+from packages.vision.dimensions import pair_dimension_lines, parse_length_mm, parse_scale_note, wall_spans
 from packages.vision.dimensions.chains import densest_cluster
 
 _log = logging.getLogger(__name__)
@@ -86,6 +86,11 @@ _UNSET_PROJECT_SCALE: Final = Decimal(1)
 
 1 mm/px không phải tỉ lệ ai chọn cho mặt bằng (căn 10 m sẽ rộng 10 000 px): chỉ là "chưa đặt". Áp nó làm
 tầng ra 0,3 m² (U01), nên khi chưa đọc được tỉ lệ thì dùng tạm ước lượng từ bề dày tường; vẫn `unresolved`."""
+
+_NOTE_WALL_MM: Final = (50.0, 500.0)
+"""Bề dày tường trung vị (mặt nạ) chấp nhận được ở tỉ lệ ghi chú `TL 1:N`; bench: trung vị ≈ 158 mm.
+
+Ngoài dải là ghi chú đọc hỏng (1:10 thay 1:100) hay PDF in co trang (fit to page): bỏ ghi chú."""
 
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
@@ -241,6 +246,29 @@ def _resolved_scale(
         extra={"code": PipelineCode.SCALE_UNRESOLVED.value, "reason": result.reason},
     )
     return fallback_mm_per_px, "project_default", samples, result.rejected_ids
+
+
+def _note_scale(walls: Sequence[WallPx], texts: Sequence[TextPx], px_per_paper_mm: float | None) -> Decimal | None:
+    """U01: ghi chú `TL 1:N` + px/mm giấy của PDF → `N / px_per_paper_mm` mm/px, hay `None`.
+
+    Ảnh raster (không biết khổ giấy), không có ghi chú, ghi chú mơ hồ, tỉ lệ ngoài dải 1-200 mm/px
+    hay làm tường trung vị ngoài `_NOTE_WALL_MM` → `None`, rơi về luật cũ.
+    """
+    if px_per_paper_mm is None or px_per_paper_mm <= 0:
+        return None
+    denominator = parse_scale_note(text.text for text in texts)
+    if denominator is None:
+        return None
+    mm_per_px = denominator / px_per_paper_mm
+    if classify_scale_range(mm_per_px) != "inRange":
+        return None
+    if walls:
+        median_mm = float(np.median(np.array([wall.thickness_px for wall in walls], dtype=float))) * mm_per_px
+        if not _NOTE_WALL_MM[0] <= median_mm <= _NOTE_WALL_MM[1]:
+            _log.info("pipeline_build_scale_note_rejected", extra={"denominator": denominator, "wall_mm": median_mm})
+            return None
+    value = Decimal(repr(mm_per_px)).quantize(_QUANTUM)
+    return value if value != 0 else None
 
 
 def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
@@ -502,6 +530,7 @@ def build_layer(
     fallback_mm_per_px: Decimal,
     clock: Clock,
     page: PageRaster | None = None,
+    px_per_paper_mm: float | None = None,
 ) -> BuiltLayer:
     """Ba artifact ML (px) → lớp không gian (mm) theo B5-05 [6]; không sửa đối số, không I/O.
 
@@ -509,6 +538,8 @@ def build_layer(
     `fallback_mm_per_px` ≤ 0) → `ValueError`; đầu ra AI xấu chỉ bị bỏ và đếm vào `dropped`.
     Dựng ở `s_dựng` rồi đổi về `s`; `RescaleError` → dựng lại thẳng ở `s`, không ném. `page` (trang + mặt nạ
     tường) bật nguồn gợi ý mực dư: hộp `other` với `suggested=True`, không bao giờ trùng hộp phát hiện.
+    `px_per_paper_mm` (PDF) cho phép đọc ghi chú `TL 1:N` khi chuỗi kích thước không ra tỉ lệ (U01):
+    thắng tỉ lệ dự án và ước lượng từ bề dày tường.
     """
     if width_px < 1 or height_px < 1:
         raise ValueError(f"ảnh {width_px}x{height_px} px không hợp lệ")
@@ -520,6 +551,9 @@ def build_layer(
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
     scale, source, samples, rejected = _resolved_scale(walls_px, texts, fallback_mm_per_px, base)
+    noted = _note_scale(walls_px, texts, px_per_paper_mm) if source == "project_default" else None
+    if noted is not None:
+        scale, source = noted, "pipeline"
     estimated = source == "project_default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
     if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm dùng `s_dựng` (bề dày tường), không phải 1 mm/px
         scale, source = Decimal(repr(_build_scale(walls_px, float(scale)))).quantize(_QUANTUM), "pipeline"

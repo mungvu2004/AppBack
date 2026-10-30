@@ -516,6 +516,21 @@ def _with_areas(layer: SpatialLayer) -> SpatialLayer:
     return layer if rooms == layer.rooms else layer.model_copy(update={"rooms": rooms})
 
 
+def _kept_detected_thickness(current: SpatialLayer, sent: SpatialLayer) -> SpatialLayer:
+    """U48: `detectedThicknessMm` là số máy đo, server giữ theo id tường; client gửi gì cũng bỏ.
+
+    Tường mới (người vẽ) không có số đo nên vắng. So ở tỉ lệ cũ, trước khi co giãn (như `mark_edited`).
+    """
+    measured = {wall.id: wall.detected_thickness_mm for wall in current.walls}
+    walls = tuple(
+        wall
+        if wall.detected_thickness_mm == measured.get(wall.id)
+        else wall.model_copy(update={"detected_thickness_mm": measured.get(wall.id)})
+        for wall in sent.walls
+    )
+    return sent if walls == sent.walls else sent.model_copy(update={"walls": walls})
+
+
 def _next_layer(request: _Request, current: FloorDocument, scale: _Scale) -> _Next:
     """Bước 7-8: nền (lớp hiện tại, đã đổi tỉ lệ nếu cần) rồi lớp mới của một trong ba đường.
 
@@ -534,7 +549,7 @@ def _next_layer(request: _Request, current: FloorDocument, scale: _Scale) -> _Ne
     if request.body.layer is not None:
         sent = request.body.layer
         if request.actor_id != SYSTEM_PIPELINE:
-            sent = mark_edited(current.layer, sent)
+            sent = _kept_detected_thickness(current.layer, mark_edited(current.layer, sent))
         if scale.factor is not None:
             sent = _rescaled_layer(sent, scale.factor, include_reviewed=scale.include_reviewed)
         return _Next(_with_areas(sent), {})

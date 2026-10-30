@@ -9,6 +9,7 @@ from packages.vision.dimensions import (
     LengthReading,
     parse_length_fraction,
     parse_length_mm,
+    parse_scale_note,
     read_length,
 )
 
@@ -145,3 +146,25 @@ def test_ocr_cases_flag_but_never_repair(text: str, suspicious: bool) -> None:
 def test_valid_text_is_never_suspicious() -> None:
     """Đọc được thì `suspicious` luôn `False`."""
     assert read_length("3 600") == LengthReading(3600, False)
+
+
+@pytest.mark.parametrize(
+    ("texts", "expected"),
+    [
+        (["TL 1:100"], 100),
+        (["TỈ LỆ 1/100"], 100),
+        (["Tỷ lệ: 1 / 75"], 75),
+        (["SCALE 1:50"], 50),
+        (["T.L 1:200"], 200),
+        (["MẶT BẰNG TẦNG 1 - TL 1/100"], 100),
+        (["TL: 1/100", "tl 1:20", "TL1/100"], 100),  # đông nhất thắng
+        (["TL 1:100", "TL 1:20"], None),  # hoà → không chọn bừa (K19)
+        (["1/100"], None),  # không có chữ "tỉ lệ"
+        (["HOTEL 1:100", "TLB 1:100"], None),
+        (["TL 1:5"], None),  # ngoài [10, 1000]
+        ([], None),
+    ],
+)
+def test_parse_scale_note(texts: list[str], expected: int | None) -> None:
+    """U01: mẫu số `1:N` của ghi chú tỉ lệ, bỏ dấu và hoa thường; mơ hồ hay ngoài dải → `None`."""
+    assert parse_scale_note(texts) == expected

@@ -6,6 +6,9 @@ không bao giờ được đoán. Giá trị tính bằng `Fraction` nên `3,5 m
 """
 
 import re
+import unicodedata
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Final
@@ -22,6 +25,10 @@ _TRAILING_LETTERS: Final = re.compile(r"[a-z]+\Z")
 _DIGITS: Final = re.compile(r"[0-9]+")
 _NUMBER_BODY: Final = re.compile(r"[0-9.,]+")
 _LOOKALIKES: Final = str.maketrans("OoQDIlLi|SsBZzG", "000011111558226")
+_SCALE_NOTE: Final = re.compile(r"(?:\bT[IY]\s*LE|\bT\s*\.?\s*L(?![A-Z])|\bSCALE)\s*[:=.]?\s*1\s*[:/]\s*([0-9]{1,4})\b")
+"""Ghi chú tỉ lệ đã bỏ dấu, viết HOA: `TL 1:100`, `TỈ LỆ 1/100`, `TỶ LỆ: 1/50`, `SCALE 1:50`."""
+SCALE_NOTE_RANGE: Final = (10, 1000)
+"""Mẫu số tỉ lệ nhận được; ngoài khoảng là OCR đọc hỏng hay ghi chú chi tiết."""
 """Chữ OCR hay nhầm với số; chỉ để *nghi ngờ*, không bao giờ để sửa."""
 
 
@@ -130,3 +137,27 @@ def read_length(text: str) -> LengthReading:
 def parse_length_mm(text: str) -> int | None:
     """Số mm nguyên của chuỗi, hoặc `None`; bằng `read_length(text).value_mm`."""
     return read_length(text).value_mm
+
+
+def _plain_upper(text: str) -> str:
+    """Bỏ dấu tiếng Việt (`Đ` → `D`) rồi viết HOA, để một mẫu khớp cả `TỈ LỆ`, `Tỷ lệ`, `TL`."""
+    decomposed = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).upper()
+
+
+def parse_scale_note(texts: Iterable[str]) -> int | None:
+    """Mẫu số `N` của ghi chú tỉ lệ `1:N` đọc được nhiều lần nhất trong các chữ OCR, hay `None`.
+
+    Hai mẫu số khác nhau cùng đông nhất (mặt bằng 1:100 lẫn chi tiết 1:20 ngang nhau) → `None`:
+    không chọn bừa một tỉ lệ (K19).
+    """
+    found: Counter[int] = Counter()
+    for text in texts:
+        for match in _SCALE_NOTE.finditer(_plain_upper(text)):
+            value = int(match.group(1))
+            if SCALE_NOTE_RANGE[0] <= value <= SCALE_NOTE_RANGE[1]:
+                found[value] += 1
+    ranked = found.most_common(2)
+    if not ranked or (len(ranked) == 2 and ranked[0][1] == ranked[1][1]):
+        return None
+    return ranked[0][0]
