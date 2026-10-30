@@ -73,4 +73,17 @@ if [[ "${1:-}" == "verify" && " $* " != *" --fast "* ]]; then
   echo "${VERIFY_NAME:-?} từ $(date -u +%H:%M:%SZ)" > /work/gate-full.owner
   mark "giữ khoá cổng đầy đủ"
 fi
+# PERF-10: stack dùng chung (`TEST_SHARED_*`, run.sh đặt) chỉ cho MỘT lượt một lúc trên cả máy: tên database và
+# khối Redis theo `gwN` trùng giữa hai lượt, lượt này `DROP`/`FLUSHDB` đúng dữ liệu của lượt kia. Khoá trên `/work`
+# dùng chung, fd 7 theo `exec` sang python/pytest/bash của `shell` và nhả khi container thoát. Lượt khác đang giữ
+# → gỡ biến, lượt này dựng container riêng như trước.
+if [[ -n "${TEST_SHARED_NETWORK:-}" ]]; then
+  exec 7> /work/shared-stack.lock
+  if ! flock -n 7; then
+    echo "dịch vụ test: stack dùng chung đang có lượt khác giữ — lượt này dựng container riêng" >&2
+    unset TEST_SHARED_NETWORK TEST_SHARED_POSTGRES_URL TEST_SHARED_REDIS_BROKER_URL TEST_SHARED_REDIS_CACHE_URL \
+      TEST_SHARED_MINIO
+    exec 7>&-
+  fi
+fi
 exec "$UV_PROJECT_ENVIRONMENT/bin/python" -m tools.verify.steps "$@"

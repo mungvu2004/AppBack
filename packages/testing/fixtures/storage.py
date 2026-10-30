@@ -10,18 +10,23 @@
 thân test rồi `reset_settings_cache()`.
 """
 
+import os
 import secrets
 from collections.abc import Iterator
+from contextlib import suppress
 from pathlib import Path
+from typing import cast
 
 import pytest
 from minio import Minio
+from minio.error import S3Error
 
 from packages.core.settings import reset_settings_cache
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import ObjectStorage
 from packages.storage.s3 import S3Storage, http_client
 from packages.testing.fixtures.clock import FakeClock
+from packages.testing.fixtures.services import SHARED_MINIO_ENV
 
 PUBLIC_BASE_URL = "https://appback.test"
 STORAGE_SECRET = "fixture-secret-for-storage-tests-0001"  # noqa: S105 — khoá giả của fixture
@@ -44,7 +49,13 @@ def local_storage(tmp_path: Path, fake_clock: FakeClock, storage_env: None) -> L
 
 
 @pytest.fixture
-def s3_storage(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> S3Storage:
+def s3_storage(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> Iterator[S3Storage]:
+    """Kho S3 trên một bucket ngẫu nhiên của riêng test.
+
+    MinIO ngoài (stack f14, PERF-10) sống lâu hơn lượt chạy: xoá đúng bucket này sau test, không thì bucket
+    test dồn mãi vào dữ liệu f14. Container riêng bị xoá cả khối nên khỏi dọn. Chỉ chạm bucket do chính
+    fixture tạo; dọn hỏng (test để lại multipart dở…) chỉ để lại rác, không đỏ test.
+    """
     endpoint, access_key, secret_key = minio_endpoint
     client = Minio(
         endpoint,
@@ -56,7 +67,12 @@ def s3_storage(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> S
     )
     bucket = f"test-{secrets.token_hex(6)}"
     client.make_bucket(bucket)
-    return S3Storage(client=client, public_client=client, bucket=bucket, clock=fake_clock)
+    yield S3Storage(client=client, public_client=client, bucket=bucket, clock=fake_clock)
+    if os.environ.get(SHARED_MINIO_ENV):
+        with suppress(S3Error):
+            for obj in client.list_objects(bucket, recursive=True):
+                client.remove_object(bucket, cast(str, obj.object_name))
+            client.remove_bucket(bucket)
 
 
 @pytest.fixture(params=["local", "s3"])

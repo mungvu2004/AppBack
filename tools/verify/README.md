@@ -27,4 +27,10 @@ Cổng verify chạy qua `bash tools/verify/run.sh <việc>` (xem `CLAUDE.md`).
   `/src-out/...` như `lock` làm, hoặc sửa ở worktree rồi chạy lại (NO-190).
 - Volume `appback-work` (`/work`, dùng chung mọi worktree) là `external`: `run.sh` tự `docker volume create` trước
   mỗi lượt; chạy `docker compose -f deploy/compose/verify.yml` tay trên máy sạch thì phải tạo volume trước (NO-185).
+- Dịch vụ test dùng chung với stack (PERF-10): `run.sh` thấy `<stack>-{postgres,redis-broker,redis-cache,minio}-1` đang
+  chạy (`VERIFY_SHARED_STACK`, mặc định `f14`; `off` để tắt) thì đặt `TEST_SHARED_*` (IP trên `<stack>_appback`, mật khẩu
+  đọc từ env container lúc chạy, không vào log) và test không dựng 4 container đó; container verify tự `network connect`
+  vào mạng stack. `in_container.sh` giữ `flock /work/shared-stack.lock`: lượt thứ hai cùng lúc gỡ biến, dựng container
+  riêng. Redis stack cần `--databases 128` (`deploy/compose/base.yml`); stack cũ 16 DB thì Redis tự về container (cảnh
+  báo trong tóm tắt pytest). Mailpit và `ephemeral_*` luôn là container.
 - Repo AppFront mặc định là `<cha của checkout chính>/AppFront`; `APPFRONT_REPO` ghi đè (NO-325).

@@ -23,6 +23,7 @@ nó, mà test chạy ở vòng theo hàm.
 
 import asyncio
 import os
+import re
 import secrets
 import sys
 from collections.abc import AsyncIterator, Iterator
@@ -102,14 +103,31 @@ async def _admin(url: str, statements: list[str]) -> None:
         await engine.dispose()
 
 
+# Mọi tên database test tạo/xoá (PERF-10): mẫu/dùng chung của tiến trình, `blank_db_url` (`b_`), đo thời gian
+# fixture (`tpl_`, `t_`). Tên app (`appback`), `postgres`, `template0/1` không bao giờ khớp.
+_TEST_DATABASE = re.compile(rf"(?:{TEMPLATE_DB}|{SHARED_DB})(?:_gw\d+)?|(?:b|tpl|t)_[0-9a-f]+")
+
+
+def assert_test_database(name: str) -> None:
+    """Chặn cứng: fixture chỉ `CREATE`/`DROP` được database tên test (PERF-10).
+
+    Từ PERF-10 `postgres_url` có thể là Postgres của stack f14 đang chạy, nơi có database của app; `DROP … WITH
+    (FORCE)` trên một tên lạc là mất dữ liệu không lùi được.
+    """
+    if not _TEST_DATABASE.fullmatch(name):
+        raise RuntimeError(f"fixture test từ chối tạo/xoá database '{name}': không phải tên test (PERF-10)")
+
+
 def _create_database(url: str, name: str, template: str | None = None) -> None:
     """Tạo lại database `name` (xoá bản cũ nếu có), tuỳ chọn nhân bản từ `template`."""
+    assert_test_database(name)
     suffix = f' TEMPLATE "{template}"' if template else ""
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)', f'CREATE DATABASE "{name}"{suffix}']))
 
 
 def _drop_database(url: str, name: str) -> None:
     """Xoá database `name` nếu có, cắt mọi kết nối đang mở."""
+    assert_test_database(name)
     asyncio.run(_admin(url, [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)']))
 
 
