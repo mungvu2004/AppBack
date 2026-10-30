@@ -183,7 +183,8 @@ def test_volume_work_được_tạo_tường_minh_trước_lượt_compose(workt
     bin_dir = tmp_path / "bin"
     log = bin_dir / "docker-calls"
     _fake_command(bin_dir, "docker", f'echo "$*" >> "{log}"')
-    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    # Tắt dò stack dùng chung (PERF-10): test này chỉ kiểm thứ tự volume → build → compose.
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "VERIFY_SHARED_STACK": "off"}
     result = subprocess.run(  # noqa: S603 — bash + run.sh của repo tạm
         [BASH, str(worktree / "tools" / "verify" / "run.sh"), "verify"],
         env=env,

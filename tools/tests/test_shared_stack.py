@@ -13,6 +13,7 @@ from typing import Self
 from unittest.mock import MagicMock, patch
 
 import pytest
+import redis
 from docker.errors import APIError  # type: ignore[import-untyped]  # không có stub
 
 from packages.messaging.redis import with_db
@@ -123,7 +124,7 @@ def test_external_redis__good_config_is_used(monkeypatch: pytest.MonkeyPatch) ->
     client.__enter__.return_value = client
     config = {"maxmemory-policy": "noeviction", "databases": "128"}
     client.config_get.side_effect = lambda name: {name: config[name]}
-    with patch.object(services.redis.Redis, "from_url", return_value=client):
+    with patch.object(redis.Redis, "from_url", return_value=client):
         assert services._external_redis(SHARED_REDIS_BROKER_ENV, "noeviction") == URL
 
 
@@ -200,7 +201,7 @@ def test_shared_redis__external_flushes_and_uses_only_its_own_block(
         return _FakeRedis(url, flushed)
 
     with (
-        patch.object(services.redis.Redis, "from_url", fake_from_url),
+        patch.object(redis.Redis, "from_url", fake_from_url),
         patch.object(services, "_start") as start,
         services._shared_redis("noeviction", tmp_path_factory, URL) as url,
     ):

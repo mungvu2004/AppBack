@@ -6,6 +6,7 @@ import inspect
 import io
 import smtplib
 import socket
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -71,15 +72,19 @@ def test_redis_maxmemory_policy(request: pytest.FixtureRequest, fixture: str, po
 def test_minio_ghi_đọc(minio_endpoint: tuple[str, str, str]) -> None:
     endpoint, access_key, secret_key = minio_endpoint
     client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=False)
-    client.make_bucket("b0-01")
+    # Tên ngẫu nhiên + tự dọn: từ PERF-10 MinIO có thể là của stack f14, tên cố định ở lại làm lượt sau hỏng.
+    bucket = f"b0-01-{uuid.uuid4().hex[:12]}"
+    client.make_bucket(bucket)
     data = b"xin chao"
-    client.put_object("b0-01", "k.txt", io.BytesIO(data), len(data))
-    resp = client.get_object("b0-01", "k.txt")
+    client.put_object(bucket, "k.txt", io.BytesIO(data), len(data))
+    resp = client.get_object(bucket, "k.txt")
     try:
         assert resp.read() == data
     finally:
         resp.close()
         resp.release_conn()
+        client.remove_object(bucket, "k.txt")
+        client.remove_bucket(bucket)
 
 
 def test_mailpit_nhận_thư(mailpit: tuple[str, int, int]) -> None:

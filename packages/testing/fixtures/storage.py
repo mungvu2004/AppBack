@@ -52,9 +52,7 @@ def local_storage(tmp_path: Path, fake_clock: FakeClock, storage_env: None) -> L
 def s3_storage(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> Iterator[S3Storage]:
     """Kho S3 trên một bucket ngẫu nhiên của riêng test.
 
-    MinIO ngoài (stack f14, PERF-10) sống lâu hơn lượt chạy: xoá đúng bucket này sau test, không thì bucket
-    test dồn mãi vào dữ liệu f14. Container riêng bị xoá cả khối nên khỏi dọn. Chỉ chạm bucket do chính
-    fixture tạo; dọn hỏng (test để lại multipart dở…) chỉ để lại rác, không đỏ test.
+    Xong test thì `drop_own_bucket` (chỉ khi MinIO là của stack dùng chung).
     """
     endpoint, access_key, secret_key = minio_endpoint
     client = Minio(
@@ -68,11 +66,21 @@ def s3_storage(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> I
     bucket = f"test-{secrets.token_hex(6)}"
     client.make_bucket(bucket)
     yield S3Storage(client=client, public_client=client, bucket=bucket, clock=fake_clock)
-    if os.environ.get(SHARED_MINIO_ENV):
-        with suppress(S3Error):
-            for obj in client.list_objects(bucket, recursive=True):
-                client.remove_object(bucket, cast(str, obj.object_name))
-            client.remove_bucket(bucket)
+    drop_own_bucket(client, bucket)
+
+
+def drop_own_bucket(client: Minio, bucket: str) -> None:
+    """Xoá bucket test `bucket` (cùng object trong nó) khi MinIO là của stack dùng chung (PERF-10).
+
+    MinIO ngoài sống lâu hơn lượt chạy, bucket không xoá thì dồn mãi vào dữ liệu f14; container riêng bị xoá
+    cả khối nên khỏi dọn. Chỉ gọi cho bucket do chính fixture tạo; dọn hỏng chỉ để lại rác, không đỏ test.
+    """
+    if not os.environ.get(SHARED_MINIO_ENV):
+        return
+    with suppress(S3Error):
+        for obj in client.list_objects(bucket, recursive=True):
+            client.remove_object(bucket, cast(str, obj.object_name))
+        client.remove_bucket(bucket)
 
 
 @pytest.fixture(params=["local", "s3"])

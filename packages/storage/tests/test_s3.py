@@ -26,6 +26,7 @@ from packages.storage.s3 import S3Storage, http_client
 from packages.storage.tests.fault_proxy import Fault, FaultProxy, delete_error_xml, fault_proxy, s3_error_xml
 from packages.testing.fixtures.clock import FakeClock
 from packages.testing.fixtures.services import ephemeral_minio, refused_url
+from packages.testing.fixtures.storage import drop_own_bucket
 
 PROJECT = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"
 FLOOR = "L-ABCDEFGHIJ"
@@ -152,11 +153,17 @@ async def test_open_read_on_a_missing_bucket_raises(
 
 
 async def test_ensure_bucket_is_idempotent_and_survives_minio_cors(
-    minio_endpoint: tuple[str, str, str], fake_clock: FakeClock, caplog: pytest.LogCaptureFixture
+    minio_endpoint: tuple[str, str, str],
+    fake_clock: FakeClock,
+    caplog: pytest.LogCaptureFixture,
+    request: pytest.FixtureRequest,
 ) -> None:
     """MinIO trả `NotImplemented` cho `PutBucketCors` → ghi log, không ném lỗi."""
     endpoint, access_key, secret_key = minio_endpoint
-    storage = storage_on(client_for(endpoint, access_key, secret_key), "bucket-ensure", fake_clock)
+    client = client_for(endpoint, access_key, secret_key)
+    bucket = f"bucket-ensure-{secrets.token_hex(6)}"
+    storage = storage_on(client, bucket, fake_clock)
+    request.addfinalizer(lambda: drop_own_bucket(client, bucket))
 
     with caplog.at_level(logging.INFO, logger="packages.storage.s3"):
         await storage.ensure_bucket("https://appback.test")
@@ -172,9 +179,11 @@ def proxied(minio_endpoint: tuple[str, str, str], fake_clock: FakeClock) -> Iter
     """Kho trỏ qua proxy tiêm lỗi (`fault_proxy.py`), bucket riêng trên MinIO thật."""
     endpoint, access_key, secret_key = minio_endpoint
     bucket = f"test-{secrets.token_hex(6)}"
-    client_for(endpoint, access_key, secret_key).make_bucket(bucket)
+    direct = client_for(endpoint, access_key, secret_key)
+    direct.make_bucket(bucket)
     with fault_proxy(endpoint) as proxy:
         yield storage_on(client_for(proxy.endpoint, access_key, secret_key), bucket, fake_clock), proxy
+    drop_own_bucket(direct, bucket)
 
 
 @pytest.mark.parametrize(("status", "code"), [(500, "InternalError"), (503, "SlowDown")])
