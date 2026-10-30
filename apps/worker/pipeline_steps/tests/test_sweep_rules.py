@@ -108,6 +108,16 @@ async def _checkedout_while_blocked(pool: QueuePool, broker: _HangingLlen) -> in
     return pool.checkedout()
 
 
+def _run_infers(client: SyncRedis, run_id: str) -> list[InferStepPayload]:
+    """Thông điệp bước ML của đúng lượt `run_id` trên hàng ML.
+
+    Hàng ML còn mang `EvaluateVersionPayload` của test quản trị mô hình gửi sau commit; thông điệp đó tới muộn
+    có thể rơi vào lúc test này đọc hàng (cổng 31/10), nên lọc theo lượt thay vì giải mọi thân thành bước ML.
+    """
+    bodies = [body for body in queued_payloads(client, ML_QUEUE) if body.get("run_id") == run_id]
+    return [InferStepPayload.model_validate(body) for body in bodies]
+
+
 async def test_sweep_resends_remaining_families_when_walls_used(
     sweep_env: SyncRedis, db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
@@ -117,7 +127,7 @@ async def test_sweep_resends_remaining_families_when_walls_used(
 
     await sweep(db_sessionmaker, fake_clock)
 
-    steps = {InferStepPayload.model_validate(body).step for body in queued_payloads(sweep_env, ML_QUEUE)}
+    steps = {payload.step for payload in _run_infers(sweep_env, arranged.run_id)}
     assert steps == {family for family in MODEL_FAMILIES if family != "wallSegmentation"}
 
 
@@ -133,7 +143,7 @@ async def test_sweep_resends_walls_with_the_run_vectors_key(
 
     await sweep(db_sessionmaker, fake_clock)
 
-    payloads = [InferStepPayload.model_validate(body) for body in queued_payloads(sweep_env, ML_QUEUE)]
+    payloads = _run_infers(sweep_env, arranged.run_id)
     (walls,) = [p for p in payloads if p.step == "wallSegmentation"]
     run_root = walls.artifact_prefix.removesuffix("wallSegmentation/")
     assert walls.vectors_key == f"{run_root}preprocess/vectors.json"
