@@ -719,6 +719,24 @@ def test_join_arcs__lone_arc_chord_stays_straight() -> None:
     assert _join_arcs([chord]) == [chord]
 
 
+def test_vectorize__mask_notch_tongue_does_not_cut_the_arc() -> None:
+    """Lưỡi mặt nạ mảnh 4 px thò khỏi mép cung dày (ML hụt một khe): không thành tường, cung không bị nút giao cắt đôi.
+
+    Đầu lưỡi có distance 2 > `_SPUR_TIP_PX` nhưng < 0,2 x distance tại nút; trước đây còn một mẩu tường và cung dừng
+    giữa chừng ở (387,5; 397).
+    """
+    canvas = np.zeros((480, 560), np.uint8)
+    for start, end in [((50, 60), (300, 60)), ((50, 60), (50, 400)), ((50, 400), (300, 400))]:
+        cv2.line(canvas, start, end, 1, 24)
+    cv2.ellipse(canvas, (300, 230), (170, 170), 0, -90, 90, 1, 24)
+    cv2.line(canvas, (391, 388), (395, 395), 1, 4)
+    walls = vectorize(canvas > 0)
+    (curved,) = [wall for wall in walls if wall.sagitta_px]
+    assert len(walls) == 4
+    assert abs(math.dist(_apex(curved), (300, 230)) - 170) <= 3
+    assert curved.end[0] < 345
+
+
 def test_finalise__curved_wall_flips_sagitta_with_its_ends_and_keeps_its_straight_twin() -> None:
     """Đảo đầu → đổi dấu sagitta (cung không đổi); tường thẳng chung hai đầu với cung vẫn giữ (khác ô gộp)."""
     keys = ((0, 0, 0), (0, 0, 1))
