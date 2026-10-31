@@ -456,8 +456,9 @@ def _assembled(
     }
     wall_set = build_walls(context.walls_px, context.detections, **shared)
     rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
-    furniture = build_furniture(context.detections, rooms, **shared)
-    suggested = build_furniture(context.suggestions, rooms, **shared)
+    trusted = context.source == "pipeline"
+    furniture = build_furniture(context.detections, rooms, scale_trusted=trusted, **shared)
+    suggested = build_furniture(context.suggestions, rooms, scale_trusted=trusted, **shared)
     furniture = (*furniture, *(item.model_copy(update={"suggested": True}) for item in suggested))
     layer = SpatialLayer(walls=wall_set.walls, openings=wall_set.openings, rooms=rooms, furniture=furniture)
     return layer, wall_set
