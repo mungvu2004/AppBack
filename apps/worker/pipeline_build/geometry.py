@@ -60,6 +60,11 @@ _DANGLE_REACH_THICKNESS: Final = 3
 _DANGLE_DOOR_REACH_MM: Final = 1200
 # Đầu mút "chạm" tường khác khi cách tim ≤ ½ tổng bề dày + 10 mm (cùng thước của bộ đo F:/runs/r4-bd/tidy.py).
 _TOUCH_SLACK_MM: Final = 10
+# Luật WALL-OVERLAP của FE (AppFront rules/geometry): song song <= 5 độ chạm thân và chồng > 10 mm, hoặc tim cắt
+# nhau cách mọi đầu > 50 mm. Lần kéo nào làm tăng số cặp như vậy bị hoàn lại.
+_PARALLEL_SIN: Final = math.sin(math.radians(5.0))
+_OVERLAP_MIN_MM: Final = 10
+_JOINT_MM: Final = 50
 _OPENING_LABELS: Final[frozenset[str]] = frozenset({"door", "double_door", "window"})
 """Chỉ ba nhãn này thành ô mở; nhãn đồ đạc là việc của `rooms.build_furniture`, không đếm ở đây."""
 
@@ -492,7 +497,42 @@ def _foot_on_other(seg: _Seg, other: _Seg, reach: float = OPENING_GAP_MAX_MM) ->
     return None
 
 
-def _extend_once(seg: _Seg, others: Sequence[_Seg], boxes: _Boxes) -> bool:
+def _clash(a: _Seg, b: _Seg) -> bool:
+    """Cặp tường vi phạm WALL-OVERLAP của FE: chồng song song hoặc cắt xuyên thân (xem `_PARALLEL_SIN`)."""
+    la, lb = _line(a), _line(b)
+    ua, ub = _unit(a), _unit(b)
+    if abs(ua[0] * ub[1] - ua[1] * ub[0]) <= _PARALLEL_SIN:
+        if la.distance(lb) > (a.thickness_mm + b.thickness_mm) / 2:
+            return False
+        low, high = sorted(_along(a, (p.x, p.y)) for p in (b.start, b.end))
+        return min(_length(a), high) - max(0.0, low) > _OVERLAP_MIN_MM
+    at = la.intersection(lb)
+    if at.geom_type != "Point":
+        return False
+    return all(math.dist((at.x, at.y), (p.x, p.y)) > _JOINT_MM for p in (a.start, a.end, b.start, b.end))
+
+
+def _clashes(seg: _Seg, segs: Sequence[_Seg]) -> int:
+    """Số tường sống khác mà `seg` chồng/cắt xuyên theo `_clash`."""
+    return sum(other is not seg and other.alive and _clash(seg, other) for other in segs)
+
+
+def _try_extend(seg: _Seg, other: _Seg, is_end: bool, foot: Point, segs: Sequence[_Seg]) -> bool:
+    """Kéo đầu mút của `seg` tới `foot` (và `_stretch_to` vách `other`); tăng số cặp chồng/cắt → hoàn lại."""
+    saved = (seg.start, seg.end, other.start, other.end)
+    before = _clashes(seg, segs) + _clashes(other, segs)
+    if is_end:
+        seg.end = foot
+    else:
+        seg.start = foot
+    _stretch_to(other, foot)
+    if _clashes(seg, segs) + _clashes(other, segs) > before:
+        seg.start, seg.end, other.start, other.end = saved
+        return False
+    return True
+
+
+def _extend_once(seg: _Seg, others: Sequence[_Seg], boxes: _Boxes, segs: Sequence[_Seg]) -> bool:
     """3b (b) cho một tường: kéo đầu mút tới tim vách vuông góc đầu tiên mà khe có hộp."""
     for other in others:
         hit = _foot_on_other(seg, other)
@@ -501,12 +541,8 @@ def _extend_once(seg: _Seg, others: Sequence[_Seg], boxes: _Boxes) -> bool:
         is_end, foot = hit
         if not boxes.covers(seg.end if is_end else seg.start, foot):
             continue
-        if is_end:
-            seg.end = foot
-        else:
-            seg.start = foot
-        _stretch_to(other, foot)
-        return True
+        if _try_extend(seg, other, is_end, foot, segs):
+            return True
     return False
 
 
@@ -528,7 +564,7 @@ def _extend_all(segs: list[_Seg], neighbours: list[set[int]], boxes: _Boxes, dro
         if not seg.alive:
             continue
         others = [segs[other] for other in sorted(neighbours[index]) if segs[other].alive]
-        if others and _extend_once(seg, others, boxes):
+        if others and _extend_once(seg, others, boxes, segs):
             dropped["wallGapBridged"] += 1
 
 
@@ -604,12 +640,8 @@ def _reach_dangling(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Bo
                 continue
             if not _dangling(seg, tip, segs) or _blocked(seg, other, tip, foot, segs):
                 continue
-            if is_end:
-                seg.end = foot
-            else:
-                seg.start = foot
-            _stretch_to(other, foot)
-            dropped["wallGapBridged"] += 1
+            if _try_extend(seg, other, is_end, foot, segs):
+                dropped["wallGapBridged"] += 1
 
 
 def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tuple[tuple[Point, Point], ...]:
