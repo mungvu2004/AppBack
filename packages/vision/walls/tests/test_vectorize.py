@@ -21,6 +21,8 @@ from packages.vision.walls.vectorize import (
     _Graph,
     _join_arcs,
     _merge_line_pieces,
+    _off_node,
+    _seated,
     _Seg,
     _straighten_jogs,
     keep_longest,
@@ -719,22 +721,22 @@ def test_join_arcs__lone_arc_chord_stays_straight() -> None:
     assert _join_arcs([chord]) == [chord]
 
 
-def test_vectorize__mask_notch_tongue_does_not_cut_the_arc() -> None:
-    """Lưỡi mặt nạ mảnh 4 px thò khỏi mép cung dày (ML hụt một khe): không thành tường, cung không bị nút giao cắt đôi.
+@pytest.mark.parametrize(("key", "kept"), [((0, 3, 0), 8), ((1, 3, 0), 20)])
+def test_off_node__drops_skeleton_within_one_thickness_of_a_junction_end(key: tuple[int, int, int], kept: int) -> None:
+    """Đầu cuối là nút giao (khoá loại 0): bỏ điểm xương trong 1 bề dày quanh nó; đỉnh DP thường giữ đủ."""
+    seg = _Seg(0.0, 0.0, 19.0, 0.0, 11.0, 0.9, (1, 3, 1), key)
+    inner = np.stack([np.arange(20), np.zeros(20)], axis=1).astype(np.int32)
+    assert len(_off_node(seg, inner)) == kept
 
-    Đầu lưỡi có distance 2 > `_SPUR_TIP_PX` nhưng < 0,2 x distance tại nút; trước đây còn một mẩu tường và cung dừng
-    giữa chừng ở (387,5; 397).
-    """
-    canvas = np.zeros((480, 560), np.uint8)
-    for start, end in [((50, 60), (300, 60)), ((50, 60), (50, 400)), ((50, 400), (300, 400))]:
-        cv2.line(canvas, start, end, 1, 24)
-    cv2.ellipse(canvas, (300, 230), (170, 170), 0, -90, 90, 1, 24)
-    cv2.line(canvas, (391, 388), (395, 395), 1, 4)
-    walls = vectorize(canvas > 0)
-    (curved,) = [wall for wall in walls if wall.sagitta_px]
-    assert len(walls) == 4
-    assert abs(math.dist(_apex(curved), (300, 230)) - 170) <= 3
-    assert curved.end[0] < 345
+
+def test_seated__free_arc_end_lands_on_the_wall_body_it_sits_in() -> None:
+    """Đầu cung lơ lửng trong thân tường dọc (cách tim 13 < ½ tổng bề dày) → lên tim; đầu đã chung nút giữ nguyên."""
+    chord = _Seg(700.0, 900.0, 782.0, 865.0, 24.0, 0.9, (2, 0, 1), (0, 2, 0), arc=True)
+    stub = _Seg(795.0, 800.0, 795.0, 888.0, 24.0, 0.9, (0, 1, 0), (0, 5, 0), "v")
+    far = _Seg(900.0, 100.0, 900.0, 300.0, 24.0, 0.9, (0, 6, 0), (0, 7, 0), "v")
+    assert _seated((782.0, 865.0), 24.0, [chord], [chord, stub, far]) == (795.0, 865.0)
+    assert _seated((795.0, 800.0), 24.0, [chord], [chord, stub, far]) == (795.0, 800.0)
+    assert _seated((600.0, 950.0), 24.0, [chord], [chord, stub, far]) == (600.0, 950.0)
 
 
 def test_finalise__curved_wall_flips_sagitta_with_its_ends_and_keeps_its_straight_twin() -> None:

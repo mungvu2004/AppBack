@@ -41,13 +41,6 @@ có distance 2,0, vách 110 mm trên `render_plan` có 4,0-7,0. 1,7 nằm giữa
 lượng tử (1,4; 2,0) nên không sát số đo nào. Tiêu chí tỉ lệ `T/J < 0,5` cũ cắt nhầm vách
 110 mm chạm tường bao 220 mm (T/J = 0,40) và mọi vách rất mảnh chạm tường rất dày (NO-288).
 """
-_SPUR_TIP_RATIO: Final = 0.2
-"""Đầu tự do mảnh hơn ngần này lần distance tại nút giao cũng là râu, dù quá `_SPUR_TIP_PX` (bước 4).
-
-Mặt nạ hụt một khe ở mép tường dày để lại lưỡi mảnh dần (distance đầu 2,0 cạnh tường 11,8 → 0,17): xương
-đẻ nhánh cụt và nút giao giữa thân tường, cắt đôi một cung (WALLS-ARC). Vách mảnh thật chạm tường dày
-(NO-288) có tỉ lệ ≥ 0,4 nên vẫn giữ.
-"""
 _AXIS_SHARE: Final = 0.85
 """Bản vẽ có ≥ ngần này tổng độ dài tường ngang/dọc thì coi là bản vẽ vuông góc (bước 7, 10b)."""
 _AXIS_OFFSET_RATIO: Final = 1.0
@@ -318,7 +311,7 @@ def _is_spur(graph: _Graph, path: NDArray[np.int32]) -> bool:
     if head == tail or graph.node_leaf[head] == graph.node_leaf[tail]:
         return False
     junction, tip = (tail, head) if graph.node_leaf[head] else (head, tail)
-    if graph.node_dist[tip] > max(_SPUR_TIP_PX, _SPUR_TIP_RATIO * graph.node_dist[junction]):
+    if graph.node_dist[tip] > _SPUR_TIP_PX:
         return False
     return bool(_path_length(graph, path) <= _SPUR_RATIO * graph.node_dist[junction])
 
@@ -1388,6 +1381,28 @@ def _joined(chords: Sequence[_Seg], points: Sequence[PointPx]) -> _Seg:
     )
 
 
+def _seated(point: PointPx, thickness: float, chords: Sequence[_Seg], segs: Sequence[_Seg]) -> PointPx:
+    """Đầu cung tự do nằm trong thân một tường thẳng (tim cách ≤ ½ tổng bề dày) → chân vuông góc trên tim đó.
+
+    Nút giao bị `_fuse` nuốt khi gộp mẩu thẳng hàng (lưỡi mặt nạ ở mép cung) để đầu cung lơ lửng sát tường;
+    bước 9b chỉ nối tường ngang/dọc. Đầu đã chung với đoạn khác (≤ 0,5 px) giữ nguyên.
+    """
+    others = [seg for seg in segs if all(seg is not chord for chord in chords)]
+    if any(math.dist(point, end) <= 0.5 for seg in others for end in ((seg.ax, seg.ay), (seg.bx, seg.by))):
+        return point
+    best: tuple[float, PointPx] | None = None
+    for seg in others:
+        if seg.arc or seg.length() == 0:
+            continue
+        ux, uy = (seg.bx - seg.ax) / seg.length(), (seg.by - seg.ay) / seg.length()
+        along = min(max((point[0] - seg.ax) * ux + (point[1] - seg.ay) * uy, 0.0), seg.length())
+        foot = (seg.ax + ux * along, seg.ay + uy * along)
+        gap = math.dist(point, foot)
+        if gap <= 0.5 * (thickness + seg.thickness) and (best is None or gap < best[0]):
+            best = (gap, foot)
+    return point if best is None else best[1]
+
+
 def _join_arcs(segs: list[_Seg]) -> list[_Seg]:
     """Bước 10f: chuỗi dây của một cung (nối bằng khoá giữa cung của 5b) → tường cong có `sagitta`.
 
@@ -1412,6 +1427,8 @@ def _join_arcs(segs: list[_Seg]) -> list[_Seg]:
             continue
         chords = [chord for chord, _ in reversed(back)] + [seg] + [chord for chord, _ in ahead]
         points = [*(point for _, point in reversed(back)), (seg.ax, seg.ay), (seg.bx, seg.by), *(p for _, p in ahead)]
+        points[0] = _seated(points[0], seg.thickness, chords, segs)
+        points[-1] = _seated(points[-1], seg.thickness, chords, segs)
         out.extend(_joined(chords[i:j], points[i : j + 1]) for i, j in _arc_pieces(points))
     return out
 
