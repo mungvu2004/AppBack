@@ -86,6 +86,7 @@ Bước này chưa biết cửa: 1,5 x 220 mm = 330 mm < khe cửa hẹp nhất 
 _ARC_TOL_RATIO: Final = 0.2
 """Điểm xương lệch đường tròn khớp ≤ ngần này lần bề dày (tối thiểu `_ARC_TOL_MIN_PX`) thì còn trên cung (bước 5b)."""
 _ARC_TOL_MIN_PX: Final = 1.5
+"""Sàn của dung sai cung (px): vách mảnh vẫn chịu được răng cưa 1 px của xương."""
 _ARC_MIN_SEGMENTS: Final = 3
 """Cung phải gồm ≥ ngần này đoạn DP: hai đoạn gãy bất kỳ cũng khớp được một đường tròn (bước 5b)."""
 _ARC_MIN_SWEEP_DEG: Final = 30.0
@@ -466,9 +467,12 @@ def _arc_chords(
     sweep += 2.0 * math.pi * round((float(turns[-1] - turns[0]) - sweep) / (2.0 * math.pi))
     thickness = float(np.median([seg.thickness for seg in run]))
     length = abs(sweep) * radius
-    count = min(math.ceil(math.degrees(abs(sweep)) / _ARC_STEP_DEG), int(length // (1.5 * thickness)))
-    too_tight = radius < _ARC_MIN_RADIUS_RATIO * thickness or length < _ARC_MIN_LENGTH_RATIO * thickness
-    if too_tight or math.degrees(abs(sweep)) < _ARC_MIN_SWEEP_DEG or count < 2:
+    wide = radius >= _ARC_MIN_RADIUS_RATIO * thickness and length >= _ARC_MIN_LENGTH_RATIO * thickness
+    if not (wide and math.degrees(abs(sweep)) >= _ARC_MIN_SWEEP_DEG):  # so `not (≥)` để `nan` cũng bị loại
+        return None
+    steps = math.ceil(math.degrees(abs(sweep)) / _ARC_STEP_DEG - 1e-6)  # 90° / 10° là 9 dây, không 10 vì sai số
+    count = min(steps, int(length // (1.5 * thickness)))
+    if count < 2:
         return None
     angles = [start + sweep * k / count for k in range(1, count)]
     coords = [head, *((cx + radius * math.cos(a), cy + radius * math.sin(a)) for a in angles), tail]
@@ -496,7 +500,8 @@ def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], 
     còn bẻ thêm. Nới chuỗi từ mỗi đoạn tới khi điểm xương lệch đường tròn khớp quá `_ARC_TOL_RATIO` bề dày
     (đa giác gãy như bow-window 45° lệch xa hơn nhiều nên giữ). Chuỗi đủ dài thì chia lại bằng `_arc_chords`.
     """
-    # ponytail: vòng kín không nối cung qua đỉnh xuất phát; tường tròn kín ra hai cung chung một đỉnh trên đường tròn.
+    # ponytail: vòng kín không nối cung qua đỉnh xuất phát (tường tròn kín ra hai cung chung một đỉnh trên đường tròn);
+    # cần một cung liền thì xoay `segs` để bắt đầu ở đoạn không khớp đường tròn trước khi nới chuỗi.
     tol = max(_ARC_TOL_MIN_PX, _ARC_TOL_RATIO * float(np.median([seg.thickness for seg in segs]))) if segs else 0.0
     serial = itertools.count()
     out: list[_Seg] = []
@@ -1008,29 +1013,46 @@ def _absorb_corner_diagonals(
     return keep, short, pins
 
 
+type _AxisIndex = tuple[list[float], list[_Seg]]
+"""Tường một trục sắp theo toạ độ tim: `(toạ độ tim, tường)` cùng thứ tự, tra bằng `bisect`."""
+
+
+def _nearest_across(index: _AxisIndex, point: tuple[float, float], sign: float, window: float) -> _Seg | None:
+    """Tường gần nhất của `index` về phía `sign` của `point` (tim cách ≤ `window`) mà khoảng phủ toạ độ kia của điểm.
+
+    `index` là tường dọc thì "phía" là theo `x`, tường ngang theo `y`. Dò từ gần ra xa nên dừng ở tường phủ đầu tiên.
+    """
+    lines, walls = index
+    if not walls:
+        return None
+    along = 0 if walls[0].axis == "v" else 1
+    start = bisect.bisect_right(lines, point[along]) if sign > 0 else bisect.bisect_left(lines, point[along]) - 1
+    step = 1 if sign > 0 else -1
+    for k in range(start, len(lines) if sign > 0 else -1, step):
+        if abs(lines[k] - point[along]) > window:
+            break
+        low, high = _span(walls[k])
+        reach = 0.5 * walls[k].thickness
+        if low - reach <= point[1 - along] <= high + reach:
+            return walls[k]
+    return None
+
+
 def _enclosing_cell(
-    point: tuple[float, float], by_axis: dict[str, list[_Seg]]
+    point: tuple[float, float], index: dict[str, _AxisIndex], window: float
 ) -> tuple[tuple[float, float, float, float], float, float] | None:
     """Ô quanh `point`: tim tường dọc gần nhất trái/phải, ngang gần nhất trên/dưới có khoảng phủ toạ độ của điểm.
 
-    Trả `((trái, phải, trên, dưới), bề dày nhỏ nhất, bề dày lớn nhất)` của bốn tường; thiếu một phía → `None`.
+    Trả `((trái, phải, trên, dưới), bề dày nhỏ nhất, bề dày lớn nhất)` của bốn tường; một phía không có tường trong
+    `window` → `None`.
     """
-    bounds: list[float] = []
-    widths: list[float] = []
-    for axis, along in (("v", 0), ("h", 1)):
-        for sign in (-1.0, 1.0):
-            best: tuple[float, float, float] | None = None
-            for wall in by_axis[axis]:
-                gap = (_line_value(wall) - point[along]) * sign
-                low, high = _span(wall)
-                covers = low - 0.5 * wall.thickness <= point[1 - along] <= high + 0.5 * wall.thickness
-                if gap > 0.0 and covers and (best is None or gap < best[0]):
-                    best = (gap, _line_value(wall), wall.thickness)
-            if best is None:
-                return None
-            bounds.append(best[1])
-            widths.append(best[2])
-    return (bounds[0], bounds[1], bounds[2], bounds[3]), min(widths), max(widths)
+    sides = [_nearest_across(index[axis], point, sign, window) for axis in ("v", "h") for sign in (-1.0, 1.0)]
+    walls = [wall for wall in sides if wall is not None]
+    if len(walls) < 4:
+        return None
+    left, right, top, bottom = (_line_value(wall) for wall in walls)
+    widths = [wall.thickness for wall in walls]
+    return (left, right, top, bottom), min(widths), max(widths)
 
 
 def _drop_box_marks(segs: list[_Seg]) -> list[_Seg]:
@@ -1040,18 +1062,23 @@ def _drop_box_marks(segs: list[_Seg]) -> list[_Seg]:
     chéo nên vector hoá ra tường xiên cắt ngang ô, hỏng mô hình 3D. Đoạn chéo bị bỏ khi ô quanh trung điểm của
     nó có đủ bốn tường và **cả hai** đầu nằm trong một bề dày (lớn nhất) quanh một góc ô hay tâm ô (hai nét X
     cắt nhau ở tâm). Tường chéo thật (vát góc phòng) đầu nằm giữa cạnh ô nên giữ; ô rộng hơn
-    `_BOX_MAX_RATIO` lần bề dày nhỏ nhất là phòng chứ không phải hộp nên cũng giữ. Bốn tường của hộp không đổi.
+    `_BOX_MAX_RATIO` lần bề dày nhỏ nhất là phòng chứ không phải hộp nên cũng giữ. Bốn tường của hộp không đổi;
+    mẩu ngang/dọc chung đầu mút với nét vừa bỏ và nằm gọn trong một bề dày quanh góc ô (chỗ nét X chạm góc) cũng bỏ.
     """
-    # ponytail: quét mọi tường cho từng đoạn chéo, O(chéo x tường); bản vẽ vuông góc có ít đoạn chéo.
     if not _mostly_orthogonal(segs, [seg.axis for seg in segs]):
         return segs
-    by_axis = {axis: [seg for seg in segs if seg.axis == axis] for axis in ("h", "v")}
+    index: dict[str, _AxisIndex] = {}
+    for axis in ("h", "v"):
+        ranked = sorted((seg for seg in segs if seg.axis == axis), key=_line_value)
+        index[axis] = ([_line_value(seg) for seg in ranked], ranked)
+    window = _BOX_MAX_RATIO * max((seg.thickness for seg in segs), default=0.0)
     gone: set[int] = set()
     corners: list[tuple[tuple[float, float], float]] = []
+    loose: set[_Key] = set()
     for seg in segs:
         if seg.axis != "d" or seg.arc:
             continue
-        cell = _enclosing_cell(((seg.ax + seg.bx) / 2.0, (seg.ay + seg.by) / 2.0), by_axis)
+        cell = _enclosing_cell(((seg.ax + seg.bx) / 2.0, (seg.ay + seg.by) / 2.0), index, window)
         if cell is None:
             continue
         (left, right, top, bottom), thinnest, widest = cell
@@ -1063,10 +1090,11 @@ def _drop_box_marks(segs: list[_Seg]) -> list[_Seg]:
         if all(min(math.dist(end, anchor) for anchor in anchors) <= widest for end in ends):
             gone.add(id(seg))
             corners.extend((anchor, widest) for anchor in anchors[:4])
-    # Mẩu ngang/dọc gọn trong một bề dày quanh góc ô vừa bỏ nét chéo là vụn chỗ nét X chạm góc.
-    for seg in by_axis["h"] + by_axis["v"]:
+            loose.update((seg.a_key, seg.b_key))
+    for seg in index["h"][1] + index["v"][1]:
         ends = ((seg.ax, seg.ay), (seg.bx, seg.by))
-        if any(all(math.dist(end, corner) <= reach for end in ends) for corner, reach in corners):
+        touches = seg.a_key in loose or seg.b_key in loose
+        if touches and any(all(math.dist(end, corner) <= reach for end in ends) for corner, reach in corners):
             gone.add(id(seg))
     return [seg for seg in segs if id(seg) not in gone]
 

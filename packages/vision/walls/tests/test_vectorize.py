@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 from packages.vision.walls.types import VectorizeResult, WallSegment
 from packages.vision.walls.vectorize import (
     _absorb_corner_diagonals,
+    _arc_chords,
     _finalise,
     _Graph,
     _join_arcs,
@@ -754,3 +755,44 @@ def test_absorb_corner_diagonals__filled_shaft_drops_both_v_arms() -> None:
     assert [seg.axis for seg in kept] == ["h", "h", "v", "v"]
     assert short == 0
     assert len({seg.b_key for seg in kept}) == 1
+
+
+def _arc_run(radius: float, sweep_deg: float, thickness: float = 10.0) -> tuple[list[_Seg], NDArray[np.float64]]:
+    """Ba đoạn DP dây cung tâm (200, 200) quét `sweep_deg` cùng điểm xương mỗi 1° trên cung."""
+    angles = np.radians(np.linspace(0.0, sweep_deg, int(sweep_deg) + 1))
+    points = np.stack([200.0 + radius * np.cos(angles), 200.0 + radius * np.sin(angles)], axis=1)
+    picks = [(float(x), float(y)) for x, y in (points[round(k * (len(points) - 1) / 3)] for k in range(4))]
+    run = [
+        _Seg(a[0], a[1], b[0], b[1], thickness, 1.0, (1, 0, k), (1, 0, k + 1), "d")
+        for k, (a, b) in enumerate(itertools.pairwise(picks))
+    ]
+    return run, points
+
+
+@pytest.mark.parametrize(
+    ("radius", "sweep", "chords"),
+    [(150.0, 90.0, 9), (30.0, 90.0, None), (150.0, 20.0, None), (45.0, 60.0, None)],
+)
+def test_arc_chords__thresholds(radius: float, sweep: float, chords: int | None) -> None:
+    """Cung đủ rộng chia dây đều trên đường tròn; bán kính < 4 bề dày (góc bo quanh cột), quét < 30°
+    hay cung ngắn < 5 bề dày thì giữ đoạn DP (`None`)."""
+    run, points = _arc_run(radius, sweep)
+    out = _arc_chords(0, run, points, np.ones((400, 400), np.bool_), itertools.count())
+    if chords is None:
+        assert out is None
+        return
+    assert out is not None
+    assert len(out) == chords
+    assert all(seg.arc for seg in out)
+    assert (out[0].a_key, out[-1].b_key) == (run[0].a_key, run[-1].b_key)
+    for seg in out:
+        assert abs(math.dist((seg.bx, seg.by), (200.0, 200.0)) - radius) <= 1e-6
+
+
+def test_vectorize__room_wide_diagonal_is_not_a_box_mark() -> None:
+    """Đường chéo nối hai góc của cả một phòng (rộng > `_BOX_MAX_RATIO` lần bề dày) là tường thật, giữ."""
+    corners = [(60, 60), (340, 60), (340, 240), (60, 240)]
+    frame = list(zip(corners, corners[1:] + corners[:1], strict=True))
+    walls = vectorize(_bars(*frame, ((60, 60), (340, 240))))
+    diagonal = sum(math.dist(wall.start, wall.end) for wall in walls if not _axis_aligned(wall))
+    assert diagonal >= 0.9 * math.hypot(280, 180)
