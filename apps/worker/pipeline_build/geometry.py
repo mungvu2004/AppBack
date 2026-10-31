@@ -507,7 +507,7 @@ def _clash(a: _Seg, b: _Seg) -> bool:
         low, high = sorted(_along(a, (p.x, p.y)) for p in (b.start, b.end))
         return min(_length(a), high) - max(0.0, low) > _OVERLAP_MIN_MM
     at = la.intersection(lb)
-    if at.geom_type != "Point":
+    if not isinstance(at, shapely.Point):
         return False
     return all(math.dist((at.x, at.y), (p.x, p.y)) > _JOINT_MM for p in (a.start, a.end, b.start, b.end))
 
