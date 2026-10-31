@@ -530,7 +530,9 @@ def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], 
         while (
             stop < len(segs)
             and segs[stop].a_key == segs[stop - 1].b_key
-            and _fit_circle(np.concatenate([*inners[start:stop], _off_node(segs[stop], inners[stop])]).astype(np.float64))[3]
+            and _fit_circle(
+                np.concatenate([*inners[start:stop], _off_node(segs[stop], inners[stop])]).astype(np.float64)
+            )[3]
             <= tol
         ):
             stop += 1
