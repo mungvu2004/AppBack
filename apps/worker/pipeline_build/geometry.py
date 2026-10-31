@@ -58,6 +58,10 @@ _DANGLE_REACH_MM: Final = 450
 _DANGLE_REACH_THICKNESS: Final = 3
 # Khe có tâm hộp ô mở → khe cửa, kéo xa tới 1200 mm (cửa đơn ≤ 1000 + mép); khe 2 m giữ nguyên.
 _DANGLE_DOOR_REACH_MM: Final = 1200
+# 3b (e): mẩu tường ngắn chạy song song sát mặt một tường dày hơn (nét bậu cửa, nét kép) mà có đầu lơ lửng.
+_HUG_STUB_MAX_MM: Final = 600
+_HUG_FACE_MAX_MM: Final = 150
+_HUG_COS_MIN: Final = math.cos(math.radians(10))
 # Đầu mút "chạm" tường khác khi cách tim ≤ ½ tổng bề dày + 10 mm (cùng thước của bộ đo F:/runs/r4-bd/tidy.py).
 _TOUCH_SLACK_MM: Final = 10
 # Luật WALL-OVERLAP của FE (AppFront rules/geometry): song song <= 5 độ chạm thân và chồng > 10 mm, hoặc tim cắt
@@ -644,6 +648,40 @@ def _reach_dangling(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Bo
                 dropped["wallGapBridged"] += 1
 
 
+def _hugs(stub: _Seg, wall: _Seg) -> bool:
+    """`stub` song song (≤ 10°) với `wall` dày hơn, cả hai đầu chiếu vào thân `wall`, mặt tới mặt ≤ 150 mm."""
+    if wall is stub or not wall.alive or wall.thickness_mm <= stub.thickness_mm:
+        return False
+    (ax, ay), (bx, by) = _unit(stub), _unit(wall)
+    if abs(ax * bx + ay * by) < _HUG_COS_MIN:
+        return False
+    span = _length(wall)
+    for tip in (stub.start, stub.end):
+        along = (tip.x - wall.start.x) * bx + (tip.y - wall.start.y) * by
+        side = abs((tip.x - wall.start.x) * by - (tip.y - wall.start.y) * bx)
+        if not 0 <= along <= span or side - (stub.thickness_mm + wall.thickness_mm) / 2 > _HUG_FACE_MAX_MM:
+            return False
+    return True
+
+
+def _drop_hugging_stubs(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> None:
+    """3b (e): bỏ mẩu ≤ 600 mm áp sát mặt tường dày hơn khi có đầu không chạm tường thứ ba và không mang ô mở.
+
+    Mẩu như vậy không khép phòng nào (một đầu tự do) mà để lại đầu lơ lửng cách mặt tường 70–150 mm
+    (WALL-DANGLING-END ở màn Quy chuẩn). Kéo theo trục không chạm được vì nó song song với tường kia.
+    """
+    for stub in segs:
+        if not stub.alive or _length(stub) > _HUG_STUB_MAX_MM or _hits(boxes.tree, _line(stub)):
+            continue
+        host = next((wall for wall in segs if _hugs(stub, wall)), None)
+        if host is None:
+            continue
+        others = [seg for seg in segs if seg is not host]
+        if _dangling(stub, stub.start, others) or _dangling(stub, stub.end, others):
+            stub.alive = False
+            dropped["isolatedBlock"] += 1
+
+
 def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tuple[tuple[Point, Point], ...]:
     """3b (c): cặp thẳng hàng còn khe mà không gộp → đoạn nối hai đầu gần, chỉ để khép phòng."""
     pairs = [
@@ -665,6 +703,7 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
     _merge_aligned(segs, neighbours, boxes, lines, dropped)
     _extend_all(segs, neighbours, boxes, dropped)
     _reach_dangling(segs, neighbours, boxes, dropped)
+    _drop_hugging_stubs(segs, boxes, dropped)
     return _bridge_segments(segs, neighbours)
 
 

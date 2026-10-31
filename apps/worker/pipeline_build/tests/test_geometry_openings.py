@@ -567,3 +567,29 @@ def test_build_walls__dangling_end_not_pulled_through_other_wall(fake_clock: Fak
         dropped,
     )
     assert result.walls[0].centreline.end == Point(x=1500, y=1000)
+
+
+def test_build_walls__short_stub_hugging_thick_wall_dropped(fake_clock: FakeClock) -> None:
+    """3b-e (H-04 #W-013): mẩu 300 mm song song, mặt cách tường 300 là 100 mm, một đầu tự do → bỏ."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [
+            wall_px(0, 1000, 6000, 1000, thickness_px=300),
+            wall_px(3000, 1000, 3000, 3000, thickness_px=200),
+            wall_px(2700, 1300, 3000, 1300, thickness_px=100),
+        ],
+        [],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 2
+    assert 2 not in result.input_to_wall
+
+
+def test_build_walls__hugging_stub_with_opening_or_long_kept(fake_clock: FakeClock) -> None:
+    """3b-e: mẩu mang hộp cửa sổ, hay dài 900 mm → giữ (có thể là bậu/tường thật)."""
+    walls = [wall_px(0, 1000, 6000, 1000, thickness_px=300), wall_px(2700, 1300, 3000, 1300, thickness_px=100)]
+    kept = run(walls, [det("window", 2750, 1250, 2950, 1350)], fake_clock, Counter())
+    long = run([walls[0], wall_px(2100, 1300, 3000, 1300, thickness_px=100)], [], fake_clock, Counter())
+    assert len(kept.walls) == 2
+    assert len(long.walls) == 2
