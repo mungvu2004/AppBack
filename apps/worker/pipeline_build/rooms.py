@@ -27,6 +27,13 @@ from packages.ml_contracts.labels import LABEL_TARGETS
 from packages.vision.dimensions.rooms import ROOM_USAGE_NAMES, RoomLabel, RoomUsage, match_room_label, name_rooms
 
 _OPENING_LABELS = frozenset({"door", "double_door", "window"})
+_SOFA_LONG_MM = 1400
+_SOFA_SHORT_MM = (600, 1100)
+_BED_SHORT_MM = (900, 2000)
+_BED_LONG_MM = (1900, 2200)
+"""U34: khung mm (cạnh ngắn, cạnh dài) để sửa nhãn YOLO `chair`/`other` theo kích thước thật."""
+_NO_BED_USAGES = frozenset({"livingRoom", "kitchen", "bathroom", "corridor", "loggia"})
+"""Phòng không đặt giường: bộ sofa + bàn trà ở phòng khách cũng cỡ giường (ch-13)."""
 """Nhãn ô mở: bỏ qua ở `build_furniture`, không đếm vào `dropped` (đã dựng ở bước 4)."""
 
 _USAGE_PRIORITY: tuple[RoomUsage, ...] = (
@@ -543,8 +550,13 @@ def build_furniture(
     scaling: Scaling,
     clock: Clock,
     dropped: Counter[str],
+    scale_trusted: bool = True,
 ) -> tuple[Furniture, ...]:
-    """Đồ đạc từ phát hiện (B5-05 [6] bước 6); ô mở bỏ qua không đếm, nhãn lạ → `unknownLabel`."""
+    """Đồ đạc từ phát hiện (B5-05 [6] bước 6); ô mở bỏ qua không đếm, nhãn lạ → `unknownLabel`.
+
+    Nhãn `chair`/`other` được sửa theo kích thước mm ở tỉ lệ `final` (`relabel_by_size`, U34); tỉ lệ
+    chưa tin (`scale_trusted=False`) thì vẫn sửa nhưng hạ `confidence` về `LOW_CONFIDENCE_CAP`.
+    """
     tree = shapely.STRtree([shapely.Polygon([(p.x, p.y) for p in room.outline]) for room in rooms]) if rooms else None
     items = []
     for detection in detections:
@@ -560,18 +572,49 @@ def build_furniture(
             dropped["furnitureEmpty"] += 1
             continue
         centre = Point(x=js_round((box_min.x + box_max.x) / 2), y=js_round((box_min.y + box_max.y) / 2))
+        room_id = _first_room_id(tree, rooms, centre) if tree is not None else None
+        box = detection.box
+        kind, variant = relabel_by_size(
+            target.domain_kind,
+            (box.x_max - box.x_min) * scaling.final,
+            (box.y_max - box.y_min) * scaling.final,
+            room_usage=next((room.usage for room in rooms if room.id == room_id), None),
+        )
+        confidence = detection.confidence
+        if variant is not None and not scale_trusted:
+            confidence = min(confidence, LOW_CONFIDENCE_CAP)
         items.append(
             Furniture(
                 id=new_spatial_id("furniture", clock),
                 level_id=level_id,
-                room_id=_first_room_id(tree, rooms, centre) if tree is not None else None,
-                kind=target.domain_kind,
+                room_id=room_id,
+                kind=kind,
+                variant=variant,
                 centre=centre,
                 bounding_box=BoundingBox(min=box_min, max=box_max),
                 rotation_deg=0.0,
-                confidence=detection.confidence,
+                confidence=confidence,
                 source="ai",
                 reviewed=False,
             )
         )
     return tuple(items)
+
+
+def relabel_by_size(
+    kind: str, width_mm: float, height_mm: float, *, room_usage: str | None = None
+) -> tuple[str, str | None]:
+    """`(kind, variant)` sau khi xét kích thước thật (U34); không đổi thì `variant=None`.
+
+    `chair`/`other` cỡ giường (ngắn 900-2000, dài 1900-2200) → `bed`; `chair` dài ≥ 1400, ngắn
+    600-1100 → `chair` + `variant="sofa"` (hợp đồng không có `kind` sofa; thư viện xếp sofa vào nhóm ghế).
+    Xét giường trước: món 1043 x 2075 mm khớp cả hai khung; không thành giường trong phòng
+    `_NO_BED_USAGES`. Nhãn khác (bàn, tủ bếp…) giữ nguyên.
+    """
+    short, long = sorted((width_mm, height_mm))
+    bed_sized = _BED_SHORT_MM[0] <= short <= _BED_SHORT_MM[1] and _BED_LONG_MM[0] <= long <= _BED_LONG_MM[1]
+    if bed_sized and kind in ("chair", "other") and room_usage not in _NO_BED_USAGES:
+        return "bed", "bed"
+    if kind == "chair" and long >= _SOFA_LONG_MM and _SOFA_SHORT_MM[0] <= short <= _SOFA_SHORT_MM[1]:
+        return "chair", "sofa"
+    return kind, None
