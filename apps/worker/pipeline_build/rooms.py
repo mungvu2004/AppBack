@@ -609,8 +609,11 @@ def relabel_by_size(
     `chair`/`other` cỡ giường (ngắn 900-2000, dài 1900-2200) → `bed`; `chair` dài ≥ 1400, ngắn
     600-1100 → `chair` + `variant="sofa"` (hợp đồng không có `kind` sofa; thư viện xếp sofa vào nhóm ghế).
     Xét giường trước: món 1043 x 2075 mm khớp cả hai khung; không thành giường trong phòng
-    `_NO_BED_USAGES`. Nhãn khác (bàn, tủ bếp…) giữ nguyên.
+    `_NO_BED_USAGES`. Nhãn khác (bàn, tủ bếp…) giữ nguyên. YOLO báo `bed` trong phòng `_NO_BED_USAGES` (thảm
+    hoa văn phòng khách, UX-14) → `other` + `variant="rug"`.
     """
+    if kind == "bed" and room_usage in _NO_BED_USAGES:
+        return "other", "rug"
     short, long = sorted((width_mm, height_mm))
     bed_sized = _BED_SHORT_MM[0] <= short <= _BED_SHORT_MM[1] and _BED_LONG_MM[0] <= long <= _BED_LONG_MM[1]
     if bed_sized and kind in ("chair", "other") and room_usage not in _NO_BED_USAGES:
