@@ -78,6 +78,11 @@ _PIECE_THICKNESS_RATIO: Final = 1.25
 """Hai khúc cùng đường có bề dày lớn/nhỏ ≤ ngần này là một tường (bước 10d): 200/220 gộp, 100/150 không."""
 _PIECE_TOUCH_PX: Final = 1.0
 """Hai khúc cùng đường hở nhau ≤ ngần này (px) là chạm nhau; khe cửa rộng hơn nhiều nên không bị lấp (bước 10d)."""
+_BRIDGE_GAP_RATIO: Final = 1.5
+"""Đầu tường lơ lửng hụt mặt tường phía trước ≤ ngần này lần bề dày lớn hơn → kéo tới tim tường đó (bước 10e).
+
+Bước này chưa biết cửa: 1,5 x 220 mm = 330 mm < khe cửa hẹp nhất 600 mm nên khe cửa giữ hở.
+"""
 MAX_WALLS: Final = 20_000
 """Trần số tường của `WallsResult` (B5-01); `keep_longest` cắt về đúng trần này."""
 
@@ -1007,6 +1012,82 @@ def _extend_leaves(shared: dict[_Key, list[tuple[_Seg, bool]]], graph: _Graph) -
         _set_end(seg, head, (base[0] + sign * ux * reach, base[1] + sign * uy * reach))
 
 
+def _axis_gap(point: tuple[float, float], wall: _Seg) -> float:
+    """Khoảng cách từ điểm tới đoạn tim ngang/dọc `wall`."""
+    along = 0 if wall.axis == "h" else 1
+    low, high = sorted(((wall.ax, wall.ay)[along], (wall.bx, wall.by)[along]))
+    off = max(low - point[along], 0.0, point[along] - high)
+    return math.hypot(off, point[1 - along] - _line_value(wall))
+
+
+def _bridge_dangling_ends(segs: list[_Seg]) -> None:
+    """Bước 10e: đầu tường ngang/dọc không chạm tường nào, nhìn thẳng ra trước gặp tường khác → kéo tới chạm.
+
+    Đích là tường gặp đầu tiên theo phương của đầu mút (nên không kéo xuyên tường): tường vuông góc thì tới
+    tim, tường thẳng hàng thì tới đầu mút gần của nó. Chỉ kéo khi khe mặt-tới-mặt ≤ `_BRIDGE_GAP_RATIO`
+    bề dày lớn hơn; khe dài hơn có thể là cửa, để bước sau có cửa xử lý.
+    """
+    # ponytail: bỏ qua đoạn chéo (cả đầu lẫn đích); bản vẽ căn hộ gần như toàn ngang/dọc.
+    by_axis: dict[str, list[tuple[float, int, _Seg]]] = {"h": [], "v": []}
+    for index, wall in enumerate(segs):
+        if wall.axis in by_axis:
+            by_axis[wall.axis].append((_line_value(wall), index, wall))
+    walls = {axis: sorted(items) for axis, items in by_axis.items()}
+    lines = {axis: [item[0] for item in items] for axis, items in walls.items()}
+    thickest = max((seg.thickness for seg in segs), default=0.0)
+    for seg in segs:
+        if seg.axis == "d":
+            continue
+        along = 0 if seg.axis == "h" else 1
+        other = "v" if seg.axis == "h" else "h"
+        for head in (True, False):
+            point = (seg.ax, seg.ay) if head else (seg.bx, seg.by)
+            anchor = (seg.bx, seg.by) if head else (seg.ax, seg.ay)
+            sign = 1.0 if point[along] >= anchor[along] else -1.0
+            window = _BRIDGE_GAP_RATIO * max(seg.thickness, thickest) + thickest
+            near: list[_Seg] = []
+            for axis, centre in ((other, point[along]), (seg.axis, point[1 - along])):
+                lo = bisect.bisect_left(lines[axis], centre - window)
+                hi = bisect.bisect_right(lines[axis], centre + window)
+                near.extend(item[2] for item in walls[axis][lo:hi] if item[2] is not seg)
+            if any(_axis_gap(point, wall) <= 0.5 * (seg.thickness + wall.thickness) + 1.0 for wall in near):
+                continue
+            best: tuple[float, float, _Seg | None] | None = None
+            for wall in near:
+                reach = _BRIDGE_GAP_RATIO * max(seg.thickness, wall.thickness)
+                ends = sorted(((wall.ax, wall.ay)[along], (wall.bx, wall.by)[along]))
+                if wall.axis == other:
+                    low, high = sorted(((wall.ax, wall.ay)[1 - along], (wall.bx, wall.by)[1 - along]))
+                    stop = _line_value(wall)
+                    face = (stop - point[along]) * sign - 0.5 * wall.thickness
+                    side = max(low - point[1 - along], point[1 - along] - high) - 0.5 * seg.thickness
+                    if side > reach:
+                        continue
+                else:
+                    offset = abs(_line_value(wall) - point[1 - along])
+                    ratio = max(seg.thickness, wall.thickness) / max(min(seg.thickness, wall.thickness), 1e-6)
+                    if offset > 0.5 * min(seg.thickness, wall.thickness) or ratio > _PIECE_THICKNESS_RATIO:
+                        continue
+                    stop = ends[0] if sign > 0 else ends[1]
+                    face = (stop - point[along]) * sign
+                    side = 0.0
+                if 0.0 < face <= reach and (best is None or face < best[0]):
+                    best = (face, stop, wall if side > 0.0 else None)
+            if best is None:
+                continue
+            moved = [point[0], point[1]]
+            moved[along] = best[1]
+            _set_end(seg, head, (moved[0], moved[1]))
+            corner = best[2]
+            if corner is not None:  # góc L hở: tường kia cũng chưa tới đường của đầu này → kéo nốt
+                tip = [corner.ax, corner.ay]
+                tail = [corner.bx, corner.by]
+                near_a = abs(tip[1 - along] - point[1 - along]) <= abs(tail[1 - along] - point[1 - along])
+                end = tip if near_a else tail
+                end[1 - along] = point[1 - along]
+                _set_end(corner, near_a, (end[0], end[1]))
+
+
 def _clamp(point: tuple[float, float], shape: tuple[int, int]) -> PointPx:
     """Kẹp đầu mút vào `[0, w - 1] x [0, h - 1]` (bước 9)."""
     height, width = shape
@@ -1109,6 +1190,7 @@ def vectorize_with_stats(mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] |
         seg.thickness = width
     # Gộp trước để khúc trùng không làm đầu chữ Z có hai tường, gộp lại sau để nối khúc vừa nắn thẳng.
     fused = _merge_line_pieces(_straighten_jogs(_merge_line_pieces(fused)))
+    _bridge_dangling_ends(fused)
     _rotate(fused, tilt, centre)
     walls, dropped_short = _finalise(fused, mask.shape)
     return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + corner + dropped_short})
