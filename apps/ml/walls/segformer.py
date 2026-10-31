@@ -1,6 +1,6 @@
 """Bộ tách tường SegFormer chạy qua ONNX: ghép lát và `WallSegmenter` (B5-02 §C, khối [2]).
 
-`stitch_mask` ở đây, không ở `spec.py`, vì nó cần `cv2.resize` để phóng hiệu logit 256→1024
+`stitch_mask` ở đây, không ở `spec.py`, vì nó cần `cv2.resize` để phóng hiệu logit 256/512→1024
 (`spec.py` chỉ `numpy`, khối [2]). Không vòng Python theo điểm ảnh (K28): mọi vòng chỉ theo
 lát, phần phóng và cộng dồn đều là thao tác mảng numpy/`cv2`.
 """
@@ -20,9 +20,9 @@ from packages.ml_contracts.ports import RgbImage
 
 __all__ = ["SegformerOnnxSegmenter", "stitch_mask"]
 
-_LOGITS_PX: Final = TILE_PX // LOGITS_STRIDE
 _INPUT_SHAPE: Final = [1, 3, TILE_PX, TILE_PX]
-_OUTPUT_SHAPE: Final = [1, 2, _LOGITS_PX, _LOGITS_PX]
+# Bước 4 (SegFormer gốc) hoặc 2 (decoder có nhánh chi tiết, docs/seg-kien-truc gói A); ghép lát phóng về TILE_PX
+_OUTPUT_SHAPES: Final = tuple([1, 2, TILE_PX // stride, TILE_PX // stride] for stride in (LOGITS_STRIDE, 2))
 
 type RunTile = Callable[[NDArray[np.float32]], NDArray[np.float32]]
 
@@ -36,7 +36,7 @@ def stitch_mask(pixels: RgbImage, run_tile: RunTile) -> NDArray[np.bool_]:
     """Ghép mặt nạ tường cỡ ảnh từ các lát `TILE_PX` chồng mép (khối [2] "Ghép lát").
 
     Mỗi lát: đệm `PAD_VALUE` nếu chạm mép ảnh → `to_model_input` → `run_tile` → hiệu logit
-    (lớp `WALL_CLASS` trừ lớp còn lại) phóng `LOGITS_STRIDE` lần bằng nội suy song tuyến →
+    (lớp `WALL_CLASS` trừ lớp còn lại) phóng về `TILE_PX` bằng nội suy song tuyến →
     cộng dồn vào mảng cỡ ảnh, kèm bộ đếm lát phủ mỗi điểm. Mask cuối = trung bình hiệu > 0.
     """
     height, width = pixels.shape[:2]
@@ -66,7 +66,7 @@ class SegformerOnnxSegmenter:
     """
 
     def __init__(self, session: ort.InferenceSession) -> None:
-        """Đúng 1 vào `float32` hình `[1, 3, 1024, 1024]`, đúng 1 ra hình `[1, 2, 256, 256]`.
+        """Đúng 1 vào `float32` hình `[1, 3, 1024, 1024]`, đúng 1 ra hình `[1, 2, 256, 256]` hay `[1, 2, 512, 512]`.
 
         Sai một trong hai → `MODEL_FORMAT_UNSUPPORTED` (khối [2]), không suy đoán thêm.
         """
@@ -77,7 +77,7 @@ class SegformerOnnxSegmenter:
             or list(inputs[0].shape) != _INPUT_SHAPE
             or len(outputs) != 1
             or outputs[0].type != "tensor(float)"
-            or list(outputs[0].shape) != _OUTPUT_SHAPE
+            or list(outputs[0].shape) not in _OUTPUT_SHAPES
         ):
             raise _unsupported()
         self._session = session

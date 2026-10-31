@@ -74,6 +74,13 @@ def test_segment__small_image_matches_input_shape() -> None:
     assert mask.shape == (400, 600)
 
 
+def test_segment__stride2_output_matches_drawn_wall() -> None:
+    pixels, truth = _wall_image(1900, 2500, 16)
+    mask = SegformerOnnxSegmenter(_session(make_threshold_segformer(stride=2))).segment(pixels)
+    assert mask.shape == truth.shape
+    assert np.count_nonzero(mask & truth) / np.count_nonzero(mask | truth) >= 0.9
+
+
 def test_init__rejects_wrong_input_shape() -> None:
     with pytest.raises(PermanentError) as excinfo:
         SegformerOnnxSegmenter(_session(make_wrong_input_segformer()))
