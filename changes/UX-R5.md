@@ -34,4 +34,4 @@
 - Đo 14 ca (`F:/runs/r5-be-join/KET-QUA.txt`): đầu tự do 54 → 50 (ch-04 9 → 6, ch-10 8 → 7), đầu cách mặt tường 50–150 mm
   16 → 12; xiên, không chuẩn, ô mở, phòng, chồng: không ca nào đổi. H-xx không chạy lại được từ JSON.
 - Test: 2 test `test_build_walls__*hugging*` trong `test_geometry_openings.py`; 617 test `apps/worker/pipeline_build/tests` đạt.
-  ruff/mypy, cổng đầy đủ: chưa chạy.
+  ruff/mypy và cổng đầy đủ (8 bước, 9290 test) đạt 01/11. Còn mở: review P2 — `_drop_hugging_stubs` quét mọi tường cho mỗi mẩu (O(n·m)), nên dùng `neighbours`.
