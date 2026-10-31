@@ -33,6 +33,12 @@ OPENING_GAP_MAX_MM: Final = 2400
 """Khe tường dài nhất còn coi là chỗ khoét ô mở (B5-05 [6] bước 3b)."""
 
 WALL_JOIN_MM: Final = 150
+FAR_CLUSTER_LENGTH_SHARE: Final = 0.15
+"""U57: cụm tường tách rời có tổng dài dưới tỉ lệ này của mọi tường mới là ứng viên bỏ."""
+FAR_CLUSTER_AREA_SHARE: Final = 0.10
+"""U57: ... và hộp bao dưới tỉ lệ này của hộp bao cụm chính."""
+FAR_CLUSTER_GAP_MM: Final = 1500
+"""U57: ... và khe giữa hộp bao của nó với hộp bao cụm chính lớn hơn số này (mm)."""
 """Khối ngắn cách tường khác ≤ 150 mm là tường thật, xa hơn là khối cô lập (B5-05 [6] bước 3)."""
 
 ROOM_SNAP_MM: Final = 150

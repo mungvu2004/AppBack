@@ -100,3 +100,41 @@ def test_build_walls__empty_input_gives_empty_set(fake_clock: FakeClock) -> None
     )
     assert (result.walls, result.openings, result.bridges) == ((), (), ())
     assert result.input_to_wall == {}
+
+
+def _room(x0: float, y0: float, x1: float, y1: float) -> list[WallPx]:
+    return [wall_px(x0, y0, x1, y0), wall_px(x1, y0, x1, y1), wall_px(x1, y1, x0, y1), wall_px(x0, y1, x0, y0)]
+
+
+def test_build_walls__far_small_cluster_dropped_near_parts_kept(fake_clock: FakeClock) -> None:
+    """U57: sơ đồ vị trí căn nhỏ cách căn > 1,5 m bị bỏ; vách trong tách rời, ban công cách 1 m vẫn giữ."""
+    unit = _room(0, 0, 10000, 8000)
+    partition = [wall_px(4000, 1000, 4000, 7000)]  # tách rời vì khe cửa hai đầu
+    balcony = [wall_px(11000, 2000, 11000, 6000)]  # ngoài căn 1 m
+    key_plan = [wall_px(14000, 6000, 15500, 6000), wall_px(15500, 6000, 15500, 7000)]  # ngoài căn 4 m
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        unit + partition + balcony + key_plan,
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    assert dropped["isolatedBlock"] == 2
+    assert set(result.input_to_wall) == set(range(6))
+
+
+def test_build_walls__far_large_cluster_kept(fake_clock: FakeClock) -> None:
+    """Cụm xa nhưng không nhỏ (căn thứ hai cùng cỡ) không phải sơ đồ vị trí: giữ cả hai."""
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        _room(0, 0, 6000, 5000) + _room(9000, 0, 15000, 5000),
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    assert dropped["isolatedBlock"] == 0
+    assert len(result.input_to_wall) == 8
