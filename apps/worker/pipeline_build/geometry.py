@@ -7,6 +7,7 @@ cây của pha trước hết đúng), truy vấn theo lô (`dwithin`) — trầ
 Toạ độ mm: gốc trên-trái, y hướng xuống.
 """
 
+import logging
 import math
 from collections import Counter, deque
 from collections.abc import Mapping, Sequence
@@ -22,6 +23,9 @@ from apps.worker.pipeline_build.constants import (
     CORNER_OVERSHOOT_MM,
     DEFAULT_WALL_HEIGHT_MM,
     DIAGONAL_ALIGN_DEG,
+    FAR_CLUSTER_AREA_SHARE,
+    FAR_CLUSTER_GAP_MM,
+    FAR_CLUSTER_LENGTH_SHARE,
     OPENING_GAP_MAX_MM,
     OPENING_MIN_WIDTH_MM,
     OPENING_WALL_REACH_MM,
@@ -35,6 +39,7 @@ from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
 from packages.ml_contracts.labels import LABEL_TARGETS, SwingDirection
 
 Geoms = NDArray[np.object_]
+_log = logging.getLogger(__name__)
 
 _ALIGN_SIN: Final = math.sin(math.radians(2.0))
 """Lệch góc tối đa của cặp tường thẳng hàng (2°, B5-05 [6] 3b) đo bằng `|sin|` để khỏi `atan2`."""
@@ -237,6 +242,92 @@ def _drop_isolated(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     kept = [seg for index, seg in enumerate(segs) if _length(seg) > seg.measured_mm or near[index]]
     dropped["isolatedBlock"] += len(segs) - len(kept)
     return kept
+
+
+def _clusters(segs: Sequence[_Seg]) -> list[list[int]]:
+    """Cụm tường liên thông: hai tường chạm nhau khi tim cách ≤ nửa tổng bề dày + `WALL_JOIN_MM`."""
+    geoms = _linestrings(segs)
+    thickest = max(seg.measured_mm for seg in segs)
+    near = _neighbours(STRtree(geoms), geoms, thickest + float(WALL_JOIN_MM))
+    seen = [False] * len(segs)
+    groups: list[list[int]] = []
+    for root in range(len(segs)):
+        if seen[root]:
+            continue
+        seen[root] = True
+        group: list[int] = []
+        queue = deque([root])
+        while queue:
+            index = queue.popleft()
+            group.append(index)
+            for other in near[index]:
+                gap = (segs[index].measured_mm + segs[other].measured_mm) / 2 + WALL_JOIN_MM
+                if not seen[other] and shapely.distance(geoms[index], geoms[other]) <= gap:
+                    seen[other] = True
+                    queue.append(other)
+        groups.append(group)
+    return groups
+
+
+Box = tuple[float, float, float, float]
+
+
+def _bbox(segs: Sequence[_Seg], group: Sequence[int]) -> Box:
+    xs = [p.x for i in group for p in (segs[i].start, segs[i].end)]
+    ys = [p.y for i in group for p in (segs[i].start, segs[i].end)]
+    return (float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys)))
+
+
+def _box_gap(a: Box, b: Box) -> float:
+    """Khe ngắn nhất giữa hai hộp thẳng trục (0 khi chồng nhau)."""
+    return math.hypot(max(b[0] - a[2], a[0] - b[2], 0.0), max(b[1] - a[3], a[1] - b[3], 0.0))
+
+
+def _box_union(a: Box, b: Box) -> Box:
+    return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+
+
+def _box_area(box: Box) -> float:
+    return (box[2] - box[0]) * (box[3] - box[1])
+
+
+def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
+    """U57: bỏ cụm tường nhỏ nằm tách xa cụm chính (sơ đồ vị trí căn, logo ở góc brochure).
+
+    Vùng chính = hộp cụm dài nhất, nới dần bằng mọi cụm có hộp cách vùng ≤ `FAR_CLUSTER_GAP_MM`
+    (tường bị khe cửa cắt rời, ban công, cột sát căn). Cụm còn lại bị bỏ khi tổng dài <
+    `FAR_CLUSTER_LENGTH_SHARE` tổng tường và hộp bao < `FAR_CLUSTER_AREA_SHARE` hộp vùng chính.
+    Đếm vào `isolatedBlock`.
+    """
+    if len(segs) < 2:
+        return segs
+    groups = _clusters(segs)
+    if len(groups) < 2:
+        return segs
+    lengths = [sum(_length(segs[i]) for i in group) for group in groups]
+    boxes = [_bbox(segs, group) for group in groups]
+    total = sum(lengths)
+    # Vùng chính lớn dần: cụm dài nhất, rồi nuốt mọi cụm có hộp cách vùng ≤ khe (tường bị cửa cắt rời).
+    region = boxes[max(range(len(groups)), key=lengths.__getitem__)]
+    far = set(range(len(groups)))
+    grown = True
+    while grown:
+        grown = False
+        for index in sorted(far):
+            if _box_gap(boxes[index], region) <= FAR_CLUSTER_GAP_MM:
+                far.discard(index)
+                region = _box_union(region, boxes[index])
+                grown = True
+    region_area = max(_box_area(region), 1.0)
+    drop: set[int] = set()
+    for index in far:
+        small = _box_area(boxes[index]) < FAR_CLUSTER_AREA_SHARE * region_area
+        if small and lengths[index] < FAR_CLUSTER_LENGTH_SHARE * total:
+            drop.update(groups[index])
+    if drop:
+        dropped["isolatedBlock"] += len(drop)
+        _log.info("pipeline_build_far_cluster_dropped", extra={"walls": len(drop)})
+    return [seg for index, seg in enumerate(segs) if index not in drop]
 
 
 def _rect(box: BoxPx, scaling: Scaling) -> tuple[float, float, float, float]:
@@ -628,7 +719,7 @@ def build_walls(
     Chỉ nhãn `door|double_door|window` thành ô mở, nhãn khác bỏ qua **không** đếm (đồ đạc là
     việc của `rooms.build_furniture`). `dropped` cộng dồn tại chỗ theo khoá `DROPPED_KEYS`.
     """
-    segs = _drop_isolated(_measure_walls(walls, scaling, dropped), dropped)
+    segs = _drop_far_clusters(_drop_isolated(_measure_walls(walls, scaling, dropped), dropped), dropped)
     boxes = _opening_boxes(detections, scaling)
     bridges = _join_gaps(segs, boxes, dropped) if segs else ()
     live = [seg for seg in segs if seg.alive]
