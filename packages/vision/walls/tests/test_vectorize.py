@@ -4,6 +4,7 @@ Mặt nạ dựng tay nên đáp án biết trước: mọi khẳng định về
 đều so với hình đã vẽ, không so với ảnh chụp kết quả.
 """
 
+import itertools
 import math
 import threading
 
@@ -14,7 +15,9 @@ from numpy.typing import NDArray
 
 from packages.vision.walls.types import VectorizeResult, WallSegment
 from packages.vision.walls.vectorize import (
+    _absorb_corner_diagonals,
     _finalise,
+    _Graph,
     _merge_line_pieces,
     _Seg,
     _straighten_jogs,
@@ -610,3 +613,99 @@ def test_straighten_jogs__left_alone(segs: list[_Seg]) -> None:
     """Không nắn: đoạn ngắn sẽ đổi chiều, hai tường khác trục (góc L), chuỗi chéo, bản vẽ không vuông góc."""
     before = _spans(segs)
     assert _spans(_straighten_jogs(segs)) == before
+
+
+def _room_with_box(
+    *marks: tuple[tuple[int, int], tuple[int, int]], box: tuple[int, int, int, int]
+) -> NDArray[np.bool_]:
+    """Phòng 280 x 180 (tim) tường `THICK`, hộp `box = (trái, trên, phải, dưới)` vách 6 px, nét chéo 3 px `marks`."""
+    corners = [(60, 60), (340, 60), (340, 240), (60, 240)]
+    canvas = _canvas()
+    for start, end in zip(corners, corners[1:] + corners[:1], strict=True):
+        _draw(canvas, min(start, end), max(start, end))
+    left, top, right, bottom = box
+    cv2.rectangle(canvas, (left, top), (right, bottom), 1, 6)
+    for start, end in marks:
+        cv2.line(canvas, start, end, 1, 3)
+    return np.asarray(canvas > 0)
+
+
+@pytest.mark.parametrize(
+    ("box", "marks"),
+    [
+        ((280, 60, 340, 120), [((280, 60), (340, 120)), ((340, 60), (280, 120))]),
+        ((280, 60, 340, 120), [((280, 120), (340, 60))]),
+        ((150, 120, 200, 170), [((150, 120), (200, 170)), ((200, 120), (150, 170))]),
+    ],
+)
+def test_vectorize__shaft_box_cross_marks_are_not_walls(
+    box: tuple[int, int, int, int], marks: list[tuple[tuple[int, int], tuple[int, int]]]
+) -> None:
+    """Hộp kỹ thuật gạch chéo (X hay một nét) ở góc phòng hay giữa phòng: không ra tường xiên, vách hộp còn đủ."""
+    walls = vectorize(_room_with_box(*marks, box=box))
+    assert all(_axis_aligned(wall) for wall in walls), walls
+    left, top, right, bottom = box
+    inside = [
+        w for w in walls if all(left - 3 <= x <= right + 3 and top - 3 <= y <= bottom + 3 for x, y in _ends((w,)))
+    ]
+    assert all(math.dist(w.start, w.end) >= 0.8 * min(right - left, bottom - top) for w in inside), inside
+
+
+def test_vectorize__chamfer_inside_a_small_box_stays_diagonal() -> None:
+    """Vát góc thật trong ô nhỏ (đầu nằm giữa cạnh ô, không ở góc hay tâm) không bị coi là ký hiệu hộp."""
+    walls = vectorize(_room_with_box(((280, 90), (310, 60)), box=(250, 60, 340, 150)))
+    assert sum(1 for wall in walls if not _axis_aligned(wall)) == 1
+
+
+def _bay(*points: tuple[int, int]) -> NDArray[np.bool_]:
+    """Ba cạnh phòng vuông góc mở bên phải, nối bằng đường `points` từ (300, 50) tới (300, 350); nét dày 10 px."""
+    canvas = np.zeros((420, 520), np.uint8)
+    for start, end in [
+        ((50, 50), (300, 50)),
+        ((50, 50), (50, 350)),
+        ((50, 350), (300, 350)),
+        *itertools.pairwise(points),
+    ]:
+        cv2.line(canvas, start, end, 1, 10)
+    return np.asarray(canvas > 0)
+
+
+def test_vectorize__circular_wall_becomes_even_chords_on_its_circle() -> None:
+    """Tường cong nửa vòng tròn: dây nằm đúng trên cung (≤ 1,5 px), dài đều nhau, mỗi dây quét ≤ 10°+."""
+    canvas = np.asarray(_bay(), np.uint8)
+    cv2.ellipse(canvas, (300, 200), (150, 150), 0, -90, 90, 1, 10)
+    walls = vectorize(canvas > 0)
+    chords = [w for w in walls if not _axis_aligned(w) and min(w.start[0], w.end[0]) >= 320]
+    assert len(chords) >= 14
+    for wall in chords:
+        assert all(abs(math.dist(point, (300, 200)) - 150) <= 1.5 for point in (wall.start, wall.end)), wall
+        assert 2.0 * math.degrees(math.asin(math.dist(wall.start, wall.end) / 300.0)) <= 10.5
+    lengths = [math.dist(w.start, w.end) for w in chords]
+    assert max(lengths) - min(lengths) <= 1.0
+
+
+def test_vectorize__faceted_bay_keeps_its_corners() -> None:
+    """Bow-window gãy góc (45°, bốn cạnh lệch hướng) không bị nắn thành cung: giữ đúng số cạnh và đỉnh."""
+    walls = vectorize(_bay((300, 50), (371, 121), (371, 279), (300, 350)))
+    assert len(walls) == 6
+    assert sum(1 for wall in walls if not _axis_aligned(wall)) == 2
+
+
+def test_absorb_corner_diagonals__filled_shaft_drops_both_v_arms() -> None:
+    """Hộp gen bị mặt nạ tô đặc (ch-13 bench): hai cạnh dọc của khối đã chụm một nút, hai nhánh chéo xuống góc
+    đáy bị hút như vụn góc — trước đây `_clash` thấy hai cạnh dọc lệch nhau nên chặn, để lại tường xiên chữ V."""
+    apex, left, right = (1, 27, 2), (1, 31, 2), (1, 21, 3)
+    segs = [
+        _Seg(250.0, 378.0, 347.0, 378.0, 6.0, 0.9, (1, 31, 1), left, "h"),
+        _Seg(405.0, 378.0, 365.0, 378.0, 6.0, 0.9, (1, 21, 1), right, "h"),
+        _Seg(350.0, 351.0, 350.0, 360.0, 4.0, 0.9, (0, 0, 0), apex, "v"),
+        _Seg(361.5, 352.0, 361.5, 360.0, 8.0, 0.9, (0, 0, 0), apex, "v"),
+        _Seg(365.0, 378.0, 356.7, 371.7, 10.0, 0.9, right, apex, "d"),
+        _Seg(347.0, 378.0, 356.7, 371.7, 11.0, 0.9, left, apex, "d"),
+    ]
+    empty = np.zeros(0, np.int32)
+    graph = _Graph(empty, empty, empty, np.zeros((1, 2)), np.zeros(1, np.bool_), np.zeros(1), [])
+    kept, short, _ = _absorb_corner_diagonals(segs, graph)
+    assert [seg.axis for seg in kept] == ["h", "h", "v", "v"]
+    assert short == 0
+    assert len({seg.b_key for seg in kept}) == 1
