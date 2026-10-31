@@ -28,9 +28,7 @@ _LOGITS_PX: Final = TILE_PX // LOGITS_STRIDE
 def _threshold_nodes(*, classes: int = 2, stride: int = LOGITS_STRIDE) -> list[NodeProto]:
     """`y[c] = ±trung bình kênh gộp `LOGITS_STRIDE`x`LOGITS_STRIDE``; `classes=3` lặp lớp 0 cho J03."""
     reduce_mean = helper.make_node("ReduceMean", ["x"], ["channel_mean"], axes=[1], keepdims=1)
-    avg_pool = helper.make_node(
-        "AveragePool", ["channel_mean"], ["z"], kernel_shape=[stride] * 2, strides=[stride] * 2
-    )
+    avg_pool = helper.make_node("AveragePool", ["channel_mean"], ["z"], kernel_shape=[stride] * 2, strides=[stride] * 2)
     neg = helper.make_node("Neg", ["z"], ["neg_z"])
     concat_inputs = ["z", "neg_z"] if classes == 2 else ["z", "neg_z", "z"]
     concat = helper.make_node("Concat", concat_inputs, ["y"], axis=1)
@@ -62,7 +60,9 @@ def _model(
 def make_threshold_segformer(stride: int = LOGITS_STRIDE) -> bytes:
     """Đúng hợp đồng: vào `[1,3,1024,1024]`, ra `[1,2,256,256]` (bước 4) hay `[1,2,512,512]` (bước 2)."""
     side = TILE_PX // stride
-    return _model(_threshold_nodes(stride=stride), input_shape=[1, 3, TILE_PX, TILE_PX], output_shape=[1, 2, side, side])
+    return _model(
+        _threshold_nodes(stride=stride), input_shape=[1, 3, TILE_PX, TILE_PX], output_shape=[1, 2, side, side]
+    )
 
 
 def make_wrong_output_segformer() -> bytes:
