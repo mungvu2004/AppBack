@@ -1052,7 +1052,7 @@ def _bridge_dangling_ends(segs: list[_Seg]) -> None:
                 near.extend(item[2] for item in walls[axis][lo:hi] if item[2] is not seg)
             if any(_axis_gap(point, wall) <= 0.5 * (seg.thickness + wall.thickness) + 1.0 for wall in near):
                 continue
-            best: tuple[float, float] | None = None
+            best: tuple[float, float, _Seg | None] | None = None
             for wall in near:
                 reach = _BRIDGE_GAP_RATIO * max(seg.thickness, wall.thickness)
                 ends = sorted(((wall.ax, wall.ay)[along], (wall.bx, wall.by)[along]))
