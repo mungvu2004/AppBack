@@ -59,7 +59,12 @@ def test_build_furniture_relabels_at_final_scale(fake_clock: FakeClock, trusted:
 
 @pytest.mark.parametrize(
     ("usage", "expected"),
-    [("livingRoom", ("other", "rug")), ("bathroom", ("other", "rug")), ("bedroom", ("bed", None)), (None, ("bed", None))],
+    [
+        ("livingRoom", ("other", "rug")),
+        ("bathroom", ("other", "rug")),
+        ("bedroom", ("bed", None)),
+        (None, ("bed", None)),
+    ],
 )
 def test_yolo_bed_in_no_bed_room_becomes_rug(usage: str | None, expected: tuple[str, str | None]) -> None:
     """UX-14: YOLO báo giường trong phòng khách (thảm hoa văn) → thảm; phòng ngủ/chưa rõ phòng giữ giường."""

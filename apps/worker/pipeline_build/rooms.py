@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import shapely
+from shapely.ops import split
 
 from apps.worker.pipeline_build.constants import (
     MIN_ROOM_AREA_M2,
@@ -263,6 +264,69 @@ def _room_lines(
     return lines
 
 
+_SPLIT_OPEN_MAX_MM = 2500
+"""Vết cắt tách phòng theo nhãn: phần không có tường (kéo dài vách cụt tới biên) dài tối đa 2,5 m."""
+
+
+def _split_by_labels(
+    outlines: Sequence[Sequence[Point]],
+    walls: Sequence[Wall],
+    parsed: Sequence[RoomLabel | None],
+    centres: Sequence[Point],
+) -> list[list[Point]]:
+    """Phòng chứa ≥ 2 nhãn tên phòng → cắt dọc tường cụt kéo dài tới biên, vết cắt hở ngắn nhất tách được nhãn (UX-04).
+
+    Không đủ hai nhãn thì không cắt; mỗi mảnh phải còn nhãn và ≥ `MIN_ROOM_AREA_M2`. Cắt lặp tới khi mỗi mảnh một nhãn.
+    """
+    labels = [shapely.Point(c.x, c.y) for c, label in zip(centres, parsed, strict=True) if label is not None]
+    lines = [
+        shapely.LineString([(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)])
+        for w in walls
+    ]
+    result: list[list[Point]] = []
+    stack: list[tuple[shapely.Polygon, list[Point] | None]] = []
+    for outline in outlines:
+        if len(outline) < 3:
+            result.append(list(outline))
+        else:
+            stack.append((shapely.Polygon([(p.x, p.y) for p in outline]), list(outline)))
+    while stack:
+        polygon, original = stack.pop()
+        inside = [label for label in labels if polygon.contains(label)]
+        best = None if len(inside) < 2 else _best_cut(polygon, lines, inside)
+        if best is None:
+            result.append(original if original is not None else _outline_points(polygon))
+        else:
+            stack.extend((piece, None) for piece in best)
+    return result
+
+
+def _best_cut(
+    polygon: shapely.Polygon, lines: Sequence[shapely.LineString], labels: Sequence[shapely.Point]
+) -> list[shapely.Polygon] | None:
+    """Hai mảnh của vết cắt (đường tim tường kéo dài trong `polygon`) có phần hở ngắn nhất, hoặc `None`."""
+    best: tuple[float, list[shapely.Polygon]] | None = None
+    for line in lines:
+        (x0, y0), (x1, y1) = line.coords
+        if line.length == 0 or not polygon.buffer(ROOM_SNAP_MM).intersects(line):
+            continue
+        ux, uy = (x1 - x0) / line.length, (y1 - y0) / line.length
+        far = shapely.LineString([(x0 - ux * 1e6, y0 - uy * 1e6), (x1 + ux * 1e6, y1 + uy * 1e6)])
+        crossing = polygon.intersection(far)
+        for cut in getattr(crossing, "geoms", [crossing]):
+            if not isinstance(cut, shapely.LineString) or cut.distance(line) > ROOM_SNAP_MM:
+                continue
+            open_mm = cut.length - cut.intersection(line.buffer(ROOM_SNAP_MM)).length
+            if open_mm > _SPLIT_OPEN_MAX_MM or (best is not None and open_mm >= best[0]):
+                continue
+            pieces = [g for g in split(polygon, cut).geoms if isinstance(g, shapely.Polygon)]
+            if len(pieces) != 2 or min(g.area for g in pieces) / 1e6 < MIN_ROOM_AREA_M2:
+                continue
+            if all(any(g.contains(label) for label in labels) for g in pieces):
+                best = (open_mm, pieces)
+    return None if best is None else best[1]
+
+
 def _room_outlines(lines: Sequence[shapely.LineString]) -> list[list[Point]]:
     """Mọi vành ngoài khép được từ `lines` (`polygonize`)."""
     if not lines:
@@ -497,7 +561,7 @@ def build_rooms(
     rims = _rim_outlines(lines, [*closed, *seeded])
     rim_keys = {tuple(outline) for outline in rims}
     kept: list[tuple[list[Point], float]] = []
-    for outline in [*closed, *seeded, *rims]:
+    for outline in _split_by_labels([*closed, *seeded, *rims], walls, parsed, centres):
         area_m2 = float(polygon_area_m2(outline)) if len(outline) >= 3 else 0.0
         if len(outline) < 3 or area_m2 < MIN_ROOM_AREA_M2:
             dropped["roomTooSmall"] += 1
