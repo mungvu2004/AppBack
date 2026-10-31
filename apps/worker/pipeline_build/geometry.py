@@ -53,6 +53,13 @@ _DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
 """Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
 """Cửa đôi hẹp hơn 600 mm là hộp bám sai tường, không phải cửa (B5-05 [6] bước 4)."""
+# 3b (d): đầu tường lơ lửng nhìn thẳng gặp vách trong khe mặt-tới-mặt ≤ max(450, 3 × bề dày) → kéo tới chạm.
+_DANGLE_REACH_MM: Final = 450
+_DANGLE_REACH_THICKNESS: Final = 3
+# Khe có tâm hộp ô mở → khe cửa, kéo xa tới 1200 mm (cửa đơn ≤ 1000 + mép); khe 2 m giữ nguyên.
+_DANGLE_DOOR_REACH_MM: Final = 1200
+# Đầu mút "chạm" tường khác khi cách tim ≤ ½ tổng bề dày + 10 mm (cùng thước của bộ đo F:/runs/r4-bd/tidy.py).
+_TOUCH_SLACK_MM: Final = 10
 _OPENING_LABELS: Final[frozenset[str]] = frozenset({"door", "double_door", "window"})
 """Chỉ ba nhãn này thành ô mở; nhãn đồ đạc là việc của `rooms.build_furniture`, không đếm ở đây."""
 
@@ -460,12 +467,12 @@ def _along(seg: _Seg, point: tuple[float, float]) -> float:
     return (point[0] - seg.start.x) * unit[0] + (point[1] - seg.start.y) * unit[1]
 
 
-def _foot_on_other(seg: _Seg, other: _Seg) -> tuple[bool, Point] | None:
+def _foot_on_other(seg: _Seg, other: _Seg, reach: float = OPENING_GAP_MAX_MM) -> tuple[bool, Point] | None:
     """Đầu mút của `seg` cần kéo và chân trên tim `other`: `(là đầu end, chân)` hoặc `None`.
 
     Chỉ xét cặp vuông góc, nên hai đường không song song và định thức không bằng 0. Chân phải nằm
     trong đoạn `other` nới mỗi đầu `max(bề dày other, CORNER_OVERSHOOT_MM)` (tường lệch 0,75° hụt
-    vách 29 mm, BUG-IT-001) và **ngoài** `seg`, cách đầu mút `0 < g ≤ OPENING_GAP_MAX_MM`, và không
+    vách 29 mm, BUG-IT-001) và **ngoài** `seg`, cách đầu mút `0 < g ≤ reach`, và không
     trùng đầu mút còn lại (`Segment` cấm tường dài 0).
     """
     if not _perpendicular(seg, other):
@@ -478,9 +485,9 @@ def _foot_on_other(seg: _Seg, other: _Seg) -> tuple[bool, Point] | None:
     if not -slack <= _along(other, crossing) <= _length(other) + slack:
         return None
     foot = Point(x=js_round(crossing[0]), y=js_round(crossing[1]))
-    if -OPENING_GAP_MAX_MM <= step < 0 and foot != seg.end:
+    if -reach <= step < 0 and foot != seg.end:
         return (False, foot)
-    if _length(seg) < step <= _length(seg) + OPENING_GAP_MAX_MM and foot != seg.start:
+    if _length(seg) < step <= _length(seg) + reach and foot != seg.start:
         return (True, foot)
     return None
 
@@ -525,6 +532,86 @@ def _extend_all(segs: list[_Seg], neighbours: list[set[int]], boxes: _Boxes, dro
             dropped["wallGapBridged"] += 1
 
 
+def _line(seg: _Seg) -> LineString:
+    """Tim `seg` thành `LineString` (mm)."""
+    return LineString(((seg.start.x, seg.start.y), (seg.end.x, seg.end.y)))
+
+
+def _dangling(seg: _Seg, tip: Point, segs: Sequence[_Seg]) -> bool:
+    """Đầu mút `tip` không chạm tim tường sống nào khác (cách > ½ tổng bề dày + `_TOUCH_SLACK_MM`)."""
+    point = shapely.points(tip.x, tip.y)
+    return not any(
+        other is not seg
+        and other.alive
+        and shapely.distance(point, _line(other)) <= (seg.thickness_mm + other.thickness_mm) / 2 + _TOUCH_SLACK_MM
+        for other in segs
+    )
+
+
+def _blocked(seg: _Seg, other: _Seg, tip: Point, foot: Point, segs: Sequence[_Seg]) -> bool:
+    """Khe từ `tip` tới mặt `other` cắt tim một tường sống thứ ba (không kéo xuyên tường)."""
+    span = math.dist((tip.x, tip.y), (foot.x, foot.y))
+    back = other.thickness_mm / 2
+    if span <= back + 2:
+        return False
+    ux, uy = (foot.x - tip.x) / span, (foot.y - tip.y) / span
+    gap = LineString(((tip.x + ux, tip.y + uy), (foot.x - ux * back, foot.y - uy * back)))
+    return any(item.alive and item is not seg and item is not other and gap.intersects(_line(item)) for item in segs)
+
+
+def _centre_in_gap(boxes: _Boxes, seg: _Seg, tip: Point, face: float) -> bool:
+    """Đúng **một** tâm hộp ô mở trong khe: dọc `(0, face]` từ `tip`, ngang ≤ ½ bề dày + `OPENING_WALL_REACH_MM`.
+
+    Hai hộp trở lên là không chắc (cửa của vách bên cạnh lọt vào dải, ch-09 lô gia) → giữ khe.
+    """
+    ux, uy = _unit(seg)
+    if math.dist((tip.x, tip.y), (seg.start.x, seg.start.y)) < 1:
+        ux, uy = -ux, -uy
+    lateral = seg.thickness_mm / 2 + OPENING_WALL_REACH_MM
+    inside = 0
+    for x0, y0, x1, y1 in boxes.rects:
+        dx, dy = (x0 + x1) / 2 - tip.x, (y0 + y1) / 2 - tip.y
+        inside += 0 < dx * ux + dy * uy <= face and abs(dx * uy - dy * ux) <= lateral
+    return inside == 1
+
+
+def _reach_dangling(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
+    """3b (d): đầu lơ lửng còn lại → kéo theo phương tường tới tim vách vuông góc gần nhất phía trước.
+
+    Khe mặt-tới-mặt ≤ max(`_DANGLE_REACH_MM`, `_DANGLE_REACH_THICKNESS` × bề dày) không cần hộp cửa; khe có
+    tâm hộp ô mở (`_centre_in_gap`) tới `_DANGLE_DOOR_REACH_MM`: khe cửa trong bản vẽ là tường có ô mở, và
+    bước 4 gắn hộp đó vào chính tường đã kéo. Vách phía trước bị tường khác chắn (`_blocked`) → giữ khe.
+    """
+    for index, seg in enumerate(segs):
+        if not seg.alive:
+            continue
+        reach = max(_DANGLE_REACH_MM, _DANGLE_REACH_THICKNESS * seg.thickness_mm)
+        best: dict[bool, tuple[float, Point, _Seg]] = {}
+        for other in (segs[item] for item in sorted(neighbours[index])):
+            hit = _foot_on_other(seg, other, max(reach, _DANGLE_DOOR_REACH_MM) + other.thickness_mm / 2)
+            hit = hit if other.alive else None
+            if hit is None:
+                continue
+            is_end, foot = hit
+            tip = seg.end if is_end else seg.start
+            gap = math.dist((tip.x, tip.y), (foot.x, foot.y))
+            if is_end not in best or gap < best[is_end][0]:
+                best[is_end] = (gap, foot, other)
+        for is_end, (gap, foot, other) in best.items():
+            tip = seg.end if is_end else seg.start
+            face = gap - other.thickness_mm / 2
+            if face > reach and not _centre_in_gap(boxes, seg, tip, face):
+                continue
+            if not _dangling(seg, tip, segs) or _blocked(seg, other, tip, foot, segs):
+                continue
+            if is_end:
+                seg.end = foot
+            else:
+                seg.start = foot
+            _stretch_to(other, foot)
+            dropped["wallGapBridged"] += 1
+
+
 def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tuple[tuple[Point, Point], ...]:
     """3b (c): cặp thẳng hàng còn khe mà không gộp → đoạn nối hai đầu gần, chỉ để khép phòng."""
     pairs = [
@@ -538,13 +625,14 @@ def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tu
 
 
 def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[tuple[Point, Point], ...]:
-    """Bước 3b: gộp cặp thẳng hàng (a), kéo đầu mút tới vách (b), đoạn nối cho cặp còn lại (c)."""
+    """Bước 3b: gộp cặp thẳng hàng (a), kéo đầu mút tới vách (b), đầu lơ lửng (d), đoạn nối cặp còn lại (c)."""
     geoms = _linestrings(segs)
     tree = STRtree(geoms)
     lines = _Centrelines(tree, {seg.inputs[0]: slot for slot, seg in enumerate(segs)})
     neighbours = _neighbours(tree, geoms, float(OPENING_GAP_MAX_MM))
     _merge_aligned(segs, neighbours, boxes, lines, dropped)
     _extend_all(segs, neighbours, boxes, dropped)
+    _reach_dangling(segs, neighbours, boxes, dropped)
     return _bridge_segments(segs, neighbours)
 
 

@@ -32,3 +32,15 @@
 - Đo 14 ca (`F:/runs/r4-bd/KET-QUA.txt`): ch-09 đầu lơ lửng 13 → 10; ca khác không đổi; số cửa, phòng, xiên,
   không chuẩn không ca nào xấu đi. ch-04 chưa đỡ: khe 470–1090 mm theo phương tường cần biết cửa (bước sau).
 - Test: `packages/vision/walls/tests/test_bridge_ends.py`.
+
+## be2 — nối khe dài ở đầu tường lơ lửng (bước 3b-d, build)
+
+- `apps/worker/pipeline_build/geometry.py`: bước 3b (d) `_reach_dangling` sau 3b-b, trước đoạn nối 3b-c. Đầu tường
+  không chạm tường nào, nhìn thẳng theo phương tường gặp vách vuông góc gần nhất: khe mặt-tới-mặt ≤ max(450, 3 × bề
+  dày) → kéo tới tim vách; khe ≤ 1200 mm có **đúng một** tâm hộp ô mở (YOLO, kể cả hộp chưa gắn tường) → cũng kéo,
+  bước 4 gắn cửa vào tường vừa kéo; hai hộp trở lên hoặc khe bị tường thứ ba chắn → giữ khe.
+- Đo 14 ca (`F:/runs/r4-be2/KET-QUA.txt`): đầu lơ lửng ch-04 11 → 8, ch-13 5 → 4, ch-14 1 → 0; cửa gắn tường ch-04
+  13 → 14; phòng, xiên, không chuẩn không ca nào đổi. Bản đầu (≥ 1 hộp) làm ch-09 mất "lô gia 2" → thêm luật một hộp.
+- Không đổi API, DB, hợp đồng FE–BE (khoá `dropped` giữ nguyên, đếm vào `wallGapBridged`).
+- Test: 4 test `test_build_walls__dangling_end_*` trong `test_geometry_openings.py`; chạy 609 test pipeline_build: đạt.
+  ruff/mypy, cổng đầy đủ: chưa chạy.

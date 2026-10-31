@@ -519,3 +519,51 @@ def test_build_walls__gap_merge_takes_the_longer_walls_thickness(fake_clock: Fak
     )
     (wall,) = result.walls
     assert (wall.centreline.start.x, wall.centreline.end.x, wall.thickness_mm) == (0, 4200, 100)
+
+
+def test_build_walls__dangling_end_with_door_in_800_gap_reaches_wall(fake_clock: FakeClock) -> None:
+    """3b-d: khe 800 mm có tâm cửa (hộp hẹp, không phủ ½ khe) → tường kéo tới tim vách, cửa nằm trên nó."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 1150, 1000), wall_px(2000, 0, 2000, 3000)],
+        [det("door", 1500, 950, 1700, 1050)],
+        fake_clock,
+        dropped,
+    )
+    assert result.walls[0].centreline.end == Point(x=2000, y=1000)
+    assert len(result.openings) == 1
+    assert result.openings[0].wall_id == result.walls[0].id
+
+
+def test_build_walls__dangling_end_without_door_in_800_gap_joins_thick_wall(fake_clock: FakeClock) -> None:
+    """3b-d: khe 800 mm không cửa, tường 300 (trần 3 × 300 = 900) → kéo tới chạm vách."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 1150, 1000, thickness_px=300), wall_px(2000, 0, 2000, 3000)], [], fake_clock, dropped
+    )
+    assert result.walls[0].centreline.end == Point(x=2000, y=1000)
+    assert dropped["wallGapBridged"] == 1
+
+
+def test_build_walls__dangling_end_2m_gap_kept(fake_clock: FakeClock) -> None:
+    """3b-d: khe 2 m (kể cả có tâm cửa) vượt mọi trần → giữ nguyên đầu tường."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 1000, 1000), wall_px(3050, 0, 3050, 3000)],
+        [det("door", 1900, 950, 2100, 1050)],
+        fake_clock,
+        dropped,
+    )
+    assert result.walls[0].centreline.end == Point(x=1000, y=1000)
+
+
+def test_build_walls__dangling_end_not_pulled_through_other_wall(fake_clock: FakeClock) -> None:
+    """3b-d: tường thẳng hàng nằm trong khe tới vách → không kéo xuyên, giữ đầu tường."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 1500, 1000), wall_px(1650, 1000, 1850, 1000), wall_px(2000, 0, 2000, 3000)],
+        [],
+        fake_clock,
+        dropped,
+    )
+    assert result.walls[0].centreline.end == Point(x=1500, y=1000)
