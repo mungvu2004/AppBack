@@ -283,6 +283,10 @@ def _split_by_labels(
         shapely.LineString([(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)])
         for w in walls
     ]
+    if len(labels) < 2:
+        return [list(outline) for outline in outlines]
+    label_tree = shapely.STRtree(labels)
+    line_tree = shapely.STRtree(lines)
     result: list[list[Point]] = []
     stack: list[tuple[shapely.Polygon, list[Point] | None]] = []
     for outline in outlines:
@@ -292,8 +296,12 @@ def _split_by_labels(
             stack.append((shapely.Polygon([(p.x, p.y) for p in outline]), list(outline)))
     while stack:
         polygon, original = stack.pop()
-        inside = [label for label in labels if polygon.contains(label)]
-        best = None if len(inside) < 2 else _best_cut(polygon, lines, inside)
+        inside = [labels[int(i)] for i in label_tree.query(polygon, predicate="contains")]
+        if len(inside) < 2:
+            best = None
+        else:
+            near = line_tree.query(polygon.buffer(ROOM_SNAP_MM), predicate="intersects")
+            best = _best_cut(polygon, [lines[int(i)] for i in sorted(near)], inside)
         if best is None:
             result.append(original if original is not None else _outline_points(polygon))
         else:
@@ -304,11 +312,14 @@ def _split_by_labels(
 def _best_cut(
     polygon: shapely.Polygon, lines: Sequence[shapely.LineString], labels: Sequence[shapely.Point]
 ) -> list[shapely.Polygon] | None:
-    """Hai mảnh của vết cắt (đường tim tường kéo dài trong `polygon`) có phần hở ngắn nhất, hoặc `None`."""
+    """Hai mảnh của vết cắt (đường tim tường kéo dài trong `polygon`) có phần hở ngắn nhất, hoặc `None`.
+
+    `lines` đã lọc sẵn: chỉ đường chạm `polygon` nới `ROOM_SNAP_MM`.
+    """
     best: tuple[float, list[shapely.Polygon]] | None = None
     for line in lines:
         (x0, y0), (x1, y1) = line.coords
-        if line.length == 0 or not polygon.buffer(ROOM_SNAP_MM).intersects(line):
+        if line.length == 0:
             continue
         ux, uy = (x1 - x0) / line.length, (y1 - y0) / line.length
         far = shapely.LineString([(x0 - ux * 1e6, y0 - uy * 1e6), (x1 + ux * 1e6, y1 + uy * 1e6)])
