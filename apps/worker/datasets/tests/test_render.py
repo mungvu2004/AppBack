@@ -18,6 +18,7 @@ def _wall(
     thickness: int = 200,
     kind: Literal["loadBearing", "partition", "envelope"] = "loadBearing",
     opening_ids: tuple[str, ...] = (),
+    curve: int = 0,
 ) -> Wall:
     """Tường mẫu: mặc định ngang dài 1.000mm, dày 200mm; tham số đổi từng thuộc tính."""
     return Wall(
@@ -28,6 +29,7 @@ def _wall(
         height_mm=2700,
         kind=kind,
         opening_ids=opening_ids,
+        curve_offset_mm=curve,
         confidence=1.0,
         source="human",
         reviewed=True,
@@ -116,6 +118,14 @@ def test_wall_mask__diagonal_wall() -> None:
     mask = wall_mask([wall], width_px=150, height_px=150, mm_per_px=MM_PER_PX)
     assert mask[50, 50]
     assert not mask[5, 145]
+
+
+def test_wall_mask__curved_wall_follows_its_arc() -> None:
+    """Tường cong tô theo cung (đỉnh cung lồi lên 300 mm), không tô dây thẳng giữa hai đầu."""
+    wall = _wall(start=(0, 500), end=(1000, 500), thickness=100, curve=300)
+    mask = wall_mask([wall], width_px=110, height_px=60, mm_per_px=MM_PER_PX)
+    assert mask[20, 50]
+    assert not mask[50, 50]
 
 
 def test_object_boxes__door_and_double_door_labels() -> None:

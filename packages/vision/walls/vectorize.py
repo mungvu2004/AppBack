@@ -98,6 +98,8 @@ _ARC_MIN_LENGTH_RATIO: Final = 5.0
 """Cung dài ≥ ngần này lần bề dày mới chia lại (bước 5b)."""
 _ARC_STEP_DEG: Final = 10.0
 """Mỗi đoạn chia lại của cung quét ≤ ngần này độ: cung bán kính 1,5 m lệch cung thật ≤ 6 mm (bước 5b)."""
+_ARC_MAX_JOIN_DEG: Final = 170.0
+"""Một tường cong quét ≤ ngần này độ (bước 10f): sagitta chỉ tả được cung ≤ 180°, cung dài hơn tách đôi."""
 _BOX_MAX_RATIO: Final = 20.0
 """Ô kín có cạnh dài ≤ ngần này lần bề dày tường mỏng nhất quanh nó mới xét là hộp kỹ thuật (bước 10c0).
 
@@ -145,6 +147,8 @@ class _Seg:
     """Góc (độ) đường thẳng khớp các điểm xương giữa đoạn (bỏ 1 bề dày mỗi đầu); `nan` khi quá ngắn."""
     arc: bool = False
     """Một dây của cung đã chia lại (bước 5b): không ép trục, không hút góc, không góp vào hướng chủ đạo."""
+    sagitta: float = 0.0
+    """Sagitta có dấu của tường cong gộp ở bước 10f (quy ước `WallSegment.sagitta_px`); 0 là tường thẳng."""
 
     def length(self) -> float:
         """Độ dài đường tim hiện tại."""
@@ -489,6 +493,18 @@ def _arc_chords(
     ]
 
 
+def _off_node(seg: _Seg, inner: NDArray[np.int32]) -> NDArray[np.int32]:
+    """Điểm xương của `seg` trừ phần trong một bề dày quanh đầu cuối khi đầu đó là nút giao (khoá loại 0).
+
+    Cụm nút giao kéo xương lệch khỏi tim tường cỡ nửa bề dày: cung chạm nút (lưỡi mặt nạ hụt, nhánh cụt) thì
+    đoạn cuối lệch đường tròn quá ngưỡng dù đỉnh vẫn trên cung (WALLS-ARC). Đỉnh DP thường không bỏ gì.
+    """
+    if seg.b_key[0] != 0 or len(inner) < 3:
+        return inner
+    far = np.hypot(inner[:, 0] - seg.bx, inner[:, 1] - seg.by) > seg.thickness
+    return inner[far] if far.sum() >= 2 else inner
+
+
 def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], mask: NDArray[np.bool_]) -> list[_Seg]:
     """Bước 5b: chuỗi ≥ `_ARC_MIN_SEGMENTS` đoạn DP liền nhau mà điểm xương nằm trên một đường tròn → cung.
 
@@ -507,7 +523,10 @@ def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], 
         while (
             stop < len(segs)
             and segs[stop].a_key == segs[stop - 1].b_key
-            and _fit_circle(np.concatenate(inners[start : stop + 1]).astype(np.float64))[3] <= tol
+            and _fit_circle(
+                np.concatenate([*inners[start:stop], _off_node(segs[stop], inners[stop])]).astype(np.float64)
+            )[3]
+            <= tol
         ):
             stop += 1
         arc = None
@@ -1297,6 +1316,123 @@ def _bridge_dangling_ends(segs: list[_Seg]) -> None:
                 _set_end(corner, near_a, (end[0], end[1]))
 
 
+def _arc_walk(seg: _Seg, key: _Key, links: dict[_Key, list[_Seg]], seen: set[int]) -> list[tuple[_Seg, PointPx]]:
+    """Các dây đi tiếp từ `seg` qua khoá giữa cung `key` kèm đỉnh xa của từng dây (bước 10f), tới đầu chuỗi."""
+    chain: list[tuple[_Seg, PointPx]] = []
+    while len(links.get(key, ())) == 2:
+        seg = next(other for other in links[key] if other is not seg)
+        if id(seg) in seen:
+            break
+        seen.add(id(seg))
+        forward = seg.a_key == key
+        chain.append((seg, (seg.bx, seg.by) if forward else (seg.ax, seg.ay)))
+        key = seg.b_key if forward else seg.a_key
+    return chain
+
+
+def _sagitta(points: Sequence[PointPx]) -> float:
+    """Sagitta có dấu của dây đầu→cuối với đường tròn khớp các đỉnh (quy ước `WallSegment.sagitta_px`)."""
+    (ax, ay), (bx, by) = points[0], points[-1]
+    length = math.hypot(bx - ax, by - ay)
+    nx, ny = -(by - ay) / length, (bx - ax) / length
+    mx, my = (ax + bx) / 2.0, (ay + by) / 2.0
+    cx, cy, radius, _ = _fit_circle(np.asarray(points, np.float64))
+    height = (cx - mx) * nx + (cy - my) * ny
+    vx, vy = points[len(points) // 2]
+    sagitta = radius - height if (vx - mx) * nx + (vy - my) * ny < 0 else -(radius + height)
+    return max(-length / 2.0, min(length / 2.0, sagitta))
+
+
+def _sweep_deg(points: Sequence[PointPx]) -> float:
+    """Tổng góc rẽ (độ) dọc đường gấp khúc `points`, xấp xỉ góc quét của cung."""
+    turn = sum(
+        abs(math.remainder(math.atan2(cy - by, cx - bx) - math.atan2(by - ay, bx - ax), math.tau))
+        for (ax, ay), (bx, by), (cx, cy) in zip(points, points[1:], points[2:], strict=False)
+    )
+    return math.degrees(turn)
+
+
+def _arc_pieces(points: Sequence[PointPx]) -> list[tuple[int, int]]:
+    """Khoảng đỉnh `[i, j]` của các khúc cung quét ≤ `_ARC_MAX_JOIN_DEG`, chia đôi theo số đỉnh tới khi vừa."""
+    pieces = [(0, len(points) - 1)]
+    while True:
+        wide = [(i, j) for i, j in pieces if j - i >= 4 and _sweep_deg(points[i : j + 1]) > _ARC_MAX_JOIN_DEG]
+        if not wide:
+            return pieces
+        for i, j in wide:
+            at = pieces.index((i, j))
+            pieces[at : at + 1] = [(i, (i + j) // 2), ((i + j) // 2, j)]
+
+
+def _joined(chords: Sequence[_Seg], points: Sequence[PointPx]) -> _Seg:
+    """Một tường cong từ các dây liền nhau `chords` (đỉnh `points`, đã theo chiều đi); độ tin trung bình theo độ dài."""
+    lengths = [chord.length() for chord in chords]
+    return _Seg(
+        ax=points[0][0],
+        ay=points[0][1],
+        bx=points[-1][0],
+        by=points[-1][1],
+        thickness=_weighted(list(chords), [chord.thickness for chord in chords], lengths),
+        conf=_weighted(list(chords), [chord.conf for chord in chords], lengths),
+        a_key=chords[0].a_key,
+        b_key=chords[-1].b_key,
+        arc=True,
+        sagitta=_sagitta(points),
+    )
+
+
+def _seated(point: PointPx, thickness: float, chords: Sequence[_Seg], segs: Sequence[_Seg]) -> PointPx:
+    """Đầu cung tự do nằm trong thân một tường thẳng (tim cách ≤ ½ tổng bề dày) → chân vuông góc trên tim đó.
+
+    Nút giao bị `_fuse` nuốt khi gộp mẩu thẳng hàng (lưỡi mặt nạ ở mép cung) để đầu cung lơ lửng sát tường;
+    bước 9b chỉ nối tường ngang/dọc. Đầu đã chung với đoạn khác (≤ 0,5 px) giữ nguyên.
+    """
+    others = [seg for seg in segs if all(seg is not chord for chord in chords)]
+    if any(math.dist(point, end) <= 0.5 for seg in others for end in ((seg.ax, seg.ay), (seg.bx, seg.by))):
+        return point
+    best: tuple[float, PointPx] | None = None
+    for seg in others:
+        if seg.arc or seg.length() == 0:
+            continue
+        ux, uy = (seg.bx - seg.ax) / seg.length(), (seg.by - seg.ay) / seg.length()
+        along = min(max((point[0] - seg.ax) * ux + (point[1] - seg.ay) * uy, 0.0), seg.length())
+        foot = (seg.ax + ux * along, seg.ay + uy * along)
+        gap = math.dist(point, foot)
+        if gap <= 0.5 * (thickness + seg.thickness) and (best is None or gap < best[0]):
+            best = (gap, foot)
+    return point if best is None else best[1]
+
+
+def _join_arcs(segs: list[_Seg]) -> list[_Seg]:
+    """Bước 10f: chuỗi dây của một cung (nối bằng khoá giữa cung của 5b) → tường cong có `sagitta`.
+
+    Khoá giữa cung có đúng hai dây dùng; dây bị bước sau gộp hay xén mất thì chuỗi đứt ở đó, mỗi khúc gộp riêng.
+    Khúc một dây giữ nguyên là tường thẳng.
+    """
+    links: defaultdict[_Key, list[_Seg]] = defaultdict(list)
+    for seg in segs:
+        for key in (seg.a_key, seg.b_key):
+            if seg.arc and key[0] == 2:
+                links[key].append(seg)
+    seen: set[int] = set()
+    out: list[_Seg] = []
+    for seg in segs:
+        if id(seg) in seen:
+            continue
+        seen.add(id(seg))
+        back = _arc_walk(seg, seg.a_key, links, seen) if seg.arc else []
+        ahead = _arc_walk(seg, seg.b_key, links, seen) if seg.arc else []
+        if not back and not ahead:
+            out.append(seg)
+            continue
+        chords = [chord for chord, _ in reversed(back)] + [seg] + [chord for chord, _ in ahead]
+        points = [*(point for _, point in reversed(back)), (seg.ax, seg.ay), (seg.bx, seg.by), *(p for _, p in ahead)]
+        points[0] = _seated(points[0], seg.thickness, chords, segs)
+        points[-1] = _seated(points[-1], seg.thickness, chords, segs)
+        out.extend(_joined(chords[i:j], points[i : j + 1]) for i, j in _arc_pieces(points))
+    return out
+
+
 def _clamp(point: tuple[float, float], shape: tuple[int, int]) -> PointPx:
     """Kẹp đầu mút vào `[0, w - 1] x [0, h - 1]` (bước 9)."""
     height, width = shape
@@ -1309,7 +1445,7 @@ def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegme
     Hai đoạn cùng hai đầu mút (hai nhánh xương song song giữa cùng hai nút, K-02) chỉ giữ một:
     độ tin cao hơn, hoà thì dày hơn. Không đếm vào `short` vì không mất tường nào.
     """
-    walls: dict[tuple[int, int, int, int], WallSegment] = {}
+    walls: dict[tuple[int, int, int, int, int], WallSegment] = {}
     short = 0
     for seg in segs:
         a = _clamp((seg.ax, seg.ay), shape)
@@ -1319,16 +1455,18 @@ def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegme
         if start == end:  # so sau khi làm tròn: hai đầu lệch < 0.005 px thành trùng nhau
             short += 1
             continue
+        sagitta = round(seg.sagitta, 2)
         if end < start:
-            start, end = end, start
+            start, end, sagitta = end, start, -sagitta  # đảo chiều dây thì pháp tuyến đổi dấu
         wall = WallSegment(
             start=start,
             end=end,
             thickness_px=round(seg.thickness, 2),
             confidence=round(min(1.0, max(0.0, seg.conf)), 3),
+            sagitta_px=sagitta + 0.0,  # + 0.0: -0.0 → 0.0
         )
         # ponytail: lưới 1 px, cặp trùng nằm vắt qua mép ô làm tròn thì sót; cần thì so láng giềng.
-        slot = (round(start[0]), round(start[1]), round(end[0]), round(end[1]))
+        slot = (round(start[0]), round(start[1]), round(end[0]), round(end[1]), round(sagitta))
         kept = walls.get(slot)
         if kept is None or (wall.confidence, wall.thickness_px) > (kept.confidence, kept.thickness_px):
             walls[slot] = wall
@@ -1401,7 +1539,7 @@ def vectorize_with_stats(mask: NDArray[np.bool_], page_gray: NDArray[np.uint8] |
     fused = _merge_line_pieces(_straighten_jogs(_drop_box_marks(_merge_line_pieces(fused))))
     _bridge_dangling_ends(fused)
     _rotate(fused, tilt, centre)
-    walls, dropped_short = _finalise(fused, mask.shape)
+    walls, dropped_short = _finalise(_join_arcs(fused), mask.shape)
     return VectorizeResult(walls=walls, dropped={"spur": spur, "short": short + tiny + corner + dropped_short})
 
 

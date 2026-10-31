@@ -40,6 +40,12 @@ def test_moved_vertex_marks_its_wall() -> None:
     assert marked.walls[0].centreline == moved.centreline
 
 
+def test_curving_an_ai_wall_marks_it_edited() -> None:
+    """Chỉ uốn tường (đổi `curveOffsetMm`): tường đó `edited`, để lượt chạy lại pipeline không thay mất đường cong."""
+    marked = mark_edited(LAYER, _with_wall(WALL.model_copy(update={"curve_offset_mm": 300})))
+    assert _edited_ids(marked) == [WALL.id]
+
+
 def test_new_ai_id_is_edited() -> None:
     """Id mới gắn `ai` (người tách tường, dán…) → `edited`."""
     current = LAYER.model_copy(update={"walls": LAYER.walls[1:]})

@@ -46,6 +46,13 @@ def mark_edited(current: SpatialLayer, sent: SpatialLayer) -> SpatialLayer:
         if change.field != "suggested"
     }
     before = {entity.id: entity for entity in current.entities()}
+    # Uốn/duỗi tường cũng là sửa, dù `curveOffsetMm` chưa vào bảng trường của nhật ký (NO-431): không có cờ thì
+    # lượt chạy lại pipeline thay tường AI chưa duyệt và mất đường cong người vừa uốn.
+    changed |= {
+        wall.id
+        for wall in sent.walls
+        if isinstance(old := before.get(wall.id), Wall) and old.curve_offset_mm != wall.curve_offset_mm
+    }
     return sent.model_copy(
         update={
             "walls": _marked(sent.walls, before, changed),

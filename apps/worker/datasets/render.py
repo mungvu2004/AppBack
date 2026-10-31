@@ -13,6 +13,7 @@ hướng xuống, mỗi đầu tường kéo dài nửa bề dày dọc đườn
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Sequence
 
@@ -20,6 +21,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from packages.domain.spatial.arc import arc_points
 from packages.domain.spatial.model import Furniture, Opening, SpatialLayer, Wall
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx
 from packages.ml_contracts.labels import DetectionLabel
@@ -131,10 +133,11 @@ def wall_mask(
     canvas = np.zeros((height_px, width_px), dtype=np.uint8)
     for wall in walls:
         start, end = wall.centreline.start, wall.centreline.end
-        corners = _segment_corners_px(
-            start.x, start.y, end.x, end.y, wall.thickness_mm, mm_per_px, extend_ends=True, raster=True
-        )
-        _fill_polygon(canvas, corners, 1)
+        # Tường cong tô từng dây ≤ 10° của cung; nối dây chồng nửa bề dày nên không hở khe.
+        points = arc_points((start.x, start.y), (end.x, end.y), wall.curve_offset_mm)
+        for (ax, ay), (bx, by) in itertools.pairwise(points):
+            corners = _segment_corners_px(ax, ay, bx, by, wall.thickness_mm, mm_per_px, extend_ends=True, raster=True)
+            _fill_polygon(canvas, corners, 1)
     walls_by_id = {wall.id: wall for wall in walls}
     for opening in openings:
         if opening.kind != "door":
