@@ -560,3 +560,17 @@ def test_hull_notch_walled_on_two_sides_is_not_a_room(fake_clock: FakeClock) -> 
     ]
     rooms = _rooms_of([_wall(fake_clock, start, end) for start, end in segments], (), fake_clock)
     assert [room.usage for room in rooms] == ["other", "other"]
+
+
+def _room_with_stub(clock: FakeClock) -> list[Wall]:
+    """Hộp 8 x 5 m, vách cụt từ tường trên xuống 3 m giữa phòng (khe 2 m > `ROOM_GAP_CLOSE_MM`, không tự khép)."""
+    corners = [(0, 0), (8000, 0), (8000, 5000), (0, 5000)]
+    walls = [_wall(clock, a, b) for a, b in zip(corners, corners[1:] + corners[:1], strict=True)]
+    return [*walls, _wall(clock, (4000, 0), (4000, 3000))]
+
+
+def test_two_labels_split_room_along_stub_wall(fake_clock: FakeClock) -> None:
+    """UX-04: hai nhãn tên phòng trong một vùng → cắt dọc vách cụt kéo dài; một nhãn thì không cắt."""
+    texts = (_text("phòng khách", 2000, 2500), _text("bếp", 6000, 2500))
+    assert sorted(_usages(_room_with_stub(fake_clock), texts, (), fake_clock)) == ["kitchen", "livingRoom"]
+    assert _usages(_room_with_stub(fake_clock), texts[:1], (), fake_clock) == ["livingRoom"]

@@ -1,6 +1,7 @@
 """Bước 1 và 2 của `build_layer` (B5-05 [6]): lọc đầu vào, chốt tỉ lệ, `s_dựng`, dựng lại."""
 
 import logging
+import math
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
@@ -224,6 +225,11 @@ def test_build_layer__scale_from_dimension_chains(fake_clock: FakeClock) -> None
     texts.append(_chain_text("5.202", 1100, 60))  # nhãn diện tích đọc thành 5202 mm: ngoài cụm
     built = _run([_wall(100, 100, 1100, 100)], texts, fake_clock)
     assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
+    # UX-02: ba chữ trong cụm thành `Dimension` không gắn tường, dài đúng số đọc; chữ ngoài cụm thì không.
+    assert sorted(dim.value_mm for dim in built.dimensions) == [2000, 3000, 4000]
+    for dim in built.dimensions:
+        length = math.dist((dim.line.start.x, dim.line.start.y), (dim.line.end.x, dim.line.end.y))
+        assert (dim.reference_ids, round(length)) == ((), dim.value_mm)
 
 
 def test_build_layer__few_chain_samples_fall_back_to_wall_pairing(fake_clock: FakeClock) -> None:
@@ -248,6 +254,14 @@ def test_build_layer__scale_note_with_paper_size(fake_clock: FakeClock) -> None:
     built = _run(walls, [note], fake_clock, fallback="1", px_per_paper_mm=px_per_paper_mm)
     assert built.scale_source == "pipeline"
     assert built.scale_mm_per_px == Decimal(repr(100 / px_per_paper_mm)).quantize(Decimal("0.000001"))
+
+
+def test_build_layer__note_scale_keeps_two_chain_dimensions(fake_clock: FakeClock) -> None:
+    """UX-02: hai chữ chuỗi (< 3, không tự quyết `s`) khớp `s` của ghi chú `TL 1/100` vẫn thành hai `Dimension`."""
+    texts = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _note("TL 1/100")]
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], texts, fake_clock, fallback="1", px_per_paper_mm=5.0)
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
+    assert sorted(dim.value_mm for dim in built.dimensions) == [2000, 3000]
 
 
 @pytest.mark.parametrize(

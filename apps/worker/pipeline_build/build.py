@@ -69,6 +69,9 @@ _QUANTUM: Final = Decimal("0.000001")
 _SAMPLE_ID: Final = re.compile(r"^t(\d+)-w(\d+)-s(\d+|all)$")
 """Id mẫu thật của B5-04 (`pairing.py`): `sall` cho cả tường (prompt ghi `all`)."""
 
+_CHAIN_ID: Final = re.compile(r"^t(\d+)-chain$")
+"""Id mẫu chuỗi kích thước (`_chain_samples`): chữ có `span_px` đo trên ảnh, không gắn tường."""
+
 _DIMENSION_TOLERANCE: Final = 0.02
 _BUILD_SCALE_TARGET_MM: Final = 150.0
 """Bề dày vách mong muốn khi phải tự chọn tỉ lệ dựng (B5-05 [6] bước 2)."""
@@ -406,10 +409,11 @@ def _build_dimensions(
 ) -> tuple[Dimension, ...]:
     """Bước 7: tối đa một `Dimension` mỗi chữ; chữ có mẫu mà không dựng được → `dimensionUnpaired`."""
     grouped = _grouped_samples(context.samples, frozenset(context.rejected), wall_set.input_to_wall)
-    if not grouped:
-        return ()
-    index = _SpanIndex.of(context.walls_px)
     built: list[Dimension] = []
+    done: set[int] = set()
+    if not grouped:
+        return _chain_dimensions(context, done, scaling=scaling, clock=clock)
+    index = _SpanIndex.of(context.walls_px)
     for text_index in sorted(grouped):
         chosen = _best_sample(grouped[text_index], scaling.final)
         if chosen is None:
@@ -428,6 +432,48 @@ def _build_dimensions(
             continue
         text = context.texts[text_index]
         built.append(_dimension(sample, line, wall, text, level_id=context.level_id, clock=clock))
+        done.add(text_index)
+    return (*built, *_chain_dimensions(context, done, scaling=scaling, clock=clock))
+
+
+def _chain_dimensions(context: "_Attempt", taken: set[int], *, scaling: Scaling, clock: Clock) -> tuple[Dimension, ...]:
+    """UX-02: chữ chỉ có mẫu chuỗi (không ghép được tường) vẫn thành `Dimension`, không gắn thực thể.
+
+    Trước đây mẫu chuỗi quyết tỉ lệ mà không dựng `Dimension` nào, nên ch-03 suy đúng 13,9 mm/px
+    vẫn báo "không đọc được số kích thước nào". Đoạn dài `span_px`, giữa hộp chữ, nằm theo chiều dài
+    của hộp; mọi mẫu chuỗi trong ngưỡng 2 % của `s` (như bước 7), kể cả khi `s` đến từ ghi chú `TL 1:N`
+    với dưới 3 mẫu. Chữ đã có `Dimension` ghép tường hay mẫu bị loại thì bỏ.
+    """
+    rejected = frozenset(context.rejected)
+    built: list[Dimension] = []
+    for sample in _chain_samples(context.texts):
+        match = _CHAIN_ID.match(sample.id)
+        if match is None or sample.id in rejected or int(match.group(1)) in taken:
+            continue
+        if abs(_ratio(sample) - scaling.final) / scaling.final > _DIMENSION_TOLERANCE:
+            continue
+        text = context.texts[int(match.group(1))]
+        box, half = text.box, sample.pixel_length / 2
+        x, y = (box.x_min + box.x_max) / 2, (box.y_min + box.y_max) / 2
+        if box.x_max - box.x_min >= box.y_max - box.y_min:
+            start, end = scaling.point(max(x - half, 0.0), y), scaling.point(x + half, y)
+        else:
+            start, end = scaling.point(x, max(y - half, 0.0)), scaling.point(x, y + half)
+        if start == end:
+            continue
+        built.append(
+            Dimension(
+                id=new_spatial_id("dimension", clock),
+                level_id=context.level_id,
+                kind="linear",
+                reference_ids=(),
+                line=Segment(start=start, end=end),
+                value_mm=js_round(sample.real_length_mm),
+                confidence=text.confidence,
+                source="ai",
+                reviewed=False,
+            )
+        )
     return tuple(built)
 
 
