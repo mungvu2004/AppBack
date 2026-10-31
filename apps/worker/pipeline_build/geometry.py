@@ -667,7 +667,7 @@ def _hugs(stub: _Seg, wall: _Seg) -> bool:
 def _drop_hugging_stubs(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> None:
     """3b (e): bỏ mẩu ≤ 600 mm áp sát mặt tường dày hơn khi có đầu không chạm tường thứ ba và không mang ô mở.
 
-    Mẩu như vậy không khép phòng nào (một đầu tự do) mà để lại đầu lơ lửng cách mặt tường 70–150 mm
+    Mẩu như vậy không khép phòng nào (một đầu tự do) mà để lại đầu lơ lửng cách mặt tường 70-150 mm
     (WALL-DANGLING-END ở màn Quy chuẩn). Kéo theo trục không chạm được vì nó song song với tường kia.
     """
     for stub in segs:
