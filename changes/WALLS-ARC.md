@@ -15,9 +15,11 @@
 - **Cần người điều phối**: hợp đồng FE–BE thêm `curveOffsetMm` (tuỳ chọn) vào `WallSchema` đọc/ghi, xuất lại
   `openapi.json`, nâng `tools/contract/APPFRONT_SHA` lên AppFront `feat/walls-arc`.
 - Nợ NO-431 (mở): `rules_ai` (bám đồ vào mặt tường, phân mặt trong/ngoài) và `spatial/diff.py` (lịch sử không ghi trường
-  `curveOffsetMm`) coi tường cong là dây.
+  `curveOffsetMm`) coi tường cong là dây. Hậu quả mất sửa (review P2: chỉ uốn tường AI chưa duyệt → không `edited` → chạy lại
+  pipeline thay mất) đã vá ở `provenance.mark_edited`; còn mở: nhật ký đổi trường chưa có `curveOffsetMm` (cần HOP-DONG-MOI).
 - Nợ NO-432 (mở): kích thước ghi trên tường cong (bước 7) đo theo dây; ô mở trên cung bị kẹp trong một dây ≤ 10° như trước.
-- Nợ NO-433 (mở): khe cửa trong mặt nạ huấn luyện (`render.py`) cắt theo dây, chưa theo cung.
+- Nợ NO-433 (mở): khe cửa trong mặt nạ huấn luyện và hộp nhãn YOLO cửa/cửa sổ (`render.py` `object_boxes`) đặt theo dây,
+  chưa theo cung — lệch tới cỡ sagitta.
 - Nợ NO-434 (mở): bước 5b (WALLS-CURVE) báo nhầm cung trên bản vẽ CVC: góc vát 45° tường dày (`Ib_RI0501`, R/t 3,9) và
   tường chéo có gãy (`IIa_GL0401`); 5 cung tìm được trên 39 trang CVC đều dài 6-12 lần bề dày. Cần phép thử phân biệt
   vát góc với cung trước khi bật trên bản vẽ ngoài bộ bench.
