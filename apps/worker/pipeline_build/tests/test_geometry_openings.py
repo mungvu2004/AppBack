@@ -536,7 +536,7 @@ def test_build_walls__dangling_end_with_door_in_800_gap_reaches_wall(fake_clock:
 
 
 def test_build_walls__dangling_end_without_door_in_800_gap_joins_thick_wall(fake_clock: FakeClock) -> None:
-    """3b-d: khe 800 mm không cửa, tường 300 (trần 3 × 300 = 900) → kéo tới chạm vách."""
+    """3b-d: khe 800 mm không cửa, tường 300 (trần 3 x 300 = 900) → kéo tới chạm vách."""
     dropped: Counter[str] = Counter()
     result = run(
         [wall_px(0, 1000, 1150, 1000, thickness_px=300), wall_px(2000, 0, 2000, 3000)], [], fake_clock, dropped

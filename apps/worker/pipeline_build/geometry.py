@@ -53,7 +53,7 @@ _DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
 """Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
 """Cửa đôi hẹp hơn 600 mm là hộp bám sai tường, không phải cửa (B5-05 [6] bước 4)."""
-# 3b (d): đầu tường lơ lửng nhìn thẳng gặp vách trong khe mặt-tới-mặt ≤ max(450, 3 × bề dày) → kéo tới chạm.
+# 3b (d): đầu tường lơ lửng nhìn thẳng gặp vách trong khe mặt-tới-mặt ≤ max(450, 3 x bề dày) → kéo tới chạm.
 _DANGLE_REACH_MM: Final = 450
 _DANGLE_REACH_THICKNESS: Final = 3
 # Khe có tâm hộp ô mở → khe cửa, kéo xa tới 1200 mm (cửa đơn ≤ 1000 + mép); khe 2 m giữ nguyên.
@@ -578,7 +578,7 @@ def _centre_in_gap(boxes: _Boxes, seg: _Seg, tip: Point, face: float) -> bool:
 def _reach_dangling(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
     """3b (d): đầu lơ lửng còn lại → kéo theo phương tường tới tim vách vuông góc gần nhất phía trước.
 
-    Khe mặt-tới-mặt ≤ max(`_DANGLE_REACH_MM`, `_DANGLE_REACH_THICKNESS` × bề dày) không cần hộp cửa; khe có
+    Khe mặt-tới-mặt ≤ max(`_DANGLE_REACH_MM`, `_DANGLE_REACH_THICKNESS` x bề dày) không cần hộp cửa; khe có
     tâm hộp ô mở (`_centre_in_gap`) tới `_DANGLE_DOOR_REACH_MM`: khe cửa trong bản vẽ là tường có ô mở, và
     bước 4 gắn hộp đó vào chính tường đã kéo. Vách phía trước bị tường khác chắn (`_blocked`) → giữ khe.
     """
