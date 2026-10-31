@@ -41,6 +41,13 @@ có distance 2,0, vách 110 mm trên `render_plan` có 4,0-7,0. 1,7 nằm giữa
 lượng tử (1,4; 2,0) nên không sát số đo nào. Tiêu chí tỉ lệ `T/J < 0,5` cũ cắt nhầm vách
 110 mm chạm tường bao 220 mm (T/J = 0,40) và mọi vách rất mảnh chạm tường rất dày (NO-288).
 """
+_SPUR_TIP_RATIO: Final = 0.2
+"""Đầu tự do mảnh hơn ngần này lần distance tại nút giao cũng là râu, dù quá `_SPUR_TIP_PX` (bước 4).
+
+Mặt nạ hụt một khe ở mép tường dày để lại lưỡi mảnh dần (distance đầu 2,0 cạnh tường 11,8 → 0,17): xương
+đẻ nhánh cụt và nút giao giữa thân tường, cắt đôi một cung (WALLS-ARC). Vách mảnh thật chạm tường dày
+(NO-288) có tỉ lệ ≥ 0,4 nên vẫn giữ.
+"""
 _AXIS_SHARE: Final = 0.85
 """Bản vẽ có ≥ ngần này tổng độ dài tường ngang/dọc thì coi là bản vẽ vuông góc (bước 7, 10b)."""
 _AXIS_OFFSET_RATIO: Final = 1.0
@@ -311,7 +318,7 @@ def _is_spur(graph: _Graph, path: NDArray[np.int32]) -> bool:
     if head == tail or graph.node_leaf[head] == graph.node_leaf[tail]:
         return False
     junction, tip = (tail, head) if graph.node_leaf[head] else (head, tail)
-    if graph.node_dist[tip] > _SPUR_TIP_PX:
+    if graph.node_dist[tip] > max(_SPUR_TIP_PX, _SPUR_TIP_RATIO * graph.node_dist[junction]):
         return False
     return bool(_path_length(graph, path) <= _SPUR_RATIO * graph.node_dist[junction])
 
@@ -493,6 +500,18 @@ def _arc_chords(
     ]
 
 
+def _off_node(seg: _Seg, inner: NDArray[np.int32]) -> NDArray[np.int32]:
+    """Điểm xương của `seg` trừ phần trong một bề dày quanh đầu cuối khi đầu đó là nút giao (khoá loại 0).
+
+    Cụm nút giao kéo xương lệch khỏi tim tường cỡ nửa bề dày: cung chạm nút (lưỡi mặt nạ hụt, nhánh cụt) thì
+    đoạn cuối lệch đường tròn quá ngưỡng dù đỉnh vẫn trên cung (WALLS-ARC). Đỉnh DP thường không bỏ gì.
+    """
+    if seg.b_key[0] != 0 or len(inner) < 3:
+        return inner
+    far = np.hypot(inner[:, 0] - seg.bx, inner[:, 1] - seg.by) > seg.thickness
+    return inner[far] if far.sum() >= 2 else inner
+
+
 def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], mask: NDArray[np.bool_]) -> list[_Seg]:
     """Bước 5b: chuỗi ≥ `_ARC_MIN_SEGMENTS` đoạn DP liền nhau mà điểm xương nằm trên một đường tròn → cung.
 
@@ -511,7 +530,8 @@ def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], 
         while (
             stop < len(segs)
             and segs[stop].a_key == segs[stop - 1].b_key
-            and _fit_circle(np.concatenate(inners[start : stop + 1]).astype(np.float64))[3] <= tol
+            and _fit_circle(np.concatenate([*inners[start:stop], _off_node(segs[stop], inners[stop])]).astype(np.float64))[3]
+            <= tol
         ):
             stop += 1
         arc = None
