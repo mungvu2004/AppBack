@@ -19,6 +19,7 @@ import numpy as np
 import shapely
 from shapely import STRtree
 
+from apps.worker.pipeline_build.arcs import explode_arcs, join_arcs
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
@@ -442,6 +443,8 @@ class _Attempt:
     level_id: str
     source: str
     suggestions: tuple[DetectionPx, ...] = ()
+    arc_of: tuple[int | None, ...] = ()
+    """Tường cong gốc của từng dây trong `walls_px` (`explode_arcs`), rỗng khi không có tường cong."""
 
 
 def _assembled(
@@ -456,6 +459,7 @@ def _assembled(
     }
     wall_set = build_walls(context.walls_px, context.detections, **shared)
     rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
+    wall_set, rooms = join_arcs(wall_set, rooms, context.arc_of)
     trusted = context.source == "pipeline"
     furniture = build_furniture(context.detections, rooms, scale_trusted=trusted, **shared)
     suggested = build_furniture(context.suggestions, rooms, scale_trusted=trusted, **shared)
@@ -548,7 +552,7 @@ def build_layer(
         raise ValueError(f"fallback_mm_per_px {fallback_mm_per_px} phải dương và hữu hạn")
     size = (width_px, height_px)
     base: Counter[str] = Counter()
-    walls_px = _filtered_walls(walls.walls, size, base)
+    walls_px, arc_of = explode_arcs(_filtered_walls(walls.walls, size, base))
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
     scale, source, samples, rejected = _resolved_scale(walls_px, texts, fallback_mm_per_px, base)
@@ -564,7 +568,7 @@ def build_layer(
     suggestions = _suggestions(page, walls_px, detections, texts, final if trusted else None)
     # Tỉ lệ ước từ tường chỉ đúng tầm ±30 %: không dựng `Dimension` từ mẫu "khớp" nó (bước 7).
     attempt_source = source if trusted else "estimate"
-    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, attempt_source, suggestions)
+    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, attempt_source, suggestions, arc_of)
     dropped = base.copy()
     layer, dimensions = _attempt(context, scaling=Scaling(build, final), clock=clock, dropped=dropped)
     if build != final:

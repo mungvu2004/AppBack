@@ -26,6 +26,15 @@ def test_unreviewed_entities_double_with_k_2() -> None:
     assert [entity.reviewed for entity in scaled.entities()] == [entity.reviewed for entity in LAYER.entities()]
 
 
+@pytest.mark.parametrize(("curve", "new", "expected"), [(300, 12.0, 600), (-500, 3.0, -250), (500, 2.0, 166)])
+def test_curve_offset_scales_and_stays_within_half_the_chord(curve: int, new: float, expected: int) -> None:
+    """Sagitta nhân `k` như mọi độ dài mặt bằng; làm tròn lố nửa dây (1000 mm · ⅓ → dây 333, sagitta 167) thì kẹp."""
+    wall = WALL.model_copy(update={"curve_offset_mm": curve, **UNREVIEWED})
+    (scaled,) = rescale_unreviewed(LAYER.model_copy(update={"walls": (wall,)}), 6.0, new).walls
+    assert scaled.curve_offset_mm == expected
+    assert "curveOffsetMm" not in WALL.model_dump(by_alias=True)
+
+
 def test_reviewed_entities_are_untouched() -> None:
     """Phòng của mẫu đã duyệt: giữ nguyên từng trường, kể cả `areaM2` (K21)."""
     scaled = rescale_unreviewed(LAYER, 6.0, 12.0)

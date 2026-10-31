@@ -96,6 +96,11 @@ class WallOut(_ReviewedOut):
     kind: Literal["loadBearing", "partition", "envelope"]
     opening_ids: list[str]
     paint: WallPaintOut | None = None
+    curve_offset_mm: Millimetres = Field(default=0, exclude_if=lambda value: value == 0)
+    """Tường cong: sagitta có dấu theo quy ước `curveOffset` của Pascal (pháp tuyến `(-dy, dx)/L`); 0 là thẳng.
+
+    Tường thẳng vắng khoá: `WallSchema` của FE là `.strict()`, bản FE chưa biết khoá này vẫn đọc được tầng không cong.
+    """
 
 
 class OpeningOut(_ReviewedOut):

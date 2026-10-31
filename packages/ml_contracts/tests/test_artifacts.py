@@ -59,6 +59,7 @@ def test_results_roundtrip_through_json() -> None:
         lambda: BoxPx(x_min=0, y_min=2, x_max=1, y_max=1),
         lambda: WallPx(start=PointPx(x=1, y=1), end=PointPx(x=1, y=1), thickness_px=1, confidence=1),
         lambda: WallPx(start=PointPx(x=0, y=0), end=PointPx(x=1, y=0), thickness_px=0, confidence=1),
+        lambda: WallPx(start=PointPx(x=0, y=0), end=PointPx(x=10, y=0), thickness_px=1, confidence=1, sagitta_px=5.1),
         lambda: WallPx(start=PointPx(x=0, y=0), end=PointPx(x=1, y=0), thickness_px=1, confidence=1.01),
         lambda: DetectionPx(label="sofa", box=BOX, confidence=0.5),
         lambda: DetectionPx(label="door", box=BOX, confidence=-0.01),
@@ -113,3 +114,11 @@ def test_text_json_without_span_key_still_parses() -> None:
     item = b'{"text":"3.600","box":{"x_min":0,"y_min":0,"x_max":4,"y_max":2},"confidence":0.5}'
     data = b'{"schema_version":1,"items":[' + item + b"]}"
     assert text_from_json(data).items[0].span_px is None
+
+
+def test_walls_to_json__curved_wall_round_trips_and_straight_wall_has_no_sagitta_key() -> None:
+    """Tường cong giữ `sagitta_px` (≤ nửa dây) qua JSON; tường thẳng không ghi khoá, `walls.json` cũ y nguyên byte."""
+    curved = WALL.model_copy(update={"sagitta_px": -5.0})
+    data = walls_to_json(WallsResult(walls=(WALL, curved)))
+    assert data.count(b"sagitta_px") == 1
+    assert walls_from_json(data).walls[1].sagitta_px == -5.0

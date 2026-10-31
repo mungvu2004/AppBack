@@ -61,6 +61,8 @@ ACCEPTED = [
     (Wall, "heightMm", 1),
     (Wall, "centreline", segment(-MAX_SAFE, 0, MAX_SAFE, 0)),
     (Wall, "openingIds", []),
+    (Wall, "curveOffsetMm", 500),
+    (Wall, "curveOffsetMm", -500),
     (Opening, "offsetMm", 0),
     (Opening, "sillHeightMm", 0),
     (Opening, "widthMm", 1),
@@ -97,6 +99,8 @@ ACCEPTED = [
 # (model, khoá dây, giá trị): mỗi dòng một ràng buộc bị phá.
 REJECTED = [
     (Wall, "thicknessMm", 0),
+    (Wall, "curveOffsetMm", 502),
+    (Wall, "curveOffsetMm", 1.5),
     (Wall, "thicknessMm", 1.5),
     (Wall, "thicknessMm", True),
     (Wall, "thicknessMm", "12"),

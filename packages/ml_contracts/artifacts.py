@@ -7,6 +7,7 @@ từ chối thân quá `ARTIFACT_JSON_MAX_BYTES` **trước** khi parse. Đầu 
 xấu (hộp ngoài tường, trùng) không phải việc của module này (BE-00 §9).
 """
 
+import math
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Annotated, Final, Literal, Self
@@ -99,19 +100,31 @@ class BoxPx(FrozenModel):
         return self
 
 
+def _straight(sagitta: float) -> bool:
+    """Tường thẳng không ghi `sagitta_px`: `walls.json` của bản vẽ không có tường cong giữ y nguyên từng byte."""
+    return sagitta == 0
+
+
 class WallPx(FrozenModel):
-    """Đường tim một tường; hai đầu khác nhau, bề dày dương."""
+    """Đường tim một tường; hai đầu khác nhau, bề dày dương.
+
+    `sagitta_px` ≠ 0 là tường cong (cung ≤ 180°): điểm giữa cung = trung điểm dây - `sagitta_px` · n với
+    `n = (-dy, dx) / L`, |sagitta| ≤ L/2 (quy ước `curveOffset` của Pascal).
+    """
 
     start: PointPx
     end: PointPx
     thickness_px: Annotated[float, Field(gt=0, le=COORD_MAX_PX, allow_inf_nan=False)]
     confidence: Confidence
+    sagitta_px: float = Field(default=0.0, ge=-COORD_MAX_PX, le=COORD_MAX_PX, allow_inf_nan=False, exclude_if=_straight)
 
     @model_validator(mode="after")
     def _not_a_point(self) -> Self:
-        """Tường một điểm không có hướng, bước dựng tầng không dùng được."""
+        """Tường một điểm không có hướng, bước dựng tầng không dùng được; cung không quá nửa vòng."""
         if self.start == self.end:
             raise ValueError("đầu và cuối tường trùng nhau")
+        if abs(self.sagitta_px) > math.dist((self.start.x, self.start.y), (self.end.x, self.end.y)) / 2 + 1e-6:
+            raise ValueError("sagitta lớn hơn nửa dây (cung quá nửa vòng)")
         return self
 
 
