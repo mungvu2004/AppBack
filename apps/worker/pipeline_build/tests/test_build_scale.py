@@ -256,6 +256,14 @@ def test_build_layer__scale_note_with_paper_size(fake_clock: FakeClock) -> None:
     assert built.scale_mm_per_px == Decimal(repr(100 / px_per_paper_mm)).quantize(Decimal("0.000001"))
 
 
+def test_build_layer__note_scale_keeps_two_chain_dimensions(fake_clock: FakeClock) -> None:
+    """UX-02: hai chữ chuỗi (< 3, không tự quyết `s`) khớp `s` của ghi chú `TL 1/100` vẫn thành hai `Dimension`."""
+    texts = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _note("TL 1/100")]
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], texts, fake_clock, fallback="1", px_per_paper_mm=5.0)
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
+    assert sorted(dim.value_mm for dim in built.dimensions) == [2000, 3000]
+
+
 @pytest.mark.parametrize(
     ("note", "px_per_paper_mm", "thickness_px"),
     [

@@ -440,11 +440,12 @@ def _chain_dimensions(context: "_Attempt", taken: set[int], *, scaling: Scaling,
 
     Trước đây mẫu chuỗi quyết tỉ lệ mà không dựng `Dimension` nào, nên ch-03 suy đúng 13,9 mm/px
     vẫn báo "không đọc được số kích thước nào". Đoạn dài `span_px`, giữa hộp chữ, nằm theo chiều dài
-    của hộp; chỉ mẫu trong ngưỡng 2 % của `s` (như bước 7). Chữ đã có `Dimension` ghép tường thì bỏ.
+    của hộp; mọi mẫu chuỗi trong ngưỡng 2 % của `s` (như bước 7), kể cả khi `s` đến từ ghi chú `TL 1:N`
+    với dưới 3 mẫu. Chữ đã có `Dimension` ghép tường hay mẫu bị loại thì bỏ.
     """
     rejected = frozenset(context.rejected)
     built: list[Dimension] = []
-    for sample in context.samples:
+    for sample in _chain_samples(context.texts):
         match = _CHAIN_ID.match(sample.id)
         if match is None or sample.id in rejected or int(match.group(1)) in taken:
             continue
