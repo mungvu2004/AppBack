@@ -84,9 +84,9 @@ def test_build_layer__unset_project_scale_uses_wall_estimate(fake_clock: FakeClo
     assert built.layer.walls[0].thickness_mm >= 100  # không còn tường 15 mm của tỉ lệ 1 mm/px
 
 
-def _door(x: float, length: float) -> DetectionPx:
-    """Hộp cửa đi đứng, cạnh dài `length` px, đặt ở cột `x`."""
-    return DetectionPx(label="door", box=BoxPx(x_min=x, y_min=300, x_max=x + 10, y_max=300 + length), confidence=0.9)
+def _door(x: float, length: float, y: float = 95) -> DetectionPx:
+    """Hộp cửa đi đứng, cạnh dài `length` px, góc trên ở `(x, y)`; mặc định chạm tường ngang y = 100."""
+    return DetectionPx(label="door", box=BoxPx(x_min=x, y_min=y, x_max=x + 10, y_max=y + length), confidence=0.9)
 
 
 def test_build_layer__unset_project_scale_uses_door_estimate(fake_clock: FakeClock) -> None:
@@ -96,6 +96,23 @@ def test_build_layer__unset_project_scale_uses_door_estimate(fake_clock: FakeClo
     built = _run(walls, (), fake_clock, detections=doors, fallback="1")
     assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("14.900000"))
     assert built.dimensions == ()
+
+
+def test_build_layer__door_estimate_ignores_doors_away_from_walls(fake_clock: FakeClock) -> None:
+    """DOOR-SCALE: cửa ở sơ đồ thu nhỏ (cách mọi tường > bề dày dày nhất) không tính → vẫn 745 / 50 = 14,9."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    near = [_door(300 + 40 * k, 50) for k in range(3)]
+    far = [_door(1300 + 20 * k, 12, y=1000) for k in range(4)]
+    built = _run(walls, (), fake_clock, detections=near + far, fallback="1")
+    assert built.scale_mm_per_px == Decimal("14.900000")
+
+
+def test_build_layer__door_estimate_needs_three_doors_by_walls(fake_clock: FakeClock) -> None:
+    """DOOR-SCALE: 5 hộp cửa nhưng chỉ 2 sát tường → không đủ, ước từ bề dày tường (150 / 15 = 10)."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    doors = [_door(300, 50), _door(400, 50)] + [_door(1300 + 20 * k, 12, y=1000) for k in range(3)]
+    built = _run(walls, (), fake_clock, detections=doors, fallback="1")
+    assert built.scale_mm_per_px == Decimal("10.000000")
 
 
 def test_build_layer__unset_project_scale_two_doors_uses_wall_estimate(fake_clock: FakeClock) -> None:

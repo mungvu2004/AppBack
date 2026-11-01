@@ -300,16 +300,23 @@ def _build_scale(walls: Sequence[WallPx], final: float) -> float:
     return min(max(_BUILD_SCALE_TARGET_MM / median, _BUILD_SCALE_MIN), _BUILD_SCALE_MAX)
 
 
-def _door_scale(detections: Sequence[DetectionPx]) -> float | None:
+def _door_scale(detections: Sequence[DetectionPx], walls: Sequence[WallPx]) -> float | None:
     """Tỉ lệ tạm từ cửa đi: cạnh dài trung vị của hộp `door` = `_DOOR_WIDTH_MM`; < `_DOOR_MIN_COUNT` cửa → `None`.
 
-    Hộp dài hơn `_DOUBLE_DOOR_RATIO` lần trung vị (cửa đôi, cửa lùa lô gia) bỏ trước khi lấy trung vị lần hai.
+    `walls` không rỗng (chỉ gọi ở nhánh ước lượng, nhánh đó đòi có tường).
+
+    Chỉ tính hộp cách tim tường nào đó ≤ bề dày tường dày nhất: cửa trên sơ đồ tầng thu nhỏ hay chú giải (không
+    tường) làm trung vị nhỏ đi và tỉ lệ phình (bench ch-08: 7/12 hộp ở sơ đồ thu nhỏ). Hộp dài hơn
+    `_DOUBLE_DOOR_RATIO` lần trung vị bỏ trước lần lấy trung vị thứ hai — chỉ chống cửa đôi/cửa lùa **thiểu số**.
     Bench 11 bản có đáp án (DOOR-SCALE): lệch trung vị ~8-10 %, tối đa ~17 %; bề dày tường lệch tới 42 %.
     """
-    sides = np.array(
-        [max(d.box.x_max - d.box.x_min, d.box.y_max - d.box.y_min) for d in detections if d.label == "door"],
-        dtype=float,
-    )
+    rects = np.array([(d.box.x_min, d.box.y_min, d.box.x_max, d.box.y_max) for d in detections if d.label == "door"])
+    if len(rects) < _DOOR_MIN_COUNT:
+        return None
+    lines = shapely.linestrings([[(w.start.x, w.start.y), (w.end.x, w.end.y)] for w in walls])
+    reach = max(wall.thickness_px for wall in walls)
+    near = np.unique(STRtree(lines).query(shapely.box(*rects.T), predicate="dwithin", distance=reach)[0])
+    sides = np.maximum(rects[:, 2] - rects[:, 0], rects[:, 3] - rects[:, 1])[near]
     if len(sides) < _DOOR_MIN_COUNT:
         return None
     single = sides[sides <= _DOUBLE_DOOR_RATIO * float(np.median(sides))]
@@ -638,7 +645,7 @@ def build_layer(
         scale, source = noted, "pipeline"
     estimated = source == "project_default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
     if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi, thiếu cửa thì bề dày tường; không phải 1 mm/px
-        guess = _door_scale(detections) or _build_scale(walls_px, float(scale))
+        guess = _door_scale(detections, walls_px) or _build_scale(walls_px, float(scale))
         scale, source = Decimal(repr(guess)).quantize(_QUANTUM), "pipeline"
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
