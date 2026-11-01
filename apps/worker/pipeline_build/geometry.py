@@ -665,19 +665,21 @@ def _hugs(stub: _Seg, wall: _Seg) -> bool:
     return True
 
 
-def _drop_hugging_stubs(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> None:
+def _drop_hugging_stubs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
     """3b (e): bỏ mẩu ≤ 600 mm áp sát mặt tường dày hơn khi có đầu không chạm tường thứ ba và không mang ô mở.
 
     Mẩu như vậy không khép phòng nào (một đầu tự do) mà để lại đầu lơ lửng cách mặt tường 70-150 mm
     (WALL-DANGLING-END ở màn Quy chuẩn). Kéo theo trục không chạm được vì nó song song với tường kia.
+    Tường chủ và tường chạm đầu mẩu đều cách mẩu < `OPENING_GAP_MAX_MM` nên chỉ dò trong `neighbours`.
     """
-    for stub in segs:
+    for index, stub in enumerate(segs):
         if not stub.alive or _length(stub) > _HUG_STUB_MAX_MM or _hits(boxes.tree, _line(stub)):
             continue
-        host = next((wall for wall in segs if _hugs(stub, wall)), None)
+        near = [segs[item] for item in sorted(neighbours[index])]
+        host = next((wall for wall in near if _hugs(stub, wall)), None)
         if host is None:
             continue
-        others = [seg for seg in segs if seg is not host]
+        others = [seg for seg in near if seg is not host]
         if _dangling(stub, stub.start, others) or _dangling(stub, stub.end, others):
             stub.alive = False
             dropped["isolatedBlock"] += 1
@@ -704,7 +706,7 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
     _merge_aligned(segs, neighbours, boxes, lines, dropped)
     _extend_all(segs, neighbours, boxes, dropped)
     _reach_dangling(segs, neighbours, boxes, dropped)
-    _drop_hugging_stubs(segs, boxes, dropped)
+    _drop_hugging_stubs(segs, neighbours, boxes, dropped)
     return _bridge_segments(segs, neighbours)
 
 
