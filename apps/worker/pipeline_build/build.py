@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Final, Literal, Self
+from typing import Any, Final, Literal, Self, get_args
 
 import numpy as np
 import shapely
@@ -104,6 +104,14 @@ Ngoài dải là ghi chú đọc hỏng (1:10 thay 1:100) hay PDF in co trang (f
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
 
+ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "default"]
+"""Tỉ lệ đến từ đâu (QT-SCALE): chuỗi kích thước ≥ 3 mẫu, 2 mẫu đồng thuận, ghi chú `TL 1:N`, ước từ cửa đi,
+ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
+
+_SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
+_OPTIONAL_KEYS: Final = frozenset({"scaleBasis"})
+"""Khoá gốc tuỳ chọn: `layer.json` dựng trước QT-SCALE không có `scaleBasis` vẫn đọc được."""
+
 
 @dataclass(frozen=True, slots=True)
 class BuiltLayer:
@@ -118,6 +126,7 @@ class BuiltLayer:
     scale_mm_per_px: Decimal
     scale_source: Literal["pipeline", "project_default"]
     dropped: Mapping[str, int]
+    scale_basis: ScaleBasis | None = None
 
     def to_json(self) -> bytes:
         """`layer.json` UTF-8 gọn, khoá theo thứ tự cố định; `scaleMmPerPx` là chuỗi Decimal."""
@@ -129,6 +138,8 @@ class BuiltLayer:
             "scaleSource": self.scale_source,
             "dropped": {key: self.dropped[key] for key in DROPPED_KEYS},
         }
+        if self.scale_basis is not None:
+            payload["scaleBasis"] = self.scale_basis
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     @classmethod
@@ -138,7 +149,7 @@ class BuiltLayer:
             payload = json.loads(data)
         except json.JSONDecodeError as exc:
             raise ValueError("layer.json không phải JSON hợp lệ") from exc
-        if not isinstance(payload, dict) or set(payload) != _ROOT_KEYS:
+        if not isinstance(payload, dict) or not _ROOT_KEYS <= set(payload) <= _ROOT_KEYS | _OPTIONAL_KEYS:
             raise ValueError("layer.json sai bộ khoá gốc")
         if payload["schemaVersion"] != SCHEMA_VERSION:
             raise ValueError(f"layer.json schemaVersion lạ: {payload['schemaVersion']!r}")
@@ -147,12 +158,16 @@ class BuiltLayer:
             raise ValueError("layer.json sai bộ khoá dropped")
         if payload["scaleSource"] not in _SCALE_SOURCES:
             raise ValueError(f"layer.json scaleSource lạ: {payload['scaleSource']!r}")
+        basis = payload.get("scaleBasis")
+        if basis is not None and basis not in _SCALE_BASES:
+            raise ValueError(f"layer.json scaleBasis lạ: {basis!r}")
         return cls(
             layer=SpatialLayer.model_validate(payload["layer"]),
             dimensions=tuple(Dimension.model_validate(item) for item in payload["dimensions"]),
             scale_mm_per_px=Decimal(payload["scaleMmPerPx"]),
             scale_source=payload["scaleSource"],
             dropped={key: int(dropped[key]) for key in DROPPED_KEYS},
+            scale_basis=basis,
         )
 
 
@@ -227,8 +242,8 @@ def _resolved_scale(
     texts: Sequence[TextPx],
     fallback_mm_per_px: Decimal,
     dropped: Counter[str],
-) -> tuple[Decimal, Literal["pipeline", "project_default"], tuple[ScaleSample, ...], tuple[str, ...]]:
-    """Bước 2: tỉ lệ dây `s`, nguồn, mẫu và id mẫu bị loại; ngoài khoảng → `scaleOutOfRange`.
+) -> tuple[Decimal, ScaleBasis, tuple[ScaleSample, ...], tuple[str, ...]]:
+    """Bước 2: tỉ lệ dây `s`, gốc (`chain`/`paired`/`default`), mẫu và id mẫu bị loại; ngoài khoảng → `scaleOutOfRange`.
 
     Mẫu chuỗi kích thước (`span_px` đo trên ảnh, cụm tỉ số đông nhất) quyết trước; không đủ
     thì mới tới mẫu ghép chữ-tường. Trả cả hai loại mẫu: bước 7 chỉ dựng `Dimension` từ mẫu
@@ -247,14 +262,14 @@ def _resolved_scale(
         if classify_scale_range(result.mm_per_px) == "inRange":
             value = Decimal(repr(result.mm_per_px)).quantize(_QUANTUM)
             if value != 0:
-                return value, "pipeline", samples, result.rejected_ids
+                return value, "paired" if result.paired else "chain", samples, result.rejected_ids
         else:
             dropped["scaleOutOfRange"] += 1
     _log.info(
         "pipeline_build_dropped",
         extra={"code": PipelineCode.SCALE_UNRESOLVED.value, "reason": result.reason},
     )
-    return fallback_mm_per_px, "project_default", samples, result.rejected_ids
+    return fallback_mm_per_px, "default", samples, result.rejected_ids
 
 
 def _note_scale(walls: Sequence[WallPx], texts: Sequence[TextPx], px_per_paper_mm: float | None) -> Decimal | None:
@@ -639,14 +654,17 @@ def build_layer(
     first_of = tuple(k for k, arc in enumerate(arc_of) if arc is None or k == 0 or arc_of[k - 1] != arc)
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
-    scale, source, samples, rejected = _resolved_scale(whole, texts, fallback_mm_per_px, base)
-    noted = _note_scale(walls_px, texts, px_per_paper_mm) if source == "project_default" else None
+    scale, basis, samples, rejected = _resolved_scale(whole, texts, fallback_mm_per_px, base)
+    noted = _note_scale(walls_px, texts, px_per_paper_mm) if basis == "default" else None
     if noted is not None:
-        scale, source = noted, "pipeline"
-    estimated = source == "project_default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
+        scale, basis = noted, "note"
+    estimated = basis == "default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
     if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi, thiếu cửa thì bề dày tường; không phải 1 mm/px
-        guess = _door_scale(detections, walls_px) or _build_scale(walls_px, float(scale))
-        scale, source = Decimal(repr(guess)).quantize(_QUANTUM), "pipeline"
+        door = _door_scale(detections, walls_px)
+        guess = door or _build_scale(walls_px, float(scale))
+        scale = Decimal(repr(guess)).quantize(_QUANTUM)
+        basis = "door" if door else "wallThickness"
+    source: Literal["pipeline", "project_default"] = "project_default" if basis == "default" else "pipeline"
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
     trusted = source == "pipeline" and not estimated
@@ -672,4 +690,5 @@ def build_layer(
         scale_mm_per_px=scale,
         scale_source=source,
         dropped={key: dropped[key] for key in DROPPED_KEYS},
+        scale_basis=basis,
     )

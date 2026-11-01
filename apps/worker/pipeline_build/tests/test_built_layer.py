@@ -1,5 +1,6 @@
 """`BuiltLayer.to_json`/`from_json` (B5-05 [2], "Dây"): khứ hồi đúng, byte tất định, khoá lạ → lỗi."""
 
+import dataclasses
 import json
 from collections.abc import Callable
 from decimal import Decimal
@@ -89,4 +90,16 @@ def test_built_layer__from_json_rejects_unknown_scale_source() -> None:
     payload = json.loads(_built().to_json())
     payload["scaleSource"] = "banana"
     with pytest.raises(ValueError, match="scaleSource"):
+        BuiltLayer.from_json(json.dumps(payload).encode())
+
+
+def test_built_layer__scale_basis_round_trips_and_is_optional() -> None:
+    """QT-SCALE: `scaleBasis` khứ hồi; `layer.json` cũ không có khoá vẫn đọc được (`None`); giá trị lạ → lỗi."""
+    built = dataclasses.replace(_built(), scale_basis="paired")
+    assert json.loads(built.to_json())["scaleBasis"] == "paired"
+    assert BuiltLayer.from_json(built.to_json()) == built
+    assert "scaleBasis" not in json.loads(_built().to_json())
+    payload = json.loads(built.to_json())
+    payload["scaleBasis"] = "banana"
+    with pytest.raises(ValueError, match="scaleBasis"):
         BuiltLayer.from_json(json.dumps(payload).encode())

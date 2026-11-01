@@ -17,6 +17,9 @@ from packages.domain.scale.thresholds import SCALE_THRESHOLDS
 from packages.domain.spatial.area import js_round
 
 _RESULT_PRECISION: Final = 1e6  # sáu chữ số thập phân cho tin cậy và độ lệch, như `roundResult`
+# Nhánh "2 mẫu đồng thuận" (B1) — riêng BE, KHÔNG phải ngưỡng chung của `thresholds.py` (gương FE `scale.ts`).
+_PAIRED_MIN_LENGTH_MM: Final = 1000  # mỗi số ≥ 1 m: số ngắn (bề dày, ô cửa) dễ ghép nhầm
+_PAIRED_AGREEMENT: Final = 0.01  # hai tỉ số mm/px lệch ≤ 1 % mới coi là đồng thuận
 
 ScaleReason = Literal["tooFewSamples", "lowConfidence"]
 ScaleRange = Literal["inRange", "belowRange", "aboveRange"]
@@ -41,6 +44,8 @@ class ScaleResult:
     sample_count: int
     rejected_ids: tuple[str, ...]
     suggested_mm_per_px: float | None
+    paired: bool = False
+    """`True` khi tỉ lệ đến từ nhánh "2 mẫu đồng thuận" (`_paired_agreement`), không phải ≥ 3 mẫu."""
 
     @property
     def code(self) -> PipelineCode | None:
@@ -83,12 +88,26 @@ def _confidence(kept: Sequence[float], centre: float) -> float:
     return _round_result(spread_score * (1 - weight + weight * count_score))
 
 
+def _paired_agreement(usable: Sequence[tuple[ScaleSample, float]]) -> bool:
+    """B1, thêm so với FE: đúng 2 mẫu, hai số mm khác nhau, mỗi số ≥ 1000 mm, tỉ số lệch ≤ 1 %.
+
+    Hai số khác nhau cùng ra một tỉ số khó là trùng hợp (bench ch-09: 12130/491,5 và 11310/458);
+    một số đọc hai lần thì không chứng minh gì nên không nhận.
+    """
+    if len(usable) != 2:
+        return False
+    (first, low), (second, high) = sorted(usable, key=lambda item: item[1])
+    lengths = (first.real_length_mm, second.real_length_mm)
+    return lengths[0] != lengths[1] and min(lengths) >= _PAIRED_MIN_LENGTH_MM and high - low <= _PAIRED_AGREEMENT * low
+
+
 def infer_scale(samples: Sequence[ScaleSample]) -> ScaleResult:
     """Suy tỉ lệ; mẫu không dùng được vào `rejected_ids` trước (thứ tự đầu vào), rồi mẫu lạc.
 
     `mm_per_px` chỉ khi giữ lại ≥ 3 mẫu và tin cậy ≥ 0.6; thiếu mẫu → `tooFewSamples`,
     tin cậy thấp → `lowConfidence`. "Lệch ≤ 15 %" không phải điều kiện ở đây mà là
-    `compare_scale_to_ai_estimate`.
+    `compare_scale_to_ai_estimate`. Ngoại lệ riêng BE: 2 mẫu đồng thuận (`_paired_agreement`)
+    cũng nhận, kèm `paired=True`.
     """
     ratios = [_ratio(sample) for sample in samples]
     usable = [(sample, ratio) for sample, ratio in zip(samples, ratios, strict=True) if ratio is not None]
@@ -101,8 +120,10 @@ def infer_scale(samples: Sequence[ScaleSample]) -> ScaleResult:
     centre = median(kept)
     confidence = 0.0 if centre is None else _confidence(kept, centre)
     reason: ScaleReason | None = None
+    paired = False
     if centre is None or len(kept) < SCALE_THRESHOLDS.minimum_sample_count:
-        reason = "tooFewSamples"
+        paired = _paired_agreement(usable)
+        reason = None if paired else "tooFewSamples"
     elif confidence < SCALE_THRESHOLDS.minimum_confidence:
         reason = "lowConfidence"
     return ScaleResult(
@@ -112,6 +133,7 @@ def infer_scale(samples: Sequence[ScaleSample]) -> ScaleResult:
         sample_count=len(kept),
         rejected_ids=rejected_ids,
         suggested_mm_per_px=centre,
+        paired=paired,
     )
 
 

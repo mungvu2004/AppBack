@@ -2,7 +2,8 @@
 
 `k = new / old`; mọi độ dài **trên mặt bằng** của thực thể `reviewed=False` (của AI
 lẫn do người vẽ) thành `js_round(v x k)`: toạ độ đường tim, đường bao, tâm, hộp
-bao, `line`; bề dày; `offsetMm`, `widthMm`. Chiều cao, góc, tin cậy giữ nguyên.
+bao, `line`; bề dày máy đo; `offsetMm`, `widthMm`. Bề dày tường bắt lại bậc chuẩn
+(`_thickness`), không nhân thẳng. Chiều cao, góc, tin cậy giữ nguyên.
 Thực thể đã duyệt giữ nguyên từng trường (K21), trừ khi người gọi truyền
 `include_reviewed=True` vì tỉ lệ cũ chỉ là đoán (H4: nguồn `pipeline` hay
 `project_default`): khi đó mọi thực thể đổi theo cùng `k`, giữ hình học theo pixel
@@ -15,6 +16,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from packages.domain.spatial.area import js_round, polygon_area_m2
 from packages.domain.spatial.model import Dimension, Furniture, Opening, Point, Room, Segment, SpatialLayer, Wall
+from packages.domain.spatial.thickness import snap_thickness
 
 
 class RescaleError(ValueError):
@@ -55,16 +57,31 @@ def _segment(segment: Segment, k: float) -> Segment:
     return Segment(start=_point(segment.start, k), end=_point(segment.end, k))
 
 
+def _thickness(wall: Wall, detected: int | None, k: float) -> int:
+    """Bề dày mới, luôn là một bậc chuẩn trừ khi người đã gõ tay (B3).
+
+    Tường AI chưa ai sửa (`thicknessMm` còn là bậc của số đo): bắt bậc lại từ số đo
+    đã đổi tỉ lệ, nên đổi `k` rồi `1/k` trả đúng bậc cũ. Người gõ tay (lệch bậc của
+    số đo, hoặc người vẽ mà không có số đo) giữ nguyên. Tường AI cũ thiếu số đo: bắt
+    bậc từ số đã nhân, có thể lệch một bậc.
+    """
+    original = wall.detected_thickness_mm
+    if original is not None and detected is not None:
+        return snap_thickness(detected) if wall.thickness_mm == snap_thickness(original) else wall.thickness_mm
+    return wall.thickness_mm if wall.source == "human" else snap_thickness(wall.thickness_mm * k)
+
+
 def _wall(wall: Wall, k: float) -> Mapping[str, object]:
-    """Đường tim, độ cong, bề dày và bề dày máy đo (cùng là px · tỉ lệ); `heightMm` là chiều đứng nên giữ."""
-    detected = wall.detected_thickness_mm
+    """Đường tim, độ cong, bề dày máy đo (px · tỉ lệ) và bề dày bắt bậc; `heightMm` là chiều đứng nên giữ."""
+    original = wall.detected_thickness_mm
+    detected = None if original is None else max(1, _mm(original, k))
     centreline = _segment(wall.centreline, k)
     half = math.hypot(centreline.end.x - centreline.start.x, centreline.end.y - centreline.start.y) / 2
     return {
         "centreline": centreline,
         "curve_offset_mm": max(-math.floor(half), min(math.floor(half), _mm(wall.curve_offset_mm, k))),
-        "thickness_mm": _mm(wall.thickness_mm, k),
-        "detected_thickness_mm": None if detected is None else max(1, _mm(detected, k)),
+        "thickness_mm": _thickness(wall, detected, k),
+        "detected_thickness_mm": detected,
     }
 
 
