@@ -30,12 +30,12 @@ from apps.worker.pipeline_build.constants import (
     OPENING_GAP_MAX_MM,
     OPENING_MIN_WIDTH_MM,
     OPENING_WALL_REACH_MM,
-    STANDARD_THICKNESSES_MM,
     WALL_JOIN_MM,
 )
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.core.clock import Clock
 from packages.domain.spatial import Opening, Point, Segment, Wall, js_round
+from packages.domain.spatial.thickness import snap_thickness
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
 from packages.ml_contracts.labels import LABEL_TARGETS, SwingDirection
 
@@ -219,11 +219,6 @@ def _neighbours(tree: STRtree, geoms: Geoms, distance: float) -> list[set[int]]:
     return result
 
 
-def _snap_thickness(measured_mm: float) -> int:
-    """Bề dày đo → phần tử gần nhất của `STANDARD_THICKNESSES_MM`; hoà lấy số nhỏ hơn."""
-    return min(STANDARD_THICKNESSES_MM, key=lambda value: (abs(value - measured_mm), value))
-
-
 def _degenerate_final(p0: Point, p1: Point, thickness_mm: int, scaling: Scaling) -> bool:
     """`project_default`: tường sẽ suy biến sau `rescale_unreviewed(s_dựng → s)` (bước 3).
 
@@ -244,7 +239,7 @@ def _measure_walls(walls: Sequence[WallPx], scaling: Scaling, dropped: Counter[s
         p0 = scaling.point(wall.start.x, wall.start.y)
         p1 = scaling.point(wall.end.x, wall.end.y)
         measured = wall.thickness_px * scaling.build
-        thickness = _snap_thickness(measured)
+        thickness = snap_thickness(measured)
         if p0 == p1 or _degenerate_final(p0, p1, thickness, scaling):
             dropped["wallZeroLength"] += 1
             continue

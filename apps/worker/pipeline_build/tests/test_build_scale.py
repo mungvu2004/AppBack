@@ -71,7 +71,8 @@ def test_build_layer__no_text_falls_back_to_project_default(
     """Không chữ nào → không suy được tỉ lệ: `s` là `fallback`, log mang `SCALE_UNRESOLVED`."""
     caplog.set_level(logging.INFO, logger=build_module.__name__)
     built = _run([_wall(100, 100, 1100, 100)], (), fake_clock)
-    assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("5"))
+    assert (built.scale_source, built.scale_basis) == ("project_default", "default")
+    assert built.scale_mm_per_px == Decimal("5")
     assert any(getattr(record, "code", None) == "SCALE_UNRESOLVED" for record in caplog.records)
 
 
@@ -80,6 +81,7 @@ def test_build_layer__unset_project_scale_uses_wall_estimate(fake_clock: FakeClo
     walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
     built = _run(walls, (), fake_clock, fallback="1")
     assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("10.000000"))
+    assert built.scale_basis == "wallThickness"
     assert built.dimensions == ()
     assert built.layer.walls[0].thickness_mm >= 100  # không còn tường 15 mm của tỉ lệ 1 mm/px
 
@@ -94,7 +96,7 @@ def test_build_layer__unset_project_scale_uses_door_estimate(fake_clock: FakeClo
     walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
     doors = [_door(300, 40), _door(340, 50), _door(380, 60), _door(600, 120)]
     built = _run(walls, (), fake_clock, detections=doors, fallback="1")
-    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("14.900000"))
+    assert (built.scale_source, built.scale_mm_per_px, built.scale_basis) == ("pipeline", Decimal("14.900000"), "door")
     assert built.dimensions == ()
 
 
@@ -264,7 +266,7 @@ def test_build_layer__scale_from_dimension_chains(fake_clock: FakeClock) -> None
     texts.append(_chain_text("5.202", 1100, 60))  # nhãn diện tích đọc thành 5202 mm: ngoài cụm
     texts.append(_chain_text("9000", 1300, 30))  # 300 mm/px: ngoài dải 1-200, không thành mẫu
     built = _run([_wall(100, 100, 1100, 100)], texts, fake_clock)
-    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
+    assert (built.scale_source, built.scale_mm_per_px, built.scale_basis) == ("pipeline", Decimal("20"), "chain")
     # UX-02: ba chữ trong cụm thành `Dimension` không gắn tường, dài đúng số đọc; chữ ngoài cụm thì không.
     assert sorted(dim.value_mm for dim in built.dimensions) == [2000, 3000, 4000]
     for dim in built.dimensions:
@@ -273,9 +275,9 @@ def test_build_layer__scale_from_dimension_chains(fake_clock: FakeClock) -> None
 
 
 def test_build_layer__few_chain_samples_fall_back_to_wall_pairing(fake_clock: FakeClock) -> None:
-    """Hai mẫu chuỗi (< 3) không đủ: tỉ lệ lấy từ ghép chữ-tường của trang tổng hợp, như trước."""
+    """Hai mẫu chuỗi (< 3) lệch nhau 5 % (ngoài nhánh `paired`) không đủ: tỉ lệ lấy từ ghép chữ-tường."""
     plan = render_plan(100)
-    texts = [*plan.texts, _chain_text("3000", 200, 30), _chain_text("2000", 500, 20)]
+    texts = [*plan.texts, _chain_text("3000", 200, 30), _chain_text("2000", 500, 21)]
     built = _run(plan.walls, texts, fake_clock, detections=plan.detections)
     assert built.scale_source == "pipeline"
     assert abs(float(built.scale_mm_per_px) - plan.mm_per_px) / plan.mm_per_px <= 0.02
@@ -292,16 +294,24 @@ def test_build_layer__scale_note_with_paper_size(fake_clock: FakeClock) -> None:
     walls = [_wall(100, 100, 1100, 100, 12.0), _wall(100, 100, 100, 900, 12.0)]
     note = _note("MẶT BẰNG TẦNG 1 - TL 1/100")
     built = _run(walls, [note], fake_clock, fallback="1", px_per_paper_mm=px_per_paper_mm)
-    assert built.scale_source == "pipeline"
+    assert (built.scale_source, built.scale_basis) == ("pipeline", "note")
     assert built.scale_mm_per_px == Decimal(repr(100 / px_per_paper_mm)).quantize(Decimal("0.000001"))
 
 
 def test_build_layer__note_scale_keeps_two_chain_dimensions(fake_clock: FakeClock) -> None:
-    """UX-02: hai chữ chuỗi (< 3, không tự quyết `s`) khớp `s` của ghi chú `TL 1/100` vẫn thành hai `Dimension`."""
-    texts = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _note("TL 1/100")]
+    """UX-02: hai chữ chuỗi (< 3, có số < 1 m: không `paired`) khớp `s` của ghi chú `TL 1/100` ra hai `Dimension`."""
+    texts = [_chain_text("3000", 200, 150), _chain_text("900", 500, 45), _note("TL 1/100")]
     built = _run([_wall(100, 100, 1100, 100, 10.0)], texts, fake_clock, fallback="1", px_per_paper_mm=5.0)
-    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
-    assert sorted(dim.value_mm for dim in built.dimensions) == [2000, 3000]
+    assert (built.scale_source, built.scale_mm_per_px, built.scale_basis) == ("pipeline", Decimal("20"), "note")
+    assert sorted(dim.value_mm for dim in built.dimensions) == [900, 3000]
+
+
+def test_build_layer__two_agreeing_chains_resolve_as_paired(fake_clock: FakeClock) -> None:
+    """B1 (ch-09): chỉ hai chữ chuỗi 12130/491,5 và 11310/458 (lệch 0,06 %) → `s` ≈ 24,69, gốc `paired`."""
+    texts = [_chain_text("12130", 200, 491.5), _chain_text("11310", 500, 458)]
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], texts, fake_clock)
+    assert (built.scale_source, built.scale_basis) == ("pipeline", "paired")
+    assert abs(float(built.scale_mm_per_px) - 24.687) < 0.001
 
 
 @pytest.mark.parametrize(

@@ -66,8 +66,8 @@ def test_ten_readings_infer_the_scale_and_drop_two() -> None:
 
 
 def test_two_readings_are_too_few() -> None:
-    """Hai mẫu khớp nhau vẫn thiếu mẫu: không có tỉ lệ, gợi ý 12, `SCALE_UNRESOLVED`."""
-    result = infer_scale([ScaleSample("M-001", 400, 4800), ScaleSample("M-002", 200, 2400)])
+    """Hai mẫu khớp nhau nhưng một số < 1 m (ngoài nhánh `paired` B1): không có tỉ lệ, gợi ý 12, `SCALE_UNRESOLVED`."""
+    result = infer_scale([ScaleSample("M-001", 400, 4800), ScaleSample("M-002", 75, 900)])
     assert (result.mm_per_px, result.reason, result.sample_count) == (None, "tooFewSamples", 2)
     assert result.suggested_mm_per_px == TARGET_RATIO
     assert result.code is PipelineCode.SCALE_UNRESOLVED
@@ -147,3 +147,24 @@ def test_compare_refuses_non_finite_manual_scale() -> None:
     """Tỉ lệ người đặt vô cực → `ValueError`, không trả lệch vô cực."""
     with pytest.raises(ValueError, match="không hữu hạn"):
         compare_scale_to_ai_estimate(float("inf"), 12)
+
+
+def test_two_agreeing_long_samples_resolve_as_paired() -> None:
+    """B1 (ch-09): 12130/491,5 và 11310/458 lệch 0,06 % → nhận ~24,69 mm/px, `paired=True`."""
+    result = infer_scale([ScaleSample("a", 491.5, 12130), ScaleSample("b", 458, 11310)])
+    assert result.mm_per_px == pytest.approx(24.687, abs=1e-3)
+    assert (result.paired, result.reason, result.code) == (True, None, None)
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [
+        [ScaleSample("a", 500, 12000), ScaleSample("b", 500, 12000)],  # một số đọc hai lần
+        [ScaleSample("a", 500, 12000), ScaleSample("b", 400, 9744)],  # 24 và 24,36: lệch 1,5 %
+        [ScaleSample("a", 40, 960), ScaleSample("b", 500, 12000)],  # 960 < 1000 mm
+    ],
+)
+def test_two_samples_without_agreement_stay_unresolved(pair: list[ScaleSample]) -> None:
+    """B1: trùng số, lệch > 1 % hay số < 1000 mm → vẫn `tooFewSamples`, không `paired`."""
+    result = infer_scale(pair)
+    assert (result.mm_per_px, result.reason, result.paired) == (None, "tooFewSamples", False)

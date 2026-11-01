@@ -2,9 +2,6 @@
 
 from typing import Final
 
-STANDARD_THICKNESSES_MM: Final = (100, 150, 200, 220, 300, 400)
-"""Bề dày chuẩn FE bắt tường về (`src/domain/walls/cleanup.ts:70`); hoà lấy số nhỏ hơn."""
-
 DEFAULT_WALL_HEIGHT_MM: Final = 3600
 """Chiều cao tường mặc định của bộ mẫu FE (`src/domain/spatial/__fixtures__/sampleBuilding.ts:49-56`)."""
 
