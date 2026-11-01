@@ -71,7 +71,8 @@ def test_build_layer__no_text_falls_back_to_project_default(
     """Không chữ nào → không suy được tỉ lệ: `s` là `fallback`, log mang `SCALE_UNRESOLVED`."""
     caplog.set_level(logging.INFO, logger=build_module.__name__)
     built = _run([_wall(100, 100, 1100, 100)], (), fake_clock)
-    assert (built.scale_source, built.scale_mm_per_px, built.scale_basis) == ("project_default", Decimal("5"), "default")
+    assert (built.scale_source, built.scale_basis) == ("project_default", "default")
+    assert built.scale_mm_per_px == Decimal("5")
     assert any(getattr(record, "code", None) == "SCALE_UNRESOLVED" for record in caplog.records)
 
 
