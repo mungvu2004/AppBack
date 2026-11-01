@@ -717,27 +717,25 @@ def test_build_walls__gap_wall_without_opening_dropped(fake_clock: FakeClock) ->
 
 
 def test_build_layer__rooms_ignore_gap_walls() -> None:
-    """OPEN-ATTACH (P3): vách lệch 120 mm hai bên khe → tường qua khe mang cửa; phòng không kể nó, như khi không cửa."""
+    """OPEN-ATTACH (P3): vách lệch 120 mm hai bên khe cửa → tường qua khe mang cửa, `_door_closers` chia hai phòng
+    6 m². Dựng phòng cả tường qua khe (không lọc) thì tường lơ lửng đó chặn đường khép → một phòng 12 m²."""
     room = [
         wall_px(0, 0, 400, 0, 10),
         wall_px(400, 0, 400, 300, 10),
         wall_px(400, 300, 0, 300, 10),
         wall_px(0, 300, 0, 0, 10),
         wall_px(200, 0, 200, 130, 10),
-        wall_px(212, 220, 212, 300, 10),
+        wall_px(212, 230, 212, 300, 10),
     ]
-    built, bare = (
-        build_wrapped(
-            walls=room,
-            detections=detections,
-            width_px=400,
-            height_px=300,
-            clock=FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)),
-        )
-        for detections in ([det("door", 194, 130, 218, 220)], [])
+    built = build_wrapped(
+        walls=room,
+        detections=[det("door", 194, 130, 218, 230)],
+        width_px=400,
+        height_px=300,
+        clock=FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)),
     )
     (opening,) = built.layer.openings
     gap = next(wall for wall in built.layer.walls if wall.id == opening.wall_id)
     assert gap.centreline.start.y == 1300
     assert all(gap.id not in room.wall_ids for room in built.layer.rooms)
-    assert [room.outline for room in built.layer.rooms] == [room.outline for room in bare.layer.rooms]
+    assert sorted(room.area_m2 for room in built.layer.rooms) == [6.0, 6.0]

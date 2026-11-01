@@ -7,3 +7,4 @@
 - Test đổi theo hành vi mới: hộp lố đầu tường ≥ 300 mm và cửa ở khe giữa hai tường thẳng hàng giờ có tường riêng (`test_geometry_openings.py`); ca BUG-IT-009 / `openingTooWide` giữ bằng hộp lố 250 mm.
 - Không đổi API, DB, migration, hợp đồng FE–BE. Cổng áp dụng: lint/type, test `apps/worker/pipeline_build`.
 - Review vòng 1 (P2, P3): tường qua khe không còn ô mở nào sau `_resolve_overlaps` thì bỏ (`_drop_bare_gap_walls`), không bịt lối khi cửa trên nó rơi (vd. cửa đôi < 600 mm); test `build_layer` khẳng định phòng không kể tường qua khe và giống hệt khi không có hộp cửa. Bench không đổi.
+- P3 (review lượt 2): `test_build_layer__rooms_ignore_gap_walls` dựng ca vách lệch 120 mm hai bên khe cửa 1100 mm: có lọc → hai phòng 6 m²; bỏ lọc trong `build.py` → một phòng 12 m² (đã thử, test hỏng).
