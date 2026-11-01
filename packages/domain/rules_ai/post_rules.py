@@ -1,5 +1,5 @@
 """Luật hậu xử lý đầu ra AI: thiết bị áp tường (luật 1), cửa sổ chỉ trên tường ngoài (luật 2), tường mép ngoài
-là tường bao (luật 3).
+là tường bao (luật 3), hướng đồ (luật 4, `orient.py`).
 
 Gương `FIXTURE-OFF-WALL` và `WINDOW-ON-INNER-WALL` của FE (`fitout/index.ts`) để luật QC
 không bắn trên đầu ra AI. Chỉ đụng thực thể `source="ai"` và `reviewed=False` (K21);
@@ -32,6 +32,7 @@ from packages.domain.rules_ai.geometry import (
     outline_contains,
     wall_side_by,
 )
+from packages.domain.rules_ai.orient import BACK_TO_WALL_MM, orient_furniture, world_box
 from packages.domain.spatial import BoundingBox, Furniture, Opening, Point, Room, SpatialLayer, Wall, js_round
 
 
@@ -123,7 +124,7 @@ def _snap_fixture(item: Furniture, index: _WallIndex) -> Furniture:
     đường vuông góc; làm tròn từng thành phần bằng `js_round`. Ngoài khoảng đó giữ nguyên:
     ≤ 50 là đã áp tường, > 300 là sai phòng, việc của người duyệt.
     """
-    found = index.nearest(item.bounding_box)
+    found = index.nearest(world_box(item))
     if found is None or not WALL_HUGGING_TOLERANCE_MM < found[0] <= FIXTURE_SNAP_REACH_MM:
         return item
     gap, near = found
@@ -218,9 +219,10 @@ def apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
 
     Idempotent: `f(f(x)) == f(x)`, vì luật 1 đưa khe về ≤ 50 và hạ tin cậy bằng `min`,
     luật 2 chỉ đổi tường thành `envelope` (bị bỏ qua từ lượt sau) hoặc hạ tin cậy bằng `min`.
-    Luật 1 chỉ dời đồ và luật 2 không đổi hình học nên hai luật độc lập về chỉ mục.
+    Luật 1 chỉ dời đồ và luật 2 không đổi hình học nên hai luật độc lập về chỉ mục. Luật 4 chỉ quay
+    đồ còn 0° và luật 1 đo theo hộp thế giới, nên lượt hai không đổi gì.
     """
-    furniture = _snap_fixtures(layer)
+    furniture = _orient(_snap_fixtures(layer), layer.walls)
     walls, openings = _fix_windows(layer)
     walls = _envelope_exterior(walls, layer.rooms)
     return SpatialLayer(walls=walls, openings=openings, rooms=layer.rooms, furniture=furniture, roofs=layer.roofs)
@@ -247,3 +249,32 @@ def _envelope_exterior(walls: tuple[Wall, ...], rooms: Sequence[Room]) -> tuple[
         return wall_side_by(wall, index.contains) == "exterior"
 
     return tuple(wall.model_copy(update={"kind": "envelope"}) if promoted(wall) else wall for wall in walls)
+
+
+def _orient(furniture: tuple[Furniture, ...], walls: Sequence[Wall]) -> tuple[Furniture, ...]:
+    """Luật 4 trên đồ đã qua luật 1; tường tra qua `_WallIndex` với hộp nở đủ để không sót tường trong 600 mm.
+
+    Lưới giữ ô của mọi điểm đường tim, nên nở hộp thêm 600 mm + nửa bề dày + nửa độ lệch trục lớn nhất
+    là đủ phủ mọi tường mà `orient` có thể chọn.
+    """
+    if not any(_editable(item) and item.rotation_deg == 0 for item in furniture):
+        return furniture
+    index = _WallIndex(walls)
+    reach = max(
+        (
+            w.thickness_mm / 2
+            + min(abs(w.centreline.end.x - w.centreline.start.x), abs(w.centreline.end.y - w.centreline.start.y)) / 2
+            for w in walls
+        ),
+        default=0,
+    )
+    pad = BACK_TO_WALL_MM + math.ceil(reach)
+
+    def near(box: BoundingBox) -> list[Wall]:
+        """Tường có thể trong tầm 600 mm của hộp, theo thứ tự `walls`."""
+        grown = BoundingBox(
+            min=Point(x=box.min.x - pad, y=box.min.y - pad), max=Point(x=box.max.x + pad, y=box.max.y + pad)
+        )
+        return [walls[position] for position in index.candidates(grown)]
+
+    return orient_furniture(furniture, near, _editable)
