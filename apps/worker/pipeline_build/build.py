@@ -78,6 +78,10 @@ _BUILD_SCALE_TARGET_MM: Final = 150.0
 
 _BUILD_SCALE_MIN: Final = 1.0
 _BUILD_SCALE_MAX: Final = 200.0
+_DOOR_WIDTH_MM: Final = 745.0
+"""Cạnh dài trung vị của hộp YOLO cửa đi đơn (hộp hẹp hơn cánh thật ~850 mm), đo trên bench căn hộ (DOOR-SCALE)."""
+_DOOR_MIN_COUNT: Final = 3
+_DOUBLE_DOOR_RATIO: Final = 1.6
 _ROOT_KEYS: Final = frozenset({"schemaVersion", "layer", "dimensions", "scaleMmPerPx", "scaleSource", "dropped"})
 _SUGGESTION_CONFIDENCE: Final = 0.5
 """Gợi ý mực dư chưa có điểm của mô hình: lấy đúng trần "kém tin" `LOW_CONFIDENCE_CAP` nên luật 2 không hạ nữa."""
@@ -89,7 +93,8 @@ _UNSET_PROJECT_SCALE: Final = Decimal(1)
 """`default_scale_mm_per_px` khi dự án chưa đặt (`DEFAULT_SETTINGS` của `project_settings.read`).
 
 1 mm/px không phải tỉ lệ ai chọn cho mặt bằng (căn 10 m sẽ rộng 10 000 px): chỉ là "chưa đặt". Áp nó làm
-tầng ra 0,3 m² (U01), nên khi chưa đọc được tỉ lệ thì dùng tạm ước lượng từ bề dày tường; vẫn `unresolved`."""
+tầng ra 0,3 m² (U01), nên khi chưa đọc được tỉ lệ thì dùng tạm ước lượng từ cửa đi (`_door_scale`), thiếu cửa thì từ
+bề dày tường; vẫn `unresolved`."""
 
 _NOTE_WALL_MM: Final = (50.0, 500.0)
 """Bề dày tường trung vị (mặt nạ) chấp nhận được ở tỉ lệ ghi chú `TL 1:N`; bench: trung vị ≈ 158 mm.
@@ -293,6 +298,22 @@ def _build_scale(walls: Sequence[WallPx], final: float) -> float:
         return final
     median = float(np.median(np.array([wall.thickness_px for wall in walls], dtype=float)))
     return min(max(_BUILD_SCALE_TARGET_MM / median, _BUILD_SCALE_MIN), _BUILD_SCALE_MAX)
+
+
+def _door_scale(detections: Sequence[DetectionPx]) -> float | None:
+    """Tỉ lệ tạm từ cửa đi: cạnh dài trung vị của hộp `door` = `_DOOR_WIDTH_MM`; < `_DOOR_MIN_COUNT` cửa → `None`.
+
+    Hộp dài hơn `_DOUBLE_DOOR_RATIO` lần trung vị (cửa đôi, cửa lùa lô gia) bỏ trước khi lấy trung vị lần hai.
+    Bench 11 bản có đáp án (DOOR-SCALE): lệch trung vị ~8-10 %, tối đa ~17 %; bề dày tường lệch tới 42 %.
+    """
+    sides = np.array(
+        [max(d.box.x_max - d.box.x_min, d.box.y_max - d.box.y_min) for d in detections if d.label == "door"],
+        dtype=float,
+    )
+    if len(sides) < _DOOR_MIN_COUNT:
+        return None
+    single = sides[sides <= _DOUBLE_DOOR_RATIO * float(np.median(sides))]
+    return min(max(_DOOR_WIDTH_MM / float(np.median(single)), _BUILD_SCALE_MIN), _BUILD_SCALE_MAX)
 
 
 def _ratio(sample: ScaleSample) -> float:
@@ -616,8 +637,9 @@ def build_layer(
     if noted is not None:
         scale, source = noted, "pipeline"
     estimated = source == "project_default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
-    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm dùng `s_dựng` (bề dày tường), không phải 1 mm/px
-        scale, source = Decimal(repr(_build_scale(walls_px, float(scale)))).quantize(_QUANTUM), "pipeline"
+    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi, thiếu cửa thì bề dày tường; không phải 1 mm/px
+        guess = _door_scale(detections) or _build_scale(walls_px, float(scale))
+        scale, source = Decimal(repr(guess)).quantize(_QUANTUM), "pipeline"
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
     trusted = source == "pipeline" and not estimated

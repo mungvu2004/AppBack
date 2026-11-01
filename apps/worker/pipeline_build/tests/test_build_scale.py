@@ -84,6 +84,28 @@ def test_build_layer__unset_project_scale_uses_wall_estimate(fake_clock: FakeClo
     assert built.layer.walls[0].thickness_mm >= 100  # không còn tường 15 mm của tỉ lệ 1 mm/px
 
 
+def _door(x: float, length: float) -> DetectionPx:
+    """Hộp cửa đi đứng, cạnh dài `length` px, đặt ở cột `x`."""
+    return DetectionPx(label="door", box=BoxPx(x_min=x, y_min=300, x_max=x + 10, y_max=300 + length), confidence=0.9)
+
+
+def test_build_layer__unset_project_scale_uses_door_estimate(fake_clock: FakeClock) -> None:
+    """DOOR-SCALE: ≥ 3 cửa đi → tỉ lệ tạm 745 / cạnh dài trung vị (50 px) = 14,9; cửa đôi 120 > 1,6 x 50 bị bỏ."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    doors = [_door(300 + 40 * k, 50) for k in range(4)] + [_door(600, 120)]
+    built = _run(walls, (), fake_clock, detections=doors, fallback="1")
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("14.900000"))
+    assert built.dimensions == ()
+
+
+def test_build_layer__unset_project_scale_two_doors_uses_wall_estimate(fake_clock: FakeClock) -> None:
+    """DOOR-SCALE: dưới 3 cửa đi (cửa sổ không tính) → vẫn ước từ bề dày tường (150 / 15 = 10)."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    window = DetectionPx(label="window", box=BoxPx(x_min=700, y_min=300, x_max=710, y_max=350), confidence=0.9)
+    built = _run(walls, (), fake_clock, detections=[_door(300, 50), _door(400, 50), window], fallback="1")
+    assert built.scale_mm_per_px == Decimal("10.000000")
+
+
 def test_build_layer__unset_project_scale_without_walls_keeps_default(fake_clock: FakeClock) -> None:
     """Không tường nào để ước → giữ `project_default` như cũ."""
     built = _run([], (), fake_clock, fallback="1")
@@ -223,6 +245,7 @@ def test_build_layer__scale_from_dimension_chains(fake_clock: FakeClock) -> None
     """Ba chữ chuỗi ở 20 mm/px + một chữ đọc sai: chuỗi quyết `s` = 20, `pipeline`, dù không ghép được tường nào."""
     texts = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _chain_text("4000", 800, 200)]
     texts.append(_chain_text("5.202", 1100, 60))  # nhãn diện tích đọc thành 5202 mm: ngoài cụm
+    texts.append(_chain_text("9000", 1300, 30))  # 300 mm/px: ngoài dải 1-200, không thành mẫu
     built = _run([_wall(100, 100, 1100, 100)], texts, fake_clock)
     assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20"))
     # UX-02: ba chữ trong cụm thành `Dimension` không gắn tường, dài đúng số đọc; chữ ngoài cụm thì không.
@@ -270,6 +293,7 @@ def test_build_layer__note_scale_keeps_two_chain_dimensions(fake_clock: FakeCloc
         ("TL 1/100", None, 12.0),  # ảnh raster: không biết khổ giấy
         ("PHÒNG KHÁCH", 150 / 25.4, 12.0),  # không có ghi chú
         ("TL 1/10", 150 / 25.4, 12.0),  # tường trung vị 20 mm: ghi chú đọc hỏng
+        ("TL 1/5000", 1.0, 12.0),  # 5000 mm/px: ngoài dải 1-200
     ],
 )
 def test_build_layer__scale_note_ignored(
@@ -279,3 +303,9 @@ def test_build_layer__scale_note_ignored(
     walls = [_wall(100, 100, 1100, 100, thickness_px), _wall(100, 100, 100, 900, thickness_px)]
     built = _run(walls, [_note(note)], fake_clock, px_per_paper_mm=px_per_paper_mm)
     assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("5"))
+
+
+def test_build_layer__scale_note_without_walls(fake_clock: FakeClock) -> None:
+    """Không tường nào để soát bề dày → nhận ghi chú `TL 1:100` với 5 px/mm giấy = 20 mm/px."""
+    built = _run([], [_note("TL 1/100")], fake_clock, fallback="1", px_per_paper_mm=5.0)
+    assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20.000000"))
