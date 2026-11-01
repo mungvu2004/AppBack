@@ -103,3 +103,40 @@ Tổng: 4,90 / 5
 P2 đã sửa và có test, cổng đích của vòng sửa xanh, bench không đổi; không P0/P1, điểm 4,90 ≥ 4,0. P3 #2 còn mở, không
 chặn merge: xử lý như đề xuất trên (thêm test thật hoặc ghi rõ bộ lọc là phòng thủ trong `changes/OPEN-ATTACH.md`).
 Cổng đầy đủ đã chạy ở lượt 1 trên c2142f27 (mã thoát 0); vòng sửa chỉ chạm `pipeline_build` nên không chạy lại.
+
+---
+
+# Lượt 3 — nhánh `test/open-attach-p3` → main (đóng P3)
+
+- Ngày: 2026-11-01 · Commit đầu nhánh: 64f404750555, một commit trên `main` 10b9d666 (đã có fix/open-attach)
+- Diff: chỉ `apps/worker/pipeline_build/tests/test_geometry_openings.py` (sửa `test_build_layer__rooms_ignore_gap_walls`)
+  và `changes/OPEN-ATTACH.md` (+1 dòng); không đổi mã chạy. Cây sạch, commit đúng mẫu, có `Prompt: OPEN-ATTACH`.
+- Cổng: phạm vi **đích** — chỉ đổi test của `pipeline_build`, không chạm điều kiện đầy đủ của R-33b.
+  `bash tools/verify/run.sh verify --fast` mã thoát **0**: ruff, mypy (1252 tệp), lint-imports, pytest bị ảnh hưởng
+  634 passed (19 tệp test) (log: `F:/runs/merge-review-open-attach/fast-r3.log`)
+- Độ phủ: tổng không đo (phạm vi đích) — `apps/worker/pipeline_build` dòng 98,46% · nhánh 93,20%; tập file bị chạm 100/100
+
+## Soát finding
+| # | Mức | Trạng thái | Bằng chứng |
+|---|---|---|---|
+| 2 | P3 | **Đã sửa** | Reviewer chạy lại kịch bản của test (vách (200,0)–(200,130) và (212,230)–(212,300) px, hộp cửa (194,130)–(218,230), 10 mm/px) với `build.py` của `main` và với bản đổi `build_rooms(room_walls, …)` thành `build_rooms(wall_set.walls, …)`: có lọc → hai phòng `[6.0, 6.0]` m²; bỏ lọc → một phòng `[12.0]` m². Khẳng định `sorted(area_m2) == [6.0, 6.0]` của test hỏng khi gỡ bộ lọc → test khoá đúng `build.py:513-515` |
+| 4 | Nit | Mới | `changes/OPEN-ATTACH.md` dòng "Review vòng 1" vẫn viết phòng "giống hệt khi không có hộp cửa", không còn đúng với test mới (không có hộp cửa thì một phòng 12 m²); dòng P3 thêm ngay dưới đã nói đúng. Không chặn; sửa câu đó khi đụng lại tệp |
+
+## Điểm lượt 3
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 5 | 1,25 |
+| CON | 15% | 5 | 0,75 |
+| LOG | 15% | 5 | 0,75 |
+| PERF | 10% | 5 | 0,50 |
+| RES | 10% | 5 | 0,50 |
+| DB/API | 10% | 5 | 0,50 |
+| TEST | 7% | 5 | 0,35 |
+| OBS/OPS | 5% | 5 | 0,25 |
+| MNT | 3% | 4 | 0,12 |
+Tổng: 4,97 / 5
+
+## PHÁN QUYẾT LƯỢT 3: APPROVE
+
+Nhánh chỉ đổi test; test mới hỏng khi gỡ bộ lọc phòng (đã thử đột biến), cổng đích xanh. Không P0/P1/P2/P3 còn mở
+từ các lượt trước; còn một Nit câu chữ trong `changes/OPEN-ATTACH.md` và Nit PERF lượt 1 (giữ nguyên).
