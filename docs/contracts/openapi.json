@@ -3860,6 +3860,21 @@
             "title": "Confidence",
             "type": "number"
           },
+          "doorStyle": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pocket",
+                  "folding"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doorstyle"
+          },
           "edited": {
             "default": false,
             "title": "Edited",
@@ -3889,6 +3904,11 @@
             "minimum": 0.0,
             "title": "Offsetmm",
             "type": "integer"
+          },
+          "reversed": {
+            "default": false,
+            "title": "Reversed",
+            "type": "boolean"
           },
           "reviewed": {
             "title": "Reviewed",
@@ -4044,6 +4064,21 @@
             "title": "Confidence",
             "type": "number"
           },
+          "doorStyle": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pocket",
+                  "folding"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doorstyle"
+          },
           "edited": {
             "anyOf": [
               {
@@ -4074,6 +4109,17 @@
           "offsetMm": {
             "title": "Offsetmm",
             "type": "integer"
+          },
+          "reversed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed"
           },
           "reviewed": {
             "title": "Reviewed",
@@ -5372,11 +5418,39 @@
             "title": "Aream2",
             "type": "number"
           },
+          "ceilingMaterial": {
+            "anyOf": [
+              {
+                "pattern": "^(library|scene):[a-z0-9_-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceilingmaterial"
+          },
           "confidence": {
             "maximum": 1.0,
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "dressingOff": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^DRESS-[A-Za-z0-9_.:-]{1,160}$",
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dressingoff"
           },
           "edited": {
             "default": false,
@@ -5547,11 +5621,36 @@
             "title": "Aream2",
             "type": "number"
           },
+          "ceilingMaterial": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceilingmaterial"
+          },
           "confidence": {
             "maximum": 1.0,
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "dressingOff": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dressingoff"
           },
           "edited": {
             "anyOf": [
