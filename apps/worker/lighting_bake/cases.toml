@@ -1,0 +1,6 @@
+# Bảng case bắt buộc thêm của task nướng ánh sáng (LB-01, CASE.md §2.3).
+# Cổng tự đòi J01, J06; dưới là phần LB-01 đòi thêm.
+
+[[task]]
+fn = "run_lighting_bake"
+require = ["J02", "J03", "J05"]

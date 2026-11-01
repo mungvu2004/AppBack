@@ -67,10 +67,10 @@ def h1(build: Path, shapes: dict[str, str], data: check.Inputs) -> check.CheckRe
 
 
 def test_real_map_covers_every_contract_row(shapes: dict[str, str]) -> None:
-    """92 mục = 48 HTTP + 2 SSE của §1 + 42 của §2 (không v2; N41 page-thumbnails thêm ở UX41 U05)."""
+    """95 mục = 48 HTTP + 2 SSE của §1 + 45 của §2 (không v2; N41 ở UX41 U05, N42-N44 nướng ánh sáng ở LB-01)."""
     result = check.check_map(shapes, ROWS)
     assert result.status == STATUS_OK, result.problems
-    assert len(shapes) == len(ROWS) == 92
+    assert len(shapes) == len(ROWS) == 95
 
 
 def test_map_missing_a_bind_row_fails(tmp_path: Path, shapes: dict[str, str]) -> None:
@@ -89,8 +89,9 @@ def test_map_extra_entry_fails(shapes: dict[str, str]) -> None:
 
 
 def test_exempt_and_contract_mounts_pass() -> None:
-    """Ba route miễn và thao tác đúng đường BE-BIND qua được; chưa chủ nào hợp nhất."""
-    exempt = [check.Mounted(op, "GET", f"/api/{op}") for op in sorted(check.H1_EXEMPT)]
+    """Các route miễn và thao tác đúng đường BE-BIND qua được; chưa chủ nào hợp nhất."""
+    # Miễn có dòng BE-BIND (N44) mount ở đường thật của nó; ở đây chỉ dựng đường giả cho miễn ngoài BE-BIND.
+    exempt = [check.Mounted(op, "GET", f"/api/{op}") for op in sorted(check.H1_EXEMPT - ROWS.keys())]
     data = check.Inputs(rows=ROWS, mounted=[*exempt, *mounted("projects_read_project")], merged=frozenset())
     assert check.check_mounted(data).status == STATUS_OK
 

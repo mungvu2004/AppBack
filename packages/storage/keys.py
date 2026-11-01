@@ -97,6 +97,16 @@ def run_artifact(project: str, floor: str, upload: str, run: str, step: str, nam
     return check_key(f"{run_prefix(upload_prefix(project, floor, upload), run, step)}{_name(name)}")
 
 
+def lighting_bake_prefix(project_id: str, bake_id: str) -> str:
+    """Tiền tố object của một lượt bake ánh sáng: `projects/{prj}/lighting-bakes/{bak}/` (id sai mẫu → `ValueError`)."""
+    return check_prefix(f"{project_prefix(project_id)}lighting-bakes/{check_id('bak', bake_id)}/")
+
+
+def lighting_bake_object(project_id: str, bake_id: str, name: str) -> str:
+    """Khoá một tệp của lượt bake (`input.glb`, `baked.glb`, `lightmap.png`, `manifest.json`); `name` một đoạn."""
+    return check_key(f"{lighting_bake_prefix(project_id, bake_id)}{_name(name)}")
+
+
 def library_object(item: str, name: str) -> str:
     """Khoá object của một mục thư viện (`.glb`, ảnh xem trước)."""
     if not _ITEM_RE.fullmatch(item) or len(item) > MAX_ITEM_LEN:

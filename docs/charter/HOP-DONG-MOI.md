@@ -675,3 +675,15 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
 | ML2 | Kích hoạt bản chưa đánh giá | từ chối (422 `MODEL_VERSION_NOT_EVALUATED`); bản gốc seed `pending`, chỉ `completed` khi dịch vụ `ml` đã đánh giá | bản 9 |
 | ML3 | Số đo/log huấn luyện | polling `since`; `nextCursor` luôn có tới hết cửa sổ muộn 600 s sau khi job kết thúc | |
 | ML4 | Quay về model gốc | họ tường: `versionId: null` (đường cổ điển); họ khác: kích hoạt lại bản gốc đã seed khi bản đó `completed` | không thêm trường |
+
+## 11. Nướng ánh sáng → `lightingBake.ts` (LB-01)
+
+- `LIGHTING_BAKE_STATUSES = ['queued', 'running', 'done', 'failed']`.
+- `LightingBakeSchema` (strict): `id` (`bak_` + ULID), `status`, `createdAt`; `startedAt` có khi và chỉ khi `status ≠ queued`;
+  `endedAt` khi và chỉ khi `done | failed`; `failureCode` (UPPER_SNAKE) khi và chỉ khi `failed`. Không trả URL (W1): FE ghép
+  đường N44 từ `id` và tên tệp `baked.glb | lightmap.png | manifest.json`.
+- N42 gửi byte GLB thô (`Content-Type: model/gltf-binary`), trả 202 `LightingBake`; 409 `LIGHTING_BAKE_IN_PROGRESS`;
+  422 `FILE_TYPE_MISMATCH`. N43 404 `resource: "lightingBake"` khi dự án chưa nướng lần nào. N44 tải bằng client HTTP có
+  Bearer (không dùng `<img src>`), đổi sang blob URL cho bản xem thử.
+- Mã hỏng (`failureCode`): `LIGHTING_BAKE_FAILED`, `LIGHTING_BAKE_TIMEOUT`, `LIGHTING_BAKE_OUTPUT_INVALID`,
+  `LIGHTING_BAKE_STALLED`.

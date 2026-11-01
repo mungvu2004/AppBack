@@ -63,6 +63,8 @@ PATH_VALUES: Final[dict[str, str]] = {
     "link_id": f"shl_{ULID}",
     "family": "wallSegmentation",
     "token": "token-mau-cua-case-chung",
+    "bake_id": f"bak_{ULID}",
+    "file_name": "baked.glb",
 }
 
 BAD_TOKENS: Final = (

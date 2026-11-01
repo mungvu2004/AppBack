@@ -139,5 +139,8 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   share_links_open: object('@/api/client', 'SharedModelSchema'), // N38 (FIX-2436)
   share_links_export: object('@/api/schemas/spatialGraph', 'SpatialGraphDocumentSchema'), // N39 (FIX-SHARE)
   drawings_page_thumbnails: object('@/api/schemas/uploads', 'PageThumbnailsSchema'), // N41 (UX41 U05)
+  lighting_bake_start_bake: object('@/api/schemas/lightingBake', 'LightingBakeSchema'), // N42 (LB-01)
+  lighting_bake_read_latest: object('@/api/schemas/lightingBake', 'LightingBakeSchema'), // N43 (LB-01)
+  lighting_bake_download_file: EMPTY, // N44 (LB-01) — thân nhị phân, miễn H1 (BE-00 §12 bước 7)
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
 };

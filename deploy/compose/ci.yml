@@ -164,6 +164,24 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  # Không chạy trong CI (không GPU, không Blender trong lượt test) — chỉ bật bằng
+  # `--profile bake`, vd. stack f14 dùng file này.
+  bake:
+    extends:
+      file: base.yml
+      service: bake
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-bake:${IMAGE_TAG:?bắt buộc — tag ảnh CI}
+    profiles: ["bake"]
+    environment:
+      STORAGE_BACKEND: s3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
   web:
     extends:
       file: base.yml
@@ -185,3 +203,4 @@ networks:
 
 volumes:
   ml-tmp:
+  bake-tmp:

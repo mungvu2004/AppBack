@@ -189,6 +189,24 @@ services:
       redis-broker:
         condition: service_healthy
 
+  bake:
+    extends:
+      file: base.yml
+      service: bake
+    image: ${IMAGE_REGISTRY:+${IMAGE_REGISTRY}/}appback-bake:${IMAGE_TAG:?bắt buộc — tag ảnh phát hành}
+    restart: unless-stopped
+    profiles: ["bake"]
+    env_file:
+      - path: /etc/appback/appback.env
+        required: false
+    volumes:
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+
   web:
     extends:
       file: base.yml
@@ -232,3 +250,4 @@ volumes:
   minio-data:
   local-storage:
   ml-tmp:
+  bake-tmp:
