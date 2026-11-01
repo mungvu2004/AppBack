@@ -114,6 +114,8 @@ class OpeningOut(_ReviewedOut):
     height_mm: Millimetres
     sill_height_mm: Millimetres
     swing: Literal["left", "right", "double", "sliding", "fixed"]
+    door_style: Literal["pocket", "folding"] | None = None
+    reversed: bool | None = None
 
 
 class RoomOut(_ReviewedOut):
@@ -130,6 +132,8 @@ class RoomOut(_ReviewedOut):
     wall_ids: list[str]
     finish: RoomFinish | None = None
     floor_material: str | None = None
+    dressing_off: list[str] | None = None
+    ceiling_material: str | None = None
 
 
 class FurnitureOut(_ReviewedOut):
