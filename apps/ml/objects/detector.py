@@ -30,6 +30,9 @@ __all__ = [
     "COCO_CONFIDENCE_MIN",
     "CONFIDENCE_MIN",
     "CONTAIN_MAX",
+    "CROSS_AREA_RATIO",
+    "CROSS_CONTAIN",
+    "CROSS_IOU",
     "CUT_COVER_MIN",
     "CUT_SLIVER_AREA_RATIO",
     "JOIN_SPAN_MIN",
@@ -89,7 +92,7 @@ Bước này chạy song song với tường và đọc kích thước nên chư
 thay cho nó. Đo 2026-10-28 trên 11 bản căn hộ có tỉ lệ: `(mm/px ÷ 11) x cửa_px` trung vị 69,5
 (61 đến 77), tức hệ số theo cửa bám hệ số theo mm/px trong ±12%."""
 UPSCALE_MIN: Final = 1.2
-UPSCALE_MAX: Final = 2.6
+UPSCALE_MAX: Final = 4.0
 UPSCALE_FALLBACK: Final = 1.5
 """Lượt phóng thêm: hệ số kẹp `[1, UPSCALE_MAX]`, dưới `UPSCALE_MIN` thì bỏ lượt; trang có < 2 cửa
 (không ước được cỡ) dùng `UPSCALE_FALLBACK` (vật trên bản căn hộ VN nhỏ hơn lúc train ~1,5 lần)."""
@@ -100,6 +103,21 @@ UPSCALE_SKIP_LABELS: Final = frozenset({"other"})
 """Nhãn lượt phóng không được thêm: trên 14 bản bench (đáp án mù), 18 hộp `other` mới chỉ 5 đúng,
 8 hộp sai nằm trên nền màu đậm ch-07; bỏ chúng đưa độ đúng hộp mới 61% → 71% (2026-10-28)."""
 _NEW_IOU_MAX: Final = 0.3
+CROSS_IOU: Final = 0.6
+CROSS_CONTAIN: Final = 0.85
+CROSS_AREA_RATIO: Final = 1.5
+"""Khử trùng khác nhãn (`_cross_label_dedupe`): IoU ≥ 0,6, hoặc hộp nhỏ nằm ≥ 85 % trong hộp lớn mà diện tích
+chênh < 1,5 lần → cùng một vật bị hai lớp bắn (giường + sofa, tủ bếp + bàn), giữ hộp điểm cao hơn."""
+_OPENING_LABELS: Final = frozenset({"door", "double_door", "window"})
+_ALLOWED_OVERLAP: Final = frozenset(
+    {
+        frozenset({"chair", "table"}),
+        frozenset({"sanitary_fixture", "shower"}),
+        frozenset({"table", "bed"}),
+        frozenset({"sanitary_fixture", "kitchen_cabinet"}),
+    }
+)
+"""Cặp nhãn chồng nhau thật: ghế quanh bàn, bồn trong buồng tắm, tủ đầu giường, chậu trên mặt bếp."""
 
 _PAD_VALUE: Final = 114
 _MIN_INPUT_PX: Final = 32
@@ -217,7 +235,8 @@ def decode_tile(
     """`(1, 4+nc, A)` ultralytics → ứng viên trang, mảng hoá toàn bộ anchor cùng lúc (khối [6] bước 1-2, K28).
 
     `score = max` lớp, `cls = argmax` (hoà chỉ số nhỏ, `np.argmax` đã vậy); ngưỡng theo lớp
-    `thresholds` (vắng → `label_thresholds(labels)` mặc định). Lớp `None`,
+    `thresholds` (vắng → `label_thresholds(labels)` mặc định). Lớp `None` của model miền (nhãn tắt) bị che
+    trước argmax; lớp `None` của COCO,
     NaN/vô cực, cạnh < 2px sau kẹp vào phần thật của lát đều bị bỏ (mặt nạ boolean, không vòng anchor).
 
     `input_px` giữ trong chữ ký vì khối [5] khai vậy cho mọi hàm hậu xử lý của bước, nhưng
@@ -226,10 +245,14 @@ def decode_tile(
     """
     arr = output[0].T.astype(np.float64)
     class_scores = arr[:, 4:]
+    none_mask = np.array([label is None for label in labels], dtype=bool)
+    if tuple(labels) != COCO_LABELS:
+        # Lớp `None` của model miền chỉ là `DISABLED_LABELS` (stair): che trước argmax để anchor sofa mà stair
+        # nhỉnh điểm vẫn ra lớp kế tiếp, không mất hộp. Lớp `None` của COCO giữ cách cũ (bỏ sau argmax).
+        class_scores = np.where(none_mask[None, :], -np.inf, class_scores)
     classes = class_scores.argmax(axis=1)
     scores = class_scores[np.arange(classes.shape[0]), classes]
     per_class = label_thresholds(labels) if thresholds is None else thresholds
-    none_mask = np.array([label is None for label in labels], dtype=bool)
     keep = (scores >= per_class[classes]) & ~none_mask[classes]
     if not np.any(keep):
         return _EMPTY_CANDIDATES
@@ -490,7 +513,7 @@ def _cap_and_sort(detections: _Detections) -> _Detections:
     )
 
 
-def merge_candidates(candidates: _Candidates, *, page_w: int, page_h: int) -> _Detections:
+def merge_candidates(candidates: _Candidates, *, page_w: int, page_h: int, labels: Labels | None = None) -> _Detections:
     """Bỏ mảnh bị lát cắt, NMS theo nhãn, nối vật vắt ranh lát, giữ tối đa `MAX_DETECTIONS` theo điểm.
 
     Bỏ mảnh **trước** NMS là cố ý: mảnh điểm cao hơn hộp trọn sẽ khiến NMS bỏ hộp trọn (đo trên
@@ -498,10 +521,52 @@ def merge_candidates(candidates: _Candidates, *, page_w: int, page_h: int) -> _D
 
     Lệch khỏi prompt: khổ trang (`page_w`, `page_h`) truyền tường minh (kích thước ảnh thật ở
     `detect`) thay vì suy từ hợp các lát, để không phụ thuộc việc lát cuối có còn trong ứng
-    viên hay không.
+    viên hay không. `labels` có → thêm lượt khử trùng khác nhãn `_cross_label_dedupe` sau NMS.
     """
     kept = _nms(_drop_cut_fragments(candidates, page_w=page_w, page_h=page_h))
+    if labels is not None:
+        kept = _cross_label_dedupe(kept, labels)
     return _cap_and_sort(_join_cut_boxes(kept, page_w=page_w, page_h=page_h))
+
+
+def _overlap_allowed(labels: Labels) -> NDArray[np.bool_]:
+    """Ma trận `(nc, nc)` cặp nhãn được chồng nhau (`_ALLOWED_OVERLAP`, mọi cặp có ô mở, cùng nhãn)."""
+    names = list(labels)
+    allowed = np.eye(len(names), dtype=bool)
+    for i, a in enumerate(names):
+        for j, b in enumerate(names):
+            if a in _OPENING_LABELS or b in _OPENING_LABELS or frozenset((a, b)) in _ALLOWED_OVERLAP:
+                allowed[i, j] = True
+    return allowed
+
+
+def _cross_label_dedupe(candidates: _Candidates, labels: Labels) -> _Candidates:
+    """Hai hộp khác nhãn cùng một vật → giữ hộp điểm cao hơn (sau NMS theo nhãn).
+
+    "Cùng vật" = IoU ≥ `CROSS_IOU`, hoặc hộp nhỏ nằm ≥ `CROSS_CONTAIN` trong hộp lớn mà diện tích chênh <
+    `CROSS_AREA_RATIO` lần. Cặp được chồng thật (`_overlap_allowed`: ghế-bàn, tủ đầu giường, chậu trên mặt bếp,
+    ô mở) không xét. Tham lam theo điểm giảm dần như `_nms`; vòng chỉ lặp trên hộp đã giữ.
+    """
+    n = len(candidates)
+    if n < 2:
+        return candidates
+    allowed = _overlap_allowed(labels)
+    boxes = candidates.boxes
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    keep: list[int] = []
+    for i in np.lexsort((boxes[:, 1], boxes[:, 0], -candidates.scores)):
+        if keep:
+            kept = np.asarray(keep)
+            check = ~allowed[candidates.classes[i], candidates.classes[kept]]
+            iou = _iou_against(boxes[i], boxes[kept])
+            small = np.minimum(areas[i], areas[kept])
+            ratio = np.maximum(areas[i], areas[kept]) / np.maximum(small, 1e-9)
+            inside = iou * (areas[i] + areas[kept]) / (1.0 + iou) / np.maximum(small, 1e-9)
+            same = (iou >= CROSS_IOU) | ((inside >= CROSS_CONTAIN) & (ratio < CROSS_AREA_RATIO))
+            if np.any(check & same):
+                continue
+        keep.append(int(i))
+    return _select(candidates, np.isin(np.arange(n), keep))
 
 
 def _finalize(detections: _Detections, labels: Labels) -> tuple[DetectionPx, ...]:
@@ -630,7 +695,7 @@ class YoloOnnxDetector:
         """
         height, width = image.shape[:2]
         native_candidates = self._candidates(image)
-        native = merge_candidates(native_candidates, page_w=width, page_h=height)
+        native = merge_candidates(native_candidates, page_w=width, page_h=height, labels=self._labels)
         if self._door is None:
             return _finalize(native, self._labels)
         doors = native.boxes[native.classes == self._door]
@@ -642,7 +707,9 @@ class YoloOnnxDetector:
         up_w, up_h = round(width * factor), round(height * factor)
         upscaled = np.asarray(cv2.resize(image, (up_w, up_h), interpolation=cv2.INTER_CUBIC), dtype=np.uint8)
         mapped = _to_page(self._candidates(upscaled), up_w / width, up_h / height, page_w=width, page_h=height)
-        merged = merge_candidates(_concat_candidates([native_candidates, mapped]), page_w=width, page_h=height)
+        merged = merge_candidates(
+            _concat_candidates([native_candidates, mapped]), page_w=width, page_h=height, labels=self._labels
+        )
         # ponytail: chưa bỏ hộp mới ngoài căn hộ (sơ đồ vị trí, khung tên) — bước này chạy song song với
         # tường nên chưa có mặt nạ trong căn hộ; lọc ở spatialDataBuild khi cần.
         return _finalize(_add_new(native, merged, self._skip), self._labels)
