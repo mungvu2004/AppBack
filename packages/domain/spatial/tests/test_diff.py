@@ -151,3 +151,10 @@ def test_suggestion_accept_is_logged() -> None:
     )
     assert diff_layers(LAYER, suggested) == [FieldChange(ITEM.id, "furniture", "suggested", True)]
     assert diff_layers(suggested, LAYER) == [FieldChange(ITEM.id, "furniture", "suggested", MISSING)]
+
+
+def test_curving_a_wall_is_one_curve_entry() -> None:
+    """Uốn tường → đúng một mục `curve_offset_mm`; tường thẳng không có mục này (vắng khoá)."""
+    curved = WALL.model_copy(update={"curve_offset_mm": 300})
+    new = LAYER.model_copy(update={"walls": (curved, *LAYER.walls[1:])})
+    assert diff_layers(LAYER, new) == [FieldChange(WALL.id, "wall", "curve_offset_mm", 300)]

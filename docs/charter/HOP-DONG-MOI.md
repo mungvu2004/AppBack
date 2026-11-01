@@ -153,7 +153,7 @@ Thiếu `baseVersion` → BE trả **428 `PRECONDITION_REQUIRED`** (kiểm trư�
 
 | Thực thể miền | `entityType` | `entityId` | `field` (khoá snapshot, snake_case, `S:lib/format/semantic.ts:154-162`) |
 |---|---|---|---|
-| Wall | `wall` | `W-…` | `thickness_mm`, `height_mm`, `kind` |
+| Wall | `wall` | `W-…` | `thickness_mm`, `height_mm`, `kind`, `paint`, `curve_offset_mm` |
 | Hai đầu tường | `vertex` | `V-<wallId>-start` / `V-<wallId>-end` | `x`, `y` |
 | Opening `door` / `window` | `door` / `window` | `D-…` | `width_mm`, `height_mm`, `sill_height_mm`, `offset_mm`, `swing`, `wall_id` |
 | Room | `room` | `R-…` | `name`, `usage`, `outline` |

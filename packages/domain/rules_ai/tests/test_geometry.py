@@ -1,5 +1,7 @@
 """Hình học: khe tới mặt tường (cùng số với FE), điểm trong đa giác, tâm diện tích, phân loại tường."""
 
+import math
+
 import pytest
 
 from packages.domain.rules_ai.geometry import (
@@ -146,3 +148,19 @@ def test_wall_side__exterior_interior_unknown(start: tuple[int, int], end: tuple
 def test_wall_side__no_rooms_is_unknown() -> None:
     """Lớp chưa có phòng nào: không kết luận được gì."""
     assert wall_side(wall(1, (0, 0), (4000, 0)), ()) == "unknown"
+
+
+def test_nearest_probe__curved_wall_measures_to_the_arc() -> None:
+    """Tường cong đỉnh ở (500, 300): hộp ngay trên đỉnh cách cung ~102 mm, không phải 400 mm tới dây (NO-431)."""
+    curved = wall(1, (0, 0), (1000, 0)).model_copy(update={"curve_offset_mm": -300})
+    box = BoundingBox(min=Point(x=450, y=400), max=Point(x=550, y=500))
+    near = nearest_probe(box, curved)
+    assert near.probe == (450, 400)
+    assert near.distance == pytest.approx(math.hypot(50, 2000 / 3) - 1700 / 3)
+    assert gap_to_wall_face(box, curved) == pytest.approx(near.distance - 50)
+
+
+def test_wall_side__curved_wall_probes_at_its_apex() -> None:
+    """Dây xa phòng 2 m nhưng cung nửa tròn chạm mép phòng 1: dò ở đỉnh cung → tường ngoài, không "chưa rõ"."""
+    curved = wall(1, (0, -2000), (4000, -2000)).model_copy(update={"curve_offset_mm": -2000})
+    assert wall_side(curved, _two_rooms()) == "exterior"
