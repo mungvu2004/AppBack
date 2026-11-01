@@ -21,7 +21,7 @@ FAILURE_CODES: Final = frozenset(
 )
 
 _CLAIM: Final = text(
-    "UPDATE lighting_bakes SET status = 'running', started_at = COALESCE(started_at, :now), updated_at = :now "
+    "UPDATE lighting_bakes SET status = 'running', started_at = :now, updated_at = :now "
     "WHERE id = :id AND status IN ('queued', 'running') RETURNING project_id"
 )
 _FINISH: Final = text(
@@ -38,7 +38,9 @@ async def claim(db: AsyncSession, bake_id: str, clock: Clock) -> str | None:
     """`queued|running` → `running`; trả `project_id`, hoặc `None` khi lượt không còn chạy được.
 
     Nhận cả `running`: worker chết giữa chừng và Celery giao lại thì lượt sau vẫn nhận được;
-    `started_at` giữ mốc của lần nhận đầu để lịch quét đo trần 70 phút từ đó.
+    Mỗi lần nhận đặt lại `started_at`: lịch quét đo trần 70 phút từ lần thử **hiện tại**, nên lần thử
+    lại sau OOM không bị chốt giữa chừng vì thời gian của lần trước; worker chết mà không ai nhận lại
+    thì mốc đứng yên và lịch quét vẫn bắt được.
     """
     found = await db.execute(_CLAIM, {"id": bake_id, "now": clock.now()})
     project_id: str | None = found.scalar_one_or_none()

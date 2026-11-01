@@ -6,10 +6,12 @@ Postgres, kho local và broker thật (K23). Case chung C04 C05 C12 C13 C25 ở 
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.lighting_bake.settings import reset_lighting_bake_settings_cache
 from apps.api.lighting_bake.tests._helpers import (
     BAKE_QUEUE,
     MISSING_BAKE,
@@ -257,3 +259,52 @@ async def test_lighting_bake_download_file__C08(
         response = await api_client.get(path, headers=headers_of(owner))
         assert response.status_code == 404, path
         assert response.json()["resource"] == "lightingBake"
+
+
+async def test_download_file_refuses_a_bake_of_another_project(
+    db_session: AsyncSession, api_client: AsyncClient, local_storage: LocalDiskStorage
+) -> None:
+    """IDOR: chủ dự án B đưa id lượt `done` của dự án A vào đường của B → 404 `lightingBake`.
+
+    Đặt cả object dưới tiền tố của B với id lượt của A: chỉ bộ lọc `project_id` của truy vấn chặn được.
+    """
+    owner_a, project_a, _ = await _project(db_session)
+    owner_b, project_b, _ = await _project(db_session)
+    bake_a = await make_lighting_bake(db_session, project_id=project_a.id, status="done")
+    data = glb_bytes()
+    for project_id in (project_a.id, project_b.id):
+        key = lighting_bake_object(project_id, bake_a.id, "baked.glb")
+        await local_storage.put(key, data, content_type="model/gltf-binary", max_bytes=len(data))
+
+    own = await api_client.get(file_path(project_a.id, bake_a.id, "baked.glb"), headers=headers_of(owner_a))
+    cross = await api_client.get(file_path(project_b.id, bake_a.id, "baked.glb"), headers=headers_of(owner_b))
+
+    assert own.status_code == 200
+    assert cross.status_code == 404
+    assert cross.json()["resource"] == "lightingBake"
+
+
+async def test_start_bake_refuses_a_body_over_the_upload_ceiling(
+    db_session: AsyncSession,
+    api_client: AsyncClient,
+    local_storage: LocalDiskStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Thân vượt trần `storage.put` của dịch vụ → 413 `PAYLOAD_TOO_LARGE`, không dòng, không object dở.
+
+    Trần thật 128 MiB hạ xuống 1 KiB qua biến môi trường để không gửi 128 MiB trong test; trần thân
+    của middleware (cùng 128 MiB) đã có `test_common__C12[lighting_bake_start_bake]`.
+    """
+    owner, project, _ = await _project(db_session)
+    monkeypatch.setenv("LIGHTING_BAKE_UPLOAD_MAX_BYTES", "1024")
+    reset_lighting_bake_settings_cache()
+    try:
+        response = await api_client.post(bakes_path(project.id), content=glb_bytes(4096), headers=headers_of(owner))
+    finally:
+        monkeypatch.undo()
+        reset_lighting_bake_settings_cache()
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "PAYLOAD_TOO_LARGE"
+    assert await _statuses(db_session, project.id) == []
+    assert await _stored(local_storage, project.id) == []
