@@ -108,7 +108,7 @@ async def test_spatial_write_layer__C01_pascal_fields(api_client: httpx.AsyncCli
 async def test_spatial_write_layer__C01_door_style(
     api_client: httpx.AsyncClient, db_session: AsyncSession, swing: str, status: int
 ) -> None:
-    """EDITOR3D-DOT2: `doorStyle` khứ hồi trên cửa đi lùa; trên cửa bản lề thì cả thân 422 (FE bỏ trường trước khi gửi)."""
+    """EDITOR3D-DOT2: `doorStyle` khứ hồi trên cửa đi lùa; trên cửa bản lề thì cả thân 422 (FE bỏ trường)."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     payload = write_body(0, layer=sample_floor_layer(0, level_id=floor.level_id))
