@@ -20,11 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import Response
 
-from apps.api.core.deps import DbSession
+from apps.api.core.deps import DbSession, Storage
 from apps.api.core.routing import protected_router
 from apps.api.floors.lookup import floor_outs, get_floor
 from apps.api.projects.access import require_project
 from apps.api.projects.wire import FloorOut
+from apps.api.spatial_read import detected
 from apps.api.spatial_read.assemble import effective_scale_source, level_out, scale_status
 from apps.api.spatial_read.documents import empty_document, load_document
 from apps.api.spatial_read.graph import spatial_graph
@@ -124,3 +125,63 @@ async def spatial_read_layer(project_id: str, floor_id: str, request: Request, d
         origin=None if document.origin is None else PointOut.model_validate(document.origin.model_dump()),
     )
     return cached_json(request, out_document)
+
+
+@router.get(
+    "/projects/{project_id}/floors/{floor_id}/dimension-strings",
+    dependencies=[Depends(require_project())],
+    response_model=detected.DimensionStringsOut,
+)
+async def spatial_read_dimension_strings(
+    project_id: str, floor_id: str, request: Request, db: DbSession, storage: Storage
+) -> Response:
+    """Chuỗi kích thước toàn số của lượt mới nhất (QT-SCALE-API); chưa có lượt/artifact → `items: []`."""
+    floor = await _floor_or_404(db, project_id, floor_id)
+    run = await detected.latest_run(db, floor.pk)
+    data = (
+        None
+        if run is None
+        else await detected.read_artifact(
+            storage, project_id=project_id, floor_id=floor_id, run=run, step="dimensionReading"
+        )
+    )
+    out = detected.DimensionStringsOut(
+        run_id=None if run is None else run[0],
+        page_px=await detected.page_px(db, floor.pk),
+        items=detected.dimension_items(detected.parse_texts(data)),
+    )
+    return cached_json(request, out)
+
+
+@router.get(
+    "/projects/{project_id}/floors/{floor_id}/detected-geometry",
+    dependencies=[Depends(require_project())],
+    response_model=detected.DetectedGeometryOut,
+)
+async def spatial_read_detected_geometry(
+    project_id: str, floor_id: str, request: Request, db: DbSession, storage: Storage
+) -> Response:
+    """Điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài theo px trang (QT-SCALE-API)."""
+    floor = await _floor_or_404(db, project_id, floor_id)
+    run = await detected.latest_run(db, floor.pk)
+    walls_bytes = objects_bytes = None
+    if run is not None:
+        walls_bytes = await detected.read_artifact(
+            storage, project_id=project_id, floor_id=floor_id, run=run, step="wallSegmentation"
+        )
+        objects_bytes = await detected.read_artifact(
+            storage, project_id=project_id, floor_id=floor_id, run=run, step="openingAndFurnitureDetection"
+        )
+    walls = detected.parse_walls(walls_bytes)
+    stored = await load_document(db, floor.pk)
+    document = empty_document(floor.pk) if stored is None else stored
+    scale = None if document.scale_mm_per_px is None else float(document.scale_mm_per_px)
+    out = detected.DetectedGeometryOut(
+        page_px=await detected.page_px(db, floor.pk),
+        wall_thickness_px=detected.thickness(walls),
+        snap_points=detected.snap_points(walls),
+        doors=detected.doors(detected.parse_detections(objects_bytes)),
+        largest_room=detected.largest_room(document.layer, scale),
+        outer_box_px=detected.outer_box(walls),
+    )
+    return cached_json(request, out)

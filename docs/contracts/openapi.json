@@ -477,6 +477,36 @@
         "title": "BoundingBoxOut",
         "type": "object"
       },
+      "BoxPxOut": {
+        "additionalProperties": false,
+        "description": "Hộp thẳng trục trên trang, px.",
+        "properties": {
+          "xMax": {
+            "title": "Xmax",
+            "type": "number"
+          },
+          "xMin": {
+            "title": "Xmin",
+            "type": "number"
+          },
+          "yMax": {
+            "title": "Ymax",
+            "type": "number"
+          },
+          "yMin": {
+            "title": "Ymin",
+            "type": "number"
+          }
+        },
+        "required": [
+          "xMin",
+          "yMin",
+          "xMax",
+          "yMax"
+        ],
+        "title": "BoxPxOut",
+        "type": "object"
+      },
       "BuildDatasetVersionIn": {
         "additionalProperties": false,
         "description": "Thân N31; `projectIds` vắng = mọi dự án, có thì ít nhất một id (C02 `[]`).\n\nKhông kiểm mẫu `prj_…` ở đây: id sai mẫu và id không có/dự án xoá mềm phải ra\n**cùng** 422 `field:\"projectIds\"` (không máy dò) — `service._checked_project_ids`\nkiểm cả ba bằng `is_id` để lỗi luôn ở đúng khoá `projectIds`, không `projectIds.0`.",
@@ -1222,6 +1252,87 @@
         "title": "DeleteUserBody",
         "type": "object"
       },
+      "DetectedGeometryOut": {
+        "additionalProperties": false,
+        "description": "`GET …/detected-geometry`; chưa có lượt hay artifact → danh sách rỗng, hộp/bề dày `null`.",
+        "properties": {
+          "doors": {
+            "items": {
+              "$ref": "#/components/schemas/DoorOut"
+            },
+            "title": "Doors",
+            "type": "array"
+          },
+          "largestRoom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LargestRoomOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outerBoxPx": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoxPxOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pagePx": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagepx"
+          },
+          "snapPoints": {
+            "items": {
+              "$ref": "#/components/schemas/SnapPointOut"
+            },
+            "title": "Snappoints",
+            "type": "array"
+          },
+          "wallThicknessPx": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThicknessPxOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pagePx",
+          "wallThicknessPx",
+          "snapPoints",
+          "doors",
+          "largestRoom",
+          "outerBoxPx"
+        ],
+        "title": "DetectedGeometryOut",
+        "type": "object"
+      },
       "Dimension": {
         "additionalProperties": false,
         "description": "Chuỗi kích thước; `referenceIds` được rỗng (kích thước người tự vẽ chưa gắn thực thể).",
@@ -1402,6 +1513,130 @@
           "valueMm"
         ],
         "title": "DimensionOut",
+        "type": "object"
+      },
+      "DimensionStringOut": {
+        "additionalProperties": false,
+        "description": "Một chuỗi kích thước toàn số đọc được.",
+        "properties": {
+          "box": {
+            "$ref": "#/components/schemas/BoxPxOut"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "orientation": {
+            "enum": [
+              "horizontal",
+              "vertical"
+            ],
+            "title": "Orientation",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "valueMm": {
+            "title": "Valuemm",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "valueMm",
+          "box",
+          "confidence",
+          "orientation"
+        ],
+        "title": "DimensionStringOut",
+        "type": "object"
+      },
+      "DimensionStringsOut": {
+        "additionalProperties": false,
+        "description": "`GET …/dimension-strings`; chưa có lượt → `runId`/`pagePx` `null`, `items` rỗng.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionStringOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pagePx": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagepx"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runid"
+          }
+        },
+        "required": [
+          "runId",
+          "pagePx",
+          "items"
+        ],
+        "title": "DimensionStringsOut",
+        "type": "object"
+      },
+      "DoorOut": {
+        "additionalProperties": false,
+        "description": "Cửa dò được (`door`/`double_door`); `widthPx` là cạnh dài của hộp.",
+        "properties": {
+          "box": {
+            "$ref": "#/components/schemas/BoxPxOut"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "widthPx": {
+            "title": "Widthpx",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "box",
+          "widthPx",
+          "confidence"
+        ],
+        "title": "DoorOut",
         "type": "object"
       },
       "DrawingOut": {
@@ -3028,6 +3263,30 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LargestRoomOut": {
+        "additionalProperties": false,
+        "description": "Phòng lớn nhất của lớp đã lưu, hộp đổi mm → px bằng tỉ lệ tầng.",
+        "properties": {
+          "boxPx": {
+            "$ref": "#/components/schemas/BoxPxOut"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "roomId": {
+            "title": "Roomid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "roomId",
+          "boxPx",
+          "label"
+        ],
+        "title": "LargestRoomOut",
+        "type": "object"
+      },
       "LatestFloorUploadOut": {
         "additionalProperties": false,
         "description": "Mục N7 (`src/api/schemas/uploads.ts`): lượt tải mới nhất của một tầng.\n\n`sourceImageUrl` là ảnh trang **đã nắn** (HOP-DONG-MOI §4.2) và chỉ có khi bản vẽ đang\ndùng của tầng thuộc đúng lượt tải này.",
@@ -6479,6 +6738,35 @@
         "title": "SignInBody",
         "type": "object"
       },
+      "SnapPointOut": {
+        "additionalProperties": false,
+        "description": "Điểm bắt: đầu tường hay giao điểm hai tường.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "wallEnd",
+              "junction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "kind"
+        ],
+        "title": "SnapPointOut",
+        "type": "object"
+      },
       "SpatialGraphDocumentOut": {
         "additionalProperties": false,
         "description": "N15 — đồ thị cộng bảng `revision`; zod refine hai danh sách là **song ánh**.",
@@ -6758,6 +7046,26 @@
           "done"
         ],
         "type": "string"
+      },
+      "ThicknessPxOut": {
+        "additionalProperties": false,
+        "description": "Bề dày tường theo px: trung vị và phân vị 90.",
+        "properties": {
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "p90": {
+            "title": "P90",
+            "type": "number"
+          }
+        },
+        "required": [
+          "median",
+          "p90"
+        ],
+        "title": "ThicknessPxOut",
+        "type": "object"
       },
       "ThresholdKey": {
         "pattern": "^[a-zA-Z]+(\\.[a-zA-Z0-9]+)+$",
@@ -10150,6 +10458,110 @@
         "summary": "Floors Create Floor",
         "tags": [
           "floors"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/detected-geometry": {
+      "get": {
+        "description": "Điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài theo px trang (QT-SCALE-API).",
+        "operationId": "spatial_read_detected_geometry_api_projects__project_id__floors__floor_id__detected_geometry_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectedGeometryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spatial Read Detected Geometry",
+        "tags": [
+          "spatial"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/floors/{floor_id}/dimension-strings": {
+      "get": {
+        "description": "Chuỗi kích thước toàn số của lượt mới nhất (QT-SCALE-API); chưa có lượt/artifact → `items: []`.",
+        "operationId": "spatial_read_dimension_strings_api_projects__project_id__floors__floor_id__dimension_strings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "floor_id",
+            "required": true,
+            "schema": {
+              "title": "Floor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DimensionStringsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spatial Read Dimension Strings",
+        "tags": [
+          "spatial"
         ]
       }
     },
