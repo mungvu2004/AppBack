@@ -240,7 +240,13 @@ def sample_layer(level_index: int) -> SpatialLayer:
 
 PASCAL_FIELDS: Final[dict[str, dict[str, object]]] = {
     "walls": {"paint": {"interior": "library:paint_white", "exterior": "scene:brick-02"}},
-    "rooms": {"finish": "tile", "floorMaterial": "library:oak_floor"},
+    "openings": {"reversed": True},
+    "rooms": {
+        "finish": "tile",
+        "floorMaterial": "library:oak_floor",
+        "dressingOff": ["DRESS-rug-R-ROOM0000000"],
+        "ceilingMaterial": "scene:mat_appfront_plaster",
+    },
     "furniture": {
         "variant": "sofa",
         "heightMm": 850,

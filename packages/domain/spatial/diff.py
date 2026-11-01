@@ -19,8 +19,8 @@ DELETED: Final = "__deleted__"
 
 _TRACKED_FIELDS: Final[dict[type[Wall | Opening | Room | Furniture | Roof], tuple[str, ...]]] = {
     Wall: ("thickness_mm", "height_mm", "kind", "paint"),
-    Opening: ("width_mm", "height_mm", "sill_height_mm", "offset_mm", "swing", "wall_id"),
-    Room: ("name", "usage", "outline", "finish", "floor_material"),
+    Opening: ("width_mm", "height_mm", "sill_height_mm", "offset_mm", "swing", "wall_id", "door_style", "reversed"),
+    Room: ("name", "usage", "outline", "finish", "floor_material", "dressing_off", "ceiling_material"),
     # `suggested` (B3): nhật ký giữ lượt máy gợi ý, người nhận (cờ gỡ) hay bỏ (`__deleted__`) — nhãn miễn phí về sau.
     Furniture: (
         "kind",

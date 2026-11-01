@@ -88,6 +88,10 @@ ACCEPTED = [
     (Wall, "paint", {"interior": "library:" + "a" * 64}),
     (Room, "finish", "concrete"),
     (Room, "floorMaterial", "scene:oak-01"),
+    (Room, "dressingOff", ["DRESS-rug-R-ROOM0000000", "DRESS-pillow-F-1-0"]),
+    (Room, "dressingOff", [f"DRESS-rug-R-{i}" for i in range(200)]),
+    (Room, "ceilingMaterial", "library:paint_white"),
+    (Opening, "reversed", True),
     (Furniture, "variant", "shrub"),
     (Furniture, "heightMm", 1),
     (Furniture, "liftMm", 0),
@@ -168,6 +172,13 @@ REJECTED = [
     (Wall, "paint", {"interior": "library:a\n"}),
     (Room, "finish", "marble"),
     (Room, "floorMaterial", "library"),
+    (Room, "dressingOff", ["F-FURN0000000"]),
+    (Room, "dressingOff", ["DRESS-"]),
+    (Room, "dressingOff", ["DRESS-a b"]),
+    (Room, "dressingOff", [f"DRESS-rug-R-{i}" for i in range(201)]),
+    (Room, "ceilingMaterial", "plaster"),
+    (Opening, "reversed", "yes"),
+    (Opening, "doorStyle", "barn"),
     (Furniture, "variant", "lamp"),
     (Furniture, "heightMm", 0),
     (Furniture, "heightMm", 1.5),
@@ -280,3 +291,14 @@ def test_pascal_fields_wire_round_trip() -> None:
         assert payload[name][0].items() >= extra.items()
         assert not payload[name][1].keys() & extra.keys()
     assert SpatialLayer.model_validate(payload) == layer
+
+
+def test_opening_door_style_only_on_sliding_door() -> None:
+    """H4: `doorStyle` (âm tường / xếp) chỉ tinh chỉnh cửa đi lùa; `reversed=False` vắng khoá."""
+    door = _with(Opening, "doorStyle", "pocket")
+    door.update(kind="door", swing="sliding")
+    assert wire(Opening.model_validate(door))["doorStyle"] == "pocket"
+    for broken in ({"kind": "door", "swing": "left"}, {"kind": "window", "swing": "sliding"}):
+        with pytest.raises(ValidationError):
+            Opening.model_validate({**door, **broken})
+    assert "reversed" not in wire(Opening.model_validate({**door, "reversed": False}))

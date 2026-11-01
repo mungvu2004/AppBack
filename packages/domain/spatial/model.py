@@ -97,6 +97,12 @@ RoofIdStr = Annotated[StrictStr, _spatial_id("roof")]
 MaterialRef = Annotated[StrictStr, Field(pattern=r"^(library|scene):[a-z0-9_-]{1,64}$")]
 """Vật liệu Pascal (FE3D-B J-v3): `library:<id>` trong thư viện hoặc `scene:<id>` của cảnh."""
 SlotName = Annotated[StrictStr, Field(pattern=r"^[a-z][a-z0-9_]{0,23}$")]
+
+DressingId = Annotated[StrictStr, Field(pattern=r"^DRESS-[A-Za-z0-9_.:-]{1,160}$")]
+"""Id món AppFront tự bày (`sceneDressingRules.ts`), vd `DRESS-rug-R-01`; BE không sinh, chỉ giữ."""
+
+DRESSING_OFF_MAX: Final = 200
+"""Trần số món tự bày đã xoá của một phòng (`RoomSchema.dressingOff` của FE)."""
 RoomFinish = Literal["wood", "tile", "mosaic", "decking", "concrete"]
 """`RoomFinish` của FE `src/domain/spatial/types.ts`."""
 FurnitureVariant = Literal[
@@ -271,6 +277,17 @@ class Opening(Reviewed):
     height_mm: PositiveMm
     sill_height_mm: NonNegativeMm
     swing: Literal["left", "right", "double", "sliding", "fixed"]
+    door_style: Literal["pocket", "folding"] | None = None
+    """Cửa lùa âm tường / cửa xếp (H4); chỉ cửa đi `swing="sliding"`. Vắng = lùa thường."""
+    reversed: StrictBool = Field(default=False, exclude_if=_not_edited)
+    """"Đổi hướng mở" (H4): cánh bản lề mở về mặt kia so với luật FE, cửa lùa lùa sang phải; `False` vắng khoá."""
+
+    @model_validator(mode="after")
+    def _door_style_on_sliding_door(self) -> Self:
+        """`doorStyle` chỉ tinh chỉnh cửa đi lùa; trên cửa sổ hay cửa bản lề là dữ liệu hỏng."""
+        if self.door_style is not None and (self.kind != "door" or self.swing != "sliding"):
+            raise ValueError("doorStyle chỉ dùng cho cửa đi swing=sliding")
+        return self
 
 
 class Furniture(Reviewed):
@@ -320,6 +337,10 @@ class Room(Reviewed):
     wall_ids: tuple[WallIdStr, ...]
     finish: RoomFinish | None = None
     floor_material: MaterialRef | None = None
+    dressing_off: Annotated[tuple[DressingId, ...], Field(max_length=DRESSING_OFF_MAX)] | None = None
+    """Món AppFront tự bày người dùng đã xoá trong 3D (H4): FE không bày lại; vắng = không có."""
+    ceiling_material: MaterialRef | None = None
+    """Vật liệu trần (H4); vắng = thạch cao mặc định của FE."""
 
 
 class Axis(Reviewed):
