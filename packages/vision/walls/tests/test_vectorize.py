@@ -727,6 +727,8 @@ def test_off_node__drops_skeleton_within_one_thickness_of_a_junction_end(key: tu
     seg = _Seg(0.0, 0.0, 19.0, 0.0, 11.0, 0.9, (1, 3, 1), key)
     inner = np.stack([np.arange(20), np.zeros(20)], axis=1).astype(np.int32)
     assert len(_off_node(seg, inner)) == kept
+    flipped = _Seg(19.0, 0.0, 0.0, 0.0, 11.0, 0.9, key, (1, 3, 1))
+    assert len(_off_node(flipped, inner, "a")) == kept
 
 
 def test_seated__free_arc_end_lands_on_the_wall_body_it_sits_in() -> None:
@@ -848,3 +850,11 @@ def test_arc_chords__points_on_a_circle_still_become_an_arc() -> None:
     ]
     run, skeleton = _dp_run(vertices, points)
     assert _arc_chords(0, run, skeleton, np.ones((300, 300), np.bool_), itertools.count())
+
+
+def test_finalise__sagitta_shrinks_with_a_chord_clamped_into_the_image() -> None:
+    """Đầu cung kẹp vào mép ảnh làm dây ngắn lại: sagitta kẹp về nửa dây mới, `WallPx` vẫn nhận."""
+    arc = _Seg(-40.0, 50.0, 60.0, 50.0, 8.0, 0.9, (0, 0, 0), (0, 0, 1), arc=True, sagitta=45.0)
+    (wall,), _ = _finalise([arc], (200, 300))
+    assert wall.start == (0.0, 50.0)
+    assert abs(wall.sagitta_px) == 30.0

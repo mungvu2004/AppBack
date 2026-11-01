@@ -211,3 +211,12 @@ def test_layer_out_round_trips_suggested_flag() -> None:
     assert body["furniture"][0]["suggested"] is True
     assert all("suggested" not in item for item in body["furniture"][1:])
     assert type(layer).model_validate(body).furniture[0].suggested is True
+
+
+def test_layer_out_carries_curve_only_for_curved_walls() -> None:
+    """`curveOffsetMm` có khi tường cong, vắng khoá khi thẳng (`WallSchema` FE là `.strict()`)."""
+    layer = sample_floor_layer(0, level_id=LEVEL_ID)
+    curved = layer.walls[0].model_copy(update={"curve_offset_mm": 250})
+    body = layer_out(layer.model_copy(update={"walls": (curved, *layer.walls[1:])})).model_dump(by_alias=True)
+    assert body["walls"][0]["curveOffsetMm"] == 250
+    assert all("curveOffsetMm" not in wall for wall in body["walls"][1:])

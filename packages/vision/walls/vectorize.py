@@ -14,7 +14,7 @@ import math
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Final, Literal
 
 import cv2
 import numpy as np
@@ -518,15 +518,16 @@ def _arc_chords(
     ]
 
 
-def _off_node(seg: _Seg, inner: NDArray[np.int32]) -> NDArray[np.int32]:
-    """Điểm xương của `seg` trừ phần trong một bề dày quanh đầu cuối khi đầu đó là nút giao (khoá loại 0).
+def _off_node(seg: _Seg, inner: NDArray[np.int32], tip: Literal["a", "b"] = "b") -> NDArray[np.int32]:
+    """Điểm xương của `seg` trừ phần trong một bề dày quanh đầu `tip` khi đầu đó là nút giao (khoá loại 0).
 
     Cụm nút giao kéo xương lệch khỏi tim tường cỡ nửa bề dày: cung chạm nút (lưỡi mặt nạ hụt, nhánh cụt) thì
     đoạn cuối lệch đường tròn quá ngưỡng dù đỉnh vẫn trên cung (WALLS-ARC). Đỉnh DP thường không bỏ gì.
     """
-    if seg.b_key[0] != 0 or len(inner) < 3:
+    key, x, y = (seg.a_key, seg.ax, seg.ay) if tip == "a" else (seg.b_key, seg.bx, seg.by)
+    if key[0] != 0 or len(inner) < 3:
         return inner
-    far = np.hypot(inner[:, 0] - seg.bx, inner[:, 1] - seg.by) > seg.thickness
+    far = np.hypot(inner[:, 0] - x, inner[:, 1] - y) > seg.thickness
     return inner[far] if far.sum() >= 2 else inner
 
 
@@ -549,7 +550,13 @@ def _smooth_arcs(index: int, segs: list[_Seg], inners: list[NDArray[np.int32]], 
             stop < len(segs)
             and segs[stop].a_key == segs[stop - 1].b_key
             and _fit_circle(
-                np.concatenate([*inners[start:stop], _off_node(segs[stop], inners[stop])]).astype(np.float64)
+                np.concatenate(
+                    [
+                        _off_node(segs[start], inners[start], "a"),
+                        *inners[start + 1 : stop],
+                        _off_node(segs[stop], inners[stop]),
+                    ]
+                ).astype(np.float64)
             )[3]
             <= tol
         ):
@@ -1480,7 +1487,9 @@ def _finalise(segs: list[_Seg], shape: tuple[int, int]) -> tuple[tuple[WallSegme
         if start == end:  # so sau khi làm tròn: hai đầu lệch < 0.005 px thành trùng nhau
             short += 1
             continue
-        sagitta = round(seg.sagitta, 2)
+        # Kẹp đầu mút vào ảnh có thể rút ngắn dây: sagitta không được vượt nửa dây mới (`WallPx` từ chối).
+        half = math.floor(math.dist(start, end) * 50) / 100
+        sagitta = max(-half, min(half, round(seg.sagitta, 2)))
         if end < start:
             start, end, sagitta = end, start, -sagitta  # đảo chiều dây thì pháp tuyến đổi dấu
         wall = WallSegment(
