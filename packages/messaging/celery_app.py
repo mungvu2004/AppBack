@@ -28,12 +28,13 @@ from packages.observability.settings import get_observability_settings
 _log: Final = logging.getLogger(__name__)
 
 DEFAULT_QUEUE: Final = "default"
-QUEUES: Final = (DEFAULT_QUEUE, "pipeline.cpu", "ml.infer", "ml.training")
+QUEUES: Final = (DEFAULT_QUEUE, "pipeline.cpu", "ml.infer", "ml.training", "bake")
 # Tiền tố dài trước tiền tố ngắn: `ml.infer.` phải thắng khi cả hai cùng khớp.
 _QUEUE_BY_PREFIX: Final[tuple[tuple[str, str], ...]] = (
     ("pipeline.", "pipeline.cpu"),
     ("ml.infer.", "ml.infer"),
     ("ml.training.", "ml.training"),
+    ("bake.", "bake"),
 )
 AFTER_COMMIT_INLINE_ENV: Final = "DB_AFTER_COMMIT_INLINE"
 PRODUCER_SOCKET_TIMEOUT_S: Final = 1

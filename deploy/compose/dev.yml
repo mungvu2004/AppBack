@@ -201,6 +201,28 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  bake:
+    extends:
+      file: base.yml
+      service: bake
+    build:
+      context: ../..
+      dockerfile: deploy/docker/worker.Dockerfile
+      target: bake
+    image: appback-bake:dev
+    profiles: ["bake"]
+    volumes:
+      - local-storage:/var/lib/appback/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
   web:
     extends:
       file: base.yml
@@ -233,3 +255,4 @@ volumes:
   minio-data:
   local-storage:
   ml-tmp:
+  bake-tmp:

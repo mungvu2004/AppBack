@@ -72,6 +72,8 @@ def conf() -> MessagingSettings:
         ("pipeline.drawings.render", "pipeline.cpu"),
         ("ml.infer.walls.segment", "ml.infer"),
         ("ml.training.yolo.launch", "ml.training"),
+        ("bake.lighting.run", "bake"),
+        ("bake", DEFAULT_QUEUE),
         ("notifications.fanout", DEFAULT_QUEUE),
         ("pipeline", DEFAULT_QUEUE),
         ("ml.inference.walls", DEFAULT_QUEUE),
@@ -85,7 +87,7 @@ def test_queue_is_derived_from_the_task_name_prefix(name: str, queue: str) -> No
 
 def test_every_derived_queue_is_a_declared_queue() -> None:
     """Mọi hàng suy ra từ tiền tố đều nằm trong `QUEUES`."""
-    assert {queue_for(name) for name in ("pipeline.a", "ml.infer.a", "ml.training.a", "a")} == set(QUEUES)
+    assert {queue_for(name) for name in ("pipeline.a", "ml.infer.a", "ml.training.a", "bake.a", "a")} == set(QUEUES)
 
 
 def test_create_celery_applies_the_charter_configuration() -> None:
