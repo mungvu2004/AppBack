@@ -104,6 +104,25 @@ async def test_spatial_write_layer__C01_pascal_fields(api_client: httpx.AsyncCli
     assert stored == response.json()["layer"]
 
 
+@pytest.mark.parametrize(("swing", "status"), [("sliding", 200), ("left", 422)])
+async def test_spatial_write_layer__C01_door_style(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, swing: str, status: int
+) -> None:
+    """EDITOR3D-DOT2: `doorStyle` khứ hồi trên cửa đi lùa; trên cửa bản lề thì cả thân 422 (FE bỏ trường trước khi gửi)."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    payload = write_body(0, layer=sample_floor_layer(0, level_id=floor.level_id))
+    openings = payload["body"]["layer"]["openings"]
+    openings[0] = {**openings[0], "kind": "door", "swing": swing, "doorStyle": "pocket"}
+
+    response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, payload)
+
+    assert response.status_code == status
+    if status == 200:
+        read = await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))
+        assert read.json()["layer"]["openings"][0]["doorStyle"] == "pocket"
+
+
 async def test_spatial_write_layer__C01_scale(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """Thân chỉ mang tỉ lệ (F-04c "áp cho mọi tầng") → 200 và N16 hết `scaleStatus`.
 

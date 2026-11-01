@@ -302,3 +302,10 @@ def test_opening_door_style_only_on_sliding_door() -> None:
         with pytest.raises(ValidationError):
             Opening.model_validate({**door, **broken})
     assert "reversed" not in wire(Opening.model_validate({**door, "reversed": False}))
+
+
+def test_empty_dressing_off_is_absent() -> None:
+    """EDITOR3D-DOT2 review #2: `dressingOff: []` lưu như vắng khoá, không bật `edited` vì không có gì đổi."""
+    room = Room.model_validate(_with(Room, "dressingOff", []))
+    assert room.dressing_off is None
+    assert "dressingOff" not in room.model_dump(mode="json", by_alias=True, exclude_none=True)

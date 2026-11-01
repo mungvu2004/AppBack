@@ -337,8 +337,12 @@ class Room(Reviewed):
     wall_ids: tuple[WallIdStr, ...]
     finish: RoomFinish | None = None
     floor_material: MaterialRef | None = None
-    dressing_off: Annotated[tuple[DressingId, ...], Field(max_length=DRESSING_OFF_MAX)] | None = None
-    """Món AppFront tự bày người dùng đã xoá trong 3D (H4): FE không bày lại; vắng = không có."""
+    dressing_off: Annotated[
+        tuple[DressingId, ...] | None,
+        Field(max_length=DRESSING_OFF_MAX),
+        AfterValidator(lambda ids: ids or None),
+    ] = None
+    """Món AppFront tự bày người dùng đã xoá trong 3D (H4): FE không bày lại; vắng = không có (`[]` cũng vắng)."""
     ceiling_material: MaterialRef | None = None
     """Vật liệu trần (H4); vắng = thạch cao mặc định của FE."""
 
