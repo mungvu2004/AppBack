@@ -66,7 +66,9 @@ _EN_NAMES: Final[tuple[tuple[str, RoomUsage], ...]] = (
     ("terrace", "loggia"),
     ("loggia", "loggia"),
 )
-_EN_KEYS: Final[tuple[tuple[tuple[str, ...], RoomUsage], ...]] = tuple((tuple(key.split()), usage) for key, usage in _EN_NAMES)
+_EN_KEYS: Final[tuple[tuple[tuple[str, ...], RoomUsage], ...]] = tuple(
+    (tuple(key.split()), usage) for key, usage in _EN_NAMES
+)
 """Tên phòng tiếng Anh (B6): khoá ≥ 5 chữ, chỉ khớp nguyên từ, không khớp gần đúng ("store" không gần "stair")."""
 _TITLE_WORDS: Final = ("plan", "apartment", "m2", "m²")
 _TITLE_MAX_WORDS: Final = 4
