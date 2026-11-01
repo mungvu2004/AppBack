@@ -574,3 +574,50 @@ def test_two_labels_split_room_along_stub_wall(fake_clock: FakeClock) -> None:
     texts = (_text("phòng khách", 2000, 2500), _text("bếp", 6000, 2500))
     assert sorted(_usages(_room_with_stub(fake_clock), texts, (), fake_clock)) == ["kitchen", "livingRoom"]
     assert _usages(_room_with_stub(fake_clock), texts[:1], (), fake_clock) == ["livingRoom"]
+
+
+def _square(clock: FakeClock, side: int) -> list[Wall]:
+    """Một phòng vuông cạnh `side` mm."""
+    return [
+        _wall(clock, (0, 0), (side, 0)),
+        _wall(clock, (0, side), (side, side)),
+        _wall(clock, (0, 0), (0, side)),
+        _wall(clock, (side, 0), (side, side)),
+    ]
+
+
+def test_wardrobe_with_washer_or_short_wardrobe_is_not_bedroom(fake_clock: FakeClock) -> None:
+    """Tủ áo cạnh máy giặt/thiết bị vệ sinh (phòng 16 m²) hay tủ áo ngắn < 900 mm không làm phòng ngủ."""
+    wardrobe = DetectionPx(label="wardrobe", box=_box(500, 500, 1500, 1100), confidence=0.8)
+    washer = DetectionPx(label="washing_machine", box=_box(2000, 500, 2600, 1100), confidence=0.8)
+    toilet = DetectionPx(label="sanitary_fixture", box=_box(2000, 2000, 2400, 2400), confidence=0.8)
+    short = DetectionPx(label="wardrobe", box=_box(500, 500, 1100, 1100), confidence=0.8)
+    walls = _square(fake_clock, 4000)
+    assert _usages(walls, (), (wardrobe,), fake_clock) == ["bedroom"]
+    assert _usages(walls, (), (wardrobe, washer), fake_clock) == ["other"]
+    assert _usages(walls, (), (wardrobe, toilet), fake_clock) == ["other"]
+    assert _usages(walls, (), (short,), fake_clock) == ["other"]
+
+
+def test_furniture_goes_to_room_with_largest_overlap(fake_clock: FakeClock) -> None:
+    """B8: tâm hộp trên biên A (gán theo tâm: không phòng) nhưng hộp giao phòng A nhiều nhất → phòng A, không `suggested`."""
+    room_a = _room(fake_clock, ((0, 0), (4000, 4000)))
+    room_b = _room(fake_clock, ((4000, 0), (8000, 1000)))
+    detections = (DetectionPx(label="table", box=_box(3000, 0, 5000, 4000), confidence=0.9),)
+    items = build_furniture(
+        detections, (room_a, room_b), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter()
+    )
+    assert (items[0].room_id, items[0].suggested) == (room_a.id, False)
+
+
+def test_furniture_outside_the_flat_is_suggested(fake_clock: FakeClock) -> None:
+    """B8: đồ xa căn (sơ đồ vị trí) → `suggested`, không xoá; đồ sát mép phòng trong 300 mm → giữ."""
+    room = _room(fake_clock, ((0, 0), (1000, 1000)))
+    detections = (
+        DetectionPx(label="table", box=_box(5000, 5000, 5600, 5600), confidence=0.9),
+        DetectionPx(label="table", box=_box(1050, 0, 1450, 400), confidence=0.9),
+    )
+    items = build_furniture(
+        detections, (room,), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter()
+    )
+    assert [item.suggested for item in items] == [True, False]
