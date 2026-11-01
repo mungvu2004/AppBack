@@ -18,7 +18,7 @@ thân với đường; giá trị chỉ dùng để so, không bao giờ dùng �
 
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BeforeValidator, Field
+from pydantic import BeforeValidator, Field, model_validator
 
 from apps.api.core.pagination import CursorPage
 from apps.api.core.wire import WireDatetime, WireModel, WireRequest
@@ -27,6 +27,10 @@ from packages.core.text import clean_text
 FILE_NAME_MAX: Final = 255
 PAGE_INDEX_MAX: Final = 19
 MIME_TYPE_MAX: Final = 255
+CROP_MIN_AREA: Final = 0.01
+"""Diện tích tối thiểu (tỉ lệ trang) của vùng cắt #5 — nhỏ hơn thì không còn là một mặt bằng."""
+CROP_EPS: Final = 1e-6
+"""Dung sai làm tròn của `x + width`, `y + height` so với 1."""
 
 _FORBIDDEN_CHARS: Final = frozenset("/\\")
 
@@ -55,8 +59,39 @@ def clean_file_name(value: Any) -> Any:
 FileName = Annotated[str, BeforeValidator(clean_file_name)]
 
 
+class CropRect(WireRequest):
+    """Vùng cắt của một tầng trên tờ nhiều mặt bằng, theo tỉ lệ trang gốc **chưa nắn**.
+
+    Trang gốc là ảnh như trình duyệt hiện (đã xoay theo EXIF) hoặc trang `pageIndex` của PDF;
+    `x`, `y` là góc trên-trái. Sai luật → 422 `VALIDATION`, `field` là `crop` hoặc `crop.<khoá>`.
+    """
+
+    x_ratio: float = Field(ge=0.0, le=1.0)
+    y_ratio: float = Field(ge=0.0, le=1.0)
+    width_ratio: float = Field(ge=0.0, le=1.0)
+    height_ratio: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _inside_page(self) -> "CropRect":
+        """Vùng phải nằm trong trang (dung sai `CROP_EPS`) và đủ `CROP_MIN_AREA`."""
+        if self.x_ratio + self.width_ratio > 1.0 + CROP_EPS or self.y_ratio + self.height_ratio > 1.0 + CROP_EPS:
+            raise ValueError("vùng cắt vượt ra ngoài trang")
+        if self.width_ratio * self.height_ratio < CROP_MIN_AREA:
+            raise ValueError("vùng cắt quá nhỏ")
+        return self
+
+    def corners(self) -> list[list[float]]:
+        """4 góc TL,TR,BR,BL (cùng dạng `quality_assessments.corners`), kẹp về `[0, 1]`."""
+        right = min(self.x_ratio + self.width_ratio, 1.0)
+        bottom = min(self.y_ratio + self.height_ratio, 1.0)
+        return [[self.x_ratio, self.y_ratio], [right, self.y_ratio], [right, bottom], [self.x_ratio, bottom]]
+
+
 class InitUploadBody(WireRequest):
-    """Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7)."""
+    """Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7).
+
+    `crop` vắng/null = cả trang; có thì pipeline của tầng chỉ xử lý vùng đó (MULTI-FLOOR-01).
+    """
 
     file_name: FileName
     floor_id: str = Field(min_length=1)
@@ -64,6 +99,7 @@ class InitUploadBody(WireRequest):
     project_id: str = Field(min_length=1)
     size_bytes: int = Field(ge=1)
     page_index: int = Field(default=0, ge=0, le=PAGE_INDEX_MAX)
+    crop: CropRect | None = None
 
 
 class UploadChunkBody(WireRequest):
