@@ -12,7 +12,7 @@ import logging
 import math
 from collections import Counter, deque
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final, Literal
 
 import numpy as np
@@ -1006,5 +1006,18 @@ def build_walls(
     geoms = _linestrings(live) if live else np.asarray([], dtype=object)
     chains = _arc_chains(live, arc_of)
     cands = _resolve_overlaps(_opening_candidates(live, geoms, detections, scaling, dropped, chains), dropped)
+    live, cands = _drop_bare_gap_walls(live, cands)
     built_walls, openings = _assemble(live, cands, level_id, clock)
     return WallSet(built_walls, openings, input_to_wall, bridges)
+
+
+def _drop_bare_gap_walls(segs: Sequence[_Seg], cands: Sequence[_Cand]) -> tuple[list[_Seg], list[_Cand]]:
+    """Bỏ tường qua khe (bước 3c, không đầu vào) không còn ô mở nào: ô mở rơi thì tường đó bịt lối (OPEN-ATTACH).
+
+    Tường qua khe nằm cuối `segs` nên bỏ chúng không dời chỉ số tường có đầu vào (`input_to_wall` giữ nguyên);
+    `wall` của ô mở đánh lại theo vị trí mới.
+    """
+    hosts = {cand.wall for cand in cands}
+    kept = [index for index, seg in enumerate(segs) if seg.inputs or index in hosts]
+    position = {old: new for new, old in enumerate(kept)}
+    return [segs[index] for index in kept], [replace(cand, wall=position[cand.wall]) for cand in cands]

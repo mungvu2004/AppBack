@@ -6,11 +6,13 @@ ra mong đợi; tường đặt ở `y = 1000` để mọi toạ độ không â
 
 import math
 from collections import Counter
+from datetime import UTC, datetime
 
 import pytest
 
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
 from packages.domain.spatial import Point
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
@@ -698,3 +700,44 @@ def test_build_walls__hugging_stub_closed_both_ends_or_thin_host_kept(fake_clock
     )
     assert len(closed.walls) == 4
     assert len(thin.walls) == 2
+
+
+def test_build_walls__gap_wall_without_opening_dropped(fake_clock: FakeClock) -> None:
+    """OPEN-ATTACH (review P2): cửa đôi 500 < 600 trên tường qua khe rơi → tường đó bỏ, không bịt lối."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(1000, 0, 1000, 2000), wall_px(1500, 0, 1500, 2000)],
+        [det("double_door", 1000, 950, 1500, 1050)],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 2
+    assert result.openings == ()
+    assert dropped["openingUnattached"] == 1
+
+
+def test_build_layer__rooms_ignore_gap_walls() -> None:
+    """OPEN-ATTACH (P3): vách lệch 120 mm hai bên khe → tường qua khe mang cửa; phòng không kể nó, như khi không cửa."""
+    room = [
+        wall_px(0, 0, 400, 0, 10),
+        wall_px(400, 0, 400, 300, 10),
+        wall_px(400, 300, 0, 300, 10),
+        wall_px(0, 300, 0, 0, 10),
+        wall_px(200, 0, 200, 130, 10),
+        wall_px(212, 220, 212, 300, 10),
+    ]
+    built, bare = (
+        build_wrapped(
+            walls=room,
+            detections=detections,
+            width_px=400,
+            height_px=300,
+            clock=FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)),
+        )
+        for detections in ([det("door", 194, 130, 218, 220)], [])
+    )
+    (opening,) = built.layer.openings
+    gap = next(wall for wall in built.layer.walls if wall.id == opening.wall_id)
+    assert gap.centreline.start.y == 1300
+    assert all(gap.id not in room.wall_ids for room in built.layer.rooms)
+    assert [room.outline for room in built.layer.rooms] == [room.outline for room in bare.layer.rooms]
