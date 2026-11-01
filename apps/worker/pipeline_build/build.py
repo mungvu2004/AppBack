@@ -509,7 +509,10 @@ def _assembled(
         "dropped": dropped,
     }
     wall_set = build_walls(context.walls_px, context.detections, arc_of=context.arc_of, **shared)
-    rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
+    # Tường qua khe cửa (bước 3c) không có đầu vào: bỏ khi dựng phòng, `_door_closers` khép khe như cũ (OPEN-ATTACH).
+    from_inputs = set(wall_set.input_to_wall.values())
+    room_walls = [wall for index, wall in enumerate(wall_set.walls) if index in from_inputs]
+    rooms = build_rooms(room_walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
     wall_set, rooms = join_arcs(wall_set, rooms, context.arc_of)
     trusted = context.source == "pipeline"
     furniture = build_furniture(context.detections, rooms, scale_trusted=trusted, **shared)
