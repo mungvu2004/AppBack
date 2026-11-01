@@ -2,7 +2,7 @@
 """lib_decor_group
 
 Revision ID: r20261102_lib_decor_group
-Revises: r20261102_lb_01
+Revises: r20261102_mf_01
 Create Date: 2026-11-02
 
 Thư viện thêm nhóm `decor` (cây, thảm, đèn, rèm…) cho các mẫu nạp từ tệp `.glb`. Postgres không sửa được biểu
@@ -16,7 +16,7 @@ from typing import Final
 from alembic import op
 
 revision: str = "r20261102_lib_decor_group"
-down_revision: str | None = "r20261102_lb_01"
+down_revision: str | None = "r20261102_mf_01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
