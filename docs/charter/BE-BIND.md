@@ -26,7 +26,7 @@
 | 2 | auth | `POST /api/auth/register` | — | rỗng + cookie | v2 | — | — | **v2** | K7 = B: không mount ở v1; F-09a tắt tab đăng ký |
 | 3 | auth | `POST /api/auth/refresh` | `auth_refresh` | thân W16 (golden strict riêng) | R | — | — | B1-01 | HMAC tất định, ân hạn 30 s; cấp lại cookie luồng |
 | 4 | auth | `POST /api/auth/logout` | `auth_logout` | rỗng | P | — | — | B1-01 | thu hồi phiên + đóng luồng |
-| 5 | drawings | `POST /api/projects/{project_id}/floors/{floor_id}/drawings/uploads` | `drawings_init_upload` | `Progress` | T-init | `floor.upload` | có | B2-04 | + `pageIndex`; `.dwg` → 422 |
+| 5 | drawings | `POST /api/projects/{project_id}/floors/{floor_id}/drawings/uploads` | `drawings_init_upload` | `Progress` | T-init | `floor.upload` | có | B2-04 | + `pageIndex`, `crop?` `{xRatio,yRatio,widthRatio,heightRatio}` (tỉ lệ trang gốc, diện tích ≥ 0,01; sai → 422 `field` = `crop` hoặc `crop.<khoá>`, MULTI-FLOOR-01); `.dwg` → 422 |
 | 6 | drawings | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/chunks` | `drawings_upload_chunk` | `Progress` | T-chunk | `floor.upload` | — | B2-04 | ghi đè theo (upload, chunkIndex) |
 | 7 | drawings | `POST /api/projects/{project_id}/drawings/uploads/{upload_id}/complete` | `drawings_complete_upload` | `Progress` | T-complete +ngoài | `floor.upload` | có | B2-04 | idempotent; xếp hàng pipeline sau commit |
 | 8 | drawings | `GET /api/projects/{project_id}/drawings/uploads/{upload_id}/progress` | `drawings_read_progress` | `Progress` | Đ | thành viên | — | B2-04 | luật §4 |
