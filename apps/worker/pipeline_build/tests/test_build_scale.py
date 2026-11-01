@@ -90,9 +90,9 @@ def _door(x: float, length: float) -> DetectionPx:
 
 
 def test_build_layer__unset_project_scale_uses_door_estimate(fake_clock: FakeClock) -> None:
-    """DOOR-SCALE: ≥ 3 cửa đi → tỉ lệ tạm 745 / cạnh dài trung vị (50 px) = 14,9; cửa đôi 120 > 1,6 x 50 bị bỏ."""
+    """DOOR-SCALE: cửa 40/50/60 + cửa đôi 120 (> 1,6 x trung vị 55) bị bỏ → 745 / 50 = 14,9; không bỏ thì 745 / 55."""
     walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
-    doors = [_door(300 + 40 * k, 50) for k in range(4)] + [_door(600, 120)]
+    doors = [_door(300, 40), _door(340, 50), _door(380, 60), _door(600, 120)]
     built = _run(walls, (), fake_clock, detections=doors, fallback="1")
     assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("14.900000"))
     assert built.dimensions == ()
