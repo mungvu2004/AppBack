@@ -128,8 +128,8 @@
 | N42 | `POST /api/projects/{project_id}/lighting-bakes` | `lighting_bake_start_bake` | `lightingBake.ts` | G | `layer.edit` | — | LB-01 | nút "Nướng ánh sáng" (thân = byte GLB ≤ 128 MiB; 409 khi đang có lượt chờ/chạy) |
 | N43 | `GET /api/projects/{project_id}/lighting-bakes/latest` | `lighting_bake_read_latest` | `lightingBake.ts` | Đ | thành viên | — | LB-01 | thăm dò trạng thái mỗi 5 s; chưa có → 404 |
 | N44 | `GET /api/projects/{project_id}/lighting-bakes/{bake_id}/files/{file_name}` | `lighting_bake_download_file` | nhị phân | Đ | thành viên | — | LB-01 | baked.glb / lightmap.png / manifest.json; miễn H1 (thân nhị phân) |
-| N45 | `GET /api/projects/{project_id}/floors/{floor_id}/dimension-strings` | `spatial_read_dimension_strings` | — (FE chưa dùng) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: chữ kích thước toàn số 300–30 000 mm của lượt mới nhất; chưa có lượt → `items: []` |
-| N46 | `GET /api/projects/{project_id}/floors/{floor_id}/detected-geometry` | `spatial_read_detected_geometry` | — (FE chưa dùng) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài (px trang); chưa có lượt → rỗng |
+| N45 | `GET /api/projects/{project_id}/floors/{floor_id}/dimension-strings` | `spatial_read_dimension_strings` | `quality.ts` (`DimensionStrings`) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: chữ kích thước toàn số 300–30 000 mm của lượt mới nhất; chưa có lượt → `items: []` |
+| N46 | `GET /api/projects/{project_id}/floors/{floor_id}/detected-geometry` | `spatial_read_detected_geometry` | `quality.ts` (`DetectedGeometry`) | Đ | thành viên | — | QT-SCALE-API | màn tỉ lệ: điểm bắt, bề dày tường, cửa, phòng lớn nhất, hộp ngoài (px trang); chưa có lượt → rỗng |
 
 N24 có version: áp thêm C09, C09b, C14 theo CASE §2.2 A.
 
