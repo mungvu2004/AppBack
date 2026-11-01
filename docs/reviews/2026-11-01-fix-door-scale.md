@@ -68,3 +68,18 @@ ch-09 / cn thừa +4 chấp nhận được vì tỉ lệ (mọi kích thước 
 trên bộ cn độc lập (đo theo tổng diện tích). Nên làm cùng lượt trước khi merge, đều rẻ: finding 1 (ghi nợ có mã và tiêu
 chí đóng), finding 2 (dữ liệu test khiến bộ lọc cửa đôi đổi kết quả). Finding 3 (soát ch-08) và hai Nit không chặn.
 Phán quyết này cho 90e6fc6e; commit sửa thêm sau đó cần một lượt đích (`verify --fast`).
+
+---
+
+# Bổ sung lượt 1 — commit test 43a4021d
+
+- Commit đầu nhánh (mã): 43a4021d, chỉ sửa `test_build_layer__unset_project_scale_uses_door_estimate` (cửa 40/50/60 + cửa
+  đôi 120 px); `build.py` giữ nguyên như 90e6fc6e nên kết quả cổng đầy đủ ở trên vẫn áp cho mã chạy.
+- Cổng: phạm vi **đích** (chỉ đổi test) — `verify --fast` mã thoát **0**, 698 passed (28 tệp test), tập file bị chạm dòng
+  97,08% · nhánh 90,00% (log: `F:/runs/merge-review-open-attach/fast-ds2.log`).
+- Thử đột biến trong bản chép của `run.sh shell`: đổi `single = sides[sides <= _DOUBLE_DOOR_RATIO * …]` thành
+  `single = sides` → test hỏng với `Decimal('13.545455') != Decimal('14.900000')`; bản gốc 30/30 test của tệp đạt.
+- Finding 2 (P3 TEST-01): **đã sửa**, test nay khoá bộ lọc cửa đôi. Phần ghi chú docstring (lọc chỉ chống thiểu số cửa đôi)
+  vẫn chưa thêm — Nit, không chặn.
+- Phán quyết giữ **APPROVE** cho nhánh tới 43a4021d. Còn nên làm trước merge: finding 1 (ghi nợ có mã và tiêu chí đóng);
+  finding 3 và các Nit không chặn.
