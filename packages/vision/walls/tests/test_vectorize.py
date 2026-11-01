@@ -727,6 +727,8 @@ def test_off_node__drops_skeleton_within_one_thickness_of_a_junction_end(key: tu
     seg = _Seg(0.0, 0.0, 19.0, 0.0, 11.0, 0.9, (1, 3, 1), key)
     inner = np.stack([np.arange(20), np.zeros(20)], axis=1).astype(np.int32)
     assert len(_off_node(seg, inner)) == kept
+    flipped = _Seg(19.0, 0.0, 0.0, 0.0, 11.0, 0.9, key, (1, 3, 1))
+    assert len(_off_node(flipped, inner, "a")) == kept
 
 
 def test_seated__free_arc_end_lands_on_the_wall_body_it_sits_in() -> None:
@@ -816,3 +818,43 @@ def test_vectorize__room_wide_diagonal_is_not_a_box_mark() -> None:
     walls = vectorize(_bars(*frame, ((60, 60), (340, 240))))
     diagonal = sum(math.dist(wall.start, wall.end) for wall in walls if not _axis_aligned(wall))
     assert diagonal >= 0.9 * math.hypot(280, 180)
+
+
+def _dp_run(vertices: list[tuple[float, float]], points: list[tuple[float, float]]) -> tuple[list[_Seg], np.ndarray]:
+    """Chuỗi đoạn DP qua `vertices` (bề dày 10) và điểm xương `points` của nó."""
+    keys = [(0, 0, 0), *((1, 0, k) for k in range(len(vertices) - 2)), (0, 0, 1)]
+    run = [
+        _Seg(*one, *two, 10.0, 0.9, keys[k], keys[k + 1]) for k, (one, two) in enumerate(itertools.pairwise(vertices))
+    ]
+    return run, np.asarray(points, np.float64)
+
+
+def test_arc_chords__chamfered_corner_stays_a_polyline() -> None:
+    """Vát góc 45° tường dày: đoạn DP vốn thẳng, đường tròn không khớp rõ hơn chúng → không thành cung (NO-434)."""
+    vertices = [(50.0, 50.0), (50.0, 150.0), (90.0, 190.0), (190.0, 190.0)]
+    points = [
+        (x + (bx - x) * k / 40, y + (by - y) * k / 40)
+        for (x, y), (bx, by) in itertools.pairwise(vertices)
+        for k in range(40)
+    ]
+    run, skeleton = _dp_run(vertices, points)
+    assert _arc_chords(0, run, skeleton, np.ones((300, 300), np.bool_), itertools.count()) is None
+
+
+def test_arc_chords__points_on_a_circle_still_become_an_arc() -> None:
+    """Điểm xương trên đường tròn, ba đoạn DP là dây: đường tròn khớp hơn hẳn → chia lại thành cung."""
+    angles = [math.radians(180 - 30 * k) for k in range(4)]
+    vertices = [(150 + 100 * math.cos(a), 150 - 100 * math.sin(a)) for a in angles]
+    points = [
+        (150 + 100 * math.cos(math.radians(a)), 150 - 100 * math.sin(math.radians(a))) for a in range(180, 89, -1)
+    ]
+    run, skeleton = _dp_run(vertices, points)
+    assert _arc_chords(0, run, skeleton, np.ones((300, 300), np.bool_), itertools.count())
+
+
+def test_finalise__sagitta_shrinks_with_a_chord_clamped_into_the_image() -> None:
+    """Đầu cung kẹp vào mép ảnh làm dây ngắn lại: sagitta kẹp về nửa dây mới, `WallPx` vẫn nhận."""
+    arc = _Seg(-40.0, 50.0, 60.0, 50.0, 8.0, 0.9, (0, 0, 0), (0, 0, 1), arc=True, sagitta=45.0)
+    (wall,), _ = _finalise([arc], (200, 300))
+    assert wall.start == (0.0, 50.0)
+    assert abs(wall.sagitta_px) == 30.0

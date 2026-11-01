@@ -18,7 +18,7 @@ DELETED: Final = "__deleted__"
 """`field` của mục xoá thực thể; mục đó không có `value` (trên dây: vắng khoá)."""
 
 _TRACKED_FIELDS: Final[dict[type[Wall | Opening | Room | Furniture | Roof], tuple[str, ...]]] = {
-    Wall: ("thickness_mm", "height_mm", "kind", "paint"),
+    Wall: ("thickness_mm", "height_mm", "kind", "paint", "curve_offset_mm"),
     Opening: ("width_mm", "height_mm", "sill_height_mm", "offset_mm", "swing", "wall_id", "door_style", "reversed"),
     Room: ("name", "usage", "outline", "finish", "floor_material", "dressing_off", "ceiling_material"),
     # `suggested` (B3): nhật ký giữ lượt máy gợi ý, người nhận (cờ gỡ) hay bỏ (`__deleted__`) — nhãn miễn phí về sau.

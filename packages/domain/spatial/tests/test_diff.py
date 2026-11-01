@@ -133,8 +133,11 @@ def test_pascal_fields_are_tracked() -> None:
     added = diff_layers(LAYER, dressed)
     assert added == [
         FieldChange(WALL.id, "wall", "paint", {"interior": "library:paint_white", "exterior": "scene:brick-02"}),
+        FieldChange(DOOR.id, DOOR.kind, "reversed", True),
         FieldChange(ROOM.id, "room", "finish", "tile"),
         FieldChange(ROOM.id, "room", "floor_material", "library:oak_floor"),
+        FieldChange(ROOM.id, "room", "dressing_off", ["DRESS-rug-R-ROOM0000000"]),
+        FieldChange(ROOM.id, "room", "ceiling_material", "scene:mat_appfront_plaster"),
         FieldChange(ITEM.id, "furniture", "variant", "sofa"),
         FieldChange(ITEM.id, "furniture", "height_mm", 850),
         FieldChange(ITEM.id, "furniture", "lift_mm", 0),
@@ -151,3 +154,10 @@ def test_suggestion_accept_is_logged() -> None:
     )
     assert diff_layers(LAYER, suggested) == [FieldChange(ITEM.id, "furniture", "suggested", True)]
     assert diff_layers(suggested, LAYER) == [FieldChange(ITEM.id, "furniture", "suggested", MISSING)]
+
+
+def test_curving_a_wall_is_one_curve_entry() -> None:
+    """Uốn tường → đúng một mục `curve_offset_mm`; tường thẳng không có mục này (vắng khoá)."""
+    curved = WALL.model_copy(update={"curve_offset_mm": 300})
+    new = LAYER.model_copy(update={"walls": (curved, *LAYER.walls[1:])})
+    assert diff_layers(LAYER, new) == [FieldChange(WALL.id, "wall", "curve_offset_mm", 300)]

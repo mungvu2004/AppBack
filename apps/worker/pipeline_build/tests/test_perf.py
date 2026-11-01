@@ -8,12 +8,16 @@ của đường mã này do các test không-`perf` khác (`test_e2e_wire.py`, �
 import logging
 import math
 import time
+from collections import Counter
 from unittest.mock import patch
 
 import pytest
 
 import apps.worker.pipeline_build.build as build_module
+from apps.worker.pipeline_build.geometry import Scaling, build_walls
+from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.tests.helpers import build_from_plan, build_wrapped
+from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
 from packages.domain.spatial.model import SpatialLayer
 from packages.ml_contracts.artifacts import (
     MAX_DETECTIONS,
@@ -118,3 +122,33 @@ def test_build_layer__perf_under_30_seconds(fake_clock: FakeClock) -> None:
         len(post_rules_seconds),
     )
     assert elapsed < 30.0, f"build_layer mất {elapsed:.2f}s, trần 30s"
+
+
+@pytest.mark.perf
+def test_build_walls__many_hugging_stubs_stay_fast(fake_clock: FakeClock) -> None:
+    """3b-e trên 5 000 cụm (tường chủ, vách vuông góc, mẩu áp sát) = 15 000 tường: mẩu chỉ dò láng giềng.
+
+    Ảnh 10 mm/px để 100 x 50 ô 10 m nằm trong khung px; mỗi ô là cảnh của test 3b-e ở `test_geometry_openings`.
+    """
+    walls: list[WallPx] = []
+    for cell in range(5000):
+        dx, dy = (cell % 100) * 1000, (cell // 100) * 1000
+        walls += [
+            wall_px(dx, dy + 100, dx + 600, dy + 100, thickness_px=30),
+            wall_px(dx + 300, dy + 100, dx + 300, dy + 300, thickness_px=20),
+            wall_px(dx + 270, dy + 130, dx + 300, dy + 130, thickness_px=10),
+        ]
+    dropped: Counter[str] = Counter()
+    start = time.perf_counter()
+    result = build_walls(
+        walls,
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(10.0, 10.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    elapsed = time.perf_counter() - start
+    logger.info("build_walls hugging elapsed=%.3fs", elapsed)
+    assert len(result.walls) == 10_000
+    assert elapsed < 20.0, f"build_walls mất {elapsed:.2f}s, trần 20s"

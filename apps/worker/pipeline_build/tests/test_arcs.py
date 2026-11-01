@@ -56,8 +56,7 @@ def test_build_layer__curved_wall_is_one_wall_with_its_window() -> None:
     assert opening.wall_id == wall.id
     assert wall.opening_ids == (opening.id,)
     arc_mm = 4 * math.atan(2 * 600 / 4000) * (4000**2 / 4800 + 300)
-    # Ô mở còn bị kẹp trong MỘT dây (8 dây, NO-432): tâm cách đỉnh cung không quá một dây.
-    assert abs(opening.offset_mm + opening.width_mm / 2 - arc_mm / 2) <= arc_mm / 8
+    assert abs(opening.offset_mm + opening.width_mm / 2 - arc_mm / 2) <= 30
     assert any(wall.id in room.wall_ids for room in built.layer.rooms)
     assert all(len(set(room.wall_ids)) == len(room.wall_ids) for room in built.layer.rooms)
     assert b'"curveOffsetMm"' in built.to_json()
@@ -116,3 +115,17 @@ def test_join_arcs__keeps_chords_that_no_longer_meet() -> None:
     moved = second.model_copy(update={"centreline": Segment(start=Point(x=510, y=200), end=Point(x=1000, y=0))})
     wall_set = WallSet((first, moved), (), {0: 0, 1: 1}, ())
     assert join_arcs(wall_set, (), (0, 0)) == (wall_set, ())
+
+
+def test_build_layer__wide_window_spans_several_chords_of_the_arc() -> None:
+    """Cửa sổ 160 px trên ban công (mỗi dây nổ ~53 px): đo trên cả cung, không kẹp về một dây hay rơi (NO-432)."""
+    window = DetectionPx(label="window", box=BoxPx(x_min=440, y_min=220, x_max=470, y_max=380), confidence=0.9)
+    built = build_wrapped(
+        walls=_room_with_bay(), detections=[window], width_px=600, height_px=600, clock=FakeClock(start=_START)
+    )
+    (wall,) = [wall for wall in built.layer.walls if wall.curve_offset_mm]
+    (opening,) = built.layer.openings
+    assert opening.wall_id == wall.id
+    assert opening.width_mm >= 1500
+    arc_mm = 4 * math.atan(2 * 600 / 4000) * (4000**2 / 4800 + 300)
+    assert abs(opening.offset_mm + opening.width_mm / 2 - arc_mm / 2) <= 30
