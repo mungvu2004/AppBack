@@ -22,7 +22,7 @@ LIBRARY_ITEMS: Final = "library_items"
 ID_MAX: Final = 64
 ID_PATTERN: Final = "^[a-z0-9]+(-[a-z0-9]+)*$"
 NAME_MAX: Final = 120
-GROUPS: Final = ("table", "chair", "bed", "sofa", "storage", "sanitary", "kitchen", "technical")
+GROUPS: Final = ("table", "chair", "bed", "sofa", "storage", "sanitary", "kitchen", "technical", "decor")
 SHA256_LEN: Final = 64
 
 

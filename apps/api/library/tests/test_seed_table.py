@@ -12,7 +12,7 @@ from apps.api.library.tests._helpers import LIST_PATH, headers_of, seed_and_publ
 from packages.db.models.library import LibraryItemRow
 from packages.db.seeds import SEEDS_DIR
 from packages.db.seeds.library import ENVS, ORDER, seed, sync_catalogue
-from packages.domain.library import CATALOGUE, build_glb, build_preview_png
+from packages.domain.library import CATALOGUE, FILE_CATALOGUE, CatalogueItem, FileItem, build_glb, build_preview_png
 from packages.storage.keys import library_object
 from packages.storage.local import LocalDiskStorage
 from packages.storage.sniff import sniff
@@ -35,15 +35,18 @@ def test_seed_module_contract() -> None:
 
 
 async def test_seed_twice_keeps_row_count_and_identity(db_session: AsyncSession) -> None:
-    """Chạy hai lần → 16 dòng, `sort_order` = chỉ số x 10, chưa có object nào (chỉ danh tính)."""
+    """Chạy hai lần → 16 + 63 dòng (mẫu từ tệp xếp sau), `sort_order` = chỉ số x 10, chỉ danh tính."""
     await seed(db_session)
     await db_session.commit()
     await seed(db_session)
     await db_session.commit()
 
-    assert (await db_session.execute(select(func.count()).select_from(LibraryItemRow))).scalar_one() == len(CATALOGUE)
+    assert (await db_session.execute(select(func.count()).select_from(LibraryItemRow))).scalar_one() == len(
+        CATALOGUE
+    ) + len(FILE_CATALOGUE)
     rows = await _rows(db_session)
-    for index, item in enumerate(CATALOGUE):
+    items: tuple[CatalogueItem | FileItem, ...] = (*CATALOGUE, *FILE_CATALOGUE)
+    for index, item in enumerate(items):
         row = rows[item.id]
         assert (row.name, row.item_group, row.sort_order) == (item.name, item.group, index * 10)
         assert (row.published_at, row.model_key, row.retired_at, row.owner_id) == (None, None, None, None)

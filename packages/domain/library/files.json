@@ -1,0 +1,569 @@
+[
+ {
+  "id": "coffee-table-round-hq",
+  "name": "Bàn trà tròn mặt đá trắng",
+  "group": "table",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/coffee_table_round_01",
+  "model_sha256": "bd452bc733e9a2fae21b4f076fda6daadf49fd476cb8fbbec92682531f7e573c"
+ },
+ {
+  "id": "desk-hq",
+  "name": "Bàn học gỗ",
+  "group": "table",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/office-table (tô lại vật liệu)",
+  "model_sha256": "dbf52991b93c5139df393a05a650040416eb929c47057ff5f4d8e1f106630fbe"
+ },
+ {
+  "id": "dining-table-hq",
+  "name": "Bàn ăn gỗ",
+  "group": "table",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/wooden_table_02",
+  "model_sha256": "58c7163e79f9d967385e37491e5e9050e31f82d61ca2dbe304ff0eee5f1d2e8d"
+ },
+ {
+  "id": "dining-table-pro",
+  "name": "Bàn ăn gỗ sồi 1,6 m",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "classe-saga",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/fe08d360a21448c0ab77ed57a3e93844 \"Age 150ダイニングテーブル OAK\"",
+  "model_sha256": "8eac2ec26709cdbf774fb8ee1bed687e7c94f5d80814b2033a30b5c5f9d2e3ad"
+ },
+ {
+  "id": "dining-table-pro2",
+  "name": "Bàn ăn gỗ sáng 1,8 m kiểu Bắc Âu",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "calebkung",
+  "source": "https://sketchfab.com/3d-models/f69be2ddeac645faaf49977ef569a606",
+  "model_sha256": "26ad4623d31e2636edf35dfddb7e17c7c9f9a2a45ade029f8f20db543c86c756"
+ },
+ {
+  "id": "desk-pro",
+  "name": "Bàn học mặt trắng chân gỗ",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "vanessa3d",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/f411b33be5a04d589913a140f7b08129 \"Writing Desk\"",
+  "model_sha256": "a0874dddf193ea2f2378b24e5edb90a3d92542781fb44fc7aa307e95400aef5e"
+ },
+ {
+  "id": "desk-chair-hq",
+  "name": "Ghế bàn học",
+  "group": "chair",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/dining-chair (tô lại vật liệu)",
+  "model_sha256": "989c2404ebd339fdd0075d5e3f9c8ae92db3f112ab828b630d5741beae8d6c83"
+ },
+ {
+  "id": "dining-chair-hq",
+  "name": "Ghế ăn bọc nệm da tối",
+  "group": "chair",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/dining_chair_02",
+  "model_sha256": "5b2236e8823d98cc6888f8a51791e03ca101ff85dd23cea6507bd5fcc3f48096"
+ },
+ {
+  "id": "dining-chair-pro",
+  "name": "Ghế ăn bọc be chân gỗ sồi",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "3DError404",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/a5aa4613bc5b46baba4d9254d6c9c038 \"Dining_chair_241120\"",
+  "model_sha256": "664c2d250ffffffb7b51008459e999a3c2a904e6d9a73126f49a2a22002f79ad"
+ },
+ {
+  "id": "bed-double-hq",
+  "name": "Giường đôi gỗ óc chó, chăn nâu xám",
+  "group": "bed",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/single-bed (tô lại vật liệu)",
+  "model_sha256": "acae1b688c5ca201349148417e43361d1a8722147967f1b297d0e9b80deabfc7"
+ },
+ {
+  "id": "bed-double-sage-hq",
+  "name": "Giường đôi chăn xám xanh",
+  "group": "bed",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/single-bed (tô lại vật liệu)",
+  "model_sha256": "55f5f9eab671dfc7c6db641d71f1c5302d0a480015c692f039c9abd4d2137ef9"
+ },
+ {
+  "id": "bed-pink-hq",
+  "name": "Giường 1,2 m chăn hồng",
+  "group": "bed",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/single-bed (tô lại vật liệu)",
+  "model_sha256": "0d45b5e2ada5ec5bd425a1ee4b6e575dcf6823244a26628d0c7638c789c76ffb"
+ },
+ {
+  "id": "bed-double-pro",
+  "name": "Giường đôi đầu bọc, chăn xám",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "lex_ram",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/16070c2e6faa405391ab7ada8bb0aed6 \"Poliform_Bed\"",
+  "model_sha256": "65a07fc1cc935408a820cdf81b246ffe58f8cab17dd423e02b5f1852dc495ea4"
+ },
+ {
+  "id": "bed-double-grey-pro",
+  "name": "Giường đôi đầu nỉ xám, ga trắng",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "buresin.eduard",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/94478363372f4ab592b338778b01549d \"Bed\"",
+  "model_sha256": "3ee4136fab356fe6335a9b433332f36669c55ba70c314f6a77545eb908fed871"
+ },
+ {
+  "id": "bed-double-oak-pro",
+  "name": "Giường đôi khung gỗ sồi, chăn trắng xanh",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "woodport",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/fe3c50e1eb7b4b0eafa647598ca53f11 \"Engi bed\"",
+  "model_sha256": "00e7a974e8b4d9fedd43f490ba5586cfc9c15b018feb425bf11a165a44886a90"
+ },
+ {
+  "id": "bed-double-linen-pro2",
+  "name": "Giường đôi chăn be nhiều gối",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Elo.Q..Pereira",
+  "source": "https://sketchfab.com/3d-models/5633ff2f729142bebf6b304118647f6f",
+  "model_sha256": "7ab90e68eb070eacb7e8db6c3aff4c84b613d0a9547a4f524590a1fefacb84c3"
+ },
+ {
+  "id": "bed-double-grey-pro2",
+  "name": "Giường đôi đầu nỉ xám nhạt, chăn trắng",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Luca.Malviz",
+  "source": "https://sketchfab.com/3d-models/39d113d5868d473caf71e928d1d313a6",
+  "model_sha256": "eeaca1d56b64b6f216d8ef4d47c04813eaa230dc8419516fce0711fcc281f346"
+ },
+ {
+  "id": "sofa-hq",
+  "name": "Sofa văng be có gối",
+  "group": "sofa",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/sofa (tô lại vật liệu)",
+  "model_sha256": "5c81ae3f2b250ef995133c1ee556f83d68005e3828f49504be40d311ca08cde0"
+ },
+ {
+  "id": "sofa-l-pro",
+  "name": "Sofa góc chữ L vải trắng kem",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "spookyghostboo",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/1680cc4638ba4902ada718b8b03f6a4b \"Large Corner Sectional Sofa\"",
+  "model_sha256": "87956a2cab2f70ef3014100653c0963301243f1c01db2865b75ae9a98e958f64"
+ },
+ {
+  "id": "sofa-l-grey-pro",
+  "name": "Sofa chữ L có đôn, vải xám",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "AleixoAlonso",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/f3a71dc05afb46f8a2fae64eba0acc64 \"Gray L-Shaped Couch\"",
+  "model_sha256": "b5ebd9ba67baf62abdb5db6e82ba9b13029427de53d3122aba620d997359bfbe"
+ },
+ {
+  "id": "dresser-hq",
+  "name": "Tủ ngăn kéo gỗ",
+  "group": "storage",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/dresser (tô lại vật liệu)",
+  "model_sha256": "02239bbf2a14bda92864564fdcd70550a5821bb7fbd4fcedf7cbd21c88bc5ab4"
+ },
+ {
+  "id": "nightstand-hq",
+  "name": "Tủ đầu giường gỗ",
+  "group": "storage",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/bedside-table (tô lại vật liệu)",
+  "model_sha256": "599ab1f8e0a369d8498062ef38fb9af935b52b5275e3ba06a29bbbf68bf62efe"
+ },
+ {
+  "id": "wardrobe-hq",
+  "name": "Tủ áo gỗ cao",
+  "group": "storage",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/closet (tô lại vật liệu)",
+  "model_sha256": "2f69104ffe5d39fe48baea149b7a4853f173b4b385fe73e1b047198cc7b994c5"
+ },
+ {
+  "id": "wardrobe-pro",
+  "name": "Tủ áo gỗ hai cánh, hai ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "dylanheyes",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/a977729fff9d4bfdad487a59495436f5 \"Wardrobe\"",
+  "model_sha256": "9b41919aa636b0b0c37b5c77352b78f9ce7e548e02643cc0ee4117f1e0bd1edb"
+ },
+ {
+  "id": "tv-cabinet-hq",
+  "name": "Kệ TV gỗ",
+  "group": "storage",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/modern_wooden_cabinet",
+  "model_sha256": "54479da8149fbb0fcb7be73e7d2b8d0c42eb9fce873578b14d025742f03a1ede"
+ },
+ {
+  "id": "tv-stand-pro",
+  "name": "Kệ TV gỗ xương cá chân sắt",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "maxsbond.work",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/1fd5aaf7ede3441986d193403aa36893 \"Reclaimed TV Stand / Furniture\"",
+  "model_sha256": "63de5aee40948e7f12babb681bf014bed229c7e48f126045668c8246b91e9ec1"
+ },
+ {
+  "id": "tv-console-oak-pro2",
+  "name": "Kệ TV gỗ sồi thấp",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "woodport",
+  "source": "https://sketchfab.com/3d-models/64fda3e5bdc1420b94aa5d4a361ca8a7",
+  "model_sha256": "7de7d946c402ae60d55e37192ecbd4d46cf4929b8c75a8b8ee61dd1d3a283951"
+ },
+ {
+  "id": "toilet-hq",
+  "name": "Bồn cầu",
+  "group": "sanitary",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/toilet (tô lại vật liệu)",
+  "model_sha256": "a81f6f7047cbba22b90b5552a6ba20a27195e5a181bb95067740b55061be5b9c"
+ },
+ {
+  "id": "toilet-pro",
+  "name": "Bồn cầu sứ trắng",
+  "group": "sanitary",
+  "license": "CC-BY 4.0",
+  "author": "hippostance",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/132a8ee2af3a40d39d270fbed3d3666c \"Toilet\"",
+  "model_sha256": "995c5eadb43e8c700ec634665d43827ebb9a823a4768eec61e2b37a22b45c70b"
+ },
+ {
+  "id": "toilet-pro2",
+  "name": "Bồn cầu liền khối",
+  "group": "sanitary",
+  "license": "CC-BY 4.0",
+  "author": "Urpo",
+  "source": "https://sketchfab.com/3d-models/adb3b931f3ef4941830eea9705657a3d",
+  "model_sha256": "719fc038e3f67ad46f4b39882e4072a648c01e8904b514a1887acf0438fb6a4d"
+ },
+ {
+  "id": "basin-hq",
+  "name": "Lavabo đôi",
+  "group": "sanitary",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/bathroom-sink (tô lại vật liệu)",
+  "model_sha256": "5c88d2ca49eef4adc2fe324f3c441f11ea54393317d0f45bd74e1d0851f29104"
+ },
+ {
+  "id": "basin-vanity-pro",
+  "name": "Tủ lavabo trắng có vòi",
+  "group": "sanitary",
+  "license": "CC-BY 4.0",
+  "author": "allenbranch",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/750dfa5fab444c28baf30e063d2b56d3 \"Legion Single Sink Bathroom Vanity & Sink\"",
+  "model_sha256": "e25af704731849ca44e93bc7ce7dbf08412bbc8f958d934da36b27fcd784ec03"
+ },
+ {
+  "id": "vanity-pro2",
+  "name": "Lavabo đặt bàn trên tủ gỗ sồi",
+  "group": "sanitary",
+  "license": "CC-BY 4.0",
+  "author": "attilakozma",
+  "source": "https://sketchfab.com/3d-models/b0b478131827419c8965132a19eb8993",
+  "model_sha256": "01b6838f806cdc38f07fc65d390aeeb67f163d8870665944b006e58726a7a655"
+ },
+ {
+  "id": "shower-hq",
+  "name": "Vách tắm kính vuông",
+  "group": "sanitary",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/shower-square (tô lại vật liệu)",
+  "model_sha256": "dd9f3e62147501214573cc74a5f54002ba36c1efb398703e1f40dcf11cbf034b"
+ },
+ {
+  "id": "shower-glass-pro",
+  "name": "Vách tắm kính góc",
+  "group": "sanitary",
+  "license": "CC-BY 4.0",
+  "author": "jucabal1984",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/c3b937279a27454e910c401f24f53397 \"Porta de correr para box de banheiro\"",
+  "model_sha256": "71092f3f6cb356df3457a8353c0c19c4dc412d23896c10a62ebfd30006b9c0ac"
+ },
+ {
+  "id": "shower-pro2",
+  "name": "Vách tắm kính khung mảnh",
+  "group": "sanitary",
+  "license": "CC-BY 4.0",
+  "author": "Heliona",
+  "source": "https://sketchfab.com/3d-models/e2c6a8dd490e4e4398378e1f6c9121a8",
+  "model_sha256": "689e1dde45697cacf29bdccec664b8f5a0a6f036288b4cd6475b94292668a60c"
+ },
+ {
+  "id": "fridge-hq",
+  "name": "Tủ lạnh inox",
+  "group": "kitchen",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/fridge (tô lại vật liệu)",
+  "model_sha256": "1a67e27bc63fc8627821ce329fa5ee715f4eec94f5425dfcf417489313a93386"
+ },
+ {
+  "id": "fridge-pro",
+  "name": "Tủ lạnh cửa đôi inox",
+  "group": "kitchen",
+  "license": "CC-BY 4.0",
+  "author": "Smokahontas",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/ebe62ed6dd9b446a9c9b7d7d6a8086e7 \"French Door Refrigerator - Stainless\"",
+  "model_sha256": "62b8d6f2ee43d519102df8cc2f5679fc3ae9ba6d19ba6effb23a87d788a615d9"
+ },
+ {
+  "id": "kitchen-base-hq",
+  "name": "Tủ bếp dưới gỗ, mặt đá",
+  "group": "kitchen",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/kitchen-cabinet (tô lại vật liệu)",
+  "model_sha256": "6f30a07a3b3ae0f31f770634f62737f2253912407d1b5c464685fe6fc06a1b65"
+ },
+ {
+  "id": "kitchen-l-pro",
+  "name": "Bếp chữ L gỗ sáng trọn bộ",
+  "group": "kitchen",
+  "license": "CC-BY 4.0",
+  "author": "butortervezo",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/6ad39b0f52ad439ea12cbfdc1a1dd37f \"Kitchen cabinet 1\"",
+  "model_sha256": "27db3054c3c488e843e8f868d6d1acc12c61367f365e77c526ed93ea128e0a44"
+ },
+ {
+  "id": "stove-hq",
+  "name": "Bếp mặt kính đen",
+  "group": "kitchen",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/stove (tô lại vật liệu)",
+  "model_sha256": "2c9ea13c94318c0a3749b0c3e4cb430b1b9fe211178d29cdd2af4d9b8464dcc6"
+ },
+ {
+  "id": "tv-hq",
+  "name": "TV màn phẳng",
+  "group": "technical",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/television (tô lại vật liệu)",
+  "model_sha256": "8baff02efad88477c541cbad31744996700be100dbf2cd9f37c2c94f3ade1abe"
+ },
+ {
+  "id": "tv-pro",
+  "name": "TV 55 inch có chân",
+  "group": "technical",
+  "license": "CC-BY 4.0",
+  "author": "hippostance",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/f90d4fb91dd34b6791e8d66d00f96591 \"Flat Screen Television\"",
+  "model_sha256": "06490fb7451da67ed14f32c4155f8770ba52719f1595a883d5611d24f7093fd1"
+ },
+ {
+  "id": "tv-slim-pro2",
+  "name": "TV mỏng chân chữ V",
+  "group": "technical",
+  "license": "CC-BY 4.0",
+  "author": "vnbuimanh",
+  "source": "https://sketchfab.com/3d-models/6758a6db714f45acb4abbfda46352c56",
+  "model_sha256": "4ecbd4fd525ab8f6b9b7d4b5211ffc44dc7cc62cd115a51cfe8b79fd8edf18ed"
+ },
+ {
+  "id": "washer-hq",
+  "name": "Máy giặt cửa trước",
+  "group": "technical",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/washing-machine (tô lại vật liệu)",
+  "model_sha256": "8f8ce24edc51ea34837208ad0fed80f139fd73d180691896e6d7a9068976fd45"
+ },
+ {
+  "id": "washer-pro",
+  "name": "Máy giặt cửa trước trắng",
+  "group": "technical",
+  "license": "CC-BY 4.0",
+  "author": "RMrando",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/a7fc42a0751c4be6a4cc22775b9b2cc5 \"Washing machine\"",
+  "model_sha256": "9baff6cbc57bc768752977441b8535888306c79ccdf289adee2a7a0268a2e5df"
+ },
+ {
+  "id": "plant-indoor-hq",
+  "name": "Cây chậu trắng cao",
+  "group": "decor",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/indoor-plant (tô lại vật liệu)",
+  "model_sha256": "4d71bb15129bb9402b6210b7c11d35d921a6b7450de69746c402631234eea3d2"
+ },
+ {
+  "id": "plant-large-hq",
+  "name": "Cây chậu lớn",
+  "group": "decor",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/potted_plant_01",
+  "model_sha256": "3f3b930240e83413e2f1d3c873f9a29302c9f58267fe5f548b164cdf93ae0bf7"
+ },
+ {
+  "id": "plant-small-hq",
+  "name": "Cây chậu vừa",
+  "group": "decor",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/potted_plant_02",
+  "model_sha256": "23c3abb8c1b9d74eeac5eaa09b4bd73abeb08d43d953b7e48e599a71e791e798"
+ },
+ {
+  "id": "plant-succulent-hq",
+  "name": "Cây chậu nhỏ để bàn",
+  "group": "decor",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/potted_plant_04",
+  "model_sha256": "e324c710fa7c86fd781af767ea5de07dc20a373a4c5683e446620c9d37b15f9a"
+ },
+ {
+  "id": "plant-tall-pro",
+  "name": "Cây thiên điểu chậu trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "dudecon",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/bc7f26baef2a45d18dbd9a5d6d2ec565 \"Potted Plant, Mediterranean med leaf, low poly\"",
+  "model_sha256": "2e9222a25d3df442456e247d883297aa0d9d28475c30ca6d073ce00a9c0ba78a"
+ },
+ {
+  "id": "plant-pot-pro",
+  "name": "Cây lá to chậu trắng cao",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "devoncarlson",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/9d67ee5efd7e414ebf81a3dcc6bf7ada \"Tall Potted House Plant\"",
+  "model_sha256": "e96f302a95594e2115b9027414b561ad56f4cd3795aca286ce68f60deeaf5de7"
+ },
+ {
+  "id": "plant-pot-pro2",
+  "name": "Chậu cây lá chuối lớn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Ganeshkumar1",
+  "source": "https://sketchfab.com/3d-models/03de314c913c433ab4edf16c8345b528",
+  "model_sha256": "2e90f563112d21351c79f17791e09d249abafe8cfac250a18227654898b9ba77"
+ },
+ {
+  "id": "flower-white-pro",
+  "name": "Bụi hoa nhài trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "scadl",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/7ccfc2b34bcb45a2b46cef3d3ba15f5d \"Jasmine\"",
+  "model_sha256": "0d5ec1a3ba1eced0ac5597ee440fdc9c01b2de7b6926b722449d3e63bf04850f"
+ },
+ {
+  "id": "rug-rect-hq",
+  "name": "Thảm chữ nhật be",
+  "group": "decor",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/rectangular-carpet (tô lại vật liệu)",
+  "model_sha256": "4f04116926c8252c36a1f997b5c86854b6f280c73cfb7e48afdeb413aa627bdd"
+ },
+ {
+  "id": "rug-round-hq",
+  "name": "Thảm tròn be",
+  "group": "decor",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/round-carpet (tô lại vật liệu)",
+  "model_sha256": "d8a41f415d809f37415908d8a6f59b8f0fb2c5345388f86ed2a40149156aaa23"
+ },
+ {
+  "id": "desk-lamp-hq",
+  "name": "Đèn bàn học tay gập",
+  "group": "decor",
+  "license": "CC0",
+  "author": "",
+  "source": "https://polyhaven.com/a/desk_lamp_arm_01",
+  "model_sha256": "3fed846aef9daf9f2b66886ae6f980a999490fb692f225f448e69886c4e6ed8e"
+ },
+ {
+  "id": "table-lamp-hq",
+  "name": "Đèn bàn đầu giường",
+  "group": "decor",
+  "license": "MIT",
+  "author": "",
+  "source": "Pascal vendor/pascal/assets/items/table-lamp (tô lại vật liệu)",
+  "model_sha256": "e904b2baa10c404cc1ca02c0d6219318d15c310613b13f726439b1d72fb4a8cf"
+ },
+ {
+  "id": "curtain-pro",
+  "name": "Rèm trắng đôi có thanh treo",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Heliona",
+  "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/a83e1baf822a4442b0f50ed70d449198 \"Curtains\"",
+  "model_sha256": "c480c8461bc70e83ff1c8b804d66adcdb42f6796a7c2781d3ada10732952dd3a"
+ },
+ {
+  "id": "curtain-linen-pro2",
+  "name": "Rèm vải trắng xếp ly",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "lugsserg",
+  "source": "https://sketchfab.com/3d-models/024b7af4893a438abeafa86bf13d09ab",
+  "model_sha256": "60296b074f67c44fe65105c7ad4a1adc37aa6ab3ab43a05622fd6745ae89f1a3"
+ },
+ {
+  "id": "decor-books-pro2",
+  "name": "Chồng sách",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "zdenkoroman",
+  "source": "https://sketchfab.com/3d-models/975887dad9a2474bacb9fec3850c48c5",
+  "model_sha256": "d1681c88136a0e18a9aaddd4312ca0483dcf55dff58e474ab06cf376e3eb98a9"
+ },
+ {
+  "id": "decor-vase-pro2",
+  "name": "Bình gốm kem",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "3dhdscan",
+  "source": "https://sketchfab.com/3d-models/ee74b091f16241c29f06037c66019efa",
+  "model_sha256": "2af383561a93c3bdfb6ca3bab32df5fe6814efdf3527806bc613c650e156c56d"
+ },
+ {
+  "id": "pillow-pro2",
+  "name": "Gối tựa vuông",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "JoelGodin",
+  "source": "https://sketchfab.com/3d-models/abeafbc37d6446058e1be53e67e0baef",
+  "model_sha256": "e1c1fc024f0ccacb5d74235747e74ccead0547d7c4e39417f9f6b4b414157ee3"
+ }
+]
