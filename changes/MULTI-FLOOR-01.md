@@ -9,3 +9,5 @@
 - Test: `apps/api/drawings/tests/test_routes_init.py` (lưu góc, khử trùng theo crop, 7 crop sai → 422, biên 1e-6), `apps/worker/pipeline_orchestrate/tests/test_preprocess.py` (chọn đường, cắt 800×600 → 400×300).
 - Thử thật trên f14: tờ CubiCasa 3 mặt bằng → 3 tầng, ảnh mỗi tầng đúng kích thước vùng (592×485, 592×659, 617×609); crop vượt trang → 422.
 - Nợ: worker không chạy `find_frame` trong vùng cắt (khung tên nằm trong vùng vẫn giữ); PDF vector đọc ghi chú tỉ lệ của cả tờ. Hai head alembic nếu `feat/library-file-models` vào main trước: nối lại `down_revision`.
+- Nợ: chỗ nối `uploads.crop_corners` → `PageSource.crop` (`start.py:102`) chưa có test GD1 trên Postgres thật.
+- Charter: người dùng duyệt 2026-11-02 câu chữ BE-00 W14 và BE-BIND #5: "Duyệt, merge đi".
