@@ -30,6 +30,11 @@ MAX_LONG_M: Final = 3.0
 MIN_SHORT_M: Final = 0.25
 """Cạnh ngắn nhỏ hơn: số đo OCR sót, cánh cửa, nét đơn."""
 
+TEXT_MAX_RATIO: Final = 0.35
+TEXT_MAX_SHORT_M: Final = 0.25
+"""Dòng chữ OCR sót: khung mực sát (chưa nới) có cạnh ngắn/dài < 0,35 và cạnh ngắn < 250 mm. Khung nới 5 px của
+`_component_box` dày thêm ~7 px nên dòng chữ 0,2 m lọt qua `MIN_SHORT_M` (chẩn đoán quy trình lần 2, B7)."""
+
 MAX_ASPECT: Final = 8.0
 """Dẹt hơn: đường kích thước, nét thẳng."""
 
@@ -37,8 +42,9 @@ MAX_DENSITY: Final = 0.45
 """Mực/khung cao hơn: gạch chéo, khối đặc."""
 
 MIN_INK_PX: Final = 40
-MAX_SUGGESTIONS: Final = 15
-"""Trần gợi ý mỗi trang, giữ mảnh nhiều mực nhất (bench: tối đa 14 ứng viên/bản)."""
+MAX_SUGGESTIONS: Final = 5
+"""Trần gợi ý mỗi trang, giữ mảnh nhiều mực nhất (bench: tối đa 14 ứng viên/bản, phần lớn là rác; chẩn đoán
+quy trình lần 2 hạ 15 → 5)."""
 
 OVERLAP_IOU: Final = 0.3
 OVERLAP_CONTAIN: Final = 0.6
@@ -125,6 +131,14 @@ def _component_box(stats: NDArray[np.int32], i: int, mm_per_px: float) -> Box | 
     return (float(x), float(y), float(x + w), float(y + h))
 
 
+def _text_like(own: NDArray[np.bool_], mm_per_px: float) -> bool:
+    """Khung mực sát của mảnh dẹt như một dòng chữ (`TEXT_MAX_RATIO`, `TEXT_MAX_SHORT_M`)."""
+    ys, xs = np.nonzero(own)
+    h, w = int(ys.max() - ys.min()) + 1, int(xs.max() - xs.min()) + 1
+    short, long = min(w, h), max(w, h)
+    return short / long < TEXT_MAX_RATIO and short * mm_per_px / 1000 < TEXT_MAX_SHORT_M
+
+
 def residual_ink_boxes(
     page: PageRaster, *, detections: Sequence[tuple[str, Box]], texts: Sequence[Box], mm_per_px: float
 ) -> list[Box]:
@@ -150,8 +164,9 @@ def residual_ink_boxes(
         if box is None:
             continue
         x0, y0, x1, y1 = (int(v) for v in box)
-        ink = int(((labels[y0:y1, x0:x1] == i) & (residual[y0:y1, x0:x1] > 0)).sum())
-        if ink < MIN_INK_PX or ink / ((x1 - x0) * (y1 - y0)) > MAX_DENSITY:
+        own = (labels[y0:y1, x0:x1] == i) & (residual[y0:y1, x0:x1] > 0)
+        ink = int(own.sum())
+        if ink < MIN_INK_PX or ink / ((x1 - x0) * (y1 - y0)) > MAX_DENSITY or _text_like(own, mm_per_px):
             continue
         if any(
             iou >= OVERLAP_IOU or inside_share >= OVERLAP_CONTAIN

@@ -2,9 +2,6 @@
 
 from typing import Final
 
-STANDARD_THICKNESSES_MM: Final = (100, 150, 200, 220, 300, 400)
-"""Bề dày chuẩn FE bắt tường về (`src/domain/walls/cleanup.ts:70`); hoà lấy số nhỏ hơn."""
-
 DEFAULT_WALL_HEIGHT_MM: Final = 3600
 """Chiều cao tường mặc định của bộ mẫu FE (`src/domain/spatial/__fixtures__/sampleBuilding.ts:49-56`)."""
 
@@ -53,6 +50,13 @@ ROOM_GAP_CLOSE_MM: Final = 1200
 
 1200 = cửa đi 900 thông thuỷ + hai nửa tường tới tim. Bench căn hộ 27/10/2026 (14 bản): 1000 → 1200 thêm 4 phòng
 tách đúng (cửa phòng, lô gia hở một khe), 1800 trở lên bắt đầu chẻ phòng giả."""
+
+ROOM_GAP_EVIDENCE_MM: Final = OPENING_GAP_MAX_MM
+"""Khe dài hơn `ROOM_GAP_CLOSE_MM` tới số này chỉ khép phòng khi hai tường thẳng hàng qua khe
+(QT-ROOMS2, B9); khe có hộp ô mở do `_door_closers` khép. Bằng khe ô mở dài nhất của bước 3b."""
+
+ROOM_GAP_ALIGNED_COS: Final = 0.97
+"""Hai tường coi là thẳng hàng qua khe: đoạn nối lệch hướng tường ≤ ~14° và tường đích song song cùng độ lệch."""
 
 ROOM_GAP_CLOSE_MIN_COS: Final = 0.5
 """Đoạn nối khe phải lệch ≤ 60° so với hướng ra của đầu tường (cos ≥ 0,5): bỏ nối ngang từ vách cụt chẻ đôi phòng."""

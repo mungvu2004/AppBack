@@ -156,3 +156,24 @@ def test_dimension_spans__nearest_line_beats_darker_wall_edge() -> None:
     gray[LINE_Y + 20, 0:400] = 0  # mép tường
     gray[LINE_Y + 21 : LINE_Y + 40, 0:400:6] = 0  # nét gạch tường: thành "vạch" nếu dò nhầm hàng
     assert dimension_spans(gray, [label(100)]) == (100.0,)
+
+
+def test_dimension_spans__total_line_ignores_extension_lines_crossing_through() -> None:
+    """Đường tổng 50-350: đường dóng 170 và 230 của chuỗi trong cắt xuyên cả hai phía không phải đầu đoạn.
+
+    Hai đầu cũng là đường trục cắt xuyên nhưng đường dừng ở đó nên vẫn là vạch đầu đoạn. Hộp OCR dư
+    xuống dưới chân chữ, đường nằm trong hộp vẫn được nhận.
+    """
+    gray = page()
+    gray[LINE_Y, 50:351] = LIGHT
+    for x in (50, 170, 230, 350):
+        gray[40:200, x] = LIGHT
+    assert dimension_spans(gray, [label(200, gap=-4)]) == (300.0,)
+
+
+def test_dimension_spans__short_overshoot_past_line_keeps_inner_ticks() -> None:
+    """Đường dóng thò qua đường kích thước vài px (thói quen CAD) vẫn là vạch của chuỗi thường."""
+    gray = chain(page(), (50, 150, 350))
+    for x in (50, 150, 350):
+        gray[LINE_Y - 6 : LINE_Y, x] = LIGHT
+    assert dimension_spans(gray, [label(100), label(250)]) == (100.0, 200.0)

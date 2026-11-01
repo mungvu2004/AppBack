@@ -65,12 +65,25 @@ def test_build_walls__double_door_width_from_box(fake_clock: FakeClock) -> None:
     assert (opening.kind, opening.width_mm, opening.swing, opening.offset_mm) == ("door", 1600, "double", 1000)
 
 
-def test_build_walls__double_door_past_wall_end_dropped(fake_clock: FakeClock) -> None:
-    """Hộp cửa đôi gần hết ra ngoài đầu tường: `b - a < 600` → `openingUnattached`, không ném."""
+def test_build_walls__narrow_double_door_kept_as_single_door(fake_clock: FakeClock) -> None:
+    """Cửa đôi hẹp `b - a < 600` là cửa đơn dò nhầm lớp: giữ thành cửa đơn (rộng mặc định, kẹp trong tường).
+
+    Trước B11 hộp này bị bỏ (`openingUnattached`), căn hộ mất cửa.
+    """
     dropped: Counter[str] = Counter()
     result = run([wall_px(0, 1000, 4000, 1000)], [det("double_door", 3900, 950, 4100, 1050)], fake_clock, dropped)
-    assert result.openings == ()
-    assert dropped["openingUnattached"] == 1
+    (opening,) = result.openings
+    assert (opening.kind, opening.width_mm, opening.swing, opening.offset_mm) == ("door", 900, "left", 3100)
+    assert dropped["openingUnattached"] == 0
+
+
+def test_build_walls__wide_box_reaches_further(fake_clock: FakeClock) -> None:
+    """Hộp cửa sổ rộng 2.000 cách tim 400 mm: quá ½ dày + 150 nhưng ≤ 0,25 x 2.000 → vẫn gắn tường."""
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(0, 1000, 4000, 1000)], [det("window", 1000, 1400, 3000, 1500)], fake_clock, dropped)
+    (opening,) = result.openings
+    assert (opening.kind, opening.width_mm, opening.offset_mm) == ("window", 2000, 1000)
+    assert dropped["openingUnattached"] == 0
 
 
 def test_build_walls__gap_with_door_box_bridged(fake_clock: FakeClock) -> None:
@@ -145,7 +158,7 @@ def test_build_walls__door_near_perpendicular_partition_picks_right_wall(fake_cl
 
 
 def test_build_walls__box_far_from_wall_unattached(fake_clock: FakeClock) -> None:
-    """Tâm hộp cách tim 400 mm > `thicknessMm / 2 + OPENING_WALL_REACH_MM` → `openingUnattached`."""
+    """Hộp cách tim 350 mm > max(`thicknessMm / 2 + OPENING_WALL_REACH_MM`, ¼ x 900) → `openingUnattached`."""
     dropped: Counter[str] = Counter()
     result = run([wall_px(0, 1000, 4000, 1000)], [det("door", 1000, 1350, 1900, 1450)], fake_clock, dropped)
     assert result.openings == ()
@@ -702,8 +715,11 @@ def test_build_walls__hugging_stub_closed_both_ends_or_thin_host_kept(fake_clock
     assert len(thin.walls) == 2
 
 
-def test_build_walls__gap_wall_without_opening_dropped(fake_clock: FakeClock) -> None:
-    """OPEN-ATTACH (review P2): cửa đôi 500 < 600 trên tường qua khe rơi → tường đó bỏ, không bịt lối."""
+def test_build_walls__gap_wall_keeps_narrow_double_door(fake_clock: FakeClock) -> None:
+    """Cửa đôi 500 < 600 trên tường qua khe: nay giữ thành cửa đơn (B11) nên tường qua khe mang cửa, không bị bỏ.
+
+    Trước B11 (OPEN-ATTACH review P2) cửa rơi `openingUnattached` và tường qua khe bị bỏ để không bịt lối.
+    """
     dropped: Counter[str] = Counter()
     result = run(
         [wall_px(1000, 0, 1000, 2000), wall_px(1500, 0, 1500, 2000)],
@@ -711,9 +727,10 @@ def test_build_walls__gap_wall_without_opening_dropped(fake_clock: FakeClock) ->
         fake_clock,
         dropped,
     )
-    assert len(result.walls) == 2
-    assert result.openings == ()
-    assert dropped["openingUnattached"] == 1
+    assert len(result.walls) == 3
+    (opening,) = result.openings
+    assert (opening.kind, opening.swing) == ("door", "left")
+    assert dropped["openingUnattached"] == 0
 
 
 def test_build_layer__rooms_ignore_gap_walls() -> None:

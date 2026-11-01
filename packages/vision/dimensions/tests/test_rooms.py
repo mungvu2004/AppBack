@@ -169,3 +169,26 @@ def test_name_rooms_generated_name_can_collide_with_a_label() -> None:
     """`phòng 2` do vị trí sinh ra mà đã có nhãn cùng tên → vẫn không trùng."""
     label = RoomLabel("other", "phòng 2")
     assert [x.name for x in name_rooms([label, None])] == ["phòng 2", "phòng 2 2"]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("KITCHEN", RoomLabel("kitchen", "bếp")),
+        ("Bedroom", RoomLabel("bedroom", "phòng ngủ")),
+        ("MASTER BEDROOM", RoomLabel("bedroom", "phòng ngủ")),
+        ("STORE", RoomLabel("utility", "phòng kỹ thuật")),
+        ("LIVING ROOM", RoomLabel("livingRoom", "phòng khách")),
+        ("DINING", RoomLabel("kitchen", "bếp")),
+        ("BALCONY 2", RoomLabel("loggia", "lô gia 2")),
+        ("LOGGU", RoomLabel("loggia", "lô gia")),
+        ("PHÒNG CON GÁI", RoomLabel("bedroom", "phòng ngủ")),
+        ("APARTMENT PLAN 2BEDROOMS-61M2", None),
+        ("FLOOR PLAN", None),
+        ("KITCHENETTE", None),
+        ("DIỆN TÍCH SÀN 61 m²", None),
+    ],
+)
+def test_match_room_label_english_and_titles(text: str, expected: RoomLabel | None) -> None:
+    """B6: tên tiếng Anh khớp nguyên từ; dòng tiêu đề (plan, apartment, m2, > 4 từ) không là tên phòng."""
+    assert match_room_label(text) == expected

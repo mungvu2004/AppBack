@@ -8,7 +8,7 @@ import shapely
 from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
 from apps.worker.pipeline_build.geometry import Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
-from apps.worker.pipeline_build.rooms import _outline_points, build_furniture, build_rooms
+from apps.worker.pipeline_build.rooms import _outline_points, build_furniture, build_rooms, room_confidence
 from packages.domain.rules_ai import LOW_CONFIDENCE_CAP
 from packages.domain.spatial import Point, Room, Segment, Wall, js_round, polygon_area_m2
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, TextPx
@@ -183,21 +183,76 @@ def test_small_fragment_is_dropped_too_small(fake_clock: FakeClock) -> None:
     assert dropped["roomTooSmall"] == 1
 
 
-def test_wall_ids_and_confidence_take_minimum(fake_clock: FakeClock) -> None:
-    """`wallIds` = 4 tường của phòng, `confidence` = nhỏ nhất trong số đó."""
-    confidences = [0.9, 0.8, 0.7, 0.6]
+def test_wall_ids_and_confidence_from_factors(fake_clock: FakeClock) -> None:
+    """`wallIds` = 4 tường của phòng; `confidence` theo B12, không theo tường: không tên 0,4, kín, tỉ lệ tin."""
     walls = [
-        _wall(fake_clock, (0, 0), (4000, 0), confidence=confidences[0]),
-        _wall(fake_clock, (4000, 0), (4000, 4000), confidence=confidences[1]),
-        _wall(fake_clock, (4000, 4000), (0, 4000), confidence=confidences[2]),
-        _wall(fake_clock, (0, 4000), (0, 0), confidence=confidences[3]),
+        _wall(fake_clock, (0, 0), (4000, 0), confidence=0.9),
+        _wall(fake_clock, (4000, 0), (4000, 4000), confidence=0.8),
+        _wall(fake_clock, (4000, 4000), (0, 4000), confidence=0.7),
+        _wall(fake_clock, (0, 4000), (0, 0), confidence=0.6),
     ]
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert len(rooms) == 1
-    room = rooms[0]
-    assert set(room.wall_ids) == {w.id for w in walls}
-    assert room.confidence == min(confidences)
+    assert set(rooms[0].wall_ids) == {w.id for w in walls}
+    assert rooms[0].confidence == 0.4
+
+
+def test_room_confidence_factors() -> None:
+    """B12: tích nguồn tên, max(0,5; 1 - phần khe), 0,7 khi tỉ lệ không tin."""
+    assert room_confidence("text", 0.0, scale_trusted=True) == 1.0
+    assert room_confidence("text", 0.3, scale_trusted=True) == 0.7
+    assert room_confidence("inferred", 0.0, scale_trusted=False) == 0.42
+    assert room_confidence("none", 0.9, scale_trusted=True) == 0.2
+
+
+def test_labelled_room_confidence_drops_with_untrusted_scale(fake_clock: FakeClock) -> None:
+    """Phòng kín có nhãn chữ: 1,0 khi tỉ lệ tin; `scale_trusted=False` → 0,7; mặc định theo `build != final`."""
+    walls = _grid_walls(fake_clock)[:4]
+    texts = (TextPx(text="PHONG NGU", box=BoxPx(x_min=1000, y_min=1000, x_max=1400, y_max=1200), confidence=0.85),)
+    confidences = [
+        room.confidence
+        for scaling, trusted in ((_IDENTITY, None), (_IDENTITY, False), (Scaling(build=1.0, final=1.2), None))
+        for room in build_rooms(
+            walls,
+            (),
+            texts,
+            level_id=LEVEL_ID,
+            scaling=scaling,
+            clock=fake_clock,
+            dropped=Counter(),
+            scale_trusted=trusted,
+        )
+    ]
+    assert confidences == [1.0, 0.7, 0.7]
+
+
+def test_build_rooms__aligned_gap_over_limit_closes(fake_clock: FakeClock) -> None:
+    """Tường trên đứt 2000 mm (> `ROOM_GAP_CLOSE_MM`), hai đoạn thẳng hàng → khép (B9), 1 phòng 16 m², tin < 1."""
+    walls = [
+        _wall(fake_clock, (0, 0), (1000, 0)),
+        _wall(fake_clock, (3000, 0), (4000, 0)),
+        _wall(fake_clock, (4000, 0), (4000, 4000)),
+        _wall(fake_clock, (4000, 4000), (0, 4000)),
+        _wall(fake_clock, (0, 4000), (0, 0)),
+    ]
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter())
+    assert len(rooms) == 1
+    assert abs(rooms[0].area_m2 - 16.0) < 0.01
+    assert rooms[0].confidence < 0.4
+
+
+def test_build_rooms__corner_gap_over_limit_closes_with_opening(fake_clock: FakeClock) -> None:
+    """Khe góc 2000 mm không thẳng hàng: có hộp cửa đi trong khe → khép (`_door_closers`); không hộp → không phòng."""
+    door = DetectionPx(label="door", box=BoxPx(x_min=0, y_min=0, x_max=100, y_max=2000), confidence=0.9)
+    walls = _square_with_corner_gap(fake_clock, 2000)
+    found = [
+        build_rooms(
+            walls, (), (), detections=boxes, level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter()
+        )
+        for boxes in ((door,), ())
+    ]
+    assert [len(rooms) for rooms in found] == [1, 0]
 
 
 def test_room_without_walls_caps_confidence(fake_clock: FakeClock) -> None:
@@ -574,3 +629,50 @@ def test_two_labels_split_room_along_stub_wall(fake_clock: FakeClock) -> None:
     texts = (_text("phòng khách", 2000, 2500), _text("bếp", 6000, 2500))
     assert sorted(_usages(_room_with_stub(fake_clock), texts, (), fake_clock)) == ["kitchen", "livingRoom"]
     assert _usages(_room_with_stub(fake_clock), texts[:1], (), fake_clock) == ["livingRoom"]
+
+
+def _square(clock: FakeClock, side: int) -> list[Wall]:
+    """Một phòng vuông cạnh `side` mm."""
+    return [
+        _wall(clock, (0, 0), (side, 0)),
+        _wall(clock, (0, side), (side, side)),
+        _wall(clock, (0, 0), (0, side)),
+        _wall(clock, (side, 0), (side, side)),
+    ]
+
+
+def test_wardrobe_with_washer_or_short_wardrobe_is_not_bedroom(fake_clock: FakeClock) -> None:
+    """Tủ áo cạnh máy giặt/thiết bị vệ sinh (phòng 16 m²) hay tủ áo ngắn < 900 mm không làm phòng ngủ."""
+    wardrobe = DetectionPx(label="wardrobe", box=_box(500, 500, 1500, 1100), confidence=0.8)
+    washer = DetectionPx(label="washing_machine", box=_box(2000, 500, 2600, 1100), confidence=0.8)
+    toilet = DetectionPx(label="sanitary_fixture", box=_box(2000, 2000, 2400, 2400), confidence=0.8)
+    short = DetectionPx(label="wardrobe", box=_box(500, 500, 1100, 1100), confidence=0.8)
+    walls = _square(fake_clock, 4000)
+    assert _usages(walls, (), (wardrobe,), fake_clock) == ["bedroom"]
+    assert _usages(walls, (), (wardrobe, washer), fake_clock) == ["other"]
+    assert _usages(walls, (), (wardrobe, toilet), fake_clock) == ["other"]
+    assert _usages(walls, (), (short,), fake_clock) == ["other"]
+
+
+def test_furniture_goes_to_room_with_largest_overlap(fake_clock: FakeClock) -> None:
+    """B8: tâm hộp trên biên A (theo tâm: không phòng) nhưng hộp giao phòng A nhất → phòng A, không `suggested`."""
+    room_a = _room(fake_clock, ((0, 0), (4000, 4000)))
+    room_b = _room(fake_clock, ((4000, 0), (8000, 1000)))
+    detections = (DetectionPx(label="table", box=_box(3000, 0, 5000, 4000), confidence=0.9),)
+    items = build_furniture(
+        detections, (room_a, room_b), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter()
+    )
+    assert (items[0].room_id, items[0].suggested) == (room_a.id, False)
+
+
+def test_furniture_outside_the_flat_is_suggested(fake_clock: FakeClock) -> None:
+    """B8: đồ xa căn (sơ đồ vị trí) → `suggested`, không xoá; đồ sát mép phòng trong 300 mm → giữ."""
+    room = _room(fake_clock, ((0, 0), (1000, 1000)))
+    detections = (
+        DetectionPx(label="table", box=_box(5000, 5000, 5600, 5600), confidence=0.9),
+        DetectionPx(label="table", box=_box(1050, 0, 1450, 400), confidence=0.9),
+    )
+    items = build_furniture(
+        detections, (room,), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter()
+    )
+    assert [item.suggested for item in items] == [True, False]

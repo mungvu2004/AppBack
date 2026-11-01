@@ -45,9 +45,34 @@ _KEYS: Final[Mapping[RoomUsage, tuple[str, ...]]] = MappingProxyType(
         "corridor": ("hanh lang", "sanh", "loi di", "tien sanh"),
         "stairwell": ("cau thang", "thang bo", "buong thang", "thang"),
         "utility": ("ky thuat", "phong ky thuat", "kho", "giat phoi", "gen", "san phoi", "thay do", "phong thay do"),
-        "loggia": ("lo gia", "loggia", "ban cong"),
+        "loggia": ("lo gia", "loggia", "ban cong", "loggu"),
     }
 )
+_EN_NAMES: Final[tuple[tuple[str, RoomUsage], ...]] = (
+    ("master bedroom", "bedroom"),
+    ("bedroom", "bedroom"),
+    ("kitchen", "kitchen"),
+    ("dining", "kitchen"),
+    ("living", "livingRoom"),
+    ("lounge", "livingRoom"),
+    ("bathroom", "bathroom"),
+    ("toilet", "bathroom"),
+    ("laundry", "utility"),
+    ("storage", "utility"),
+    ("store", "utility"),
+    ("study", "other"),
+    ("foyer", "corridor"),
+    ("balcony", "loggia"),
+    ("terrace", "loggia"),
+    ("loggia", "loggia"),
+)
+_EN_KEYS: Final[tuple[tuple[tuple[str, ...], RoomUsage], ...]] = tuple(
+    (tuple(key.split()), usage) for key, usage in _EN_NAMES
+)
+"""Tên phòng tiếng Anh (B6): khoá ≥ 5 chữ, chỉ khớp nguyên từ, không khớp gần đúng ("store" không gần "stair")."""
+_TITLE_WORDS: Final = ("plan", "apartment", "m2", "m²")
+_TITLE_MAX_WORDS: Final = 4
+"""Dòng tiêu đề bản vẽ ("APARTMENT PLAN 2BEDROOMS-61M2"): chứa một chữ trên hay > 4 từ thì không là tên phòng."""
 _USAGE_BY_SQUASHED_KEY: Final[Mapping[str, RoomUsage]] = MappingProxyType(
     {key.replace(" ", ""): usage for usage, keys in _KEYS.items() for key in keys}
 )
@@ -126,6 +151,16 @@ def _near(token: str, key: str) -> bool:
     return _distance(token, key) <= (2 if min(len(token), len(key)) >= 6 else 1)
 
 
+def _english_usage(key: str) -> RoomUsage | None:
+    """Công năng khi nhãn chứa nguyên từ một khoá tiếng Anh (`_EN_KEYS`), khoá đứng trước thắng."""
+    words = key.split()
+    for key_words, usage in _EN_KEYS:
+        size = len(key_words)
+        if any(tuple(words[i : i + size]) == key_words for i in range(len(words) - size + 1)):
+            return usage
+    return None
+
+
 def _fuzzy_usage(key: str) -> RoomUsage | None:
     """Công năng của khoá không khớp nguyên, lần lượt:
 
@@ -164,15 +199,20 @@ def match_room_label(text: str) -> RoomLabel | None:
     """Nhãn phòng của chuỗi OCR, hoặc `None` khi không nhận ra.
 
     Mỗi phần của nhãn ghép (tách ở `+ & ,`) lần lượt: khớp nguyên khoá hay khoá bỏ hết khoảng trắng, rồi khớp gần
-    đúng (`_fuzzy_usage`). Số thứ tự cuối của phần khớp được giữ vào tên (`PHONG NGU 1` → `phòng ngủ 1`).
+    đúng (`_fuzzy_usage`); khoá tiếng Anh nguyên từ (`_english_usage`) xét trước khớp gần đúng. Dòng tiêu đề bản vẽ
+    (`_TITLE_WORDS`, > `_TITLE_MAX_WORDS` từ) → `None`. Số thứ tự cuối của phần khớp được giữ vào tên
+    (`PHONG NGU 1` → `phòng ngủ 1`).
     Hàm thuần, kết quả nhớ đệm: trang lớn lặp lại nhiều chữ giống nhau (số kích thước, tên phòng).
     """
+    folded = text.casefold()
+    if any(word in folded for word in _TITLE_WORDS):
+        return None
     for part in _PARTS.split(text):
         base, ordinal = _split_ordinal(_GLUED_NUMBER.sub(" ", part))
         key = _key_of(base)
-        if not key or key in _NOT_LABELS:
+        if not key or key in _NOT_LABELS or len(key.split()) > _TITLE_MAX_WORDS:
             continue
-        usage = _USAGE_BY_SQUASHED_KEY.get(key.replace(" ", "")) or _fuzzy_usage(key)
+        usage = _USAGE_BY_SQUASHED_KEY.get(key.replace(" ", "")) or _english_usage(key) or _fuzzy_usage(key)
         if usage is not None:
             name = ROOM_USAGE_NAMES[usage]
             return RoomLabel(usage, name if ordinal is None else f"{name} {ordinal}")

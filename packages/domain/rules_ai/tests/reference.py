@@ -9,6 +9,7 @@ import math
 
 from packages.domain.rules_ai.geometry import centroid, nearest_probe, outline_contains, wall_side
 from packages.domain.rules_ai.merge import Removed
+from packages.domain.rules_ai.orient import orient_furniture, world_box
 from packages.domain.spatial import (
     BoundingBox,
     Furniture,
@@ -41,7 +42,7 @@ def ref_fixture(item: Furniture, walls: tuple[Wall, ...]) -> Furniture:
     """Luật 1 cho một đồ: quét mọi tường, tường đứng trước thắng khi hoà."""
     best = None
     for wall in walls:
-        near = nearest_probe(item.bounding_box, wall)
+        near = nearest_probe(world_box(item), wall)
         gap = max(0.0, near.distance - wall.thickness_mm / 2)
         if best is None or gap < best[0]:
             best = (gap, near)
@@ -99,6 +100,7 @@ def ref_apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
         else w
         for w in walls
     )
+    furniture = orient_furniture(furniture, lambda _box: layer.walls, _can_edit)
     return SpatialLayer(walls=walls, openings=tuple(openings), rooms=layer.rooms, furniture=furniture)
 
 

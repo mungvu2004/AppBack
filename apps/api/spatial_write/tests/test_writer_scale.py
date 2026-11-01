@@ -325,10 +325,14 @@ async def test_merge_remaps_dimension_references(db_session: AsyncSession, fake_
 async def test_scale_change_breaking_a_wall_is_a_validation_error(
     db_session: AsyncSession, fake_clock: FakeClock
 ) -> None:
-    """Quy đổi làm bề dày tường về 0 → 422 trỏ đúng trường tỉ lệ, không phải lỗi 500."""
+    """Quy đổi làm tường co về một điểm → 422 trỏ đúng trường tỉ lệ, không phải lỗi 500.
+
+    Bề dày AI giờ bắt lại về bậc chuẩn (≥ 100 mm) khi đổi tỉ lệ (QT-SCALE), nên ca hỏng dùng đường tim:
+    tường 400 mm ở hệ số 1/1000 còn 0,4 mm, làm tròn về 0.
+    """
     scene = await make_scene(db_session)
     floor = scene.floors[0]
-    await _prepared(db_session, floor, fake_clock, scale=Decimal("1000"), scale_source="human")
+    await _prepared(db_session, floor, fake_clock, scale=Decimal("1000"), scale_source="human", length=400)
 
     with pytest.raises(AppError) as caught:
         await write(db_session, floor=floor, actor=scene.owner, clock=fake_clock, base_revision=1, scale=Decimal("1"))

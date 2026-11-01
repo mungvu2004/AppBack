@@ -67,10 +67,13 @@ def h1(build: Path, shapes: dict[str, str], data: check.Inputs) -> check.CheckRe
 
 
 def test_real_map_covers_every_contract_row(shapes: dict[str, str]) -> None:
-    """95 mục = 48 HTTP + 2 SSE của §1 + 45 của §2 (không v2; N41 ở UX41 U05, N42-N44 nướng ánh sáng ở LB-01)."""
+    """97 mục = 48 HTTP + 2 SSE của §1 + 47 của §2 (không v2).
+
+    N41 ở UX41 U05, N42-N44 nướng ánh sáng ở LB-01, N45-N46 màn tỉ lệ ở QT-SCALE-API.
+    """
     result = check.check_map(shapes, ROWS)
     assert result.status == STATUS_OK, result.problems
-    assert len(shapes) == len(ROWS) == 95
+    assert len(shapes) == len(ROWS) == 97
 
 
 def test_map_missing_a_bind_row_fails(tmp_path: Path, shapes: dict[str, str]) -> None:

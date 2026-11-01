@@ -15,7 +15,7 @@ from apps.worker.pipeline_build.residual import (
     residual_ink_boxes,
 )
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
-from packages.ml_contracts.artifacts import BoxPx, DetectionPx, PointPx, WallPx, encode_mask, encode_rgb_png
+from packages.ml_contracts.artifacts import BoxPx, DetectionPx, PointPx, TextPx, WallPx, encode_mask, encode_rgb_png
 from packages.testing.fixtures.clock import FakeClock
 
 _MM_PER_PX = 10.0
@@ -91,6 +91,7 @@ def test_size_line_and_density_filters() -> None:
     cv2.line(page.gray, (100, 400), (500, 400), 0, 2)  # đường kích thước: dẹt
     cv2.rectangle(page.gray, (600, 300), (660, 360), 0, -1)  # khối đặc
     _draw(page, (400.0, 450.0, 480.0, 465.0))  # cạnh ngắn 0,15 m
+    _draw(page, (150.0, 200.0, 270.0, 220.0))  # dòng chữ: 1,2 x 0,2 m, tỉ số 0,17
     assert residual_ink_boxes(page, detections=(), texts=(), mm_per_px=_MM_PER_PX) == []
 
 
@@ -149,11 +150,15 @@ _WALLS = (
 
 
 def test_build_layer_adds_suggested_furniture() -> None:
-    """`page` có khung không nhãn → lớp có một đồ `other` `suggested`, giữ qua `to_json`/`from_json`."""
+    """`page` có khung không nhãn, tỉ lệ tin (ghi chú `TL 1/100` + 10 px/mm giấy = 10 mm/px) → lớp có một đồ
+    `other` `suggested`, giữ qua `to_json`/`from_json`. Tỉ lệ còn đoán thì không gợi ý (B7)."""
     page = _page()
     _draw(page, _SOFA)
     clock = FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC))
-    built = build_wrapped(walls=_WALLS, width_px=_W, height_px=_H, clock=clock, page=page)
+    note = TextPx(text="TL 1/100", box=BoxPx(x_min=5, y_min=5, x_max=100, y_max=20), confidence=0.9)
+    built = build_wrapped(
+        walls=_WALLS, texts=(note,), width_px=_W, height_px=_H, clock=clock, page=page, px_per_paper_mm=10.0
+    )
     (item,) = built.layer.furniture
     assert (item.kind, item.suggested, item.source, item.reviewed) == ("other", True, "ai", False)
     (again,) = BuiltLayer.from_json(built.to_json()).layer.furniture
@@ -161,15 +166,16 @@ def test_build_layer_adds_suggested_furniture() -> None:
 
 
 def test_suggestions_skip_without_usable_page() -> None:
-    """Không trang, khổ lệch, hay tỉ lệ dự phòng mà không có tường để ước → không gợi ý."""
+    """Không trang, khổ lệch, hay tỉ lệ chưa đáng tin (`None`, kể cả khi ước được từ tường) → không gợi ý."""
     page = _page()
     _draw(page, _SOFA)
     bad = PageRaster(gray=page.gray, walls=page.walls[:-1])
     assert _suggestions(None, _WALLS, (), (), _MM_PER_PX) == ()
     assert _suggestions(bad, _WALLS, (), (), _MM_PER_PX) == ()
     assert _suggestions(page, (), (), (), None) == ()
-    (estimated,) = _suggestions(page, _WALLS, (), (), None)
-    assert estimated.label == "other"
+    assert _suggestions(page, _WALLS, (), (), None) == ()
+    (trusted,) = _suggestions(page, _WALLS, (), (), _MM_PER_PX)
+    assert trusted.label == "other"
     chair = DetectionPx(
         label="chair", box=BoxPx(x_min=_SOFA[0], y_min=_SOFA[1], x_max=_SOFA[2], y_max=_SOFA[3]), confidence=0.9
     )

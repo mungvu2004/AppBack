@@ -30,12 +30,12 @@ from apps.worker.pipeline_build.constants import (
     OPENING_GAP_MAX_MM,
     OPENING_MIN_WIDTH_MM,
     OPENING_WALL_REACH_MM,
-    STANDARD_THICKNESSES_MM,
     WALL_JOIN_MM,
 )
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.core.clock import Clock
 from packages.domain.spatial import Opening, Point, Segment, Wall, js_round
+from packages.domain.spatial.thickness import snap_thickness
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
 from packages.ml_contracts.labels import LABEL_TARGETS, SwingDirection
 
@@ -53,7 +53,9 @@ _DIAGONAL_PERPENDICULAR_COS: Final = math.cos(math.radians(90.0 - DIAGONAL_ALIGN
 _DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
 """Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
-"""Cửa đôi hẹp hơn 600 mm là hộp bám sai tường, không phải cửa (B5-05 [6] bước 4)."""
+"""Cửa đôi hẹp hơn 600 mm là cửa đơn bị dò nhầm lớp: giữ thành cửa đơn (B11, chẩn đoán quy trình lần 2)."""
+_OPENING_REACH_SHARE: Final = 0.25
+"""Tầm gắn ô mở theo cỡ hộp: hộp rộng `w` với tới tường cách ≤ 0,25·w (vẫn không dưới ½ dày + 150 mm)."""
 _GAP_PARALLEL_COS: Final = math.cos(math.radians(20.0))
 """Tường lệch hướng hộp ô mở ≤ 20° là cùng hướng: bước 3c không dựng tường qua khe (OPEN-ATTACH)."""
 # 3b (d): đầu tường lơ lửng nhìn thẳng gặp vách trong khe mặt-tới-mặt ≤ max(450, 3 x bề dày) → kéo tới chạm.
@@ -219,11 +221,6 @@ def _neighbours(tree: STRtree, geoms: Geoms, distance: float) -> list[set[int]]:
     return result
 
 
-def _snap_thickness(measured_mm: float) -> int:
-    """Bề dày đo → phần tử gần nhất của `STANDARD_THICKNESSES_MM`; hoà lấy số nhỏ hơn."""
-    return min(STANDARD_THICKNESSES_MM, key=lambda value: (abs(value - measured_mm), value))
-
-
 def _degenerate_final(p0: Point, p1: Point, thickness_mm: int, scaling: Scaling) -> bool:
     """`project_default`: tường sẽ suy biến sau `rescale_unreviewed(s_dựng → s)` (bước 3).
 
@@ -244,7 +241,7 @@ def _measure_walls(walls: Sequence[WallPx], scaling: Scaling, dropped: Counter[s
         p0 = scaling.point(wall.start.x, wall.start.y)
         p1 = scaling.point(wall.end.x, wall.end.y)
         measured = wall.thickness_px * scaling.build
-        thickness = _snap_thickness(measured)
+        thickness = snap_thickness(measured)
         if p0 == p1 or _degenerate_final(p0, p1, thickness, scaling):
             dropped["wallZeroLength"] += 1
             continue
@@ -717,7 +714,8 @@ def _attach_walls(
 ) -> list[list[int]]:
     """Tường ứng viên của mỗi hộp ô mở, gần tâm trước; rỗng khi không tường nào với tới (bước 4).
 
-    Ứng viên: tường mà **hộp** (không phải tâm) cách tim ≤ `thicknessMm / 2 + OPENING_WALL_REACH_MM`,
+    Ứng viên: tường mà **hộp** (không phải tâm) cách tim ≤ max(`thicknessMm / 2 + OPENING_WALL_REACH_MM`,
+    `_OPENING_REACH_SHARE` x cạnh dài hộp) — cửa sổ rộng vẽ lệch khỏi tim xa hơn 150 mm vẫn gắn,
     0 khi tim cắt hộp — hộp thẳng trục của cửa xoay chéo là hộp vuông lớn, tâm xa tim (BUG-IT-003).
     Xếp theo khoảng cách tới **tâm** hộp, hoà lấy chỉ số nhỏ: cửa sát góc chạm cả vách vuông góc vẫn về
     tường nó nằm trên. `_opening_candidates` chọn trong danh sách. Một truy vấn `dwithin` theo lô.
@@ -727,8 +725,10 @@ def _attach_walls(
         return ranked
     boxes = np.asarray(shapely.box(*np.asarray(rects).T), dtype=object)
     reach = np.asarray([seg.thickness_mm / 2 + OPENING_WALL_REACH_MM for seg in segs])
-    sources, walls = STRtree(geoms).query(boxes, predicate="dwithin", distance=float(reach.max()))
-    inside = shapely.distance(boxes[sources], geoms[walls]) <= reach[walls]
+    box_reach = np.asarray([_OPENING_REACH_SHARE * max(r[2] - r[0], r[3] - r[1]) for r in rects])
+    far = max(float(reach.max()), float(box_reach.max()))
+    sources, walls = STRtree(geoms).query(boxes, predicate="dwithin", distance=far)
+    inside = shapely.distance(boxes[sources], geoms[walls]) <= np.maximum(reach[walls], box_reach[sources])
     centre = shapely.distance(shapely.centroid(boxes[sources]), geoms[walls])
     hits = zip(centre[inside].tolist(), walls[inside].tolist(), sources[inside].tolist(), strict=True)
     for _, wall, source in sorted(hits):
@@ -841,19 +841,19 @@ def _candidate(
     Rộng lấy từ hộp, kẹp ≤ `L` (BUG-IT-004: rộng cố định làm rơi ô mở trên tường ngắn và chồng cửa
     sổ kề nhau); hình chiếu < `OPENING_MIN_WIDTH_MM` là suy biến → rộng mặc định của `LABEL_TARGETS`
     kẹp về `L` khi `L ≥ OPENING_MIN_WIDTH_MM`, tường ngắn hơn → `openingTooWide` (BUG-IT-009).
-    Cửa đôi không có mặc định: hẹp hơn 600 mm là `openingUnattached`. `length` thay chiều dài `seg` khi ô mở
+    Cửa đôi hẹp hơn 600 mm là cửa đơn bị dò nhầm: giữ thành cửa đơn (mặc định `door`) thay vì bỏ.
+    `length` thay chiều dài `seg` khi ô mở
     đo trên cả cung (`span` tính từ đầu cung, `wall` là dây đầu).
     """
     target = LABEL_TARGETS[detection.label]
-    if target.height_mm is None or target.sill_mm is None or target.swing is None:
-        return None
     low, high = span
     length = _length(seg) if length is None else length
     # Hộp thẳng trục của ô mở trên tường lệch góc θ chiếu dài thêm bề dày · |sin 2θ| (review P2 LOG-02).
     ux, uy = _unit(seg)
     measured = min(js_round(high - low - seg.thickness_mm * abs(2 * ux * uy)), math.floor(length))
     if target.width_mm is None and measured < _MIN_DOUBLE_DOOR_MM:
-        dropped["openingUnattached"] += 1
+        target = LABEL_TARGETS["door"]
+    if target.height_mm is None or target.sill_mm is None or target.swing is None:
         return None
     width = target.width_mm if target.width_mm is not None and measured < OPENING_MIN_WIDTH_MM else measured
     if length < width:
