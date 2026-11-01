@@ -74,6 +74,12 @@ _SEED_RAY_MM = 6000
 _SEED_MAX_M2 = 40.0
 """Phòng mọc từ nhãn lớn hơn là hộp tràn qua chỗ thiếu tường, không dựng."""
 
+_LONG_GAP_MM = 4500.0
+_LONG_GAP_COS = 0.998
+_LONG_FACE_MAX_M2 = 60.0
+"""NO-435: hai đầu tường thẳng hàng (lệch hướng ≤ ~3,6°) cách ≤ 4,5 m (tường kính, tường ngoài màu nhạt model bỏ sót,
+khe vượt `OPENING_GAP_MAX_MM` của 3b ở tỉ lệ đúng) chỉ được nối khi khép ra ô ≤ 60 m² chứa nhãn phòng còn ngoài."""
+
 _KITCHEN_RUN_MM = 2000
 """Dãy tủ bếp: cạnh dài hộp ≥ 2 m (bàn lavabo phòng tắm 0,6-1,2 m; bench: 1,5 m còn 2 phòng tắm thành bếp)."""
 
@@ -547,6 +553,78 @@ def _fixture_labels(
     return labels
 
 
+def _long_gap_closers(walls: Sequence[Wall]) -> list[shapely.LineString]:
+    """Đoạn nối đầu tường tới đầu gần nhất phía trước của tường thẳng hàng, khe `(ROOM_SNAP_MM, _LONG_GAP_MM]`.
+
+    Thẳng hàng: |cos| hướng ≥ `_LONG_GAP_COS` và tim tường kia cách đường kéo dài ≤ nửa bề dày dày hơn +
+    `ROOM_SNAP_MM`. Tra tường quanh đầu mút bằng `STRtree` (K18); mỗi cặp đầu chỉ một đoạn.
+    """
+    if len(walls) < 2:
+        return []
+    ends = [((w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)) for w in walls]
+    tree = shapely.STRtree([shapely.LineString(pair) for pair in ends])
+    closers: dict[tuple[tuple[float, float], tuple[float, float]], shapely.LineString] = {}
+    for i, (a, b) in enumerate(ends):
+        length = math.dist(a, b)
+        for tip, base in ((a, b), (b, a)):
+            ux, uy = (tip[0] - base[0]) / length, (tip[1] - base[1]) / length
+            best: tuple[float, tuple[float, float]] | None = None
+            for j in tree.query(shapely.Point(tip), predicate="dwithin", distance=_LONG_GAP_MM).tolist():
+                (c, d), other = ends[j], walls[j]
+                if j == i or abs(ux * (d[0] - c[0]) + uy * (d[1] - c[1])) < _LONG_GAP_COS * math.dist(c, d):
+                    continue
+                offset = abs((c[0] - tip[0]) * uy - (c[1] - tip[1]) * ux)
+                if offset > max(walls[i].thickness_mm, other.thickness_mm) / 2 + ROOM_SNAP_MM:
+                    continue
+                for end in (c, d):
+                    ahead = (end[0] - tip[0]) * ux + (end[1] - tip[1]) * uy
+                    if ROOM_SNAP_MM < ahead <= _LONG_GAP_MM and (best is None or ahead < best[0]):
+                        best = (ahead, end)
+            if best is not None:
+                key = (min(tip, best[1]), max(tip, best[1]))
+                closers.setdefault(key, shapely.LineString(key))
+    return list(closers.values())
+
+
+def _labelled_gap_faces(
+    lines: Sequence[shapely.LineString],
+    walls: Sequence[Wall],
+    rooms: Sequence[Sequence[Point]],
+    labels: Sequence[RoomLabel | None],
+    centres: Sequence[Point],
+) -> list[list[Point]]:
+    """NO-435: nhãn phòng còn ngoài mọi phòng → khép thêm khe dài (`_long_gap_closers`), giữ ô mới chứa nhãn đó.
+
+    Ô ≤ `_LONG_FACE_MAX_M2`, trừ phần đã thuộc phòng có sẵn; ô không chứa nhãn nào bỏ (không thêm phòng thừa). Chỉ
+    là đường khép phòng — tường không đổi, nên 3D không có tường giả ở khe.
+    """
+    existing = [shapely.Polygon([(p.x, p.y) for p in outline]) for outline in rooms if len(outline) >= 3]
+    pending = [
+        shapely.Point(centre.x, centre.y)
+        for label, centre in zip(labels, centres, strict=True)
+        if label is not None and not any(polygon.contains(shapely.Point(centre.x, centre.y)) for polygon in existing)
+    ]
+    extra = _long_gap_closers(walls) if pending else []
+    if not extra:
+        return []
+    taken = shapely.unary_union(existing) if existing else shapely.Polygon()
+    found: list[list[Point]] = []
+    for outline in _room_outlines([*lines, *extra]):
+        if len(outline) < 3:  # ô vụn co về đoạn/điểm sau khi làm tròn mm
+            continue
+        face = shapely.Polygon([(p.x, p.y) for p in outline]).difference(taken)
+        parts = list(face.geoms) if hasattr(face, "geoms") else [face]
+        for part in parts:
+            if (
+                isinstance(part, shapely.Polygon)
+                and part.area / 1e6 <= _LONG_FACE_MAX_M2
+                and any(part.contains(point) for point in pending)
+            ):
+                found.append(_outline_points(shapely.Polygon(part.exterior)))
+                taken = taken.union(part)
+    return found
+
+
 def build_rooms(
     walls: Sequence[Wall],
     bridges: Sequence[tuple[Point, Point]],
@@ -569,10 +647,11 @@ def build_rooms(
     lines = _room_lines(walls, bridges, detections, scaling)
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
-    rims = _rim_outlines(lines, [*closed, *seeded])
+    gapped = _labelled_gap_faces(lines, walls, [*closed, *seeded], parsed, centres)
+    rims = _rim_outlines(lines, [*closed, *seeded, *gapped])
     rim_keys = {tuple(outline) for outline in rims}
     kept: list[tuple[list[Point], float]] = []
-    for outline in _split_by_labels([*closed, *seeded, *rims], walls, parsed, centres):
+    for outline in _split_by_labels([*closed, *seeded, *gapped, *rims], walls, parsed, centres):
         area_m2 = float(polygon_area_m2(outline)) if len(outline) >= 3 else 0.0
         if len(outline) < 3 or area_m2 < MIN_ROOM_AREA_M2:
             dropped["roomTooSmall"] += 1
