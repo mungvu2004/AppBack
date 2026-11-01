@@ -263,3 +263,15 @@ def test_object_boxes__untouched_default_human_box_dropped() -> None:
     detections = object_boxes(layer, width_px=200, height_px=200, mm_per_px=MM_PER_PX)
     assert sorted(d.label for d in detections) == ["bed", "chair"]
     assert len(detections) == 2
+
+
+def test_door_on_curved_wall_follows_the_arc() -> None:
+    """Cửa 400 mm giữa tường cong (cung dài ~1.225 mm, đỉnh ở y = 200 mm): khe và hộp nhãn ở đỉnh cung, không ở dây."""
+    wall = _wall(start=(0, 500), end=(1000, 500), thickness=100, curve=300, opening_ids=("D-0000000001",))
+    door = _opening(offset=412, width=400)
+    mask = wall_mask([wall], width_px=110, height_px=60, mm_per_px=MM_PER_PX, openings=[door])
+    assert not mask[20, 50]
+    assert mask[25, 20]
+    layer = SpatialLayer(walls=(wall,), openings=(door,), rooms=(), furniture=())
+    (box,) = [d.box for d in object_boxes(layer, width_px=110, height_px=60, mm_per_px=MM_PER_PX)]
+    assert box.y_min < 20 < box.y_max < 35

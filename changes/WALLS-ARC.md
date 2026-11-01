@@ -14,12 +14,12 @@
 - Bench 14 ca (`F:/runs/walls-arc/ab.sh`, gốc `origin/fix/walls-curve-shaft`): 14/14 giống từng byte (không ca nào có cung).
 - **Cần người điều phối**: hợp đồng FE–BE thêm `curveOffsetMm` (tuỳ chọn) vào `WallSchema` đọc/ghi, xuất lại
   `openapi.json`, nâng `tools/contract/APPFRONT_SHA` lên AppFront `feat/walls-arc`.
-- Nợ NO-431 (mở): `rules_ai` (bám đồ vào mặt tường, phân mặt trong/ngoài) và `spatial/diff.py` (lịch sử không ghi trường
-  `curveOffsetMm`) coi tường cong là dây. Hậu quả mất sửa (review P2: chỉ uốn tường AI chưa duyệt → không `edited` → chạy lại
-  pipeline thay mất) đã vá ở `provenance.mark_edited`; còn mở: nhật ký đổi trường chưa có `curveOffsetMm` (cần HOP-DONG-MOI).
-- Nợ NO-432 (mở): kích thước ghi trên tường cong (bước 7) đo theo dây; ô mở trên cung bị kẹp trong một dây ≤ 10° như trước.
-- Nợ NO-433 (mở): khe cửa trong mặt nạ huấn luyện và hộp nhãn YOLO cửa/cửa sổ (`render.py` `object_boxes`) đặt theo dây,
-  chưa theo cung — lệch tới cỡ sagitta.
-- Nợ NO-434 (mở): bước 5b (WALLS-CURVE) báo nhầm cung trên bản vẽ CVC: góc vát 45° tường dày (`Ib_RI0501`, R/t 3,9) và
-  tường chéo có gãy (`IIa_GL0401`); 5 cung tìm được trên 39 trang CVC đều dài 6-12 lần bề dày. Cần phép thử phân biệt
-  vát góc với cung trước khi bật trên bản vẽ ngoài bộ bench.
+- NO-431 (đóng): `rules_ai` đo khe đồ tới chính cung (`arc.foot_on_arc`), dò trong/ngoài ở đỉnh cung, lưới tường nở thêm
+  |sagitta|; `spatial/diff.py` theo dõi `curve_offset_mm` (bảng HOP-DONG-MOI §1.3 thêm cả `paint` vốn đã theo dõi), nên
+  `provenance.mark_edited` bỏ nhánh vá riêng.
+- NO-432 (đóng): ô mở gắn vào dây của một cung chiếu lên cả cung (`geometry._arc_chains`, cùng điều kiện gộp của
+  `join_arcs`), đặt trên dây đầu với `offsetMm` tính từ đầu cung — cửa rộng hơn một dây 10° không còn bị kẹp/rơi. Chữ kích
+  thước ghép với cả tường cong (dây lớn) chứ không với dây 10° (`_Attempt.whole_px`, bước 2 và 7).
+- NO-433 (đóng): khe cửa trong mặt nạ huấn luyện và hộp nhãn ô mở lấy các tứ giác dọc cung (`arc.span_points`).
+- NO-434 (đóng): 5b chỉ nhận cung khi lệch RMS tới đường tròn ≤ 0,6 lần lệch tới chính các đoạn DP (`_ARC_FIT_GAIN`): 5 cung
+  giả trên 40 trang CVC (tỉ lệ ≥ 0,76) bị loại, ban công vẽ tay (0,12) và qua mặt nạ ML (0,47) giữ.

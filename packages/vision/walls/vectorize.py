@@ -96,6 +96,13 @@ _ARC_MIN_RADIUS_RATIO: Final = 4.0
 của bench), còn tường cong thật trong căn hộ bán kính ≥ 1 m, gấp ≥ 4,5 lần vách 220 mm."""
 _ARC_MIN_LENGTH_RATIO: Final = 5.0
 """Cung dài ≥ ngần này lần bề dày mới chia lại (bước 5b)."""
+_ARC_FIT_GAIN: Final = 0.6
+"""Lệch RMS của điểm xương tới đường tròn khớp phải ≤ ngần này lần lệch tới chính các đoạn DP (bước 5b).
+
+Đa giác gãy của tường dày (vát góc 45°, tường chéo có gãy) cũng lọt dung sai cung vì dung sai theo bề dày, nhưng
+các đoạn DP của nó vốn thẳng nên đường tròn không khớp hơn: trên 40 trang CVC, 5 cung giả có tỉ lệ ≥ 0,76 (lệch đa
+giác 0 ở hai trang); ban công cong vẽ tay 0,12, qua mặt nạ ML 0,47 (WALLS-ARC NO-434).
+"""
 _ARC_STEP_DEG: Final = 10.0
 """Mỗi đoạn chia lại của cung quét ≤ ngần này độ: cung bán kính 1,5 m lệch cung thật ≤ 6 mm (bước 5b)."""
 _ARC_MAX_JOIN_DEG: Final = 170.0
@@ -450,6 +457,19 @@ def _fit_circle(points: NDArray[np.float64]) -> tuple[float, float, float, float
     return cx, cy, radius, float(np.abs(np.hypot(x - cx, y - cy) - radius).max())
 
 
+def _rms(values: NDArray[np.float64]) -> float:
+    """Căn trung bình bình phương."""
+    return float(np.sqrt(np.mean(values * values)))
+
+
+def _off_chord(points: NDArray[np.float64], seg: _Seg) -> NDArray[np.float64]:
+    """Khoảng cách từ từng điểm tới đoạn `seg` (chân vuông góc kẹp trong hai đầu)."""
+    run = np.array([seg.bx - seg.ax, seg.by - seg.ay])
+    rel = points - np.array([seg.ax, seg.ay])
+    along = np.clip(rel @ run / max(float(run @ run), 1e-9), 0.0, 1.0)
+    return np.asarray(np.hypot(*(rel - along[:, None] * run).T), np.float64)
+
+
 def _arc_chords(
     index: int, run: list[_Seg], points: NDArray[np.float64], mask: NDArray[np.bool_], serial: Iterator[int]
 ) -> list[_Seg] | None:
@@ -457,9 +477,14 @@ def _arc_chords(
 
     Hai đầu chuỗi giữ nguyên toạ độ và khoá (nối tường khác); điểm giữa đặt đúng trên cung, mỗi dây quét
     ≤ `_ARC_STEP_DEG` nhưng không ngắn hơn 1,5 bề dày (`_drop_short` không được nuốt). `None` khi cung quét
-    dưới `_ARC_MIN_SWEEP_DEG`, bán kính hay độ dài dưới ngưỡng theo bề dày (góc bo quanh cột) hay chỉ chia được một dây.
+    dưới `_ARC_MIN_SWEEP_DEG`, bán kính hay độ dài dưới ngưỡng theo bề dày (góc bo quanh cột), đường tròn không khớp
+    rõ hơn chính các đoạn DP (`_ARC_FIT_GAIN`: đa giác gãy) hay chỉ chia được một dây.
     """
     cx, cy, radius, _ = _fit_circle(points)
+    off_circle = np.asarray(np.hypot(points[:, 0] - cx, points[:, 1] - cy) - radius, np.float64)
+    off_polyline = np.asarray(np.min([_off_chord(points, seg) for seg in run], axis=0), np.float64)
+    if not _rms(off_circle) <= _ARC_FIT_GAIN * _rms(off_polyline):
+        return None
     head, tail = (run[0].ax, run[0].ay), (run[-1].bx, run[-1].by)
     turns = np.unwrap(np.arctan2(points[:, 1] - cy, points[:, 0] - cx))
     start = math.atan2(head[1] - cy, head[0] - cx)

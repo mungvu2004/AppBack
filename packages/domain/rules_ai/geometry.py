@@ -13,6 +13,7 @@ from typing import Literal
 
 from packages.domain.rules_ai.constants import EXTERIOR_PROBE_MM
 from packages.domain.spatial import BoundingBox, Point, Room, Wall, signed_area_mm2
+from packages.domain.spatial.arc import foot_on_arc
 
 WallSide = Literal["exterior", "interior", "unknown"]
 Xy = tuple[float, float]
@@ -57,11 +58,18 @@ def _foot_on_segment(point: Xy, start: Point, end: Point) -> Xy:
 
 
 def nearest_probe(box: BoundingBox, wall: Wall) -> Nearest:
-    """Điểm dò gần đường tim của `wall` nhất; hoà thì điểm dò đứng trước (`min` giữ phần tử gặp đầu)."""
+    """Điểm dò gần đường tim của `wall` nhất; hoà thì điểm dò đứng trước (`min` giữ phần tử gặp đầu).
+
+    Tường cong đo tới chính cung, không tới dây (WALLS-ARC NO-431).
+    """
     start, end = wall.centreline.start, wall.centreline.end
+    curve = wall.curve_offset_mm
     measured = []
     for probe in probe_points(box):
-        foot = _foot_on_segment(probe, start, end)
+        if curve:
+            foot = foot_on_arc(probe, (start.x, start.y), (end.x, end.y), curve)
+        else:
+            foot = _foot_on_segment(probe, start, end)
         measured.append(Nearest(math.hypot(probe[0] - foot[0], probe[1] - foot[1]), probe, foot))
     return min(measured, key=attrgetter("distance"))
 
@@ -141,7 +149,9 @@ def wall_side_by(wall: Wall, contains: Callable[[float, float], bool]) -> WallSi
     run_x, run_y = line.end.x - line.start.x, line.end.y - line.start.y
     length = math.hypot(run_x, run_y)
     reach = wall.thickness_mm / 2 + EXTERIOR_PROBE_MM
-    mid_x, mid_y = (line.start.x + line.end.x) / 2, (line.start.y + line.end.y) / 2
+    # Tường cong dò ở đỉnh cung (trung điểm dây - sagitta · n), pháp tuyến ở đó vẫn là `n` của dây.
+    bulge = wall.curve_offset_mm / length
+    mid_x, mid_y = (line.start.x + line.end.x) / 2 + run_y * bulge, (line.start.y + line.end.y) / 2 - run_x * bulge
     shift_x, shift_y = -run_y / length * reach, run_x / length * reach
     inside = contains(mid_x + shift_x, mid_y + shift_y) + contains(mid_x - shift_x, mid_y - shift_y)
     if inside == 0:

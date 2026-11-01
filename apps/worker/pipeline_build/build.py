@@ -408,20 +408,21 @@ def _build_dimensions(
     context: "_Attempt", wall_set: WallSet, *, scaling: Scaling, clock: Clock, dropped: Counter[str]
 ) -> tuple[Dimension, ...]:
     """Bước 7: tối đa một `Dimension` mỗi chữ; chữ có mẫu mà không dựng được → `dimensionUnpaired`."""
-    grouped = _grouped_samples(context.samples, frozenset(context.rejected), wall_set.input_to_wall)
+    kept = {j: wall_set.input_to_wall[k] for j, k in enumerate(context.first_of) if k in wall_set.input_to_wall}
+    grouped = _grouped_samples(context.samples, frozenset(context.rejected), kept)
     built: list[Dimension] = []
     done: set[int] = set()
     if not grouped:
         return _chain_dimensions(context, done, scaling=scaling, clock=clock)
-    index = _SpanIndex.of(context.walls_px)
+    index = _SpanIndex.of(context.whole_px)
     for text_index in sorted(grouped):
         chosen = _best_sample(grouped[text_index], scaling.final)
         if chosen is None:
             dropped["dimensionUnpaired"] += 1
             continue
         sample, wall_index, tag = chosen
-        wall = wall_set.walls[wall_set.input_to_wall[wall_index]]
-        wall_px = context.walls_px[wall_index]
+        wall = wall_set.walls[kept[wall_index]]
+        wall_px = context.whole_px[wall_index]
         line = (
             _whole_line(wall_px, scaling)
             if tag == "all"
@@ -491,6 +492,10 @@ class _Attempt:
     suggestions: tuple[DetectionPx, ...] = ()
     arc_of: tuple[int | None, ...] = ()
     """Tường cong gốc của từng dây trong `walls_px` (`explode_arcs`), rỗng khi không có tường cong."""
+    whole_px: tuple[WallPx, ...] = ()
+    """Tường trước khi nổ cung: chữ kích thước ghép với cả tường cong (dây lớn), không với dây 10° (bước 2, 7)."""
+    first_of: tuple[int, ...] = ()
+    """Vị trí trong `walls_px` của mảnh đầu mỗi tường `whole_px`."""
 
 
 def _assembled(
@@ -503,7 +508,7 @@ def _assembled(
         "clock": clock,
         "dropped": dropped,
     }
-    wall_set = build_walls(context.walls_px, context.detections, **shared)
+    wall_set = build_walls(context.walls_px, context.detections, arc_of=context.arc_of, **shared)
     rooms = build_rooms(wall_set.walls, wall_set.bridges, context.texts, detections=context.detections, **shared)
     wall_set, rooms = join_arcs(wall_set, rooms, context.arc_of)
     trusted = context.source == "pipeline"
@@ -598,10 +603,12 @@ def build_layer(
         raise ValueError(f"fallback_mm_per_px {fallback_mm_per_px} phải dương và hữu hạn")
     size = (width_px, height_px)
     base: Counter[str] = Counter()
-    walls_px, arc_of = explode_arcs(_filtered_walls(walls.walls, size, base))
+    whole = _filtered_walls(walls.walls, size, base)
+    walls_px, arc_of = explode_arcs(whole)
+    first_of = tuple(k for k, arc in enumerate(arc_of) if arc is None or k == 0 or arc_of[k - 1] != arc)
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
-    scale, source, samples, rejected = _resolved_scale(walls_px, texts, fallback_mm_per_px, base)
+    scale, source, samples, rejected = _resolved_scale(whole, texts, fallback_mm_per_px, base)
     noted = _note_scale(walls_px, texts, px_per_paper_mm) if source == "project_default" else None
     if noted is not None:
         scale, source = noted, "pipeline"
@@ -614,7 +621,9 @@ def build_layer(
     suggestions = _suggestions(page, walls_px, detections, texts, final if trusted else None)
     # Tỉ lệ ước từ tường chỉ đúng tầm ±30 %: không dựng `Dimension` từ mẫu "khớp" nó (bước 7).
     attempt_source = source if trusted else "estimate"
-    context = _Attempt(walls_px, detections, texts, samples, rejected, level_id, attempt_source, suggestions, arc_of)
+    context = _Attempt(
+        walls_px, detections, texts, samples, rejected, level_id, attempt_source, suggestions, arc_of, whole, first_of
+    )
     dropped = base.copy()
     layer, dimensions = _attempt(context, scaling=Scaling(build, final), clock=clock, dropped=dropped)
     if build != final:
