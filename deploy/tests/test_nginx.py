@@ -217,6 +217,19 @@ def test_nginx_ml_model_versions_location_body_size() -> None:
         assert buffering == [["off"]], f"{path}: model-versions thiếu proxy_request_buffering off"
 
 
+def test_nginx_lighting_bakes_location_body_size() -> None:
+    """N42 `POST /api/projects/{p}/lighting-bakes`: `client_max_body_size 128m` và
+    `proxy_request_buffering off` (GLB thô của editor, LB-01)."""
+    files = _all_nginx_files()
+    matches = _locations_matching(files, lambda loc: loc.args == ["~", "^/api/projects/[^/]+/lighting-bakes$"])
+    assert matches, "không tìm thấy location ~ ^/api/projects/[^/]+/lighting-bakes$"
+    for path, loc in matches:
+        sizes = [n.args for n in loc.children if n.directive == "client_max_body_size"]
+        assert sizes == [["128m"]], f"{path}: lighting-bakes thiếu client_max_body_size 128m"
+        buffering = [n.args for n in loc.children if n.directive == "proxy_request_buffering"]
+        assert buffering == [["off"]], f"{path}: lighting-bakes thiếu proxy_request_buffering off"
+
+
 def test_nginx_streams_location_sse_tuning() -> None:
     """`/api/streams/`: tắt buffer/cache, ép HTTP/1.1, bỏ `Connection`, đọc 1h (SSE)."""
     files = _all_nginx_files()

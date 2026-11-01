@@ -288,6 +288,33 @@ services:
               count: 1
               capabilities: ["gpu"]
 
+  # LB-01: worker + Blender (ảnh `bake`), chỉ nghe hàng `bake`, một lượt mỗi lúc — Cycles ăn
+  # gần hết RAM/VRAM. Cùng env với worker (cần DB + kho); /tmp là volume (GLB + ảnh tạm).
+  bake:
+    logging: *logging
+    command: ["celery", "-A", "apps.worker.celery_main", "worker", "-Q", "bake", "--concurrency", "1"]
+    init: true
+    mem_limit: 8g
+    environment: *app-env
+    volumes:
+      - bake-tmp:/tmp
+    networks:
+      - appback
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A apps.worker.celery_main inspect ping -d celery@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 8s
+      retries: 10
+      start_period: 60s
+      start_interval: 5s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
+
   web:
     logging: *logging
     environment:

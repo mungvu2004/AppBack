@@ -400,3 +400,33 @@ def test_dockerfile_api_runs_api_workers_uvicorn_processes() -> None:
     assert re.search(r"^ENV API_WORKERS=4 DB_POOL_SIZE=5 DB_MAX_OVERFLOW=3$", text, re.MULTILINE), (
         "api: thiếu ENV mặc định API_WORKERS/DB_POOL_SIZE/DB_MAX_OVERFLOW"
     )
+
+
+def test_dockerfile_worker_bake_stage_pins_blender_and_default_target_is_worker() -> None:
+    """LB-01: `worker.Dockerfile` có tầng `bake` FROM `runtime`, tải Blender 4.5 ghim bản và
+    kiểm `sha256sum -c`, đặt `BLENDER_BIN` + NVIDIA caps có `graphics`; tầng cuối (mục tiêu
+    mặc định) vẫn là ảnh worker thường tên `worker`, không chứa Blender."""
+    stages, instructions = _load("worker")
+    by_name = {s.name: s for s in stages if s.name}
+    assert "bake" in by_name, "worker: thiếu tầng bake"
+    assert by_name["bake"].base == "runtime", "worker: tầng bake phải FROM runtime"
+    final = (stages[-1].name, stages[-1].base)
+    assert final == ("worker", "runtime"), "worker: tầng cuối phải là FROM runtime AS worker"
+    bake = [i for i in instructions if i.stage == by_name["bake"].index]
+    assert "blender" in by_name, "worker: thiếu tầng tải blender"
+    fetch = [i for i in instructions if i.stage == by_name["blender"].index]
+    run_text = " ".join(i.args for i in fetch if i.name == "RUN")
+    assert "download.blender.org/release/Blender4.5/" in run_text, "worker/blender: thiếu tải Blender 4.5"
+    assert "sha256sum -c" in run_text, "worker/blender: thiếu kiểm sha256"
+    assert any(i.name == "COPY" and "--from=blender" in i.args for i in bake), "worker/bake: thiếu COPY --from=blender"
+    assert any(re.fullmatch(r"BLENDER_SHA256=[0-9a-f]{64}", i.args) for i in fetch if i.name == "ARG"), (
+        "worker/bake: thiếu ARG BLENDER_SHA256 ghim 64 hex"
+    )
+    env_text = " ".join(i.args for i in bake if i.name == "ENV")
+    assert "BLENDER_BIN=/opt/blender/blender" in env_text, "worker/bake: thiếu BLENDER_BIN"
+    assert "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics" in env_text, "worker/bake: thiếu NVIDIA caps"
+    users = [i.args for i in bake if i.name == "USER"]
+    assert users, "worker/bake: USER cuối phải là 10001"
+    assert _USER_RE.match(users[-1]), "worker/bake: USER cuối phải là 10001"
+    last = last_stage_instructions(instructions, stages)
+    assert not any("blender" in i.args.lower() for i in last), "worker: tầng cuối không được có Blender"

@@ -74,7 +74,7 @@ def test_boundary_tests__do_not_copy_blocked_tuple() -> None:
 
 
 def test_infra_ops__equal_h1_exempt() -> None:
-    """`case_gate.INFRA_OPS` và `H1_EXEMPT` của hợp đồng FE là cùng một danh sách ba op (NO-222)."""
+    """`case_gate.INFRA_OPS` và `H1_EXEMPT` của hợp đồng FE là cùng một danh sách op (NO-222)."""
     from tools.case_gate import INFRA_OPS
 
     assert INFRA_OPS == H1_EXEMPT

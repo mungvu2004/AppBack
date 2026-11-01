@@ -229,7 +229,7 @@ def test_compose_ml_services_are_hardened(env: str) -> None:
 
 
 _PROD_ONE_SHOT_SERVICES = {"migrate", "minio-init"}
-_APP_IMAGE_SERVICES = {"api", "worker", "beat", "ml", "ml-train", "ml-gpu", "web"}
+_APP_IMAGE_SERVICES = {"api", "worker", "beat", "ml", "ml-train", "ml-gpu", "bake", "web"}
 _PROD_IMAGE_TAG_RE = re.compile(r":\$\{IMAGE_TAG(:[?-][^}]*)?\}$")
 _APPBACK_ENV_FILE = "/etc/appback/appback.env"
 _ML_ENV_FILE = "/etc/appback/ml.env"
@@ -515,3 +515,25 @@ def test_compose_api_runs_several_workers_with_small_db_pools() -> None:
         assert api_env.get("API_WORKERS") == "${API_WORKERS:-4}", f"{env}: api thiếu API_WORKERS"
         assert api_env.get("DB_POOL_SIZE") == "${API_DB_POOL_SIZE:-5}", f"{env}: api thiếu DB_POOL_SIZE"
         assert api_env.get("DB_MAX_OVERFLOW") == "${API_DB_MAX_OVERFLOW:-3}", f"{env}: api thiếu DB_MAX_OVERFLOW"
+
+
+@pytest.mark.parametrize("env", ENVS)
+def test_compose_bake_service_gated_single_gpu_worker(env: str) -> None:
+    """LB-01 `bake`: chỉ chạy dưới `profiles: [bake]`, ảnh `appback-bake`, nghe đúng hàng
+    `bake` với `--concurrency 1`, `init: true`, `mem_limit`, volume đích `/tmp`, cùng env app
+    với `worker` (cần DB + kho) và đặt GPU nvidia như `ml-gpu`."""
+    services = _resolved_services(env)
+    bake = services["bake"]
+    assert bake.get("profiles") == ["bake"], f"{env}/bake: profiles phải là [bake]"
+    assert "appback-bake:" in str(bake.get("image", "")), f"{env}/bake: image phải là appback-bake"
+    cmd = _cmd_text(bake.get("command"))
+    assert "-Q bake --concurrency 1" in cmd, f"{env}/bake: lệnh phải nghe -Q bake --concurrency 1"
+    assert bake.get("init") is True, f"{env}/bake: thiếu init: true"
+    assert bake.get("mem_limit"), f"{env}/bake: thiếu mem_limit"
+    assert "/tmp" in _volume_targets(bake.get("volumes")), f"{env}/bake: thiếu volume đích /tmp"  # noqa: S108
+    assert bake["environment"].get("DATABASE_URL") == services["worker"]["environment"].get("DATABASE_URL")
+    gpu = {"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}
+    devices = ((bake.get("deploy") or {}).get("resources") or {}).get("reservations", {}).get("devices")
+    assert devices == [gpu], f"{env}/bake: thiếu đặt GPU nvidia như ml-gpu"
+    if env == "dev":
+        assert bake["build"].get("target") == "bake", "dev/bake: build.target phải là bake"

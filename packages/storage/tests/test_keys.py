@@ -16,6 +16,7 @@ USER = "usr_01ARZ3NDEKTSV4RRFFQ69G5FDY"
 ULID = "01ARZ3NDEKTSV4RRFFQ69G5FEZ"
 MODEL = "mdl_01ARZ3NDEKTSV4RRFFQ69G5FGA"
 DATASET_VERSION = "dsv_01ARZ3NDEKTSV4RRFFQ69G5FHB"
+BAKE = "bak_01ARZ3NDEKTSV4RRFFQ69G5FJC"
 
 
 def test_keys_follow_charter_layout() -> None:
@@ -217,3 +218,17 @@ def test_dataset_version_prefix__is_the_prefix_of_every_dataset_object() -> None
     assert keys.dataset_object(DATASET_VERSION, "train/s1/image.png").startswith(prefix)
     with pytest.raises(ValueError, match="dsv_"):
         keys.dataset_version_prefix(MODEL)
+
+
+def test_lighting_bake_object__lives_under_its_prefix_inside_the_project() -> None:
+    """Khoá bake ánh sáng: `projects/{prj}/lighting-bakes/{bak}/{name}`; id hay tên sai luật → `ValueError`."""
+    prefix = keys.lighting_bake_prefix(PROJECT, BAKE)
+    assert prefix == f"projects/{PROJECT}/lighting-bakes/{BAKE}/"
+    assert prefix.startswith(keys.project_prefix(PROJECT))
+    assert keys.lighting_bake_object(PROJECT, BAKE, "baked.glb") == f"{prefix}baked.glb"
+    with pytest.raises(ValueError, match="bak_"):
+        keys.lighting_bake_prefix(PROJECT, MODEL)
+    with pytest.raises(ValueError, match="prj_"):
+        keys.lighting_bake_object(UPLOAD, BAKE, "baked.glb")
+    with pytest.raises(ValueError, match="tên object"):
+        keys.lighting_bake_object(PROJECT, BAKE, "a/b.glb")

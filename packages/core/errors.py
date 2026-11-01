@@ -38,6 +38,7 @@ RESOURCES: Final = frozenset(
         "modelFamily",
         "modelVersion",
         "dataset",
+        "lightingBake",
         "datasetVersion",
         "trainingJob",
         "notification",
