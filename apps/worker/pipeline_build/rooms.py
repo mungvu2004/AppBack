@@ -14,8 +14,10 @@ from shapely.ops import split
 
 from apps.worker.pipeline_build.constants import (
     MIN_ROOM_AREA_M2,
+    ROOM_GAP_ALIGNED_COS,
     ROOM_GAP_CLOSE_MIN_COS,
     ROOM_GAP_CLOSE_MM,
+    ROOM_GAP_EVIDENCE_MM,
     ROOM_SNAP_MM,
 )
 from apps.worker.pipeline_build.geometry import Geoms, Scaling
@@ -123,12 +125,20 @@ def _extend(wall: Wall, amount: float) -> shapely.LineString:
     )
 
 
-def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
-    """Đoạn nối khe góc/chữ T không có hộp ô mở (BUG-IT-008), để khép phòng; tường không đổi.
+def _gap_closers(
+    walls: Sequence[Wall],
+    bridges: Sequence[tuple[Point, Point]],
+) -> list[shapely.LineString]:
+    """Đoạn nối khe góc/chữ T (BUG-IT-008), để khép phòng; tường không đổi.
 
     Đầu tường tự do = không chạm tim tường khác hay `bridges` trong `ROOM_SNAP_MM`. Mỗi đầu tự do nối tới điểm gần nhất
-    trên tim tường khác cách ≤ `ROOM_GAP_CLOSE_MM`, lệch hướng ra của đầu tường không quá `ROOM_GAP_CLOSE_MIN_COS`;
-    bỏ đoạn cắt tim tường/`bridges` khác, giữ đoạn ngắn nhất. Tra theo
+    trên tim tường khác, lệch hướng ra của đầu tường không quá `ROOM_GAP_CLOSE_MIN_COS`; bỏ đoạn cắt tim tường/`bridges`
+    khác, giữ đoạn ngắn nhất. Khe ≤ `ROOM_GAP_CLOSE_MM` luôn khép; dài hơn tới `ROOM_GAP_EVIDENCE_MM` chỉ khép khi có
+    bằng chứng (QT-ROOMS2, B9): hai tường thẳng hàng — đoạn nối dọc tường (`ROOM_GAP_ALIGNED_COS`), tường đích song
+    song, chân đoạn ở đầu tường đích và lệch ngang ≤ `ROOM_SNAP_MM` (vách so le hai bên khe cửa không tính,
+    OPEN-ATTACH); không quá nửa đoạn sát tim tường khác. Khe có hộp ô mở đã do `_door_closers` khép. Ngưỡng mm
+    cố định làm số phòng lệ thuộc tỉ lệ: ch-09 ở 14,32 mm/px khép 4 khe 1,1-1,2 m, ở tỉ lệ đúng 24,66 các khe đó
+    thành 1,9-2,1 m. Tra theo
     lô bằng `STRtree` (không O(n²), trần B5-01 20 000 tường); đoạn chọn lố 1 mm qua tim đích để `unary_union` cắt nút.
     """
     if len(walls) < 2:
@@ -145,7 +155,9 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     touching = np.zeros(len(tips), dtype=np.bool_)
     touching[tip_idx[near != owner[tip_idx]]] = True
     free = np.flatnonzero(~touching)
-    free_idx, target = shapely.STRtree(centrelines).query(tips[free], predicate="dwithin", distance=ROOM_GAP_CLOSE_MM)
+    free_idx, target = shapely.STRtree(centrelines).query(
+        tips[free], predicate="dwithin", distance=ROOM_GAP_EVIDENCE_MM
+    )
     tip = free[free_idx]
     other = target != owner[tip]
     tip, target = tip[other], target[other]
@@ -162,8 +174,21 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     seg_idx, blocker = obstacle_tree.query(trimmed, predicate="intersects")
     outward = np.concatenate([starts - ends, ends - starts])[tip]
     outward /= np.hypot(*outward.T)[:, None]
-    blocked = np.einsum("ij,ij->i", unit, outward) < ROOM_GAP_CLOSE_MIN_COS
+    along = np.einsum("ij,ij->i", unit, outward)
+    blocked = along < ROOM_GAP_CLOSE_MIN_COS
     blocked[seg_idx[blocker != target[seg_idx]]] = True
+    direction = (ends - starts) / np.hypot(*(ends - starts).T)[:, None]
+    parallel = np.abs(np.einsum("ij,ij->i", direction[owner[tip]], direction[target])) >= ROOM_GAP_ALIGNED_COS
+    foot_at_end = np.minimum(np.hypot(*(foot - starts[target]).T), np.hypot(*(foot - ends[target]).T)) <= ROOM_SNAP_MM
+    own = direction[owner[tip]]
+    lateral = np.abs(own[:, 0] * (foot - head)[:, 1] - own[:, 1] * (foot - head)[:, 0]) <= ROOM_SNAP_MM
+    evidence = (along >= ROOM_GAP_ALIGNED_COS) & parallel & foot_at_end & lateral
+    long_gap = length > ROOM_GAP_CLOSE_MM
+    blocked |= long_gap & ~evidence
+    for k in np.flatnonzero(long_gap & ~blocked):  # khe dài chạy dọc tường khác quá nửa: mép vách, không phải khe
+        near = obstacle_tree.query(trimmed[k], predicate="dwithin", distance=ROOM_SNAP_MM)
+        walled = shapely.union_all(obstacles[near[near != owner[tip[k]]]]).buffer(ROOM_SNAP_MM)
+        blocked[k] = trimmed[k].intersection(walled).length > length[k] / 2
     valid = np.flatnonzero(~blocked)
     order = valid[np.lexsort((length[valid], tip[valid]))]
     _, first = np.unique(tip[order], return_index=True)
@@ -571,6 +596,42 @@ def _fixture_labels(
     return labels
 
 
+_NAME_TRUST = {"text": 1.0, "inferred": 0.6, "none": 0.4}
+"""B12: tên từ nhãn chữ 1,0; suy từ đồ đạc / lô gia rìa 0,6; không tên 0,4."""
+_MIN_WALLED_FACTOR = 0.5
+_UNTRUSTED_SCALE_FACTOR = 0.7
+
+
+def room_confidence(source: str, gap_share: float, *, scale_trusted: bool) -> float:
+    """Tin cậy phòng (B12) = tích nguồn tên, max(0,5; 1 - `gap_share`), 1 hay 0,7 theo tỉ lệ, làm tròn 2 số."""
+    factor = max(_MIN_WALLED_FACTOR, 1.0 - gap_share)
+    return round(_NAME_TRUST[source] * factor * (1.0 if scale_trusted else _UNTRUSTED_SCALE_FACTOR), 2)
+
+
+def _walled_shares(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[float]:
+    """Phần chu vi mỗi `outline` nằm sát tường (≤ nửa bề dày + `ROOM_SNAP_MM` quanh tim); phần còn lại là khe đã nối.
+
+    Thân tường tra bằng `STRtree` theo từng phòng (K18: không O(n²)).
+    """
+    bodies = [
+        shapely.LineString(
+            [(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)]
+        ).buffer(w.thickness_mm / 2 + ROOM_SNAP_MM)
+        for w in walls
+    ]
+    tree = shapely.STRtree(bodies)
+    shares: list[float] = []
+    for outline in outlines:
+        ring = shapely.LinearRing([(p.x, p.y) for p in outline]) if len(outline) >= 3 else None
+        if ring is None or ring.length == 0:
+            shares.append(0.0)
+            continue
+        near = [bodies[int(i)] for i in tree.query(ring, predicate="intersects")]
+        covered = ring.intersection(shapely.union_all(near)).length if near else 0.0
+        shares.append(min(1.0, covered / ring.length))
+    return shares
+
+
 def build_rooms(
     walls: Sequence[Wall],
     bridges: Sequence[tuple[Point, Point]],
@@ -581,12 +642,17 @@ def build_rooms(
     scaling: Scaling,
     clock: Clock,
     dropped: Counter[str],
+    scale_trusted: bool | None = None,
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
     Tên: nhãn chữ trong phòng, không có thì suy từ đồ đạc (`_fixture_labels`). Mảnh dưới `MIN_ROOM_AREA_M2` →
     `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE
     `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
+
+    Tin cậy (B12): tích nguồn tên (`_NAME_TRUST`), 1 - phần chu vi không sát tường (kẹp ≥ `_MIN_WALLED_FACTOR`),
+    (1 nếu tỉ lệ đáng tin, `_UNTRUSTED_SCALE_FACTOR` nếu không). `scale_trusted=None` → tin khi `scaling.build ==
+    scaling.final` (tỉ lệ đoán `project_default` dựng ở tỉ lệ khác).
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
@@ -605,7 +671,6 @@ def build_rooms(
     kept.sort(key=lambda item: (min(p.y for p in item[0]), min(p.x for p in item[0])))
     outlines = [outline for outline, _ in kept]
     wall_ids = _wall_id_lists(walls, outlines)
-    wall_by_id = {wall.id: wall for wall in walls}
     from_text = _room_labels(outlines, texts, parsed, centres)
     from_fixtures = _fixture_labels(outlines, [area for _, area in kept], detections, scaling)
     loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
@@ -613,9 +678,15 @@ def build_rooms(
     labels = name_rooms(
         [text or rim or fixture for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)]
     )
+    sources = [
+        "text" if text else "inferred" if rim or fixture else "none"
+        for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)
+    ]
+    trusted = scaling.build == scaling.final if scale_trusted is None else scale_trusted
+    walled = _walled_shares(walls, outlines)
     rooms = []
-    for (outline, area_m2), ids, label in zip(kept, wall_ids, labels, strict=True):
-        confidences = [wall_by_id[i].confidence for i in ids]
+    for (outline, area_m2), ids, label, source, share in zip(kept, wall_ids, labels, sources, walled, strict=True):
+        confidence = room_confidence(source, 1.0 - share, scale_trusted=trusted) if ids else LOW_CONFIDENCE_CAP
         rooms.append(
             Room(
                 id=new_spatial_id("room", clock),
@@ -625,7 +696,7 @@ def build_rooms(
                 outline=tuple(outline),
                 area_m2=area_m2,
                 wall_ids=ids,
-                confidence=min(confidences) if confidences else LOW_CONFIDENCE_CAP,
+                confidence=confidence,
                 source="ai",
                 reviewed=False,
             )
