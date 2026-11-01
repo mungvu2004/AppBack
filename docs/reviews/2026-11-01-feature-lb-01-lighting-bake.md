@@ -56,3 +56,55 @@ Dừng sớm theo §2: commit sửa `docs/charter/*` cùng mã mà không có `C
 2. Nâng độ phủ nhánh `apps/worker/lighting_bake` ≥ 90 % bằng các test nêu ở B; gộp `origin/main` mới (PERF-11, `gate_lock.sh`) rồi chạy `bash tools/verify/run.sh verify` đầy đủ, mã thoát 0 cả 8 bước (lượt 2 chạm điều kiện "đầy đủ" vì có mã và charter mới).
 3. Nên làm cùng lượt (không chặn): finding 2, 3, 8; ghi 4–7 làm nợ trong `changes/LB-01.md` (repo không còn `DEBT.md`).
 4. Sau khi merge, người điều phối chạy `run.sh openapi` và cập nhật `docs/contracts/openapi.json` (N42–N44).
+
+---
+
+# Lượt 2 — `feature/lb-01-lighting-bake-2` → main
+
+- Ngày: 2026-11-01 · Reviewer: phiên /merge-review (agent độc lập, lượt 2) · Commit đầu nhánh: e4934a31b8dd (đã có `origin/main` 1bdf093b, gồm PERF-11)
+- Cổng: phạm vi **đầy đủ** — nhánh dựng lại mang toàn bộ tính năng (~2400 dòng, charter mới) và lượt 1 chưa có cổng đầy đủ xanh (R-33b). `bash tools/verify/run.sh verify` chạy từ worktree tại e4934a31: **mã thoát 0**, 11 phút 18 giây (19:13:30 → 19:24:48; log `F:/runs/lighting-bake/review2-full.log`; log cổng `.cache/src-out/verify/20261101T121335Z-e4934a31b8dd.log`, SHA khớp HEAD). Bước 0–8 đều **đạt**: pytest 9425 passed (9 phút 50 giây); 5b perf 1 test + `case_gate` đạt (N42 miễn C16 có lý do ở `apps/api/lighting_bake/cases.toml:9`); 6 migrate_check đạt (một head, lên/xuống/lên lại); 7 H1/H3/H4/H5 đạt với AppFront @ 45b6874c (lỗi `invalid_enum_value` của `lighting_bake_read_latest/C08-1` lượt trước đã hết); 8 openapi xuất được. Trước khi chạy: C: còn 98,0 GB, không có `web-ctx-*`; `f14-ml-1` dừng trong lúc chạy rồi bật lại; cổng dùng Postgres/Redis/MinIO của f14 (PERF-10).
+- Độ phủ: tổng dòng 99,41 % · nhánh 97,61 % | `apps/worker/lighting_bake` **100 / 100** · `apps/api/lighting_bake` 98,51 / 100 · `apps/api/core` 99,92 / 99,67 · `packages/core` 100 / 100 · `packages/db` 97,52 / 95,90 · `packages/messaging` 100 / 100 · `packages/storage` 99,68 / 98,61 · `packages/testing` 99,44 / 98,37 · `tools` 98,76 / 96,52 | tập file bị chạm 99,39 / 98,44.
+
+## Phạm vi và điều kiện dừng sớm
+
+- Cây sạch, HEAD = `origin/feature/lb-01-lighting-bake-2`. 7 commit không merge + 1 merge `origin/main`; mọi commit đúng mẫu Conventional Commits, có `Prompt: LB-01`. 58 file, +2753/−22. Có `changes/LB-01.md`.
+- **Finding A lượt 1 — đã xử lý.** `249b7c29 docs(charter)` chỉ chạm `docs/charter/BE-00.md`, `BE-BIND.md`, `HOP-DONG-MOI.md` và `changes/LB-01.md` (không `.py`, không `tools/**`), trailer `Charter-Approved: changes/LB-01.md (người dùng duyệt 2026-11-01)`; `changes/LB-01.md:11` ghi phạm vi duyệt. Tự kiểm: patch charter của `249b7c29` **trùng từng byte** patch charter của nhánh cũ (`git diff 7e630484 origin/feature/lb-01-lighting-bake -- docs/charter` = `git show 249b7c29 -- docs/charter`); `git diff origin/main HEAD -- docs/charter` cũng trùng, không commit nào khác chạm charter. Nội dung chỉ gồm đúng các mục đã liệt kê cho người dùng: W4 `bak_`, §7 hàng `bake`, §8 khoá `lighting-bakes`, §11 trần N42 128 MiB, §12 miễn H1 N44, BE-BIND N42–N44 + 49+2+46, HOP-DONG-MOI §11. Bản duyệt là câu "Duyệt charter" trong chat của người dùng với người điều phối (reviewer không đọc được chat; căn cứ là ghi nhận ở `changes/LB-01.md:11` và xác nhận của người điều phối). `tools/contract/check.py` (`H1_EXEMPT`) và `tools/case_gate.py` (`INFRA_OPS`) nay có căn cứ §12.
+- Tách giữ nguyên nội dung: tự so patch `f14f478c..2d6ed73b` với patch nhánh cũ `7e630484..origin/feature/lb-01-lighting-bake` (trừ `APPFRONT_SHA`): chỉ khác tệp review lượt 1 (vào sau ở `9bff3bf7`) và dòng ghi duyệt charter. Khớp `F:/runs/lighting-bake/split-evidence.txt`.
+- `tools/contract/APPFRONT_SHA` = 45b6874c, commit `chore(contract)` riêng (`2d6ed73b`, `e4934a31`; Nit 12 lượt 1 xong). 45b6874c ở `origin/master` AppFront và là hậu duệ của 7552b6d2 (ghim của `main`); chấp nhận như lượt 1.
+- Không `pragma: no cover/branch`, không `# noqa` trần, không skip/xfail mới, không hạ ngưỡng. Một `# type: ignore[attr-defined]` có mã và lý do (`test_smoke.py`, có từ lượt 1). Không chạm `uv.lock`, `pyproject.toml`, `openapi.json`, `tools/verify/*`.
+
+## Soát vòng sửa (`f473e04f`, `fccae620`)
+
+- **B (P1) — đã xử lý.** Test thêm cho `LockLost` (Blender bị giết qua đường huỷ của `_spawn`), `finish` bị lịch quét chốt trước, mọi nhánh từ chối của `_validate`, `on_failed` sau khi dự án bị xoá cứng; Postgres/kho local/Redis thật. Cổng đo `apps/worker/lighting_bake` 100/100.
+- **#2 — đã xử lý.** `_FAIL_STALLED … RETURNING id, project_id`; sau commit xoá `lighting_bake_prefix` của từng lượt bị chốt; `sweep_lighting_bakes` nhập trễ `create_storage` (giữ ranh giới import, bước 4 đạt). Test J01 khẳng định object lượt bị chốt mất, lượt còn chạy giữ.
+- **#3 — đã xử lý.** `claim` đặt `started_at = :now` mỗi lần nhận; test `test_sweep_spares_a_retry_whose_first_attempt_is_old`. Worker chết không ai nhận lại thì mốc đứng yên, lịch quét vẫn bắt.
+- **#8 — đã xử lý.** Test IDOR N44 liên dự án (object đặt cả dưới tiền tố B, chỉ bộ lọc `project_id` chặn) → 404; N42 vượt trần `storage.put` → 413, không dòng, không object.
+- **#4–#7** ghi nợ NO-LB-4..7 trong `changes/LB-01.md` (repo không còn `DEBT.md`), có hướng xử lý cụ thể; đều P3, không chặn.
+
+## Finding (lượt 2)
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 1 | P2 | MNT-05 | Như lượt 1: ~1250 dòng ngoài test > 400, một lát dọc liên thông — chấp nhận, không cần làm | toàn nhánh | — |
+| 13 | P3 | RES | Vòng xoá object sau commit của lịch quét không bọc lỗi: một `delete_prefix` ném (MinIO chập chờn) thì các lượt bị chốt còn lại trong cùng mẻ không được xoá và task báo lỗi; DB đã commit nên lượt sau không chọn lại chúng → object nằm tới khi dự án bị xoá | `apps/api/lighting_bake/jobs.py:100-102` | Bắt lỗi từng lượt, log `lighting_bake_stalled_cleanup_failed` rồi đi tiếp (như cách `fail_lighting_bake` dọn sau commit); hoặc ghi vào NO-LB nợ |
+| 14 | Nit | TEST | Test mất khoá dựa thời gian thật (gia hạn 50 ms, `sleep(0.5)`), có trần `wait_for(30)` nên không treo; máy chậm có thể làm lặp bấp bênh | `apps/worker/lighting_bake/tests/test_tasks.py:213`, `:221` | Chờ sự kiện (Blender giả báo đã chạy) thay vì `sleep(0.5)` |
+| 9–11 | Nit | — | Nit 9 (`IntegrityError` → 409 cả khi FK), 10 (`bake_glb.bpy:3` ghi `.py`, `samples=512`; `:182` `open` không đóng), 11 (`GPU_LOCK_NAME` khai lại) của lượt 1 vẫn còn | `service.py:85-88`; `bake_glb.bpy:3,182`; `tasks.py:61` | Không chặn; làm khi chạm lại |
+
+Ghi nhận (không phải finding): `docs/contracts/openapi.json` chưa có N42–N44 — theo BE-00 bước 8, người điều phối chạy `run.sh openapi` và chép vào trong chính lần gộp.
+
+## Điểm
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 4,5 | 1,125 |
+| CON | 15% | 5 | 0,75 |
+| LOG | 15% | 4,5 | 0,675 |
+| PERF | 10% | 5 | 0,50 |
+| RES | 10% | 4 | 0,40 |
+| DB/API | 10% | 4,5 | 0,45 |
+| TEST | 7% | 4,5 | 0,315 |
+| OBS/OPS | 5% | 4 | 0,20 |
+| MNT | 3% | 4 | 0,12 |
+Tổng: 4,54 / 5
+
+## PHÁN QUYẾT LƯỢT 2: APPROVE
+
+Cả hai lý do chặn của lượt 1 đã xử lý và tự kiểm được: commit charter tách riêng, chỉ tài liệu, mang `Charter-Approved:` trỏ tới ghi nhận duyệt, nội dung trùng byte bản đã đưa người dùng duyệt (A); cổng đầy đủ mã thoát 0 cả 8 bước, `apps/worker/lighting_bake` 100/100 (B). Không P0/P1; P2 duy nhất (MNT-05) đã chấp nhận; P3 #13 và các Nit không chặn. Khi gộp: người điều phối cập nhật `docs/contracts/openapi.json` (N42–N44) bằng `run.sh openapi`; nên ghi P3 #13 thành NO-LB-8 nếu không sửa ngay.
