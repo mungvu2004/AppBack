@@ -34,6 +34,9 @@ _TICK_HIT: Final = 0.7
 """Cột là vạch khi >= 70 % số hàng dò có mực."""
 _THIN_TICK_PX: Final = 4
 """Nhóm cột vạch mảnh: nét 1 hay 2 px sau khi nở ±1 px còn <= 4 cột."""
+_CROSS_REACH: Final = 3
+"""Nét đứng kéo dài >= 3 lần tầm dò vạch về cả hai phía là đường dóng cắt xuyên (trục, chuỗi khác);
+phần thò của đường dóng thường qua vạch chỉ ngắn, không tính (đo ch-01..14: 2 lần làm hỏng nhiều đoạn hơn)."""
 _VERTICAL_RATIO: Final = 1.3
 """Hộp cao hơn 1,3 lần rộng là chữ dọc (chuỗi kích thước đứng)."""
 _MIN_SPAN_WIDTHS: Final = 1.0
@@ -55,7 +58,10 @@ def ink_mask(gray: NDArray[np.uint8]) -> Ink:
 def _line_row(ink: Ink, box: tuple[float, float, float, float]) -> int | None:
     """Hàng của đường kích thước nằm ngang sát chữ; nhiều hàng đạt thì lấy hàng gần hộp chữ nhất, rồi phủ nhiều nhất.
 
-    Gần trước phủ sau: mép tường đậm phủ kín hàng nhưng nằm xa chữ hơn đường kích thước nhạt.
+    Gần trước phủ sau: mép tường đậm phủ kín hàng nhưng nằm xa chữ hơn đường kích thước nhạt; hoà thì
+    hàng tự phủ nhiều nhất (tim nét, không phải hàng kề).
+    Hàng trong hộp chữ cũng xét (khoảng cách 0): hộp OCR hay dư xuống dưới chân chữ, đường mà chữ
+    đứng lên nằm trong hộp; nét chữ một mình không phủ nổi 85 % đoạn rộng hơn chữ 2h.
     """
     x0, y0, x1, y1 = box
     height, width = ink.shape
@@ -63,15 +69,13 @@ def _line_row(ink: Ink, box: tuple[float, float, float, float]) -> int | None:
     a, b = max(0, int(x0 - h)), min(width, int(x1 + h))
     if b <= a:
         return None
-    best: tuple[float, float, int] | None = None
+    best: tuple[float, float, float, int] | None = None
     for y in range(max(1, int(y0 - _SEARCH_ABOVE * h)), min(height - 1, int(y1 + _SEARCH_BELOW * h))):
-        if y0 + _BODY_MARGIN * h < y < y1 - _BODY_MARGIN * h:
-            continue
         cover = float(ink[y - 1 : y + 2, a:b].any(axis=0).mean())
         if cover >= _LINE_COVER:
-            key = (-max(y0 - y, y - y1, 0.0), cover, y)
+            key = (-max(y0 - y, y - y1, 0.0), cover, float(ink[y, a:b].mean()), y)
             best = key if best is None or key > best else best
-    return None if best is None else best[2]
+    return None if best is None else best[3]
 
 
 def _line_extent(ink: Ink, y: int, cx: int) -> tuple[int, int]:
@@ -105,6 +109,9 @@ def _ticks(near: Ink, y: int, extent: tuple[int, int], reach: int, text: tuple[f
     Cột nằm trong thân chữ `text = (x_min, x_max)` không bao giờ là vạch (nét chữ đứng sát đường).
     Nét đứng chỉ lấy ở phía có nhiều nhóm mảnh hơn: vạch giới hạn của một chuỗi cùng kéo về phía
     căn hộ, phía kia chỉ có nét chữ, đồ đạc, thành khối dày.
+    Nét đứng đi ra CẢ HAI phía xa `_CROSS_REACH · reach` là đường dóng của chuỗi khác (trục, chuỗi
+    trong) cắt xuyên qua đường, không phải đầu đoạn của đường này: bỏ, trừ khi nằm ở đầu đường
+    (cách đầu extent <= `reach`) — đường dừng ở đó nên nó là vạch đầu đoạn (chuỗi tổng trục đầu - cuối).
     """
     height, width = near.shape
     left, right = extent
@@ -129,7 +136,12 @@ def _ticks(near: Ink, y: int, extent: tuple[int, int], reach: int, text: tuple[f
     falling = count([hits(-1, -1, d) & hits(1, 1, d) for d in depths])
     slash = (np.maximum(rising, falling) >= hit) & outside
     side = up if _thin_count(cols[up]) > _thin_count(cols[down]) else down
-    return [sum(g) / len(g) for g in _groups(cols[side | slash])]
+    far = range(2, _CROSS_REACH * reach + 1)
+    through = (count([hits(-1, 0, d) for d in far]) >= _TICK_HIT * len(far)) & (
+        count([hits(1, 0, d) for d in far]) >= _TICK_HIT * len(far)
+    )
+    crossing = through & (cols > left + reach) & (cols < right - reach)
+    return [sum(g) / len(g) for g in _groups(cols[(side | slash) & ~crossing])]
 
 
 def _groups(columns: NDArray[np.int64]) -> list[list[int]]:
