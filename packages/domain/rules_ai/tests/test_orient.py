@@ -74,6 +74,11 @@ def test_other_huggers__corner_take_the_nearer_wall() -> None:
     assert machine.rotation_deg == 270
 
 
+def test_bare_other__backs_onto_the_wall() -> None:
+    (stove,) = _run(_item(1, "other", (3000, 4950, 3600, 5550)), walls=(wall(3, (0, 6000), (6000, 6000)),))
+    assert stove.rotation_deg == 180
+
+
 def test_sofa__ignores_tables_and_backs_onto_the_wall() -> None:
     table = _item(1, "table", (5200, 5000, 5800, 5700))  # ghế thường sẽ quay E vào bàn này
     sofa = _item(2, "chair", (3000, 4950, 5000, 5800), variant="sofa")

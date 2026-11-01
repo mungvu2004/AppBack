@@ -7,7 +7,8 @@ riêng chưa xoay, nên quay 90°/270° thì hoán hai cạnh quanh tâm để h
 Chỉ đụng đồ AI chưa duyệt còn 0°. Ghế quay vào bàn (rồi quầy `kitchenCabinet`) gần nhất trong
 900 mm; không có thì như đồ tựa tường. Đồ tựa tường quay lưng về mặt tường thẳng trục gần nhất
 trong 600 mm; khi cả hai trục đều có tường: giường, bồn cầu tựa cạnh ngắn; dãy tủ, tủ áo, kệ TV,
-lavabo, sofa tựa cạnh dài; còn lại lấy tường gần hơn. Không có tường gần thì giữ 0°.
+lavabo, sofa tựa cạnh dài; còn lại lấy tường gần hơn. `other` chưa có variant cũng tựa tường.
+Không có tường gần thì giữ 0°.
 """
 
 from collections.abc import Callable, Sequence
@@ -137,6 +138,14 @@ def _back_to_wall(item: Furniture, box: BoundingBox, walls: Sequence[Wall]) -> F
     return horizontal[1] if horizontal[0] <= vertical[0] else vertical[1]
 
 
+def _bare_other(item: Furniture) -> bool:
+    """`other` chưa có variant: nhãn bếp, tủ lạnh, tab đầu giường, kệ TV… bộ dò chưa tách, đều kê sát tường.
+
+    Đo trên 14 ca bench: 18 món loại này sai ở 0°; đồ rời (thảm, cây, đèn) luôn có variant.
+    """
+    return item.kind == "other" and item.variant is None
+
+
 def _turned(item: Furniture, facing: Facing) -> Furniture:
     """Món quay về `facing`; 0° thì trả nguyên món, 90°/270° hoán hai cạnh hộp."""
     rotation = _DEG[facing]
@@ -169,7 +178,7 @@ def orient_furniture(
         if item.kind == "chair" and item.variant != "sofa":
             target = _nearest_target(item, tables) or _nearest_target(item, bars)
             facing = _back_to_wall(item, box, walls) if target is None else _toward_table(box, world_box(target))
-        elif item.kind in _HUGGING_KINDS or item.variant in _HUGGING_VARIANTS:
+        elif item.kind in _HUGGING_KINDS or item.variant in _HUGGING_VARIANTS or _bare_other(item):
             facing = _back_to_wall(item, box, walls)
         result.append(item if facing is None else _turned(item, facing))
     return tuple(result)
