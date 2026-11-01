@@ -48,27 +48,25 @@ _KEYS: Final[Mapping[RoomUsage, tuple[str, ...]]] = MappingProxyType(
         "loggia": ("lo gia", "loggia", "ban cong", "loggu"),
     }
 )
-_EN_KEYS: Final[tuple[tuple[tuple[str, ...], RoomUsage], ...]] = tuple(
-    (tuple(key.split()), usage)
-    for key, usage in (
-        ("master bedroom", "bedroom"),
-        ("bedroom", "bedroom"),
-        ("kitchen", "kitchen"),
-        ("dining", "kitchen"),
-        ("living", "livingRoom"),
-        ("lounge", "livingRoom"),
-        ("bathroom", "bathroom"),
-        ("toilet", "bathroom"),
-        ("laundry", "utility"),
-        ("storage", "utility"),
-        ("store", "utility"),
-        ("study", "other"),
-        ("foyer", "corridor"),
-        ("balcony", "loggia"),
-        ("terrace", "loggia"),
-        ("loggia", "loggia"),
-    )
+_EN_NAMES: Final[tuple[tuple[str, RoomUsage], ...]] = (
+    ("master bedroom", "bedroom"),
+    ("bedroom", "bedroom"),
+    ("kitchen", "kitchen"),
+    ("dining", "kitchen"),
+    ("living", "livingRoom"),
+    ("lounge", "livingRoom"),
+    ("bathroom", "bathroom"),
+    ("toilet", "bathroom"),
+    ("laundry", "utility"),
+    ("storage", "utility"),
+    ("store", "utility"),
+    ("study", "other"),
+    ("foyer", "corridor"),
+    ("balcony", "loggia"),
+    ("terrace", "loggia"),
+    ("loggia", "loggia"),
 )
+_EN_KEYS: Final[tuple[tuple[tuple[str, ...], RoomUsage], ...]] = tuple((tuple(key.split()), usage) for key, usage in _EN_NAMES)
 """Tên phòng tiếng Anh (B6): khoá ≥ 5 chữ, chỉ khớp nguyên từ, không khớp gần đúng ("store" không gần "stair")."""
 _TITLE_WORDS: Final = ("plan", "apartment", "m2", "m²")
 _TITLE_MAX_WORDS: Final = 4
