@@ -2,7 +2,7 @@
 # Lệnh cổng thật trên máy Windows (Git Bash). "just verify" trong mọi tài
 # liệu nghĩa là `bash tools/verify/run.sh verify`. BE-01 [6]A.
 #
-# Việc: verify [--steps 1,2,4] | lock | openapi | merge-heads <tên> | shell | gc
+# Việc: verify [--steps 1,2,4] | lock | openapi | merge-heads <tên> | shell | gc | hold -- <lệnh>
 # (`shell` làm trên bản chép /tmp/w, không phải worktree — xem tools/verify/README.md)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
@@ -33,6 +33,28 @@ shift || true
 VERIFY_NAME="$(printf '%s' "$VERIFY_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')"
 export VERIFY_NAME
 
+# `hold -- <lệnh>` (PERF-11): chạy lệnh trên host (dựng ảnh web f14, build nặng…) khi giữ khoá cổng ở chế độ một
+# mình — xếp hàng chung với `verify`, thay vòng chờ "không còn container verify + RAM trống". Một container nhỏ giữ
+# khoá tới khi stdin của nó đóng: lệnh xong, hay `run.sh` bị giết, đều đóng stdin nên khoá nhả. Không cần tar nguồn.
+if [[ "$VERIFY_TASK" == hold ]]; then
+  [[ "${1:-}" == -- ]] && shift
+  (( $# )) || { echo "hold cần lệnh: run.sh hold -- <lệnh>" >&2; exit 1; }
+  coproc HOLDER {
+    docker run --rm -i --name "appback-verify-hold-$VERIFY_NAME-$$" --entrypoint bash \
+      -v appback-work:/work -v "$(win_path "$SCRIPT_DIR"):/gate:ro" appback-verify:local \
+      -c "source /gate/gate_lock.sh && gate_lock x 'hold $VERIFY_NAME' && echo held && cat > /dev/null"
+  }
+  holder_pid=$HOLDER_PID
+  read -r held <&"${HOLDER[0]}" || held=""
+  [[ "$held" == held ]] || { echo "hold: không giữ được khoá cổng" >&2; exit 1; }
+  mark "giữ khoá cổng (hold)"
+  rc=0
+  "$@" || rc=$?
+  eval "exec ${HOLDER[1]}>&-"
+  wait "$holder_pid" || true
+  exit "$rc"
+fi
+
 if [[ -n "${VERIFY_BRANCH:-}" ]]; then
   case "$VERIFY_BRANCH" in
     integration|worker) ;;
@@ -48,7 +70,10 @@ else
 fi
 export VERIFY_BRANCH
 
-merge_base="$(git merge-base HEAD main 2>/dev/null || git rev-parse HEAD)"
+# Gốc so sánh = tổ tiên chung GẦN NHẤT với `main` hoặc `origin/main` (PERF-11): `main` local ở checkout chính hay chậm
+# hơn origin (01/11: 30 commit), nhánh tách từ origin/main khi đó thấy 47 tệp "đổi" thay vì 7 và `--fast` chạy quá nửa
+# bộ test. `merge-base HEAD A B` lấy gốc chung với bản gộp giả của A và B, tức gốc mới hơn trong hai nhánh.
+merge_base="$(git merge-base HEAD main origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || git rev-parse HEAD)"
 VERIFY_CHANGED="$(
   { git diff --name-only "$merge_base" 2>/dev/null; git ls-files --others --exclude-standard; } \
     | sort -u
@@ -238,7 +263,7 @@ case "$VERIFY_TASK" in
     ;;
 
   *)
-    echo "việc lạ: $VERIFY_TASK (verify|lock|openapi|merge-heads|shell|gc)" >&2
+    echo "việc lạ: $VERIFY_TASK (verify|lock|openapi|merge-heads|shell|gc|hold)" >&2
     exit 1
     ;;
 esac
