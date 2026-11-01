@@ -63,3 +63,66 @@ chứng. Lượt cổng đầy đủ của reviewer bị dừng trước khi ch�
 2. Ghi finding 1 (nợ FE: `doorStyle` mồ côi → 422) vào sổ nợ/backlog đang dùng, giao prompt AppFront sửa.
 
 Finding 2–4 không chặn merge, nên xử lý trong lượt sửa kế tiếp. Việc merge thuộc phiên gọi review.
+
+---
+
+# Lượt 2 — review merge feat/editor3d-dot2 → main
+
+- Ngày: 2026-11-01 · Reviewer: phiên /merge-review (agent độc lập, lượt 2) · Commit đầu nhánh: e5ee29e21064
+- Phạm vi: 3 commit sau phán quyết lượt 1 (`5a0db696`): `5176fa5d` (sửa), merge `50fc4226` (`origin/main` = `f14f478c`,
+  PERF-11), `e5ee29e2` (E501 docstring). Diff vòng sửa chỉ chạm `packages/domain/spatial/model.py` (+8/−2) và hai tệp test;
+  không chạm điều kiện (2)–(7) của R-33b. Merge sạch: `git show --remerge-diff 50fc4226` rỗng, `git diff 5176fa5d 50fc4226`
+  trùng đúng `git diff merge-base..f14f478c` (7 tệp PERF-11, không thêm gì lạ). Cây sạch, HEAD = `origin/feat/editor3d-dot2`.
+  Trailer `Prompt: EDITOR3D-DOT2` đọc được bằng `%(trailers:key=Prompt)` ở cả ba commit mới. Không pragma/noqa/type: ignore/skip/xfail.
+- Cổng: phạm vi **đích** (lượt 2, R-33b). Reviewer tự chạy tại e5ee29e21064:
+  - `bash tools/verify/run.sh verify --steps 1,2,3,4` → **mã thoát 0** (log `F:/App/ui-review/editor3d-20261031/log/dot2-review2-steps1234.log`,
+    log cổng `.cache/src-out/verify/20261101T105150Z-e5ee29e21064.log`).
+  - `run.sh shell` + `pytest packages/domain/spatial apps/api/spatial_write apps/api/spatial_read --cov --cov-branch` →
+    **642 passed, mã thoát 0** (log `F:/App/ui-review/editor3d-20261031/log/dot2-review2-pytest.log`).
+  - Bằng chứng thêm (đã kiểm, không chỉ tin): cổng **đầy đủ** của tác giả tại đúng HEAD — tên log do `run.sh` đặt theo
+    `git rev-parse --short=12 HEAD`: `.cache/src-out/verify/20261101T103930Z-e5ee29e21064.log`, 8/8 bước `đạt`, `mã thoát: 0`,
+    bước 5: 9352 passed (hai test đỏ ở lượt 1 nay đạt), bước 7 AppFront @ 25de8d3c đạt, bước 8 openapi đạt. Đáp ứng điều kiện 1 của lượt 1.
+- Độ phủ: tổng không đo (phạm vi đích) — file đổi: `packages/domain/spatial/model.py` 100%/100% (coverage bỏ qua vì phủ đủ);
+  hai tệp test 100%/100%. (Lượt đầy đủ của tác giả ghi: `packages/domain` 100/100, `apps/api/spatial_write` 99,79/97,50,
+  `apps/api/spatial_read` 100/100, tổng 99,41/97,58.)
+
+## Đối chiếu finding lượt 1
+| # lượt 1 | Trạng thái | Bằng chứng |
+|---|---|---|
+| 1 P2 doorStyle mồ côi → 422 | **Đã sửa ở FE, chưa vào master** | AppFront `feat/editor3d-dot2` @ `66fe141a`: `withSlidingStyleChecked` (`objectLayerReviewGateway.ts:977-986`) bọc cả lệnh đổi loại (`:996-1001`) và đổi chiều mở (`:1063-1065`); `OpeningSchema.refine` cùng luật với `Opening._door_style_on_sliding_door` (`spatial.ts:285-288`). Đường sinh `doorStyle` duy nhất còn lại (`toSpatial.ts:299-303`) chỉ gắn khi `swing: 'sliding'`. `66fe141a` **chưa** là tổ tiên `origin/master` của AppFront |
+| 2 P3 dressingOff `[]` | Đã sửa | `model.py:340-344` `AfterValidator(lambda ids: ids or None)` → `[]` lưu như vắng, không tạo `FieldChange`; trần 200 vẫn giữ (`test_model.py:178` 201 id bị từ chối, đạt); test `test_empty_dressing_off_is_absent` |
+| 3 P3 test API doorStyle | Đã sửa (một phần) | `test_routes.py:107-123` khứ hồi `pocket` trên cửa lùa (200 + GET đọc lại) và cửa `left` → 422. Chưa khẳng định phong bì lỗi/`field` — xem finding 1 dưới |
+| 4 P3 trailer | Không sửa commit cũ (chấp nhận, không viết lại lịch sử); commit mới đúng | `%(trailers:key=Prompt)` của `5176fa5d`, `50fc4226`, `e5ee29e2` |
+| 5 Nit id trùng | Giữ nguyên | — |
+
+## Finding
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 1 | P3 | TEST-01 | Ca 422 chỉ khẳng định `status_code`, không khẳng định phong bì lỗi (mã/`field` trỏ `doorStyle`) — một 422 vì lý do khác của thân cũng làm test xanh | `apps/api/spatial_write/tests/test_routes.py:118` | Khi 422 thì assert thêm mã lỗi và trường trong phong bì như các test thân sai C02 khác |
+| 2 | P3 | API / R-27 | Sửa của finding 1 lượt 1 nằm ở AppFront `66fe141a`, chưa merge. Merge BE trước FE vẫn an toàn (chỉ thêm trường tuỳ chọn), nhưng đường QC đổi chiều mở/đổi loại trên cửa lùa âm tường/xếp vẫn 422 cho tới khi FE vào master | AppFront `feat/editor3d-dot2` | Phiên merge gộp FE `feat/editor3d-dot2` ngay sau BE; sau đó nâng `tools/contract/APPFRONT_SHA` lên SHA master có `66fe141a` (commit `chore(contract)` của người điều phối) để bước 7 kiểm H1 bằng schema đã có `refine` |
+| 3 | Nit | LOG-01 | (giữ từ lượt 1) `dressing_off` không chặn id trùng | `packages/domain/spatial/model.py:340` | Tuỳ chọn |
+
+APPFRONT_SHA: giữ `25de8d3c` cho merge này là **đúng**. Vòng sửa không đổi hình dạng hợp đồng: bước 8 openapi đạt (đổi
+kiểu `dressing_off` không đổi JSON schema xuất ra), FE chỉ thêm `refine` (không đổi khoá/kiểu), mẫu `samples.py` không có
+`doorStyle` nên `refine` không làm H1 đổi kết quả. Nâng pin sau khi FE merge là việc nên làm (finding 2), không chặn.
+
+## Điểm
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 5 | 1,25 |
+| CON | 15% | 5 | 0,75 |
+| LOG | 15% | 5 | 0,75 |
+| PERF | 10% | 5 | 0,50 |
+| RES | 10% | 5 | 0,50 |
+| DB/API | 10% | 4 | 0,40 |
+| TEST | 7% | 4 | 0,28 |
+| OBS/OPS | 5% | 5 | 0,25 |
+| MNT | 3% | 5 | 0,15 |
+Tổng: 4,83 / 5
+
+## PHÁN QUYẾT: APPROVE
+
+Không P0/P1/P2, điểm 4,83 ≥ 4,0. Lý do chặn của lượt 1 (thiếu bằng chứng cổng) đã hết: cổng đầy đủ tại đúng e5ee29e21064
+thoát 0 với 8/8 bước, reviewer chạy lại phạm vi đích cũng thoát 0. Finding 2–3 lượt 1 đã sửa; finding 1 lượt 1 đã sửa phía
+AppFront. Việc còn lại (không chặn): merge AppFront `feat/editor3d-dot2` ngay sau, rồi nâng `APPFRONT_SHA`; assert phong bì
+lỗi ở test 422 trong lượt chạm tệp kế tiếp. Việc merge thuộc phiên gọi review.
