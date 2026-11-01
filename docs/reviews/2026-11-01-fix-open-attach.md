@@ -57,3 +57,49 @@ Finding 1 (P2) và 2 (P3) không chặn merge nhưng nên sửa cùng lượt: p
 vòng sửa đó cần một lượt review 2 (phạm vi đích: `verify --fast` + `pytest apps/worker/pipeline_build`, trừ khi diff chạm
 điều kiện đầy đủ của R-33b). Nếu merge c2142f27 trước khi có vòng sửa, ghi finding 1 và 2 vào `changes/OPEN-ATTACH.md`
 làm nợ (repo không còn `DEBT.md`).
+
+---
+
+# Lượt 2 — vòng sửa 5769379a
+
+- Ngày: 2026-11-01 · Commit đầu nhánh: 5769379a1ad7 · Diff vòng sửa: `geometry.py` (+`_drop_bare_gap_walls`),
+  `test_geometry_openings.py` (+2 test), `changes/OPEN-ATTACH.md` (+1 dòng)
+- Cổng: phạm vi **đích** — diff chỉ chạm `apps/worker/pipeline_build` (không API, DB, migration, hợp đồng, phụ thuộc,
+  công cụ cổng), không chạm điều kiện đầy đủ của R-33b. `bash tools/verify/run.sh verify --fast` mã thoát **0**: ruff,
+  mypy (1252 tệp), lint-imports, pytest bị ảnh hưởng 694 passed (28 tệp test, gồm toàn bộ `apps/worker/pipeline_build`)
+  (log: `F:/runs/merge-review-open-attach/fast-r2.log`)
+- Độ phủ: tổng không đo (phạm vi đích) — `apps/worker/pipeline_build` dòng 98,46% · nhánh 93,20%; tập file bị chạm
+  dòng 98,36% · nhánh 92,86%
+- Bench reviewer chạy lại bằng mã 5769379a: cửa đi đúng 82, cửa sổ 32, sai 7, phòng giống hệt cả 14 bản, tường 508,
+  33 tường qua khe (không đổi so với lượt 1).
+
+## Soát finding lượt 1
+| # | Mức | Trạng thái | Bằng chứng |
+|---|---|---|---|
+| 1 | P2 | **Đã sửa** | `_drop_bare_gap_walls` chạy sau `_resolve_overlaps`, chỉ bỏ tường không đầu vào mà không ô mở nào chọn; tường qua khe nằm cuối `live` nên `input_to_wall` và chỉ số tường có đầu vào không dời, `cand.wall` đánh lại bằng `dataclasses.replace`. Đúng ca tái hiện lượt 1 (tường 0–800, `double_door` 700–1250): nay ra **1 tường**, `openingUnattached` 1; cùng hộp nhãn `door` vẫn có tường qua khe 800–1250 mang cửa. Test `test_build_walls__gap_wall_without_opening_dropped` khoá ca này |
+| 2 | P3 | **Còn mở** | `test_build_layer__rooms_ignore_gap_walls` vẫn đạt khi bỏ bộ lọc: reviewer chạy đúng kịch bản của test (cùng tường, cùng hộp, 10 mm/px) với `build.py` của nhánh và với bản đổi `build_rooms(room_walls, …)` thành `build_rooms(wall_set.walls, …)` → cả hai cùng 1 phòng, outline bằng nhau, tường qua khe (y = 1300) không nằm trong `wallIds`. Test khẳng định đúng kết quả nhưng không khoá bộ lọc ở `build.py:513-515` |
+| 3 | Nit | Giữ nguyên | Như lượt 1 |
+
+Đề xuất cho #2 (không chặn): tìm một bản vẽ mà tường qua khe đổi phòng khi không lọc (vd. khe nằm trên vách ngăn chia
+hai phòng, tường qua khe lệch tim so với đường khép của `_door_closers`) rồi dựng test từ đó; nếu không tìm được ca nào
+thì ghi trong `changes/OPEN-ATTACH.md` rằng bộ lọc là phòng thủ, chưa có ca nào cần.
+
+## Điểm lượt 2
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 5 | 1,25 |
+| CON | 15% | 5 | 0,75 |
+| LOG | 15% | 5 | 0,75 |
+| PERF | 10% | 5 | 0,50 |
+| RES | 10% | 5 | 0,50 |
+| DB/API | 10% | 5 | 0,50 |
+| TEST | 7% | 4 | 0,28 |
+| OBS/OPS | 5% | 5 | 0,25 |
+| MNT | 3% | 4 | 0,12 |
+Tổng: 4,90 / 5
+
+## PHÁN QUYẾT LƯỢT 2: APPROVE
+
+P2 đã sửa và có test, cổng đích của vòng sửa xanh, bench không đổi; không P0/P1, điểm 4,90 ≥ 4,0. P3 #2 còn mở, không
+chặn merge: xử lý như đề xuất trên (thêm test thật hoặc ghi rõ bộ lọc là phòng thủ trong `changes/OPEN-ATTACH.md`).
+Cổng đầy đủ đã chạy ở lượt 1 trên c2142f27 (mã thoát 0); vòng sửa chỉ chạm `pipeline_build` nên không chạy lại.
