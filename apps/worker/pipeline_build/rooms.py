@@ -14,8 +14,10 @@ from shapely.ops import split
 
 from apps.worker.pipeline_build.constants import (
     MIN_ROOM_AREA_M2,
+    ROOM_GAP_ALIGNED_COS,
     ROOM_GAP_CLOSE_MIN_COS,
     ROOM_GAP_CLOSE_MM,
+    ROOM_GAP_EVIDENCE_MM,
     ROOM_SNAP_MM,
 )
 from apps.worker.pipeline_build.geometry import Geoms, Scaling
@@ -29,7 +31,12 @@ from packages.vision.dimensions.rooms import ROOM_USAGE_NAMES, RoomLabel, RoomUs
 
 _OPENING_LABELS = frozenset({"door", "double_door", "window"})
 _SOFA_LONG_MM = 1400
-_SOFA_SHORT_MM = (600, 1100)
+_SOFA_SHORT_MM = (600, 1600)
+"""Cạnh ngắn sofa tới 1600 mm: sofa góc chữ L (B10)."""
+_BENCH_LONG_MM = 1000
+_BENCH_SHORT_MM = 600
+_BENCH_TABLE_GAP_MM = 900.0
+"""Ghế dài ≥ 1000, cạnh ngắn < 600, cách bàn ≤ 900 mm → băng ghế (`variant="bench"`, B10)."""
 _BED_SHORT_MM = (900, 2000)
 _BED_LONG_MM = (1900, 2200)
 """U34: khung mm (cạnh ngắn, cạnh dài) để sửa nhãn YOLO `chair`/`other` theo kích thước thật."""
@@ -77,6 +84,16 @@ _SEED_MAX_M2 = 40.0
 _KITCHEN_RUN_MM = 2000
 """Dãy tủ bếp: cạnh dài hộp ≥ 2 m (bàn lavabo phòng tắm 0,6-1,2 m; bench: 1,5 m còn 2 phòng tắm thành bếp)."""
 
+_WARDROBE_MIN_MM = 900
+"""Tủ áo có cạnh dài ngắn hơn không làm phòng ngủ: kệ/tủ nhỏ ở lô gia, phòng tắm."""
+
+_WET_LABELS = frozenset({"washing_machine", "sanitary_fixture", "shower"})
+"""Phòng có máy giặt/thiết bị vệ sinh không thành phòng ngủ vì tủ áo."""
+
+_OUTSIDE_SHARE = 0.3
+_OUTSIDE_REACH_MM = 300.0
+"""Đồ giao mọi phòng < 30 % hộp và tâm ngoài hợp phòng nới 300 mm là đồ ngoài căn (sơ đồ vị trí, ảnh minh hoạ)."""
+
 _BATHROOM_MAX_M2 = 10.0
 """Phòng có thiết bị vệ sinh mà rộng hơn là phòng ngủ có WC riêng hay bếp có chậu rửa, không phải phòng tắm."""
 
@@ -108,12 +125,20 @@ def _extend(wall: Wall, amount: float) -> shapely.LineString:
     )
 
 
-def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
-    """Đoạn nối khe góc/chữ T không có hộp ô mở (BUG-IT-008), để khép phòng; tường không đổi.
+def _gap_closers(
+    walls: Sequence[Wall],
+    bridges: Sequence[tuple[Point, Point]],
+) -> list[shapely.LineString]:
+    """Đoạn nối khe góc/chữ T (BUG-IT-008), để khép phòng; tường không đổi.
 
     Đầu tường tự do = không chạm tim tường khác hay `bridges` trong `ROOM_SNAP_MM`. Mỗi đầu tự do nối tới điểm gần nhất
-    trên tim tường khác cách ≤ `ROOM_GAP_CLOSE_MM`, lệch hướng ra của đầu tường không quá `ROOM_GAP_CLOSE_MIN_COS`;
-    bỏ đoạn cắt tim tường/`bridges` khác, giữ đoạn ngắn nhất. Tra theo
+    trên tim tường khác, lệch hướng ra của đầu tường không quá `ROOM_GAP_CLOSE_MIN_COS`; bỏ đoạn cắt tim tường/`bridges`
+    khác, giữ đoạn ngắn nhất. Khe ≤ `ROOM_GAP_CLOSE_MM` luôn khép; dài hơn tới `ROOM_GAP_EVIDENCE_MM` chỉ khép khi có
+    bằng chứng (QT-ROOMS2, B9): hai tường thẳng hàng — đoạn nối dọc tường (`ROOM_GAP_ALIGNED_COS`), tường đích song
+    song, chân đoạn ở đầu tường đích và lệch ngang ≤ `ROOM_SNAP_MM` (vách so le hai bên khe cửa không tính,
+    OPEN-ATTACH); không quá nửa đoạn sát tim tường khác. Khe có hộp ô mở đã do `_door_closers` khép. Ngưỡng mm
+    cố định làm số phòng lệ thuộc tỉ lệ: ch-09 ở 14,32 mm/px khép 4 khe 1,1-1,2 m, ở tỉ lệ đúng 24,66 các khe đó
+    thành 1,9-2,1 m. Tra theo
     lô bằng `STRtree` (không O(n²), trần B5-01 20 000 tường); đoạn chọn lố 1 mm qua tim đích để `unary_union` cắt nút.
     """
     if len(walls) < 2:
@@ -130,7 +155,9 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     touching = np.zeros(len(tips), dtype=np.bool_)
     touching[tip_idx[near != owner[tip_idx]]] = True
     free = np.flatnonzero(~touching)
-    free_idx, target = shapely.STRtree(centrelines).query(tips[free], predicate="dwithin", distance=ROOM_GAP_CLOSE_MM)
+    free_idx, target = shapely.STRtree(centrelines).query(
+        tips[free], predicate="dwithin", distance=ROOM_GAP_EVIDENCE_MM
+    )
     tip = free[free_idx]
     other = target != owner[tip]
     tip, target = tip[other], target[other]
@@ -147,8 +174,21 @@ def _gap_closers(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) 
     seg_idx, blocker = obstacle_tree.query(trimmed, predicate="intersects")
     outward = np.concatenate([starts - ends, ends - starts])[tip]
     outward /= np.hypot(*outward.T)[:, None]
-    blocked = np.einsum("ij,ij->i", unit, outward) < ROOM_GAP_CLOSE_MIN_COS
+    along = np.einsum("ij,ij->i", unit, outward)
+    blocked = along < ROOM_GAP_CLOSE_MIN_COS
     blocked[seg_idx[blocker != target[seg_idx]]] = True
+    direction = (ends - starts) / np.hypot(*(ends - starts).T)[:, None]
+    parallel = np.abs(np.einsum("ij,ij->i", direction[owner[tip]], direction[target])) >= ROOM_GAP_ALIGNED_COS
+    foot_at_end = np.minimum(np.hypot(*(foot - starts[target]).T), np.hypot(*(foot - ends[target]).T)) <= ROOM_SNAP_MM
+    own = direction[owner[tip]]
+    lateral = np.abs(own[:, 0] * (foot - head)[:, 1] - own[:, 1] * (foot - head)[:, 0]) <= ROOM_SNAP_MM
+    evidence = (along >= ROOM_GAP_ALIGNED_COS) & parallel & foot_at_end & lateral
+    long_gap = length > ROOM_GAP_CLOSE_MM
+    blocked |= long_gap & ~evidence
+    for k in np.flatnonzero(long_gap & ~blocked):  # khe dài chạy dọc tường khác quá nửa: mép vách, không phải khe
+        near = obstacle_tree.query(trimmed[k], predicate="dwithin", distance=ROOM_SNAP_MM)
+        walled = shapely.union_all(obstacles[near[near != owner[tip[k]]]]).buffer(ROOM_SNAP_MM)
+        blocked[k] = trimmed[k].intersection(walled).length > length[k] / 2
     valid = np.flatnonzero(~blocked)
     order = valid[np.lexsort((length[valid], tip[valid]))]
     _, first = np.unique(tip[order], return_index=True)
@@ -510,8 +550,9 @@ def _fixture_labels(
     """Công năng suy từ đồ đạc dò được trong biên, cho phòng không có nhãn chữ (bản vẽ không ghi tên, chữ "WC" nhỏ
     OCR bỏ sót), theo thứ tự: giường và ≥ `_BEDROOM_MIN_M2` → phòng ngủ; dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp;
     thiết bị vệ sinh/buồng tắm đứng và ≤ `_BATHROOM_MAX_M2` → phòng tắm; máy giặt (không kèm thiết bị vệ sinh) và
-    ≤ `_BATHROOM_MAX_M2` → lô-gia; tủ bếp + bàn/ghế ăn và > `_BATHROOM_MAX_M2` → bếp; tủ áo (không kèm tủ bếp) và
-    `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
+    ≤ `_BATHROOM_MAX_M2` → lô-gia; tủ bếp + bàn/ghế ăn và > `_BATHROOM_MAX_M2` → bếp; tủ áo cạnh dài
+    ≥ `_WARDROBE_MIN_MM` (không kèm tủ bếp, máy giặt, thiết bị vệ sinh) và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` →
+    phòng ngủ; không có gì → `None`.
 
     Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
     """
@@ -524,6 +565,9 @@ def _fixture_labels(
         if label == "kitchen_cabinet":
             long_side = scaling.mm(max(d.box.x_max - d.box.x_min, d.box.y_max - d.box.y_min))
             label = "kitchen_run" if long_side >= _KITCHEN_RUN_MM else label
+        elif label == "wardrobe":
+            long_side = scaling.mm(max(d.box.x_max - d.box.x_min, d.box.y_max - d.box.y_min))
+            label = label if long_side >= _WARDROBE_MIN_MM else "wardrobe_short"
         for room in tree.query(shapely.Point(centre.x, centre.y), predicate="within"):
             found_in[int(room)].add(label)
     labels: list[RoomLabel | None] = []
@@ -539,12 +583,53 @@ def _fixture_labels(
             usage = "loggia"
         elif cabinet and found & _DINING_LABELS and area_m2 > _BATHROOM_MAX_M2:
             usage = "kitchen"
-        elif "wardrobe" in found and not cabinet and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
+        elif (
+            "wardrobe" in found
+            and not cabinet
+            and not found & _WET_LABELS
+            and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2
+        ):
             usage = "bedroom"
         else:
             usage = None
         labels.append(None if usage is None else RoomLabel(usage, ROOM_USAGE_NAMES[usage]))
     return labels
+
+
+_NAME_TRUST = {"text": 1.0, "inferred": 0.6, "none": 0.4}
+"""B12: tên từ nhãn chữ 1,0; suy từ đồ đạc / lô gia rìa 0,6; không tên 0,4."""
+_MIN_WALLED_FACTOR = 0.5
+_UNTRUSTED_SCALE_FACTOR = 0.7
+
+
+def room_confidence(source: str, gap_share: float, *, scale_trusted: bool) -> float:
+    """Tin cậy phòng (B12) = tích nguồn tên, max(0,5; 1 - `gap_share`), 1 hay 0,7 theo tỉ lệ, làm tròn 2 số."""
+    factor = max(_MIN_WALLED_FACTOR, 1.0 - gap_share)
+    return round(_NAME_TRUST[source] * factor * (1.0 if scale_trusted else _UNTRUSTED_SCALE_FACTOR), 2)
+
+
+def _walled_shares(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[float]:
+    """Phần chu vi mỗi `outline` nằm sát tường (≤ nửa bề dày + `ROOM_SNAP_MM` quanh tim); phần còn lại là khe đã nối.
+
+    Thân tường tra bằng `STRtree` theo từng phòng (K18: không O(n²)).
+    """
+    bodies = [
+        shapely.LineString(
+            [(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)]
+        ).buffer(w.thickness_mm / 2 + ROOM_SNAP_MM)
+        for w in walls
+    ]
+    tree = shapely.STRtree(bodies)
+    shares: list[float] = []
+    for outline in outlines:
+        ring = shapely.LinearRing([(p.x, p.y) for p in outline]) if len(outline) >= 3 else None
+        if ring is None or ring.length == 0:
+            shares.append(0.0)
+            continue
+        near = [bodies[int(i)] for i in tree.query(ring, predicate="intersects")]
+        covered = ring.intersection(shapely.union_all(near)).length if near else 0.0
+        shares.append(min(1.0, covered / ring.length))
+    return shares
 
 
 def build_rooms(
@@ -557,12 +642,17 @@ def build_rooms(
     scaling: Scaling,
     clock: Clock,
     dropped: Counter[str],
+    scale_trusted: bool | None = None,
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
     Tên: nhãn chữ trong phòng, không có thì suy từ đồ đạc (`_fixture_labels`). Mảnh dưới `MIN_ROOM_AREA_M2` →
     `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE
     `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
+
+    Tin cậy (B12): tích nguồn tên (`_NAME_TRUST`), 1 - phần chu vi không sát tường (kẹp ≥ `_MIN_WALLED_FACTOR`),
+    (1 nếu tỉ lệ đáng tin, `_UNTRUSTED_SCALE_FACTOR` nếu không). `scale_trusted=None` → tin khi `scaling.build ==
+    scaling.final` (tỉ lệ đoán `project_default` dựng ở tỉ lệ khác).
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
@@ -581,7 +671,6 @@ def build_rooms(
     kept.sort(key=lambda item: (min(p.y for p in item[0]), min(p.x for p in item[0])))
     outlines = [outline for outline, _ in kept]
     wall_ids = _wall_id_lists(walls, outlines)
-    wall_by_id = {wall.id: wall for wall in walls}
     from_text = _room_labels(outlines, texts, parsed, centres)
     from_fixtures = _fixture_labels(outlines, [area for _, area in kept], detections, scaling)
     loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
@@ -589,9 +678,15 @@ def build_rooms(
     labels = name_rooms(
         [text or rim or fixture for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)]
     )
+    sources = [
+        "text" if text else "inferred" if rim or fixture else "none"
+        for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)
+    ]
+    trusted = scaling.build == scaling.final if scale_trusted is None else scale_trusted
+    walled = _walled_shares(walls, outlines)
     rooms = []
-    for (outline, area_m2), ids, label in zip(kept, wall_ids, labels, strict=True):
-        confidences = [wall_by_id[i].confidence for i in ids]
+    for (outline, area_m2), ids, label, source, share in zip(kept, wall_ids, labels, sources, walled, strict=True):
+        confidence = room_confidence(source, 1.0 - share, scale_trusted=trusted) if ids else LOW_CONFIDENCE_CAP
         rooms.append(
             Room(
                 id=new_spatial_id("room", clock),
@@ -601,7 +696,7 @@ def build_rooms(
                 outline=tuple(outline),
                 area_m2=area_m2,
                 wall_ids=ids,
-                confidence=min(confidences) if confidences else LOW_CONFIDENCE_CAP,
+                confidence=confidence,
                 source="ai",
                 reviewed=False,
             )
@@ -609,12 +704,22 @@ def build_rooms(
     return tuple(rooms)
 
 
-def _first_room_id(tree: shapely.STRtree, rooms: Sequence[Room], centre: Point) -> str | None:
-    """Id phòng đầu tiên (thứ tự `rooms`) chứa `centre`, hoặc `None`."""
-    candidates = tree.query(shapely.Point(centre.x, centre.y), predicate="within")
-    if len(candidates) == 0:
-        return None
-    return rooms[int(min(candidates))].id
+def _room_of_box(
+    tree: shapely.STRtree, polygons: Sequence[shapely.Polygon], box: shapely.Polygon
+) -> tuple[int | None, float]:
+    """Chỉ số phòng giao hộp đồ nhiều nhất (bằng nhau: phòng đứng trước) và tỉ lệ diện tích giao / hộp."""
+    best: int | None = None
+    best_area = 0.0
+    for index in sorted(int(i) for i in tree.query(box)):
+        area = polygons[index].intersection(box).area
+        if area > best_area:
+            best, best_area = index, area
+    return best, best_area / box.area
+
+
+def _xy(point: Point) -> tuple[float, float]:
+    """Toạ độ `(x, y)` của điểm, cho `shapely.box`."""
+    return point.x, point.y
 
 
 def build_furniture(
@@ -629,10 +734,19 @@ def build_furniture(
 ) -> tuple[Furniture, ...]:
     """Đồ đạc từ phát hiện (B5-05 [6] bước 6); ô mở bỏ qua không đếm, nhãn lạ → `unknownLabel`.
 
-    Nhãn `chair`/`other` được sửa theo kích thước mm ở tỉ lệ `final` (`relabel_by_size`, U34); tỉ lệ
-    chưa tin (`scale_trusted=False`) thì vẫn sửa nhưng hạ `confidence` về `LOW_CONFIDENCE_CAP`.
+    Nhãn `chair`/`other` được sửa theo kích thước mm ở tỉ lệ `final` (`relabel_by_size`, U34) chỉ khi tỉ lệ đã tin
+    (`scale_trusted`): tỉ lệ đoán sai thì cỡ sai, đổi loại theo cỡ thành đoán bừa (B10).
+    Phòng của đồ: phòng giao hộp nhiều nhất (B8). Giao mọi phòng < `_OUTSIDE_SHARE` hộp và tâm ngoài hợp phòng nới
+    `_OUTSIDE_REACH_MM` → `suggested=True` (đồ ngoài căn: sơ đồ vị trí, ảnh minh hoạ), không xoá.
     """
-    tree = shapely.STRtree([shapely.Polygon([(p.x, p.y) for p in room.outline]) for room in rooms]) if rooms else None
+    polygons = [shapely.Polygon([(p.x, p.y) for p in room.outline]) for room in rooms]
+    tree = shapely.STRtree(polygons)
+    reach = shapely.union_all(polygons).buffer(_OUTSIDE_REACH_MM)
+    tables = [
+        shapely.box(*_xy(scaling.point(d.box.x_min, d.box.y_min)), *_xy(scaling.point(d.box.x_max, d.box.y_max)))
+        for d in detections
+        if (target := LABEL_TARGETS.get(d.label)) is not None and target.domain_kind == "table"
+    ]
     items = []
     for detection in detections:
         if detection.label in _OPENING_LABELS:
@@ -647,52 +761,55 @@ def build_furniture(
             dropped["furnitureEmpty"] += 1
             continue
         centre = Point(x=js_round((box_min.x + box_max.x) / 2), y=js_round((box_min.y + box_max.y) / 2))
-        room_id = _first_room_id(tree, rooms, centre) if tree is not None else None
+        footprint = shapely.box(box_min.x, box_min.y, box_max.x, box_max.y)
+        room, share = _room_of_box(tree, polygons, footprint)
+        outside = bool(rooms) and share < _OUTSIDE_SHARE and not reach.contains(shapely.Point(centre.x, centre.y))
         box = detection.box
-        kind, variant = relabel_by_size(
-            target.domain_kind,
-            (box.x_max - box.x_min) * scaling.final,
-            (box.y_max - box.y_min) * scaling.final,
-            room_usage=next((room.usage for room in rooms if room.id == room_id), None),
-        )
-        confidence = detection.confidence
-        if variant is not None and not scale_trusted:
-            confidence = min(confidence, LOW_CONFIDENCE_CAP)
+        kind, variant = target.domain_kind, None
+        if scale_trusted:
+            kind, variant = relabel_by_size(
+                target.domain_kind,
+                (box.x_max - box.x_min) * scaling.final,
+                (box.y_max - box.y_min) * scaling.final,
+                room_usage=None if room is None else rooms[room].usage,
+                near_table=any(footprint.distance(table) <= _BENCH_TABLE_GAP_MM for table in tables),
+            )
         items.append(
             Furniture(
                 id=new_spatial_id("furniture", clock),
                 level_id=level_id,
-                room_id=room_id,
+                room_id=None if room is None else rooms[room].id,
                 kind=kind,
                 variant=variant,
                 centre=centre,
                 bounding_box=BoundingBox(min=box_min, max=box_max),
                 rotation_deg=0.0,
-                confidence=confidence,
+                confidence=detection.confidence,
                 source="ai",
                 reviewed=False,
+                suggested=outside,
             )
         )
     return tuple(items)
 
 
 def relabel_by_size(
-    kind: str, width_mm: float, height_mm: float, *, room_usage: str | None = None
+    kind: str, width_mm: float, height_mm: float, *, room_usage: str | None = None, near_table: bool = False
 ) -> tuple[str, str | None]:
     """`(kind, variant)` sau khi xét kích thước thật (U34); không đổi thì `variant=None`.
 
     `chair`/`other` cỡ giường (ngắn 900-2000, dài 1900-2200) → `bed`; `chair` dài ≥ 1400, ngắn
-    600-1100 → `chair` + `variant="sofa"` (hợp đồng không có `kind` sofa; thư viện xếp sofa vào nhóm ghế).
+    600-1600 (sofa góc) → `chair` + `variant="sofa"` (hợp đồng không có `kind` sofa; thư viện xếp sofa vào nhóm
+    ghế); `chair` dài ≥ 1000, ngắn < 600, cách bàn ≤ 900 mm (`near_table`) → `variant="bench"`.
     Xét giường trước: món 1043 x 2075 mm khớp cả hai khung; không thành giường trong phòng
-    `_NO_BED_USAGES`. Nhãn khác (bàn, tủ bếp…) giữ nguyên. YOLO báo `bed` trong phòng `_NO_BED_USAGES` (thảm
-    hoa văn phòng khách, UX-14) → `other` + `variant="rug"`.
+    `_NO_BED_USAGES`. Nhãn khác (bàn, tủ bếp…) giữ nguyên; YOLO báo `bed` giữ là giường ở mọi phòng (B10).
     """
-    if kind == "bed" and room_usage in _NO_BED_USAGES:
-        return "other", "rug"
     short, long = sorted((width_mm, height_mm))
     bed_sized = _BED_SHORT_MM[0] <= short <= _BED_SHORT_MM[1] and _BED_LONG_MM[0] <= long <= _BED_LONG_MM[1]
     if bed_sized and kind in ("chair", "other") and room_usage not in _NO_BED_USAGES:
         return "bed", "bed"
     if kind == "chair" and long >= _SOFA_LONG_MM and _SOFA_SHORT_MM[0] <= short <= _SOFA_SHORT_MM[1]:
         return "chair", "sofa"
+    if kind == "chair" and near_table and long >= _BENCH_LONG_MM and short < _BENCH_SHORT_MM:
+        return "chair", "bench"
     return kind, None
