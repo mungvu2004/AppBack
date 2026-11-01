@@ -16,7 +16,7 @@ UNREVIEWED = {"reviewed": False, "source": "ai", "confidence": 0.5}
 
 
 def test_unreviewed_entities_double_with_k_2() -> None:
-    """`k = 2`: toạ độ, vị trí và bề rộng ô mở, tâm và hộp bao nhân đôi; bề dày bắt bậc (440 → 400); chiều cao, góc giữ."""
+    """`k = 2`: toạ độ, vị trí và bề rộng ô mở, tâm và hộp bao nhân đôi; bề dày bắt bậc (440 → 400); cao, góc giữ."""
     scaled = rescale_unreviewed(LAYER, 6.0, 12.0)
     wall, door, item = scaled.walls[0], scaled.openings[0], scaled.furniture[0]
     assert wall.centreline == Segment(start=Point(x=0, y=0), end=Point(x=2000, y=0))

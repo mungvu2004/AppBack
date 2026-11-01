@@ -299,7 +299,7 @@ def test_build_layer__scale_note_with_paper_size(fake_clock: FakeClock) -> None:
 
 
 def test_build_layer__note_scale_keeps_two_chain_dimensions(fake_clock: FakeClock) -> None:
-    """UX-02: hai chữ chuỗi (< 3, một số < 1 m nên không `paired`) khớp `s` của ghi chú `TL 1/100` thành hai `Dimension`."""
+    """UX-02: hai chữ chuỗi (< 3, có số < 1 m: không `paired`) khớp `s` của ghi chú `TL 1/100` ra hai `Dimension`."""
     texts = [_chain_text("3000", 200, 150), _chain_text("900", 500, 45), _note("TL 1/100")]
     built = _run([_wall(100, 100, 1100, 100, 10.0)], texts, fake_clock, fallback="1", px_per_paper_mm=5.0)
     assert (built.scale_source, built.scale_mm_per_px, built.scale_basis) == ("pipeline", Decimal("20"), "note")
