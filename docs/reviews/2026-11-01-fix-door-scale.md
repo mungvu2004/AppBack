@@ -83,3 +83,56 @@ Phán quyết này cho 90e6fc6e; commit sửa thêm sau đó cần một lượt
   vẫn chưa thêm — Nit, không chặn.
 - Phán quyết giữ **APPROVE** cho nhánh tới 43a4021d. Còn nên làm trước merge: finding 1 (ghi nợ có mã và tiêu chí đóng);
   finding 3 và các Nit không chặn.
+
+---
+
+# Lượt 2 — vòng sửa e25aa655
+
+- Ngày: 2026-11-01 · Commit đầu nhánh: e25aa6552beb · Diff vòng sửa: `build.py` (`_door_scale` nhận `walls`, chỉ tính hộp
+  cửa cách tim tường ≤ bề dày tường dày nhất, STRtree `dwithin`), `test_build_scale.py` (+2 test, `_door` thêm `y`),
+  `changes/DOOR-SCALE.md` (nợ NO-435). Cây sạch, commit đúng mẫu, có `Prompt: DOOR-SCALE`.
+- Cổng: phạm vi **đích** — diff chỉ chạm `apps/worker/pipeline_build` (không API, DB, migration, hợp đồng, phụ thuộc,
+  công cụ cổng). `bash tools/verify/run.sh verify --fast` mã thoát **0**: ruff, mypy, lint-imports, pytest bị ảnh hưởng
+  700 passed (28 tệp test) (log: `F:/runs/merge-review-open-attach/fast-ds3.log`)
+- Độ phủ: tổng không đo (phạm vi đích) — `apps/worker/pipeline_build` dòng 98,48% · nhánh 93,65%; tập file bị chạm
+  dòng 97,13% · nhánh 90,20%
+- Bench reviewer chạy lại: mã nhúng trong `now4.py` khớp e25aa655 ở cả 5 module; chạy vào `/tmp/rv/c`, chấm `score.py`:
+  ch đúng 83, thừa 14, gộp 15, sót 11; cn đúng 121, thừa 30; cửa không đổi; tỉ lệ 3 bản có đáp án như lượt 1
+  (ch-01 +8,0 %, ch-04 +0,9 %, ch-09 +9,7 %). So với lượt 1 chỉ 3 bản đổi tỉ lệ: ch-08 23,19 → 16,12 mm/px (tổng phòng
+  155 → 74 m², brochure 68,94 m²), **cn-06** 20,38 → 19,83 (57 → 54 m², đáp án 65,09) và **cn-22** 29,72 → 27,60
+  (101 → 87 m², đáp án 101,92). Kiểm đếm cn theo tổng diện tích vẫn 4 tốt hơn `main` / 1 kém / 2 ngang.
+
+## Soát finding lượt 1
+| # | Mức | Trạng thái | Bằng chứng |
+|---|---|---|---|
+| 1 | P2 | **Đã sửa** | NO-435 trong `changes/DOOR-SCALE.md`: nguyên nhân (ba khe 3,2–4,1 m > `OPENING_GAP_MAX_MM`), số đo hiện tại khớp lần chấm của reviewer (ch 83/109, thừa 14; cn 121/148, thừa 30), hướng đã thử (trần 4200) và tiêu chí đóng đo được |
+| 2 | P3 | Đã sửa (43a4021d) | Như phần bổ sung lượt 1 |
+| 3 | P3 | **Đã sửa** | Lọc "sát tường" đưa ch-08 về 16,1 mm/px, 74 m² so với 68,94 m² in trên brochure. Test mới khoá cả hai nhánh: `door_estimate_ignores_doors_away_from_walls` (bỏ lọc thì trung vị của 3×50 + 4×12 là 12 → 745/12 ≠ 14,9) và `door_estimate_needs_three_doors_by_walls` (bỏ lọc thì 5 hộp đủ ≥ 3 → không về 10) |
+| 4 | Nit | Còn | `_DOOR_MIN_COUNT`, `_DOUBLE_DOOR_RATIO` vẫn thiếu docstring |
+| 5 | Nit | Còn | Chú thích bước 7 (`build.py` dòng "Tỉ lệ ước từ tường chỉ đúng tầm ±30 %") chưa đổi |
+
+## Finding mới
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 6 | Nit | MNT-04 | `changes/DOOR-SCALE.md` và thư gửi reviewer nói bản có tỉ lệ OCR và 3 bản có đáp án không đổi, nhưng không nhắc cn-06 và cn-22 cũng đổi do lọc sát tường (cn-22 xa đáp án hơn: 101 → 87 m² so với 101,92) | `changes/DOOR-SCALE.md:6` | Ghi thêm hai bản này vào dòng "Lọc sát tường" |
+| 7 | Nit | LOG-01 | Tầm lọc lấy `max` bề dày mọi tường: một khối đặc đo thành tường rất dày (hộp gen, cột) nới tầm đủ để hộp cửa ở sơ đồ thu nhỏ lọt lại. Bench không gặp | `build.py:317` | Cân nhắc trung vị bề dày × hệ số khi gặp ca thật; chưa cần đổi |
+
+## Điểm lượt 2
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 5 | 1,25 |
+| CON | 15% | 5 | 0,75 |
+| LOG | 15% | 5 | 0,75 |
+| PERF | 10% | 5 | 0,50 |
+| RES | 10% | 5 | 0,50 |
+| DB/API | 10% | 5 | 0,50 |
+| TEST | 7% | 5 | 0,35 |
+| OBS/OPS | 5% | 5 | 0,25 |
+| MNT | 3% | 4 | 0,12 |
+Tổng: 4,97 / 5
+
+## PHÁN QUYẾT LƯỢT 2: APPROVE
+
+P2 và cả hai P3 của lượt 1 đã sửa và có test khoá; cổng đích xanh; bench chạy lại khớp số tác giả và ch-08 nay sát
+diện tích in trên brochure. Không còn P0–P3 mở; còn bốn Nit (4, 5, 6, 7) không chặn merge. Cổng đầy đủ đã chạy ở lượt 1
+trên 90e6fc6e (mã thoát 0); vòng sửa chỉ chạm `pipeline_build` nên không chạy lại.
