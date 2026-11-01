@@ -86,9 +86,6 @@ _ROOT_KEYS: Final = frozenset({"schemaVersion", "layer", "dimensions", "scaleMmP
 _SUGGESTION_CONFIDENCE: Final = 0.5
 """Gợi ý mực dư chưa có điểm của mô hình: lấy đúng trần "kém tin" `LOW_CONFIDENCE_CAP` nên luật 2 không hạ nữa."""
 
-_INK_WALL_MM: Final = 220.0
-"""Tỉ lệ dự phòng cho bộ lọc cỡ của mực dư khi chưa đọc được tỉ lệ: p75 bề dày tường ≈ 220 mm (bench căn hộ)."""
-
 _UNSET_PROJECT_SCALE: Final = Decimal(1)
 """`default_scale_mm_per_px` khi dự án chưa đặt (`DEFAULT_SETTINGS` của `project_settings.read`).
 
@@ -575,16 +572,12 @@ def _suggestions(
     texts: Sequence[TextPx],
     mm_per_px: float | None,
 ) -> tuple[DetectionPx, ...]:
-    """Hộp `other` gợi ý từ mực dư (B4); không có trang, khổ lệch hay không ước được tỉ lệ → `()`.
+    """Hộp `other` gợi ý từ mực dư (B4); không có trang, khổ lệch hay tỉ lệ chưa đáng tin → `()`.
 
-    `mm_per_px` `None` (tỉ lệ dự phòng của dự án) → ước từ p75 bề dày tường, như bộ lọc cỡ đã chỉnh trên bench.
+    `mm_per_px` `None` = tỉ lệ còn đoán (dự phòng/ước): bộ lọc cỡ theo mét sai thì gợi ý chỉ là rác, nên tắt.
     """
-    if page is None or page.gray.shape != page.walls.shape:
+    if page is None or page.gray.shape != page.walls.shape or mm_per_px is None:
         return ()
-    if mm_per_px is None:
-        if not walls_px:
-            return ()
-        mm_per_px = _INK_WALL_MM / float(np.percentile([w.thickness_px for w in walls_px], 75))
 
     def corners(box: BoxPx) -> tuple[float, float, float, float]:
         """Bốn toạ độ của hộp px."""

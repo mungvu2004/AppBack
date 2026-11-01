@@ -304,3 +304,56 @@ def test_merge_candidates__caps_at_max_detections_by_score() -> None:
     result = merge_candidates(_candidates(rows), page_w=1_000_000, page_h=1_000_000)
     assert len(result) == MAX_DETECTIONS
     assert result.scores[0] >= result.scores[-1]
+
+
+def test_decode_tile__disabled_label_masked_before_argmax() -> None:
+    """Lớp tắt (`None` của model miền, stair) nhỉnh điểm hơn chair → anchor vẫn ra chair, không mất hộp."""
+    output = yolo_output([(50, 50, 40, 40, 1, 0.9)], nc=2)
+    output[0, 4 + 0, 0] = 0.95
+    labels: tuple[DetectionLabel | None, ...] = (None, "chair")
+    found = decode_tile(output, Window(0, 0, 640, 640), labels, 640)
+    assert list(found.classes) == [1]
+    assert list(found.scores) == pytest.approx([0.9])
+
+
+def test_decode_tile__coco_none_still_dropped_after_argmax() -> None:
+    """Lớp `None` của COCO giữ cách cũ: anchor mà lớp không dùng thắng argmax bị bỏ hẳn."""
+    unmapped = next(i for i, label in enumerate(COCO_LABELS) if label is None)
+    mapped = next(i for i, label in enumerate(COCO_LABELS) if label is not None)
+    output = yolo_output([(50, 50, 40, 40, mapped, 0.9)], nc=len(COCO_LABELS))
+    output[0, 4 + unmapped, 0] = 0.95
+    assert len(decode_tile(output, Window(0, 0, 640, 640), COCO_LABELS, 640)) == 0
+
+
+_TILE = (0.0, 0.0, 640.0, 640.0)
+_DEDUPE_LABELS: tuple[DetectionLabel, ...] = ("door", "table", "chair", "bed", "kitchen_cabinet", "sanitary_fixture")
+
+
+@pytest.mark.parametrize(
+    ("second", "kept"),
+    [
+        ((105.0, 105.0, 205.0, 205.0), 1),  # IoU 0,82 khác nhãn → một hộp
+        ((100.0, 100.0, 190.0, 200.0), 1),  # nằm trọn, diện tích 1,1 lần → một hộp
+        ((120.0, 120.0, 170.0, 170.0), 2),  # nằm trọn nhưng nhỏ 4 lần → giữ cả hai
+        ((300.0, 300.0, 400.0, 400.0), 2),  # rời nhau
+    ],
+)
+def test_merge_candidates__cross_label_dedupe(second: tuple[float, float, float, float], kept: int) -> None:
+    """Giường 0,9 và tủ bếp 0,6 trùng nhau → giữ giường; khác cỡ rõ hay rời nhau → giữ cả hai."""
+    rows = [((100.0, 100.0, 200.0, 200.0), 3, 0.9, _TILE), (second, 4, 0.6, _TILE)]
+    merged = merge_candidates(_candidates(rows), page_w=640, page_h=640, labels=_DEDUPE_LABELS)
+    assert len(merged) == kept
+    assert 3 in merged.classes
+
+
+@pytest.mark.parametrize(("a", "b"), [(1, 2), (1, 3), (5, 4), (0, 3)])
+def test_merge_candidates__allowed_pairs_overlap(a: int, b: int) -> None:
+    """Cặp được chồng (bàn-ghế, bàn-giường, chậu-tủ bếp, ô mở) trùng hộp vẫn giữ cả hai."""
+    rows = [((100.0, 100.0, 200.0, 200.0), a, 0.9, _TILE), ((102.0, 102.0, 200.0, 200.0), b, 0.6, _TILE)]
+    assert len(merge_candidates(_candidates(rows), page_w=640, page_h=640, labels=_DEDUPE_LABELS)) == 2
+
+
+def test_merge_candidates__no_labels_keeps_cross_label_pairs() -> None:
+    """Không truyền `labels` (đánh giá mAP, test cũ) → không khử trùng khác nhãn."""
+    rows = [((100.0, 100.0, 200.0, 200.0), 3, 0.9, _TILE), ((105.0, 105.0, 205.0, 205.0), 4, 0.6, _TILE)]
+    assert len(merge_candidates(_candidates(rows), page_w=640, page_h=640)) == 2

@@ -37,11 +37,12 @@ def _dets(rows: list[tuple[float, float, float, float, int]]) -> _Detections:
         ([35.0], UPSCALE_FALLBACK),
         ([35.0, 35.0, 200.0], 2.0),
         ([10.0, 12.0], UPSCALE_MAX),
+        ([20.0, 20.0], 3.5),
         ([100.0, 120.0], 1.0),
     ],
 )
 def test_upscale_factor__median_door_clamped_or_fallback(doors: list[float], expected: float) -> None:
-    """`70 / trung vị cửa`, kẹp `[1, 2,6]`; < 2 cửa → 1,5."""
+    """`70 / trung vị cửa`, kẹp `[1, 4]` (cửa 20 px → 3,5, trước kia kẹp 2,6); < 2 cửa → 1,5."""
     assert upscale_factor(np.array(doors, dtype=np.float64), page_pixels=_PAGE) == pytest.approx(expected)
 
 
