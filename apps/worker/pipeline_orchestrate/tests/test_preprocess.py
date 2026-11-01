@@ -9,6 +9,7 @@ nhị phân trong repo, không tải mạng. `choose_path` là hàm thuần nên
 import logging
 import math
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
@@ -140,6 +141,44 @@ def test_choose_path__auto_when_corners_empty() -> None:
     drawing = _drawing(source.upload_id, page_key="pages/0-NEW.png")
     plan = choose_path(source, drawing, _assessment(drawing, page_key="pages/0-OLD.png", corners=None))
     assert plan.kind == "auto"
+
+
+CROP_CORNERS: Corners = ((0.0, 0.5), (0.5, 0.5), (0.5, 1.0), (0.0, 1.0))
+"""Vùng cắt nửa dưới-trái của tờ nhiều mặt bằng (MULTI-FLOOR-01)."""
+
+
+@pytest.mark.parametrize("case", ["no_drawing", "other_upload", "no_assessment", "no_corners"])
+def test_choose_path__crop_replaces_auto(case: str) -> None:
+    """Lượt tải có `crop`: mọi chỗ lẽ ra (iii) thành (ii) với góc vùng cắt."""
+    source = replace(_source("png"), crop=CROP_CORNERS)
+    drawing = None if case == "no_drawing" else _drawing(_id("upl") if case == "other_upload" else source.upload_id)
+    assessment = None
+    if drawing is not None and case in {"other_upload", "no_corners"}:
+        corners = INSET_CORNERS if case == "other_upload" else None
+        assessment = _assessment(drawing, page_key="pages/0-OLD.png", corners=corners)
+    plan = choose_path(source, drawing, assessment)
+    assert plan.kind == "user"
+    assert plan.corners == CROP_CORNERS
+
+
+def test_choose_path__crop_keeps_reuse_and_user_corners() -> None:
+    """Đo của chính lượt tải này vẫn thắng `crop`: (i) dùng lại, (ii) giữ góc #31 đã chỉnh."""
+    source = replace(_source("png"), crop=CROP_CORNERS)
+    drawing = _drawing(source.upload_id, page_key="pages/0-ABC.png")
+    reuse = choose_path(source, drawing, _assessment(drawing, page_key="pages/0-ABC.png", corners=CROP_CORNERS))
+    assert reuse.kind == "reuse"
+    user = choose_path(source, drawing, _assessment(drawing, page_key="pages/0-OLD.png", corners=INSET_CORNERS))
+    assert user.corners == INSET_CORNERS
+
+
+async def test_prepare_page__crop_cuts_exact_pixels(local_storage: ObjectStorage, fake_clock: Clock) -> None:
+    """Góc vùng cắt thẳng trục → trang cuối đúng bằng pixel của vùng, góc lưu là góc vùng cắt."""
+    source = replace(_source("png"), crop=CROP_CORNERS)
+    assert source.original_key is not None
+    await _put(local_storage, source.original_key, encode(Image.new("RGB", (800, 600), "white"), "PNG"))
+    prepared = await _prepare(local_storage, fake_clock, choose_path(source, None, None))
+    assert (prepared.width_px, prepared.height_px) == (400, 300)
+    assert prepared.corners == CROP_CORNERS
 
 
 async def test_prepare_page__reuse_touches_no_storage(local_storage: ObjectStorage, fake_clock: Clock) -> None:

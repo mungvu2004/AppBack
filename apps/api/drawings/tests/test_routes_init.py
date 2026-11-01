@@ -6,7 +6,7 @@ Postgres, Redis và kho local thật: `api_client` chạy app thật nên mọi 
 """
 
 import unicodedata
-from typing import Final
+from typing import Any, Final
 
 import httpx
 import pytest
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
 from apps.api.drawings.settings import get_drawings_settings, reset_drawings_settings_cache
-from apps.api.drawings.tests._upload_helpers import headers_of, init_body, init_path, make_stage
+from apps.api.drawings.tests._upload_helpers import Stage, headers_of, init_body, init_path, make_stage
 from packages.db.models.drawings import UploadRow
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.floors import make_floor
@@ -277,3 +277,81 @@ async def test_init_accepts_page_index_for_pdf(
     assert response.status_code == 200, response.text
     row = await _upload_row(db_sessionmaker, response.json()["id"])
     assert row.page_index == 3
+
+
+async def test_init_stores_crop_as_corners(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    """`crop` hợp lệ (MULTI-FLOOR-01) → lưu 4 góc TL,TR,BR,BL; vắng `crop` → `NULL`; thân trả không đổi."""
+    stage = await make_stage(db_session)
+    crop = {"xRatio": 0.5, "yRatio": 0.25, "widthRatio": 0.5, "heightRatio": 0.5}
+    body = init_body(stage.project_id, stage.level_id, size_bytes=1000, crop=crop)
+
+    response = await api_client.post(init_path(stage.project_id, stage.level_id), json=body, headers=stage.headers)
+
+    assert response.status_code == 200, response.text
+    assert "crop" not in response.json()
+    row = await _upload_row(db_sessionmaker, response.json()["id"])
+    assert row.crop_corners == [[0.5, 0.25], [1.0, 0.25], [1.0, 0.75], [0.5, 0.75]]
+    plain = init_body(stage.project_id, stage.level_id, size_bytes=2000, crop=None)
+    response = await api_client.post(init_path(stage.project_id, stage.level_id), json=plain, headers=stage.headers)
+    assert response.status_code == 200, response.text
+    assert (await _upload_row(db_sessionmaker, response.json()["id"])).crop_corners is None
+
+
+def _crop_body(stage: Stage, crop: dict[str, float]) -> dict[str, Any]:
+    """Thân #5 cố định kích thước, chỉ đổi `crop`."""
+    return init_body(stage.project_id, stage.level_id, size_bytes=1000, crop=crop)
+
+
+async def test_init_crop_retry_dedupes_only_same_crop(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """Gửi lại cùng `crop` → cùng lượt tải; `crop` khác (vùng khác cùng tờ) → lượt mới."""
+    stage = await make_stage(db_session)
+    path = init_path(stage.project_id, stage.level_id)
+    left = {"xRatio": 0.0, "yRatio": 0.0, "widthRatio": 0.5, "heightRatio": 1.0}
+    right = {"xRatio": 0.5, "yRatio": 0.0, "widthRatio": 0.5, "heightRatio": 1.0}
+
+    first = await api_client.post(path, json=_crop_body(stage, left), headers=stage.headers)
+    again = await api_client.post(path, json=_crop_body(stage, left), headers=stage.headers)
+    other = await api_client.post(path, json=_crop_body(stage, right), headers=stage.headers)
+
+    assert first.json()["id"] == again.json()["id"]
+    assert other.json()["id"] != first.json()["id"]
+
+
+@pytest.mark.parametrize(
+    "crop",
+    [
+        {"xRatio": -0.1, "yRatio": 0.0, "widthRatio": 0.5, "heightRatio": 0.5},
+        {"xRatio": 0.0, "yRatio": 0.0, "widthRatio": 1.2, "heightRatio": 0.5},
+        {"xRatio": 0.6, "yRatio": 0.0, "widthRatio": 0.5, "heightRatio": 0.5},
+        {"xRatio": 0.0, "yRatio": 0.6, "widthRatio": 0.5, "heightRatio": 0.5},
+        {"xRatio": 0.0, "yRatio": 0.0, "widthRatio": 0.05, "heightRatio": 0.1},
+        {"xRatio": 0.0, "yRatio": 0.0, "widthRatio": 0.5},
+        {"xRatio": 0.0, "yRatio": 0.0, "widthRatio": 0.5, "heightRatio": 0.5, "extra": 1},
+    ],
+    ids=["negative", "over-one", "x-overflow", "y-overflow", "too-small", "missing-key", "unknown-key"],
+)
+async def test_init_rejects_bad_crop(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, crop: dict[str, float]
+) -> None:
+    """`crop` sai luật → 422 `VALIDATION` với `field` bắt đầu bằng `crop`."""
+    stage = await make_stage(db_session)
+    body = init_body(stage.project_id, stage.level_id, size_bytes=1000, crop=crop)
+
+    response = await api_client.post(init_path(stage.project_id, stage.level_id), json=body, headers=stage.headers)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION"
+    assert response.json()["field"].startswith("crop")
+
+
+async def test_init_accepts_crop_within_slack(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """`x + width` vượt 1 trong dung sai làm tròn (1e-6) vẫn nhận; góc phải kẹp về 1."""
+    stage = await make_stage(db_session)
+    crop = {"xRatio": 0.3, "yRatio": 0.0, "widthRatio": 0.7000005, "heightRatio": 1.0}
+    body = init_body(stage.project_id, stage.level_id, size_bytes=1000, crop=crop)
+
+    response = await api_client.post(init_path(stage.project_id, stage.level_id), json=body, headers=stage.headers)
+
+    assert response.status_code == 200, response.text

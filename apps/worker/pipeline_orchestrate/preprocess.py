@@ -62,6 +62,7 @@ class PageSource:
 
     `kind` là `uploads.sniffed_kind` (`"pdf"`, `"png"`, `"jpeg"`; khác → `FILE_TYPE_MISMATCH`);
     `level_id` là id công khai của tầng (khoá storage dùng nó, không dùng `floor_pk`).
+    `crop` là `uploads.crop_corners` (vùng của tầng trên tờ nhiều mặt bằng), `None` = cả trang.
     """
 
     run_id: str
@@ -71,6 +72,7 @@ class PageSource:
     page_index: int
     original_key: str | None
     kind: str | None
+    crop: Corners | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,15 +144,20 @@ def choose_path(source: PageSource, drawing: DrawingRow | None, assessment: Asse
 
     Bản vẽ của lượt tải **khác** (upload mới trên tầng đã nắn tay) luôn về (iii): góc và báo cáo
     cũ đo trên trang khác nên áp lại sẽ nắn sai.
+    Lượt tải có `crop` (MULTI-FLOOR-01) thì mọi chỗ lẽ ra về (iii) đi (ii) với góc vùng cắt: nắn trục
+    thẳng là cắt pixel đúng vùng, và góc lưu lại là góc vùng cắt nên #31 sau đó ghép đúng.
     """
+    fallback = PagePlan(source=source, kind="auto")
+    if source.crop is not None:
+        fallback = PagePlan(source=source, kind="user", corners=source.crop)
     if drawing is None or drawing.upload_id != source.upload_id or assessment is None:
-        return PagePlan(source=source, kind="auto")
+        return fallback
     if assessment.drawing_id == drawing.id and assessment.report.get("pageKey") == drawing.page_key:
         reuse = (drawing.page_key, drawing.width_px, drawing.height_px)
         return PagePlan(source=source, kind="reuse", reuse_page=reuse)
     if assessment.corners:
         return PagePlan(source=source, kind="user", corners=assessment.corners)
-    return PagePlan(source=source, kind="auto")
+    return fallback
 
 
 async def _offload[ResultT](fn: Callable[[], ResultT]) -> ResultT:
