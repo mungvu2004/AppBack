@@ -747,6 +747,44 @@
         "title": "CreateTrainingJobIn",
         "type": "object"
       },
+      "CropRect": {
+        "additionalProperties": false,
+        "description": "Vùng cắt của một tầng trên tờ nhiều mặt bằng, theo tỉ lệ trang gốc **chưa nắn**.\n\nTrang gốc là ảnh như trình duyệt hiện (đã xoay theo EXIF) hoặc trang `pageIndex` của PDF;\n`x`, `y` là góc trên-trái. Sai luật → 422 `VALIDATION field=\"crop\"`.",
+        "properties": {
+          "heightRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Heightratio",
+            "type": "number"
+          },
+          "widthRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Widthratio",
+            "type": "number"
+          },
+          "xRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Xratio",
+            "type": "number"
+          },
+          "yRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "xRatio",
+          "yRatio",
+          "widthRatio",
+          "heightRatio"
+        ],
+        "title": "CropRect",
+        "type": "object"
+      },
       "CursorPage_DatasetOut_": {
         "additionalProperties": false,
         "properties": {
@@ -2853,8 +2891,18 @@
       },
       "InitUploadBody": {
         "additionalProperties": false,
-        "description": "Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7).",
+        "description": "Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7).\n\n`crop` vắng/null = cả trang; có thì pipeline của tầng chỉ xử lý vùng đó (MULTI-FLOOR-01).",
         "properties": {
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CropRect"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fileName": {
             "title": "Filename",
             "type": "string"
