@@ -9,21 +9,35 @@ Idempotent: `ON CONFLICT (id) DO UPDATE … WHERE` chỉ chạm dòng có giá t
 thống (`owner_id IS NULL`) không còn trong danh mục → `retired_at = now()`; quay lại → `NULL`.
 """
 
-from typing import Final
+from collections.abc import Sequence
+from typing import Final, Protocol
 
 from sqlalchemy import func, or_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.db.models.library import LibraryItemRow
-from packages.domain.library import CATALOGUE, CatalogueItem
+from packages.domain.library import CATALOGUE, FILE_CATALOGUE
 
 ORDER: Final = 50
 ENVS: Final = frozenset({"dev", "test", "ci", "staging", "production"})
 SORT_STEP: Final = 10
 
 
-async def sync_catalogue(session: AsyncSession, catalogue: tuple[CatalogueItem, ...]) -> None:
+class _Identity(Protocol):
+    """Danh tính một mục (`CatalogueItem` hay `FileItem`)."""
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def group(self) -> str: ...
+
+
+async def sync_catalogue(session: AsyncSession, catalogue: Sequence[_Identity]) -> None:
     """Đồng bộ danh tính của `catalogue` vào `library_items` rồi rút mục vắng; chạy lại không đổi gì."""
     if not catalogue:
         return
@@ -63,5 +77,5 @@ async def sync_catalogue(session: AsyncSession, catalogue: tuple[CatalogueItem, 
 
 
 async def seed(session: AsyncSession) -> None:
-    """Seed danh mục dựng sẵn (`CATALOGUE`); test tiêm danh mục khác qua `sync_catalogue`."""
-    await sync_catalogue(session, CATALOGUE)
+    """Seed `CATALOGUE` rồi `FILE_CATALOGUE` (mẫu từ tệp xếp sau); test tiêm danh mục khác qua `sync_catalogue`."""
+    await sync_catalogue(session, (*CATALOGUE, *FILE_CATALOGUE))

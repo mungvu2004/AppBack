@@ -12,6 +12,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Final
 
 from sqlalchemy import select, update
@@ -23,7 +24,16 @@ from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
 from packages.core.errors import AppError
 from packages.db.engine import session_scope
 from packages.db.models.library import LibraryItemRow
-from packages.domain.library import CATALOGUE, CatalogueItem, GlbAsset, build_glb, build_preview_png
+from packages.domain.library import (
+    CATALOGUE,
+    FILE_CATALOGUE,
+    CatalogueItem,
+    FileItem,
+    GlbAsset,
+    build_glb,
+    build_preview_png,
+    measure_glb,
+)
 from packages.storage.keys import library_object
 from packages.storage.port import ObjectStorage
 
@@ -65,12 +75,12 @@ class _Blob:
 
 @dataclass(frozen=True, slots=True)
 class _Plan:
-    """Tài sản dựng sẵn của một mục danh mục: số đo của GLB cùng hai object cần có."""
+    """Tài sản của một mục: số đo của GLB, object mô hình và ảnh xem trước (mẫu từ tệp có thể không có ảnh)."""
 
-    item: CatalogueItem
+    item_id: str
     glb: GlbAsset
     model: _Blob
-    preview: _Blob
+    preview: _Blob | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +100,7 @@ def _plan_of(item: CatalogueItem) -> _Plan:
     png = build_preview_png(item)
     model = _Blob(library_object(item.id, MODEL_NAME), glb.data, glb.sha256, GLB_TYPE, "glb")
     preview = _Blob(library_object(item.id, PREVIEW_NAME), png, hashlib.sha256(png).hexdigest(), PNG_TYPE, "png")
-    return _Plan(item, glb, model, preview)
+    return _Plan(item.id, glb, model, preview)
 
 
 def _same_shas(known: _Known, plan: _Plan) -> bool:
@@ -146,13 +156,13 @@ async def _record(sessionmaker: async_sessionmaker[AsyncSession], plan: _Plan, k
         "file_size_bytes": glb.size_bytes,
         "model_key": plan.model.key,
         "model_sha256": plan.model.sha256,
-        "preview_key": plan.preview.key,
-        "preview_sha256": plan.preview.sha256,
+        "preview_key": None if plan.preview is None else plan.preview.key,
+        "preview_sha256": None if plan.preview is None else plan.preview.sha256,
         "published_at": known.published_at if _same_shas(known, plan) else now,
         "verified_at": now,
     }
     async with session_scope(sessionmaker) as session:
-        await session.execute(update(LibraryItemRow).where(LibraryItemRow.id == plan.item.id).values(**values))
+        await session.execute(update(LibraryItemRow).where(LibraryItemRow.id == plan.item_id).values(**values))
 
 
 async def _publish_one(
@@ -160,14 +170,14 @@ async def _publish_one(
 ) -> str:
     """Bước 3-4 cho một mục; trả `published`/`verified`/`failed`. Chỉ nuốt `DEPENDENCY_UNAVAILABLE`."""
     try:
-        results = [await _ensure(storage, blob) for blob in (plan.model, plan.preview)]
+        results = [await _ensure(storage, blob) for blob in (plan.model, plan.preview) if blob is not None]
     except AppError as exc:
         if exc.code is not DEPENDENCY_UNAVAILABLE:
             raise
-        _log.warning("library_publish_failed", extra={"item_id": plan.item.id, "code": exc.code.code})
+        _log.warning("library_publish_failed", extra={"item_id": plan.item_id, "code": exc.code.code})
         return _FAILED
     if not all(matched for _, matched in results):
-        _log.error("library_asset_mismatch", extra={"item_id": plan.item.id})
+        _log.error("library_asset_mismatch", extra={"item_id": plan.item_id})
         return _FAILED
     await _record(sessionmaker, plan, known, now)
     return _PUBLISHED if any(wrote for wrote, _ in results) else _VERIFIED
@@ -198,6 +208,67 @@ async def run_library_publish(
             attempted += 1
             counts[await _publish_one(sessionmaker, storage, plan, known, now)] += 1
     return PublishReport(counts[_PUBLISHED], counts[_VERIFIED], counts[_SKIPPED], counts[_FAILED])
+
+
+@dataclass(frozen=True, slots=True)
+class ImportReport:
+    """Kết quả `import-files`: `published` đã ghi dòng, `skipped` thiếu tệp,
+    `failed` sha lệch, thiếu dòng hay storage hỏng."""
+
+    published: int = 0
+    skipped: int = 0
+    failed: int = 0
+
+
+def _file_plan(item: FileItem, directory: Path) -> _Plan | str:
+    """Đọc `<id>.glb` (+ `<id>.png` nếu có) của `item`; trả `_Plan`, hoặc `skipped`/`failed`."""
+    path = directory / f"{item.id}.glb"
+    if not path.is_file():
+        return _SKIPPED
+    data = path.read_bytes()
+    try:
+        glb = measure_glb(data)
+    except (ValueError, KeyError, IndexError):
+        _log.error("library_file_unreadable", extra={"item_id": item.id})
+        return _FAILED
+    if glb.sha256 != item.model_sha256:
+        _log.error("library_file_sha_mismatch", extra={"item_id": item.id})
+        return _FAILED
+    model = _Blob(library_object(item.id, MODEL_NAME), data, glb.sha256, GLB_TYPE, "glb")
+    png_path = directory / f"{item.id}.png"
+    preview = None
+    if png_path.is_file():
+        png = png_path.read_bytes()
+        preview = _Blob(library_object(item.id, PREVIEW_NAME), png, hashlib.sha256(png).hexdigest(), PNG_TYPE, "png")
+    return _Plan(item.id, glb, model, preview)
+
+
+async def import_files(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    storage: ObjectStorage,
+    clock: Clock,
+    directory: Path,
+    *,
+    catalogue: tuple[FileItem, ...] = FILE_CATALOGUE,
+) -> ImportReport:
+    """Phát hành mẫu từ tệp trong `directory`: so `sha256` với manifest, đo, `put`, rồi ghi dòng (K22, K36).
+
+    Dòng phải có sẵn (seed tạo danh tính); thiếu dòng → `failed`. `published_at` giữ nguyên khi sha không đổi.
+    """
+    known = {row.id: row for row in await _read_known(sessionmaker)}
+    now = clock.now()
+    counts: Counter[str] = Counter()
+    for item in catalogue:
+        plan = _file_plan(item, directory)
+        if isinstance(plan, str):
+            counts[plan] += 1
+        elif (row := known.get(item.id)) is None:
+            _log.error("library_file_row_missing", extra={"item_id": item.id})
+            counts[_FAILED] += 1
+        else:
+            result = await _publish_one(sessionmaker, storage, plan, row, now)
+            counts[_FAILED if result == _FAILED else _PUBLISHED] += 1
+    return ImportReport(counts[_PUBLISHED], counts[_SKIPPED], counts[_FAILED])
 
 
 def open_storage(clock: Clock) -> ObjectStorage:

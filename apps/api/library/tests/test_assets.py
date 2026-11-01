@@ -2,7 +2,9 @@
 
 import logging
 import zlib
+from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -10,12 +12,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from apps.api.library.assets import run_library_publish
+from apps.api.library.assets import import_files, run_library_publish
 from apps.api.library.tests._helpers import LIST_PATH, fail_put, headers_of, seed_and_publish, spy
 from packages.core.error_codes import PAYLOAD_TOO_LARGE
 from packages.core.errors import AppError
 from packages.db.models.library import LibraryItemRow
-from packages.domain.library import CATALOGUE, build_glb
+from packages.db.seeds.library import seed
+from packages.domain.library import CATALOGUE, FILE_CATALOGUE, build_glb, build_preview_png
 from packages.storage.keys import library_object
 from packages.storage.local import LocalDiskStorage
 from packages.storage.s3 import S3Storage
@@ -68,6 +71,8 @@ async def test_run_library_publish_on_s3(
     report = await seed_and_publish(db_session, db_sessionmaker, s3_storage, fake_clock)
     assert report.published == COUNT
     for row in await _rows(db_session):
+        if row["model_key"] is None:  # mẫu từ tệp: chỉ `import-files` phát hành
+            continue
         info = await s3_storage.stat(row["model_key"])
         assert info is not None
         assert (info.sha256, info.size, info.kind) == (row["model_sha256"], row["file_size_bytes"], "glb")
@@ -254,3 +259,54 @@ async def test_run_library_publish__other_zlib_build_skips(
     assert (report.published, report.verified, report.skipped, report.failed) == (0, 0, COUNT, 0)
     assert puts == []
     assert await _rows(db_session) == before
+
+
+async def test_import_files_publishes_file_items(
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    tmp_path: Path,
+) -> None:
+    """`import_files`: có ảnh / không ảnh → phát hành; sha lệch, thiếu dòng → `failed`; thiếu tệp → `skipped`.
+
+    Chạy lại giữ `published_at`; lịch `run_library_publish` không đụng mẫu từ tệp.
+    """
+    await seed(db_session)
+    await db_session.commit()
+    glb = build_glb(CATALOGUE[0])
+    png = build_preview_png(CATALOGUE[0])
+    with_png, no_png, bad_sha, missing = (replace(item, model_sha256=glb.sha256) for item in FILE_CATALOGUE[:4])
+    bad_sha = replace(bad_sha, model_sha256="0" * 64)
+    unseeded = replace(with_png, id="not-seeded-item")
+    for item in (with_png, no_png, bad_sha, unseeded):
+        (tmp_path / f"{item.id}.glb").write_bytes(glb.data)
+    (tmp_path / f"{with_png.id}.png").write_bytes(png)
+    catalogue = (with_png, no_png, bad_sha, missing, unseeded)
+
+    report = await import_files(db_sessionmaker, local_storage, fake_clock, tmp_path, catalogue=catalogue)
+
+    assert (report.published, report.skipped, report.failed) == (2, 1, 2)
+    rows = {row["id"]: row for row in await _rows(db_session)}
+    first = rows[with_png.id]
+    assert (first["width_mm"], first["depth_mm"], first["height_mm"]) == (glb.width_mm, glb.depth_mm, glb.height_mm)
+    assert (first["triangle_count"], first["file_size_bytes"]) == (glb.triangle_count, glb.size_bytes)
+    assert (first["model_key"], first["model_sha256"]) == (library_object(with_png.id, "model.glb"), glb.sha256)
+    assert first["preview_key"] == library_object(with_png.id, "preview.png")
+    assert (first["published_at"], first["verified_at"]) == (fake_clock.now(), fake_clock.now())
+    assert (rows[no_png.id]["preview_key"], rows[no_png.id]["preview_sha256"]) == (None, None)
+    assert rows[no_png.id]["published_at"] is not None
+    assert all(rows[item.id]["published_at"] is None for item in (bad_sha, missing))
+    info = await local_storage.stat(first["model_key"])
+    assert info is not None
+    assert (info.sha256, info.kind) == (glb.sha256, "glb")
+
+    fake_clock.advance(timedelta(hours=1))
+    again = await import_files(db_sessionmaker, local_storage, fake_clock, tmp_path, catalogue=catalogue)
+    assert (again.published, again.skipped, again.failed) == (2, 1, 2)
+    after = {row["id"]: row for row in await _rows(db_session)}
+    assert after[with_png.id]["published_at"] == first["published_at"]
+    assert after[with_png.id]["verified_at"] == fake_clock.now()
+
+    await run_library_publish(db_sessionmaker, local_storage, fake_clock)
+    assert {row["id"]: row for row in await _rows(db_session)}[with_png.id] == after[with_png.id]

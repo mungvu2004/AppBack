@@ -20,6 +20,7 @@ LIBRARY_GROUPS: Final[tuple[str, ...]] = (
     "sanitary",
     "kitchen",
     "technical",
+    "decor",
 )  # thứ tự chip của FE (`src/api/schemas/library.ts:74-83`)
 
 ITEM_ID_MAX_LEN: Final = 64

@@ -9,8 +9,10 @@ chiều kim đồng hồ nhìn từ ngoài (mặt trước theo glTF). Không Dr
 
 import hashlib
 import json
+import math
 import struct
 from dataclasses import dataclass
+from typing import Any
 
 from packages.domain.library.catalogue import CatalogueItem, Part, part_bounds
 
@@ -185,4 +187,86 @@ def build_glb(item: CatalogueItem) -> GlbAsset:
         width_mm=max_x - min_x,
         depth_mm=max_z - min_z,
         height_mm=max_y - min_y,
+    )
+
+
+type _Mat = list[list[float]]
+_TRIANGLES = 4
+
+
+def _identity() -> _Mat:
+    """Ma trận đơn vị 4x4."""
+    return [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+
+
+def _matmul(a: _Mat, b: _Mat) -> _Mat:
+    """Tích hai ma trận 4x4 (theo hàng)."""
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+
+
+def _local_matrix(node: dict[str, Any]) -> _Mat:
+    """Ma trận cục bộ của nút glTF: `matrix` (lưu theo cột) hoặc T · R · S."""
+    if "matrix" in node:
+        m = [float(v) for v in node["matrix"]]
+        return [[m[col * 4 + row] for col in range(4)] for row in range(4)]
+    t = [float(v) for v in node.get("translation", (0, 0, 0))]
+    x, y, z, w = (float(v) for v in node.get("rotation", (0, 0, 0, 1)))
+    s = [float(v) for v in node.get("scale", (1, 1, 1))]
+    r = (
+        (1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)),
+        (2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)),
+        (2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)),
+    )
+    return [[r[i][0] * s[0], r[i][1] * s[1], r[i][2] * s[2], t[i]] for i in range(3)] + [[0.0, 0.0, 0.0, 1.0]]
+
+
+def _glb_document(data: bytes) -> dict[str, Any]:
+    """Chunk JSON của tệp GLB; ném `ValueError` khi không phải GLB 2.0."""
+    if len(data) < 20 or data[:4] != b"glTF":
+        raise ValueError("không phải tệp GLB")
+    length, kind = struct.unpack_from("<II", data, 12)
+    if kind != _JSON_CHUNK:
+        raise ValueError("GLB thiếu chunk JSON đầu")
+    document: dict[str, Any] = json.loads(data[20 : 20 + length])
+    return document
+
+
+def measure_glb(data: bytes) -> GlbAsset:
+    """Đo một `.glb` bất kỳ: hộp bao thế giới (góc hộp `POSITION` qua ma trận nút) và số tam giác.
+
+    Tam giác đếm theo từng lần dùng mesh, chỉ primitive `mode` 4 (chỉ số / 3, không có chỉ số thì số đỉnh / 3).
+    X = rộng, Z = sâu, Y = cao; mét → mm làm tròn. Ném `ValueError` khi tệp sai hay không có hình.
+    """
+    doc = _glb_document(data)
+    lo = [math.inf] * 3
+    hi = [-math.inf] * 3
+    triangles = 0
+    stack = [(index, _identity()) for index in doc["scenes"][doc.get("scene", 0)]["nodes"]]
+    while stack:
+        index, parent = stack.pop()
+        node = doc["nodes"][index]
+        world = _matmul(parent, _local_matrix(node))
+        for prim in doc["meshes"][node["mesh"]]["primitives"] if "mesh" in node else ():
+            acc = doc["accessors"][prim["attributes"]["POSITION"]]
+            a, b = acc["min"], acc["max"]
+            for corner in ((x, y, z) for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])):
+                for axis in range(3):
+                    value = sum(world[axis][k] * corner[k] for k in range(3)) + world[axis][3]
+                    lo[axis] = min(lo[axis], value)
+                    hi[axis] = max(hi[axis], value)
+            if prim.get("mode", _TRIANGLES) == _TRIANGLES:
+                count = doc["accessors"][prim["indices"]]["count"] if "indices" in prim else acc["count"]
+                triangles += count // 3
+        stack.extend((child, world) for child in node.get("children", ()))
+    if lo[0] == math.inf:
+        raise ValueError("GLB không có mesh nào trong scene")
+    width, height, depth = (round((hi[axis] - lo[axis]) * _MM_PER_M) for axis in range(3))
+    return GlbAsset(
+        data=data,
+        sha256=hashlib.sha256(data).hexdigest(),
+        size_bytes=len(data),
+        triangle_count=triangles,
+        width_mm=width,
+        depth_mm=depth,
+        height_mm=height,
     )

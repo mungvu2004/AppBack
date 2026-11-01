@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from packages.domain.library import CATALOGUE, CatalogueItem, GlbAsset, Part, build_glb
+from packages.domain.library import CATALOGUE, CatalogueItem, GlbAsset, Part, build_glb, measure_glb
 
 # Bảng [5] chép tay, không đọc từ CATALOGUE: id -> (W, D, H) mm.
 EXPECTED_BOX = {
@@ -254,3 +254,35 @@ def test_glb_returns_frozen_asset() -> None:
     assert isinstance(asset, GlbAsset)
     with pytest.raises(AttributeError):
         asset.sha256 = "x"  # type: ignore[misc]
+
+
+@ITEMS
+def test_measure_glb_matches_build_glb(item: CatalogueItem) -> None:
+    """`measure_glb` đọc lại đúng số đo, tam giác, kích thước và `sha256` mà `build_glb` ghi."""
+    asset = build_glb(item)
+    assert measure_glb(asset.data) == asset
+
+
+def test_measure_glb_applies_node_transforms() -> None:
+    """Nút cha co x2 + dời, nút con quay 90° quanh Y và một `matrix`: hộp bao và tam giác theo từng lần dùng mesh."""
+    asset = build_glb(CATALOGUE[0])
+    doc, bin_ = read_glb(asset.data)
+    half = math.sqrt(0.5)
+    doc["nodes"] = [
+        {"children": [1, 2], "scale": [2, 2, 2], "translation": [5, 0, 0]},
+        {"mesh": 0, "rotation": [0, half, 0, half]},
+        {"mesh": 0, "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]},
+    ]
+    js = json.dumps(doc).encode()
+    js += b" " * (-len(js) % 4)
+    body = struct.pack("<II", len(js), 0x4E4F534A) + js + struct.pack("<II", len(bin_), 0x004E4942) + bin_
+    measured = measure_glb(struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body)
+    side = 2 * max(asset.width_mm, asset.depth_mm)
+    assert (measured.width_mm, measured.depth_mm, measured.height_mm) == (side, side, 2 * asset.height_mm)
+    assert measured.triangle_count == 2 * asset.triangle_count
+
+
+def test_measure_glb_rejects_non_glb() -> None:
+    """Byte không phải GLB → `ValueError`."""
+    with pytest.raises(ValueError, match="GLB"):
+        measure_glb(b"not a glb file at all")

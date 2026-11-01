@@ -8,7 +8,7 @@ from typing import Literal
 
 from apps.api.core.wire import WireModel
 
-type LibraryGroup = Literal["table", "chair", "bed", "sofa", "storage", "sanitary", "kitchen", "technical"]
+type LibraryGroup = Literal["table", "chair", "bed", "sofa", "storage", "sanitary", "kitchen", "technical", "decor"]
 type LibrarySource = Literal["mine", "catalogue"]
 
 
@@ -26,3 +26,4 @@ class LibraryItemOut(WireModel):
     file_size_bytes: int
     model_url: str
     preview_url: str | None = None
+    attribution: str | None = None  # tác giả · giấy phép của mẫu từ tệp; mẫu dựng bằng mã thì vắng

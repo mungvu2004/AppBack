@@ -127,6 +127,7 @@ docker compose -f deploy/compose/dev.yml --env-file deploy/compose/env.example u
   printf '%s' "$MAT_KHAU" | docker compose -f deploy/compose/dev.yml --env-file deploy/compose/env.example \
     exec -T api python -m apps.api.auth.cli create-admin --email <email> --name <tên> --password-stdin
   ```
+- Thư viện nội thất: sau seed, `python -m apps.api.library.cli import-files <thư mục>` (trong container `api`, thư mục gắn vào container) phát hành 63 mẫu `.glb` của `packages/domain/library/files.json` (`<id>.glb`, `<id>.png` nếu có; sha lệch → `failed`, thoát 1). Gói tệp nằm ngoài git, trên máy này ở `F:/runs/can-mau/library-import/out`.
 - Thư gửi đi đọc ở Mailpit `http://localhost:8025`.
 - Trình duyệt phải vào đúng origin `PUBLIC_BASE_URL` (`localhost`, không `127.0.0.1`); lệch thì `POST /api/auth/*` trả 403 `ORIGIN_MISMATCH` (`BE-00.md:245-247`, `e2e/fullstack/README.md:17,35`).
 

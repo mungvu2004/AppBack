@@ -3177,7 +3177,8 @@
           "storage",
           "sanitary",
           "kitchen",
-          "technical"
+          "technical",
+          "decor"
         ],
         "type": "string"
       },
@@ -3185,6 +3186,17 @@
         "additionalProperties": false,
         "description": "Một mẫu nội thất đã phát hành; số đo đo từ chính tệp `.glb`.",
         "properties": {
+          "attribution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
+          },
           "depthMm": {
             "title": "Depthmm",
             "type": "integer"

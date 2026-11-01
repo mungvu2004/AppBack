@@ -19,6 +19,7 @@ from packages.db.engine import create_engine, create_sessionmaker, session_scope
 from packages.db.models.library import LibraryItemRow
 from packages.db.seeds.library import seed
 from packages.db.settings import get_database_settings, reset_database_settings_cache
+from packages.domain.library import CATALOGUE, FILE_CATALOGUE, build_glb
 from packages.messaging.schedules import schedule_entries
 from packages.storage.local import LocalDiskStorage
 from packages.storage.settings import reset_storage_settings_cache
@@ -126,3 +127,18 @@ def test_imports_without_web_or_crypto_packages(module: str) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.usefixtures("process_env")
+def test_cli_import_files_counts_and_exit_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`import-files`: thư mục rỗng → mọi mẫu `skipped`, thoát 0; một tệp sai sha → `failed=1`, thoát 1."""
+    asyncio.run(_seed_process_db())
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    total = len(FILE_CATALOGUE)
+    assert cli.main(["import-files", str(pack)]) == cli.EXIT_OK
+    assert capsys.readouterr().out == f"published=0 skipped={total} failed=0\n"
+
+    (pack / f"{FILE_CATALOGUE[0].id}.glb").write_bytes(build_glb(CATALOGUE[0]).data)
+    assert cli.main(["import-files", str(pack)]) == cli.EXIT_FAIL
+    assert capsys.readouterr().out == f"published=0 skipped={total - 1} failed=1\n"

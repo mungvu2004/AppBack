@@ -18,7 +18,7 @@ from apps.api.library.tests._helpers import (
     spy,
     token_of,
 )
-from packages.domain.library import CATALOGUE, build_glb
+from packages.domain.library import CATALOGUE, FILE_CATALOGUE, build_glb
 from packages.storage.local import LocalDiskStorage
 from packages.storage.port import SignedUrl, SignRequest
 from packages.testing.factories.auth import make_user
@@ -241,3 +241,18 @@ async def test_library_list_items__signs_every_url_in_one_batch(
 
     assert len(items) == 16
     assert batches == [32]
+
+
+async def test_library_attribution_only_on_file_items(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage
+) -> None:
+    """Mẫu từ tệp mang `attribution` (tác giả · giấy phép); mẫu dựng bằng mã vắng khoá."""
+    user = await make_user(db_session)
+    file_item = FILE_CATALOGUE[0]
+    await make_library_item(db_session, local_storage, id=file_item.id, sort_order=1)
+    await make_library_item(db_session, local_storage, id="procedural-one", sort_order=2)
+    items = (await api_client.get(LIST_PATH, headers=headers_of(user))).json()
+    assert items[0]["attribution"] == file_item.attribution
+    assert "attribution" not in items[1]
+    body = (await api_client.get(item_path(file_item.id), headers=headers_of(user))).json()
+    assert set(body) == WIRE_KEYS | {"attribution"}

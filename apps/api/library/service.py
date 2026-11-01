@@ -15,10 +15,11 @@ from apps.api.library.schemas import LibraryItemOut
 from apps.api.library.settings import get_library_settings
 from packages.core.error_codes import NOT_FOUND
 from packages.db.models.library import LibraryItemRow
-from packages.domain.library import is_item_id
+from packages.domain.library import FILE_CATALOGUE, is_item_id
 from packages.storage.port import ObjectStorage, SignRequest
 
 RESOURCE: Final = "libraryItem"
+_ATTRIBUTION: Final = {item.id: item.attribution for item in FILE_CATALOGUE}
 
 
 def visible_to(user_id: str) -> ColumnElement[bool]:
@@ -60,6 +61,7 @@ async def _to_outs(storage: ObjectStorage, rows: Sequence[LibraryItemRow], user_
                     "file_size_bytes": row.file_size_bytes,
                     "model_url": model.url,
                     "preview_url": None if preview is None else preview.url,
+                    "attribution": _ATTRIBUTION.get(row.id),
                 }
             )
         )

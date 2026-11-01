@@ -52,9 +52,9 @@ def test_catalogue_ids_unique_and_valid() -> None:
 
 
 def test_catalogue_covers_all_eight_groups_in_fe_order() -> None:
-    """Đủ 8 nhóm; danh sách nhóm đúng thứ tự chip FE."""
-    assert LIBRARY_GROUPS == ("table", "chair", "bed", "sofa", "storage", "sanitary", "kitchen", "technical")
-    assert {i.group for i in CATALOGUE} == set(LIBRARY_GROUPS)
+    """Danh mục dựng bằng mã đủ 8 nhóm (trừ `decor`, chỉ mẫu từ tệp có); danh sách nhóm đúng thứ tự chip FE."""
+    assert LIBRARY_GROUPS == ("table", "chair", "bed", "sofa", "storage", "sanitary", "kitchen", "technical", "decor")
+    assert {i.group for i in CATALOGUE} == set(LIBRARY_GROUPS) - {"decor"}
     assert [i.group for i in CATALOGUE] == sorted((i.group for i in CATALOGUE), key=LIBRARY_GROUPS.index)
 
 
