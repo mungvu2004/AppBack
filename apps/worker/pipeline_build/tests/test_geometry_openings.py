@@ -6,11 +6,13 @@ ra mong đợi; tường đặt ở `y = 1000` để mọi toạ độ không â
 
 import math
 from collections import Counter
+from datetime import UTC, datetime
 
 import pytest
 
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
 from packages.domain.spatial import Point
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
@@ -161,12 +163,26 @@ def test_build_walls__short_wall_keeps_door_clamped_to_length(fake_clock: FakeCl
 
 @pytest.mark.parametrize("length", [800, 500, 300])
 def test_build_walls__degenerate_projection_clamped_to_short_wall(length: int, fake_clock: FakeClock) -> None:
-    """BUG-IT-009: hộp gần hết ra ngoài đầu tường: hình chiếu 100 < 300 → mặc định 900 > L ≥ 300 → kẹp về L."""
+    """BUG-IT-009: hộp lố đầu tường 250 (< 300, không dựng tường qua khe): chiếu 100 < 300 → mặc định 900 → kẹp về L."""
+    dropped: Counter[str] = Counter()
+    box = det("door", length - 100, 950, length + 250, 1050)
+    result = run([wall_px(0, 1000, length, 1000)], [box], fake_clock, dropped)
+    (opening,) = result.openings
+    assert len(result.walls) == 1
+    assert (opening.width_mm, opening.offset_mm) == (length, 0)
+    assert dropped["openingTooWide"] == 0
+
+
+@pytest.mark.parametrize("length", [800, 250])
+def test_build_walls__box_past_wall_end_gets_gap_wall(length: int, fake_clock: FakeClock) -> None:
+    """OPEN-ATTACH: hộp lố đầu tường 900 → tường mới chỉ trên phần lố `[L, L + 900]`, cửa 900 trên đó, không chồng."""
     dropped: Counter[str] = Counter()
     box = det("door", length - 100, 950, length + 900, 1050)
     result = run([wall_px(0, 1000, length, 1000)], [box], fake_clock, dropped)
+    gap = result.walls[1]
     (opening,) = result.openings
-    assert (opening.width_mm, opening.offset_mm) == (length, 0)
+    assert (gap.centreline.start, gap.centreline.end) == (Point(x=length, y=1000), Point(x=length + 900, y=1000))
+    assert (opening.wall_id, opening.width_mm, opening.offset_mm) == (gap.id, 900, 0)
     assert dropped["openingTooWide"] == 0
 
 
@@ -180,9 +196,9 @@ def test_build_walls__clamped_opening_stays_inside_diagonal_wall(fake_clock: Fak
 
 
 def test_build_walls__wall_under_min_width_too_wide(fake_clock: FakeClock) -> None:
-    """Tường 250 < `OPENING_MIN_WIDTH_MM`: không đủ chỗ cho ô mở thật → vẫn `openingTooWide`."""
+    """Tường 250 < `OPENING_MIN_WIDTH_MM`, hộp lố 250 (không dựng tường qua khe): không đủ chỗ → `openingTooWide`."""
     dropped: Counter[str] = Counter()
-    result = run([wall_px(0, 1000, 250, 1000)], [det("door", 150, 950, 1150, 1050)], fake_clock, dropped)
+    result = run([wall_px(0, 1000, 250, 1000)], [det("door", 150, 950, 500, 1050)], fake_clock, dropped)
     assert result.openings == ()
     assert dropped["openingTooWide"] == 1
 
@@ -192,7 +208,7 @@ def test_build_walls__clamped_openings_on_short_wall_overlap(fake_clock: FakeClo
     dropped: Counter[str] = Counter()
     result = run(
         [wall_px(1000, 1000, 1500, 1000)],
-        [det("door", 1400, 950, 2400, 1050, 0.7), det("door", 100, 950, 1100, 1050, 0.9)],
+        [det("door", 1400, 950, 1650, 1050, 0.7), det("door", 850, 950, 1100, 1050, 0.9)],
         fake_clock,
         dropped,
     )
@@ -312,6 +328,69 @@ def test_build_walls__corner_box_touching_two_walls_picks_centre_nearest(fake_cl
     (opening,) = result.openings
     assert (opening.wall_id, opening.offset_mm, opening.width_mm) == (result.walls[1].id, 2000, 900)
     assert result.walls[0].opening_ids == ()
+
+
+@pytest.mark.parametrize(
+    ("stub_end_y", "box_y1"),
+    [(1250, 1250), (1400, 1100)],
+    ids=["stub_under_min_width", "stub_across_box"],
+)
+def test_build_walls__door_skips_jamb_stub_nearer_centre(
+    stub_end_y: float, box_y1: float, fake_clock: FakeClock
+) -> None:
+    """OPEN-ATTACH: mẩu má cửa vuông góc gần tâm hộp hơn (ngắn < 300 hoặc chiếu chỉ 100 mm) → bỏ qua, gắn tường dài."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000), wall_px(1500, 1000, 1500, stub_end_y)],
+        [det("door", 1100, 1000, 1900, box_y1)],
+        fake_clock,
+        dropped,
+    )
+    (opening,) = result.openings
+    assert (opening.wall_id, opening.offset_mm, opening.width_mm) == (result.walls[0].id, 1100, 800)
+    assert dropped["openingTooWide"] == 0
+
+
+def test_build_walls__short_box_off_axis_falls_back_to_nearest(fake_clock: FakeClock) -> None:
+    """OPEN-ATTACH: hộp đứng 100 x 250 (< 300, không dựng tường qua khe), không tường nằm dọc → tường gần tâm nhất."""
+    dropped: Counter[str] = Counter()
+    result = run([wall_px(0, 1000, 4000, 1000)], [det("door", 1000, 1000, 1100, 1250)], fake_clock, dropped)
+    (opening,) = result.openings
+    assert len(result.walls) == 1
+    assert opening.wall_id == result.walls[0].id
+
+
+def test_build_walls__door_between_perpendicular_walls_gets_gap_wall(fake_clock: FakeClock) -> None:
+    """OPEN-ATTACH bước 3c: khe chỉ có tường vuông góc → tường mới qua tim hộp, bề dày tường gần tâm, cửa rộng 900."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(1000, 0, 1000, 2000, 200), wall_px(1900, 0, 1900, 2000)],
+        [det("door", 1000, 950, 1900, 1050)],
+        fake_clock,
+        dropped,
+    )
+    gap = result.walls[2]
+    (opening,) = result.openings
+    assert (gap.centreline.start, gap.centreline.end) == (Point(x=1000, y=1000), Point(x=1900, y=1000))
+    assert gap.thickness_mm == result.walls[0].thickness_mm
+    assert (opening.wall_id, opening.offset_mm, opening.width_mm) == (gap.id, 0, 900)
+    assert 2 not in result.input_to_wall.values()
+    assert dropped["openingTooWide"] == 0
+
+
+def test_build_walls__overlapping_gap_boxes_share_one_wall(fake_clock: FakeClock) -> None:
+    """OPEN-ATTACH: hai hộp trùng một khe đứng → một tường qua khe, ô mở thứ hai rơi `openingOverlap`."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 2000, 1000), wall_px(0, 1900, 2000, 1900)],
+        [det("door", 950, 1000, 1050, 1900, 0.9), det("door", 960, 1010, 1060, 1880, 0.6)],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 3
+    (opening,) = result.openings
+    assert opening.wall_id == result.walls[2].id
+    assert dropped["openingOverlap"] == 1
 
 
 def test_build_walls__overlapping_openings_keep_higher_confidence(fake_clock: FakeClock) -> None:
@@ -439,7 +518,8 @@ def test_build_walls__diagonal_noisy_gap_joined(
 
 
 def test_build_walls__orthogonal_three_degrees_not_joined(fake_clock: FakeClock) -> None:
-    """Bản vẽ thẳng trục giữ 2° của B5-05 [6] 3b: tường 0° và 3° có hộp cửa ở khe → không gộp."""
+    """Bản vẽ thẳng trục giữ 2° của B5-05 [6] 3b: tường 0° và 3° có hộp cửa ở khe → không gộp; cửa nằm trên tường
+    qua khe của bước 3c (OPEN-ATTACH), hai tường cũ giữ nguyên."""
     rad = math.radians(3)
     dropped: Counter[str] = Counter()
     result = run(
@@ -448,7 +528,9 @@ def test_build_walls__orthogonal_three_degrees_not_joined(fake_clock: FakeClock)
         fake_clock,
         dropped,
     )
-    assert len(result.walls) == 2
+    assert len(result.walls) == 3
+    assert result.walls[0].centreline.end == Point(x=1550, y=1000)
+    assert result.walls[2].opening_ids == tuple(opening.id for opening in result.openings)
     assert dropped["wallGapBridged"] == 0
 
 
@@ -618,3 +700,44 @@ def test_build_walls__hugging_stub_closed_both_ends_or_thin_host_kept(fake_clock
     )
     assert len(closed.walls) == 4
     assert len(thin.walls) == 2
+
+
+def test_build_walls__gap_wall_without_opening_dropped(fake_clock: FakeClock) -> None:
+    """OPEN-ATTACH (review P2): cửa đôi 500 < 600 trên tường qua khe rơi → tường đó bỏ, không bịt lối."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(1000, 0, 1000, 2000), wall_px(1500, 0, 1500, 2000)],
+        [det("double_door", 1000, 950, 1500, 1050)],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 2
+    assert result.openings == ()
+    assert dropped["openingUnattached"] == 1
+
+
+def test_build_layer__rooms_ignore_gap_walls() -> None:
+    """OPEN-ATTACH (P3): vách lệch 120 mm hai bên khe → tường qua khe mang cửa; phòng không kể nó, như khi không cửa."""
+    room = [
+        wall_px(0, 0, 400, 0, 10),
+        wall_px(400, 0, 400, 300, 10),
+        wall_px(400, 300, 0, 300, 10),
+        wall_px(0, 300, 0, 0, 10),
+        wall_px(200, 0, 200, 130, 10),
+        wall_px(212, 220, 212, 300, 10),
+    ]
+    built, bare = (
+        build_wrapped(
+            walls=room,
+            detections=detections,
+            width_px=400,
+            height_px=300,
+            clock=FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC)),
+        )
+        for detections in ([det("door", 194, 130, 218, 220)], [])
+    )
+    (opening,) = built.layer.openings
+    gap = next(wall for wall in built.layer.walls if wall.id == opening.wall_id)
+    assert gap.centreline.start.y == 1300
+    assert all(gap.id not in room.wall_ids for room in built.layer.rooms)
+    assert [room.outline for room in built.layer.rooms] == [room.outline for room in bare.layer.rooms]

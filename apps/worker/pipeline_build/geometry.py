@@ -12,7 +12,7 @@ import logging
 import math
 from collections import Counter, deque
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final, Literal
 
 import numpy as np
@@ -54,6 +54,8 @@ _DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
 """Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
 """Cửa đôi hẹp hơn 600 mm là hộp bám sai tường, không phải cửa (B5-05 [6] bước 4)."""
+_GAP_PARALLEL_COS: Final = math.cos(math.radians(20.0))
+"""Tường lệch hướng hộp ô mở ≤ 20° là cùng hướng: bước 3c không dựng tường qua khe (OPEN-ATTACH)."""
 # 3b (d): đầu tường lơ lửng nhìn thẳng gặp vách trong khe mặt-tới-mặt ≤ max(450, 3 x bề dày) → kéo tới chạm.
 _DANGLE_REACH_MM: Final = 450
 _DANGLE_REACH_THICKNESS: Final = 3
@@ -712,27 +714,92 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
 
 def _attach_walls(
     segs: Sequence[_Seg], geoms: Geoms, rects: Sequence[tuple[float, float, float, float]]
-) -> list[int | None]:
-    """Tường gắn cho mỗi hộp ô mở, `None` khi không tường nào với tới (bước 4).
+) -> list[list[int]]:
+    """Tường ứng viên của mỗi hộp ô mở, gần tâm trước; rỗng khi không tường nào với tới (bước 4).
 
     Ứng viên: tường mà **hộp** (không phải tâm) cách tim ≤ `thicknessMm / 2 + OPENING_WALL_REACH_MM`,
     0 khi tim cắt hộp — hộp thẳng trục của cửa xoay chéo là hộp vuông lớn, tâm xa tim (BUG-IT-003).
-    Trong ứng viên chọn tường gần **tâm** hộp nhất, hoà lấy chỉ số nhỏ: cửa sát góc chạm cả vách
-    vuông góc vẫn về tường nó nằm trên. Một truy vấn `dwithin` theo lô, khoảng cách vector hoá.
+    Xếp theo khoảng cách tới **tâm** hộp, hoà lấy chỉ số nhỏ: cửa sát góc chạm cả vách vuông góc vẫn về
+    tường nó nằm trên. `_opening_candidates` chọn trong danh sách. Một truy vấn `dwithin` theo lô.
     """
-    best: list[int | None] = [None] * len(rects)
+    ranked: list[list[int]] = [[] for _ in rects]
     if not rects or not len(geoms):
-        return best
+        return ranked
     boxes = np.asarray(shapely.box(*np.asarray(rects).T), dtype=object)
     reach = np.asarray([seg.thickness_mm / 2 + OPENING_WALL_REACH_MM for seg in segs])
     sources, walls = STRtree(geoms).query(boxes, predicate="dwithin", distance=float(reach.max()))
     inside = shapely.distance(boxes[sources], geoms[walls]) <= reach[walls]
     centre = shapely.distance(shapely.centroid(boxes[sources]), geoms[walls])
-    ranked = zip(centre[inside].tolist(), walls[inside].tolist(), sources[inside].tolist(), strict=True)
-    for _, wall, source in sorted(ranked):
-        if best[source] is None:
-            best[source] = wall
-    return best
+    hits = zip(centre[inside].tolist(), walls[inside].tolist(), sources[inside].tolist(), strict=True)
+    for _, wall, source in sorted(hits):
+        ranked[source].append(wall)
+    return ranked
+
+
+def _runs_along(rect: tuple[float, float, float, float], span: tuple[float, float], length: float) -> bool:
+    """Hộp nằm dọc tường đủ dài: tường ≥ `OPENING_MIN_WIDTH_MM` và hình chiếu ≥ ½ cạnh dài của hộp.
+
+    Mẩu tường má cửa (ngắn, thường vuông góc với hộp) thường gần tâm hộp hơn tường thật mà cửa nằm trên;
+    gắn vào mẩu đó thì ô mở rơi `openingTooWide` hoặc lấy rộng mặc định chồng lên ô mở bên cạnh (OPEN-ATTACH).
+    """
+    long_side = max(rect[2] - rect[0], rect[3] - rect[1])
+    return length >= OPENING_MIN_WIDTH_MM and span[1] - span[0] >= long_side / 2
+
+
+def _gap_walls(segs: Sequence[_Seg], detections: Sequence[DetectionPx], scaling: Scaling) -> list[_Seg]:
+    """Bước 3c: tường qua phần khe của hộp ô mở dài mà không tường cùng hướng nào phủ (OPEN-ATTACH).
+
+    Mẩu má cửa vector hoá thành đoạn xiên ngắn, hay tường dừng ngay trước khe, thì 3b không nối được khe: cửa chỉ
+    còn tường vuông góc hoặc một đầu tường thẳng hàng để gắn → rơi `openingTooWide` hoặc lấy rộng mặc định chồng
+    lên ô mở bên cạnh. Có tường nằm dọc hộp (`_runs_along`, kể cả tường chéo xuyên hộp) thì không dựng. Dọc cạnh dài
+    của hộp, bỏ khoảng mà tường với tới cùng hướng (lệch ≤ 20°) đã phủ; khoảng trống
+    dài nhất ≥ `OPENING_MIN_WIDTH_MM` thành tim mới qua tâm hộp, bề dày và tin cậy của tường gần tâm nhất. Hộp cắt
+    hộp đã dựng tường thì bỏ (cửa trùng); hộp gần vuông (cạnh dài < 2 lần cạnh ngắn) không rõ hướng nên không dựng.
+    """
+    if not segs:
+        return []
+    geoms = _linestrings(segs)
+    rects = [_rect(det.box, scaling) for det in detections if det.label in _OPENING_LABELS]
+    added: list[_Seg] = []
+    used: list[tuple[float, float, float, float]] = []
+    for rect, walls in zip(rects, _attach_walls(segs, geoms, rects), strict=True):
+        width, height = rect[2] - rect[0], rect[3] - rect[1]
+        if not walls or max(width, height) < max(OPENING_MIN_WIDTH_MM, 2 * min(width, height)):
+            continue
+        if any(rect[0] < x1 and x0 < rect[2] and rect[1] < y1 and y0 < rect[3] for x0, y0, x1, y1 in used):
+            continue
+        if any(_runs_along(rect, *_placement(segs, geoms, {}, rect, wall)[2:]) for wall in walls):
+            continue
+        axis = 0 if width >= height else 1
+        covered = [
+            sorted((segs[wall].start.x, segs[wall].end.x) if axis == 0 else (segs[wall].start.y, segs[wall].end.y))
+            for wall in walls
+            if abs(_unit(segs[wall])[axis]) >= _GAP_PARALLEL_COS
+        ]
+        low, high = _longest_free(rect[axis], rect[axis + 2], covered)
+        if high - low < OPENING_MIN_WIDTH_MM:
+            continue
+        mid = js_round((rect[1 - axis] + rect[3 - axis]) / 2)
+        ends = (js_round(low), js_round(high))
+        start, end = (
+            (Point(x=ends[0], y=mid), Point(x=ends[1], y=mid))
+            if axis == 0
+            else (Point(x=mid, y=ends[0]), Point(x=mid, y=ends[1]))
+        )
+        near = segs[walls[0]]
+        added.append(_Seg(start, end, near.thickness_mm, float(near.thickness_mm), near.confidence, ()))
+        used.append(rect)
+    return added
+
+
+def _longest_free(low: float, high: float, covered: Sequence[Sequence[float]]) -> tuple[float, float]:
+    """Khoảng con dài nhất của `[low, high]` không nằm trong khoảng `covered` nào (hoà: khoảng trước)."""
+    best, cursor = (low, low), low
+    for start, end in sorted((max(a, low), min(b, high)) for a, b in covered if b > low and a < high):
+        if start - cursor > best[1] - best[0]:
+            best = (cursor, start)
+        cursor = max(cursor, end)
+    return (cursor, high) if high - cursor > best[1] - best[0] else best
 
 
 def _arc_chains(segs: Sequence[_Seg], arc_of: Sequence[int | None]) -> dict[int, tuple[int, ...]]:
@@ -809,32 +876,46 @@ def _opening_candidates(
     dropped: Counter[str],
     chains: Mapping[int, tuple[int, ...]],
 ) -> list[_Cand]:
-    """Bước 4: mỗi hộp ô mở → tường của `_attach_walls`; không tường nào với tới → `openingUnattached`.
+    """Bước 4: mỗi hộp ô mở → tường đầu tiên trong ứng viên của `_attach_walls` mà hộp nằm dọc (`_runs_along`),
+    không có thì tường gần tâm nhất; không tường nào với tới → `openingUnattached`.
 
-    Hộp gắn vào dây của một cung (`chains`) chiếu lên cả cung, ô mở đặt trên dây đầu với `offsetMm` tính từ đầu
-    cung: cửa ban công cong rộng hơn một dây 10° không bị kẹp về dây hay rơi `openingTooWide` (WALLS-ARC NO-432).
+    Cung: xem `_placement` — cửa ban công cong rộng hơn một dây 10° không bị kẹp về dây hay rơi `openingTooWide`.
     """
     chosen = [(order, det) for order, det in enumerate(detections) if det.label in _OPENING_LABELS]
     rects = [_rect(det.box, scaling) for _, det in chosen]
-    attached = _attach_walls(segs, geoms, rects)
     cands: list[_Cand] = []
-    for position, (order, detection) in enumerate(chosen):
-        wall = attached[position]
-        if wall is None:
+    for rect, (order, detection), walls in zip(rects, chosen, _attach_walls(segs, geoms, rects), strict=True):
+        if not walls:
             dropped["openingUnattached"] += 1
             continue
-        chain = chains.get(wall)
-        if chain is None:
-            cand = _candidate(order, detection, wall, segs[wall], _span_on_wall(rects[position], geoms[wall]), dropped)
-        else:
-            line = shapely.linestrings(
-                [[segs[chain[0]].start.x, segs[chain[0]].start.y]] + [[segs[k].end.x, segs[k].end.y] for k in chain]
-            )
-            span = _span_on_wall(rects[position], line)
-            cand = _candidate(order, detection, chain[0], segs[wall], span, dropped, float(line.length))
+        places = [_placement(segs, geoms, chains, rect, wall) for wall in walls]
+        # Tường đầu tiên hộp nằm dọc; không có thì tường gần tâm nhất như trước (OPEN-ATTACH).
+        host, wall, span, length = next((place for place in places if _runs_along(rect, place[2], place[3])), places[0])
+        cand = _candidate(order, detection, host, segs[wall], span, dropped, length)
         if cand is not None:
             cands.append(cand)
     return cands
+
+
+def _placement(
+    segs: Sequence[_Seg],
+    geoms: Geoms,
+    chains: Mapping[int, tuple[int, ...]],
+    rect: tuple[float, float, float, float],
+    wall: int,
+) -> tuple[int, int, tuple[float, float], float]:
+    """`(tường chủ, tường gắn, hình chiếu, chiều dài)` của hộp trên `wall`; dây của cung → chiếu lên cả cung.
+
+    Hộp gắn vào dây của một cung (`chains`) chiếu lên cả cung, ô mở đặt trên dây đầu với `offsetMm` tính từ đầu
+    cung (WALLS-ARC NO-432).
+    """
+    chain = chains.get(wall)
+    if chain is None:
+        return wall, wall, _span_on_wall(rect, geoms[wall]), _length(segs[wall])
+    line = shapely.linestrings(
+        [[segs[chain[0]].start.x, segs[chain[0]].start.y]] + [[segs[k].end.x, segs[k].end.y] for k in chain]
+    )
+    return chain[0], wall, _span_on_wall(rect, line), float(line.length)
 
 
 def _overlaps(a: _Cand, b: _Cand) -> bool:
@@ -910,7 +991,7 @@ def build_walls(
     dropped: Counter[str],
     arc_of: Sequence[int | None] = (),
 ) -> WallSet:
-    """Bước 3 + 3b + 4: tường mm, nối khe ô mở, ô mở; không sửa đối số vào.
+    """Bước 3 + 3b + 3c + 4: tường mm, nối khe ô mở, tường qua khe cửa, ô mở; không sửa đối số vào.
 
     Chỉ nhãn `door|double_door|window` thành ô mở, nhãn khác bỏ qua **không** đếm (đồ đạc là
     việc của `rooms.build_furniture`). `dropped` cộng dồn tại chỗ theo khoá `DROPPED_KEYS`. `arc_of` (từ
@@ -920,9 +1001,23 @@ def build_walls(
     boxes = _opening_boxes(detections, scaling)
     bridges = _join_gaps(segs, boxes, dropped) if segs else ()
     live = [seg for seg in segs if seg.alive]
+    live += _gap_walls(live, detections, scaling)
     input_to_wall = {index: position for position, seg in enumerate(live) for index in seg.inputs}
     geoms = _linestrings(live) if live else np.asarray([], dtype=object)
     chains = _arc_chains(live, arc_of)
     cands = _resolve_overlaps(_opening_candidates(live, geoms, detections, scaling, dropped, chains), dropped)
+    live, cands = _drop_bare_gap_walls(live, cands)
     built_walls, openings = _assemble(live, cands, level_id, clock)
     return WallSet(built_walls, openings, input_to_wall, bridges)
+
+
+def _drop_bare_gap_walls(segs: Sequence[_Seg], cands: Sequence[_Cand]) -> tuple[list[_Seg], list[_Cand]]:
+    """Bỏ tường qua khe (bước 3c, không đầu vào) không còn ô mở nào: ô mở rơi thì tường đó bịt lối (OPEN-ATTACH).
+
+    Tường qua khe nằm cuối `segs` nên bỏ chúng không dời chỉ số tường có đầu vào (`input_to_wall` giữ nguyên);
+    `wall` của ô mở đánh lại theo vị trí mới.
+    """
+    hosts = {cand.wall for cand in cands}
+    kept = [index for index, seg in enumerate(segs) if seg.inputs or index in hosts]
+    position = {old: new for new, old in enumerate(kept)}
+    return [segs[index] for index in kept], [replace(cand, wall=position[cand.wall]) for cand in cands]

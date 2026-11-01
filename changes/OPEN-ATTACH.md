@@ -1,0 +1,9 @@
+# OPEN-ATTACH — cửa dò đúng không còn rơi khi gắn tường
+
+- `apps/worker/pipeline_build/geometry.py` bước 3c mới `_gap_walls`: hộp ô mở dài (cạnh dài ≥ 300 và ≥ 2 lần cạnh ngắn) có tường với tới mà không tường nào nằm dọc (`_runs_along`) → dựng tường qua phần khe chưa có tường cùng hướng (lệch ≤ 20°) phủ, khoảng trống dài nhất ≥ 300 mm, bề dày/tin cậy của tường gần tâm nhất. Mẩu má cửa vector hoá thành đoạn xiên ngắn hay tường dừng trước khe trước đây làm cửa rơi `openingTooWide` hoặc lấy rộng mặc định 900 trên tường vuông góc rồi chồng lên ô mở bên cạnh.
+- Bước 4: `_attach_walls` trả mọi tường ứng viên theo khoảng cách tới tâm; `_opening_candidates` lấy tường đầu tiên hộp nằm dọc, không có thì tường gần tâm nhất như cũ. `_placement` gom phép chiếu lên tường/cung.
+- `apps/worker/pipeline_build/build.py`: dựng phòng bỏ tường qua khe (không có đầu vào trong `input_to_wall`) — `_door_closers` vẫn khép khe như cũ, phòng không đổi.
+- Đo trên 14 bản bench căn hộ (artifact lượt 27/10 trên f14, dựng lại trong bộ nhớ, đáp án cửa `F:/runs/bench-can-ho/key-dw`): cửa đi đúng 70 → 82, cửa sổ đúng 29 → 32, ô mở sai 7 → 7, `openingTooWide` 9 → 0, `openingOverlap` 10 → 4, phòng giống hệt cả 14 bản, tường 475 → 508.
+- Test đổi theo hành vi mới: hộp lố đầu tường ≥ 300 mm và cửa ở khe giữa hai tường thẳng hàng giờ có tường riêng (`test_geometry_openings.py`); ca BUG-IT-009 / `openingTooWide` giữ bằng hộp lố 250 mm.
+- Không đổi API, DB, migration, hợp đồng FE–BE. Cổng áp dụng: lint/type, test `apps/worker/pipeline_build`.
+- Review vòng 1 (P2, P3): tường qua khe không còn ô mở nào sau `_resolve_overlaps` thì bỏ (`_drop_bare_gap_walls`), không bịt lối khi cửa trên nó rơi (vd. cửa đôi < 600 mm); test `build_layer` khẳng định phòng không kể tường qua khe và giống hệt khi không có hộp cửa. Bench không đổi.
