@@ -99,6 +99,7 @@ async def _gd1(db: AsyncSession, payload: PipelineStartPayload, clock: Clock) ->
         page_index=upload.page_index,
         original_key=upload.original_key,
         kind=upload.sniffed_kind,
+        crop=tuple((float(x), float(y)) for x, y in upload.crop_corners) if upload.crop_corners else None,
     )
     drawing = await current_drawing(db, opened.floor_pk)
     assessment = await load_assessment(db, opened.floor_pk)
