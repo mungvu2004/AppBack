@@ -3209,6 +3209,75 @@
         ],
         "type": "string"
       },
+      "LightingBake": {
+        "additionalProperties": false,
+        "description": "Một lượt nướng: N42 trả lượt vừa mở, N43 trả lượt mới nhất của dự án.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endedat"
+          },
+          "failureCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurecode"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LightingBakeStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt"
+        ],
+        "title": "LightingBake",
+        "type": "object"
+      },
+      "LightingBakeStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "type": "string"
+      },
       "MeSchema": {
         "additionalProperties": false,
         "description": "Response N11/N12/N14 (HOP-DONG-MOI §3); trường tuỳ chọn vắng khi `None` (W2, K02).",
@@ -10483,6 +10552,146 @@
         "summary": "Spatial Write Layer",
         "tags": [
           "spatial"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/lighting-bakes": {
+      "post": {
+        "description": "N42 — thân là byte GLB thô; 202 với lượt `queued`, 409 khi dự án đang nướng.",
+        "operationId": "lighting_bake_start_bake_api_projects__project_id__lighting_bakes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LightingBake"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lighting Bake Start Bake",
+        "tags": [
+          "lighting_bake"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/lighting-bakes/latest": {
+      "get": {
+        "description": "N43 — lượt mới nhất của dự án; chưa có → 404 `lightingBake`.",
+        "operationId": "lighting_bake_read_latest_api_projects__project_id__lighting_bakes_latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LightingBake"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lighting Bake Read Latest",
+        "tags": [
+          "lighting_bake"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/lighting-bakes/{bake_id}/files/{file_name}": {
+      "get": {
+        "description": "N44 — stream tệp kết quả của lượt `done` (attachment, cache riêng 10 phút).",
+        "operationId": "lighting_bake_download_file_api_projects__project_id__lighting_bakes__bake_id__files__file_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bake_id",
+            "required": true,
+            "schema": {
+              "title": "Bake Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lighting Bake Download File",
+        "tags": [
+          "lighting_bake"
         ]
       }
     },
