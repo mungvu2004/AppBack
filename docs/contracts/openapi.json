@@ -7167,6 +7167,13 @@
             "title": "Confidence",
             "type": "number"
           },
+          "curveOffsetMm": {
+            "default": 0,
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Curveoffsetmm",
+            "type": "integer"
+          },
           "detectedThicknessMm": {
             "anyOf": [
               {
@@ -7347,6 +7354,11 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "curveOffsetMm": {
+            "default": 0,
+            "title": "Curveoffsetmm",
+            "type": "integer"
           },
           "detectedThicknessMm": {
             "anyOf": [

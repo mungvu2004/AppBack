@@ -87,7 +87,9 @@ class _WallIndex:
         self._cells: dict[CellKey, list[int]] = {}
         for position, wall in enumerate(walls):
             line = wall.centreline
-            for key in _band_cells(line.start, line.end, wall.thickness_mm / 2 + FIXTURE_SNAP_REACH_MM):
+            # Tường cong phồng khỏi dây tới |sagitta|: nở dải thêm chừng ấy để lưới vẫn phủ cả cung.
+            reach = wall.thickness_mm / 2 + FIXTURE_SNAP_REACH_MM + abs(wall.curve_offset_mm)
+            for key in _band_cells(line.start, line.end, reach):
                 self._cells.setdefault(key, []).append(position)
 
     def candidates(self, box: BoundingBox) -> list[int]:

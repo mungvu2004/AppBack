@@ -9,6 +9,7 @@ A5 (`source="ai"` kèm `reviewed=True`) **không** kiểm ở đây: B3-03 cần
 """
 
 import json
+import math
 from typing import Annotated, Final, Literal, Self
 
 from pydantic import (
@@ -138,6 +139,11 @@ FurnitureVariant = Literal[
 """35 `FURNITURE_VARIANTS` của FE `src/domain/spatial/types.ts`, đúng thứ tự."""
 
 
+def _straight(curve_offset_mm: int) -> bool:
+    """Tường thẳng thì vắng khoá `curveOffsetMm`: tài liệu cũ dump ra đúng jsonb như trước."""
+    return curve_offset_mm == 0
+
+
 def _not_edited(edited: bool) -> bool:
     """`edited=False` thì bỏ khoá khi dump, như `roofs` rỗng."""
     return not edited
@@ -241,6 +247,17 @@ class Wall(Reviewed):
     paint: WallPaint | None = None
     detected_thickness_mm: PositiveMm | None = None
     """Bề dày máy đo (chưa bắt về bảng chuẩn) lúc dựng (U48); người sửa `thicknessMm` không đổi nó, B3-03 giữ."""
+    curve_offset_mm: Mm = Field(default=0, exclude_if=_straight)
+    """Tường cong (cung ≤ 180°): sagitta có dấu, điểm giữa cung = trung điểm tim - giá trị · n với `n = (-dy, dx) / L`
+    (quy ước `curveOffset` của Pascal); 0 là tường thẳng. Kiểm |giá trị| ≤ L/2 ở `_curve_fits`."""
+
+    @model_validator(mode="after")
+    def _curve_fits(self) -> Self:
+        """Cung không quá nửa vòng: |sagitta| ≤ nửa dây (Pascal kẹp phần thừa, lưu thừa là sai lặng lẽ)."""
+        start, end = self.centreline.start, self.centreline.end
+        if 2 * abs(self.curve_offset_mm) > math.hypot(end.x - start.x, end.y - start.y) + 1:
+            raise ValueError("curveOffsetMm lớn hơn nửa chiều dài tường")
+        return self
 
 
 class Opening(Reviewed):

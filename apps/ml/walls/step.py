@@ -97,6 +97,7 @@ def to_wall_px(seg: WallSegment) -> WallPx:
         end=PointPx(x=seg.end[0], y=seg.end[1]),
         thickness_px=seg.thickness_px,
         confidence=seg.confidence,
+        sagitta_px=seg.sagitta_px,
     )
 
 
@@ -134,7 +135,7 @@ def _capped(seg: WallSegment) -> WallSegment:
     """Cùng đoạn, độ tin không quá `CLASSIC_CONFIDENCE_CAP`."""
     if seg.confidence <= CLASSIC_CONFIDENCE_CAP:
         return seg
-    return WallSegment(seg.start, seg.end, seg.thickness_px, CLASSIC_CONFIDENCE_CAP)
+    return WallSegment(seg.start, seg.end, seg.thickness_px, CLASSIC_CONFIDENCE_CAP, seg.sagitta_px)
 
 
 def segment_page(

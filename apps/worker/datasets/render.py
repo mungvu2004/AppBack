@@ -13,6 +13,7 @@ hướng xuống, mỗi đầu tường kéo dài nửa bề dày dọc đườn
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Sequence
 
@@ -20,6 +21,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from packages.domain.spatial.arc import arc_points, span_points
 from packages.domain.spatial.model import Furniture, Opening, SpatialLayer, Wall
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx
 from packages.ml_contracts.labels import DetectionLabel
@@ -101,16 +103,20 @@ def _fill_polygon(canvas: NDArray[np.uint8], corners_px: NDArray[np.float64], va
     cv2.fillPoly(canvas, [points], value)
 
 
-def _wall_span_corners_px(
+def _wall_span_quads_px(
     wall: Wall, offset_mm: float, width_mm: float, mm_per_px: float, *, raster: bool = False
-) -> NDArray[np.float64]:
-    """4 góc (px) của một đoạn `[offset, offset + width]` dọc `u` của `wall`, rộng bề dày tường."""
+) -> list[NDArray[np.float64]]:
+    """Các tứ giác (4 góc px) phủ đoạn `[offset, offset + width]` dọc `wall`, rộng bề dày tường.
+
+    Tường thẳng: một tứ giác. Tường cong: một tứ giác mỗi dây ≤ 10° của cung trong đoạn đó, để khe cửa và hộp
+    nhãn ô mở theo cung chứ không theo dây (WALLS-ARC NO-433).
+    """
     start, end = wall.centreline.start, wall.centreline.end
-    length_mm = math.hypot(end.x - start.x, end.y - start.y)
-    ux, uy = (end.x - start.x) / length_mm, (end.y - start.y) / length_mm
-    span_start = (start.x + ux * offset_mm, start.y + uy * offset_mm)
-    span_end = (start.x + ux * (offset_mm + width_mm), start.y + uy * (offset_mm + width_mm))
-    return _segment_corners_px(*span_start, *span_end, wall.thickness_mm, mm_per_px, extend_ends=False, raster=raster)
+    points = span_points((start.x, start.y), (end.x, end.y), wall.curve_offset_mm, offset_mm, offset_mm + width_mm)
+    return [
+        _segment_corners_px(ax, ay, bx, by, wall.thickness_mm, mm_per_px, extend_ends=False, raster=raster)
+        for (ax, ay), (bx, by) in itertools.pairwise(points)
+    ]
 
 
 def wall_mask(
@@ -131,10 +137,11 @@ def wall_mask(
     canvas = np.zeros((height_px, width_px), dtype=np.uint8)
     for wall in walls:
         start, end = wall.centreline.start, wall.centreline.end
-        corners = _segment_corners_px(
-            start.x, start.y, end.x, end.y, wall.thickness_mm, mm_per_px, extend_ends=True, raster=True
-        )
-        _fill_polygon(canvas, corners, 1)
+        # Tường cong tô từng dây ≤ 10° của cung; nối dây chồng nửa bề dày nên không hở khe.
+        points = arc_points((start.x, start.y), (end.x, end.y), wall.curve_offset_mm)
+        for (ax, ay), (bx, by) in itertools.pairwise(points):
+            corners = _segment_corners_px(ax, ay, bx, by, wall.thickness_mm, mm_per_px, extend_ends=True, raster=True)
+            _fill_polygon(canvas, corners, 1)
     walls_by_id = {wall.id: wall for wall in walls}
     for opening in openings:
         if opening.kind != "door":
@@ -143,8 +150,8 @@ def wall_mask(
         host = walls_by_id.get(opening.wall_id)
         if host is None:
             continue
-        corners = _wall_span_corners_px(host, opening.offset_mm, opening.width_mm, mm_per_px, raster=True)
-        _fill_polygon(canvas, corners, 0)
+        for corners in _wall_span_quads_px(host, opening.offset_mm, opening.width_mm, mm_per_px, raster=True):
+            _fill_polygon(canvas, corners, 0)
     return canvas.astype(np.bool_)
 
 
@@ -158,7 +165,7 @@ def _clip_box(x_min: float, y_min: float, x_max: float, y_max: float, width_px: 
 
 
 def _bounding_box(corners_px: NDArray[np.float64]) -> tuple[float, float, float, float]:
-    """Hộp trục thẳng bao 4 góc của một đoạn xiên (đáp ứng "hộp trục thẳng" dù tường chéo)."""
+    """Hộp trục thẳng bao các góc của đoạn xiên hay cong (đáp ứng "hộp trục thẳng" dù tường chéo)."""
     return (
         float(corners_px[:, 0].min()),
         float(corners_px[:, 1].min()),
@@ -182,7 +189,7 @@ def object_boxes(layer: SpatialLayer, *, width_px: int, height_px: int, mm_per_p
         wall = walls_by_id.get(opening.wall_id)
         if wall is None:
             continue
-        corners = _wall_span_corners_px(wall, opening.offset_mm, opening.width_mm, mm_per_px)
+        corners = np.vstack(_wall_span_quads_px(wall, opening.offset_mm, opening.width_mm, mm_per_px))
         box = _clip_box(*_bounding_box(corners), width_px, height_px)
         if box is not None:
             detections.append(DetectionPx(label=_opening_label(opening), box=box, confidence=1.0))

@@ -56,10 +56,13 @@ def _segment(segment: Segment, k: float) -> Segment:
 
 
 def _wall(wall: Wall, k: float) -> Mapping[str, object]:
-    """Đường tim, bề dày và bề dày máy đo (cùng là px · tỉ lệ); `heightMm` là chiều đứng nên giữ."""
+    """Đường tim, độ cong, bề dày và bề dày máy đo (cùng là px · tỉ lệ); `heightMm` là chiều đứng nên giữ."""
     detected = wall.detected_thickness_mm
+    centreline = _segment(wall.centreline, k)
+    half = math.hypot(centreline.end.x - centreline.start.x, centreline.end.y - centreline.start.y) / 2
     return {
-        "centreline": _segment(wall.centreline, k),
+        "centreline": centreline,
+        "curve_offset_mm": max(-math.floor(half), min(math.floor(half), _mm(wall.curve_offset_mm, k))),
         "thickness_mm": _mm(wall.thickness_mm, k),
         "detected_thickness_mm": None if detected is None else max(1, _mm(detected, k)),
     }

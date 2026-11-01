@@ -19,7 +19,10 @@ from packages.vision.walls.vectorize import (
     _arc_chords,
     _finalise,
     _Graph,
+    _join_arcs,
     _merge_line_pieces,
+    _off_node,
+    _seated,
     _Seg,
     _straighten_jogs,
     keep_longest,
@@ -671,18 +674,82 @@ def _bay(*points: tuple[int, int]) -> NDArray[np.bool_]:
     return np.asarray(canvas > 0)
 
 
-def test_vectorize__circular_wall_becomes_even_chords_on_its_circle() -> None:
-    """Tường cong nửa vòng tròn: dây nằm đúng trên cung (≤ 1,5 px), dài đều nhau, mỗi dây quét ≤ 10°+."""
+def _apex(wall: WallSegment) -> tuple[float, float]:
+    """Điểm giữa cung theo quy ước `sagitta_px`: trung điểm dây - sagitta · n, `n = (-dy, dx) / L`."""
+    (ax, ay), (bx, by) = wall.start, wall.end
+    length = math.dist(wall.start, wall.end)
+    nx, ny = -(by - ay) / length, (bx - ax) / length
+    return ((ax + bx) / 2 - wall.sagitta_px * nx, (ay + by) / 2 - wall.sagitta_px * ny)
+
+
+@pytest.mark.parametrize(("sweep", "least"), [(90, 80), (180, 150)])
+def test_vectorize__circular_wall_becomes_one_curved_wall(sweep: int, least: int) -> None:
+    """Tường cong là MỘT tường có sagitta: hai đầu và đỉnh cung nằm trên đường tròn vẽ, quét gần hết cung vẽ.
+
+    Hai đầu cung sát nút giao bị xén thành đoạn thẳng ngắn nên góc quét đo được nhỏ hơn cung vẽ đôi chút.
+    """
     canvas = np.asarray(_bay(), np.uint8)
-    cv2.ellipse(canvas, (300, 200), (150, 150), 0, -90, 90, 1, 10)
-    walls = vectorize(canvas > 0)
-    chords = [w for w in walls if not _axis_aligned(w) and min(w.start[0], w.end[0]) >= 320]
-    assert len(chords) >= 14
-    for wall in chords:
-        assert all(abs(math.dist(point, (300, 200)) - 150) <= 1.5 for point in (wall.start, wall.end)), wall
-        assert 2.0 * math.degrees(math.asin(math.dist(wall.start, wall.end) / 300.0)) <= 10.5
-    lengths = [math.dist(w.start, w.end) for w in chords]
-    assert max(lengths) - min(lengths) <= 1.0
+    cv2.ellipse(canvas, (300, 200), (150, 150), 0, -90, -90 + sweep, 1, 10)
+    if sweep == 90:
+        cv2.line(canvas, (450, 200), (300, 350), 1, 10)
+    (wall,) = [wall for wall in vectorize(canvas > 0) if wall.sagitta_px]
+    for point in (wall.start, wall.end, _apex(wall)):
+        assert abs(math.dist(point, (300, 200)) - 150) <= 1.5, wall
+    turned = 4 * math.degrees(math.atan(2 * abs(wall.sagitta_px) / math.dist(wall.start, wall.end)))
+    assert least <= turned <= sweep + 2
+
+
+def test_join_arcs__splits_a_chain_sweeping_past_170_degrees() -> None:
+    """Chuỗi dây quét 200° (sagitta không tả được cung > 180°) → hai tường cong cùng đường tròn, nối nhau ở giữa."""
+    points = [(100 * math.cos(math.radians(a)), 100 * math.sin(math.radians(a))) for a in range(0, 201, 10)]
+    keys = [(0, 0, 0), *((2, 0, k) for k in range(len(points) - 2)), (0, 0, 1)]
+    chords = [
+        _Seg(*one, *two, 8.0, 0.9, keys[k], keys[k + 1], arc=True)
+        for k, (one, two) in enumerate(itertools.pairwise(points))
+    ]
+    arcs = _join_arcs(chords)
+    assert len(arcs) == 2
+    assert (arcs[0].bx, arcs[0].by) == (arcs[1].ax, arcs[1].ay)
+    for arc in arcs:
+        wall = WallSegment((arc.ax, arc.ay), (arc.bx, arc.by), 8.0, 0.9, arc.sagitta)
+        assert math.dist(_apex(wall), (0.0, 0.0)) == pytest.approx(100.0, abs=0.5)
+
+
+def test_join_arcs__lone_arc_chord_stays_straight() -> None:
+    """Dây cung còn trơ một mình (hai dây kề đã mất) không có cung để gộp: giữ là tường thẳng."""
+    chord = _Seg(0.0, 0.0, 10.0, 0.0, 8.0, 0.9, (2, 0, 0), (2, 0, 1), arc=True)
+    assert _join_arcs([chord]) == [chord]
+
+
+@pytest.mark.parametrize(("key", "kept"), [((0, 3, 0), 8), ((1, 3, 0), 20)])
+def test_off_node__drops_skeleton_within_one_thickness_of_a_junction_end(key: tuple[int, int, int], kept: int) -> None:
+    """Đầu cuối là nút giao (khoá loại 0): bỏ điểm xương trong 1 bề dày quanh nó; đỉnh DP thường giữ đủ."""
+    seg = _Seg(0.0, 0.0, 19.0, 0.0, 11.0, 0.9, (1, 3, 1), key)
+    inner = np.stack([np.arange(20), np.zeros(20)], axis=1).astype(np.int32)
+    assert len(_off_node(seg, inner)) == kept
+    flipped = _Seg(19.0, 0.0, 0.0, 0.0, 11.0, 0.9, key, (1, 3, 1))
+    assert len(_off_node(flipped, inner, "a")) == kept
+
+
+def test_seated__free_arc_end_lands_on_the_wall_body_it_sits_in() -> None:
+    """Đầu cung lơ lửng trong thân tường dọc (cách tim 13 < ½ tổng bề dày) → lên tim; đầu đã chung nút giữ nguyên."""
+    chord = _Seg(700.0, 900.0, 782.0, 865.0, 24.0, 0.9, (2, 0, 1), (0, 2, 0), arc=True)
+    stub = _Seg(795.0, 800.0, 795.0, 888.0, 24.0, 0.9, (0, 1, 0), (0, 5, 0), "v")
+    far = _Seg(900.0, 100.0, 900.0, 300.0, 24.0, 0.9, (0, 6, 0), (0, 7, 0), "v")
+    assert _seated((782.0, 865.0), 24.0, [chord], [chord, stub, far]) == (795.0, 865.0)
+    assert _seated((795.0, 800.0), 24.0, [chord], [chord, stub, far]) == (795.0, 800.0)
+    assert _seated((600.0, 950.0), 24.0, [chord], [chord, stub, far]) == (600.0, 950.0)
+
+
+def test_finalise__curved_wall_flips_sagitta_with_its_ends_and_keeps_its_straight_twin() -> None:
+    """Đảo đầu → đổi dấu sagitta (cung không đổi); tường thẳng chung hai đầu với cung vẫn giữ (khác ô gộp)."""
+    keys = ((0, 0, 0), (0, 0, 1))
+    arc = _Seg(200.0, 50.0, 100.0, 50.0, 8.0, 0.9, *keys, arc=True, sagitta=-20.0)
+    line = _Seg(100.0, 50.0, 200.0, 50.0, 8.0, 0.9, *keys)
+    walls, short = _finalise([arc, line], (200, 300))
+    assert short == 0
+    assert sorted(w.sagitta_px for w in walls) == [0.0, 20.0]
+    assert _apex(next(w for w in walls if w.sagitta_px)) == (150.0, 30.0)
 
 
 def test_vectorize__faceted_bay_keeps_its_corners() -> None:
@@ -751,3 +818,43 @@ def test_vectorize__room_wide_diagonal_is_not_a_box_mark() -> None:
     walls = vectorize(_bars(*frame, ((60, 60), (340, 240))))
     diagonal = sum(math.dist(wall.start, wall.end) for wall in walls if not _axis_aligned(wall))
     assert diagonal >= 0.9 * math.hypot(280, 180)
+
+
+def _dp_run(vertices: list[tuple[float, float]], points: list[tuple[float, float]]) -> tuple[list[_Seg], np.ndarray]:
+    """Chuỗi đoạn DP qua `vertices` (bề dày 10) và điểm xương `points` của nó."""
+    keys = [(0, 0, 0), *((1, 0, k) for k in range(len(vertices) - 2)), (0, 0, 1)]
+    run = [
+        _Seg(*one, *two, 10.0, 0.9, keys[k], keys[k + 1]) for k, (one, two) in enumerate(itertools.pairwise(vertices))
+    ]
+    return run, np.asarray(points, np.float64)
+
+
+def test_arc_chords__chamfered_corner_stays_a_polyline() -> None:
+    """Vát góc 45° tường dày: đoạn DP vốn thẳng, đường tròn không khớp rõ hơn chúng → không thành cung (NO-434)."""
+    vertices = [(50.0, 50.0), (50.0, 150.0), (90.0, 190.0), (190.0, 190.0)]
+    points = [
+        (x + (bx - x) * k / 40, y + (by - y) * k / 40)
+        for (x, y), (bx, by) in itertools.pairwise(vertices)
+        for k in range(40)
+    ]
+    run, skeleton = _dp_run(vertices, points)
+    assert _arc_chords(0, run, skeleton, np.ones((300, 300), np.bool_), itertools.count()) is None
+
+
+def test_arc_chords__points_on_a_circle_still_become_an_arc() -> None:
+    """Điểm xương trên đường tròn, ba đoạn DP là dây: đường tròn khớp hơn hẳn → chia lại thành cung."""
+    angles = [math.radians(180 - 30 * k) for k in range(4)]
+    vertices = [(150 + 100 * math.cos(a), 150 - 100 * math.sin(a)) for a in angles]
+    points = [
+        (150 + 100 * math.cos(math.radians(a)), 150 - 100 * math.sin(math.radians(a))) for a in range(180, 89, -1)
+    ]
+    run, skeleton = _dp_run(vertices, points)
+    assert _arc_chords(0, run, skeleton, np.ones((300, 300), np.bool_), itertools.count())
+
+
+def test_finalise__sagitta_shrinks_with_a_chord_clamped_into_the_image() -> None:
+    """Đầu cung kẹp vào mép ảnh làm dây ngắn lại: sagitta kẹp về nửa dây mới, `WallPx` vẫn nhận."""
+    arc = _Seg(-40.0, 50.0, 60.0, 50.0, 8.0, 0.9, (0, 0, 0), (0, 0, 1), arc=True, sagitta=45.0)
+    (wall,), _ = _finalise([arc], (200, 300))
+    assert wall.start == (0.0, 50.0)
+    assert abs(wall.sagitta_px) == 30.0

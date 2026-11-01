@@ -418,3 +418,22 @@ async def test_spatial_write_layer__C14(api_client: httpx.AsyncClient, db_sessio
     assert {row.changed_by for row in rows} == {writers[winner]}
     assert loser.json()["currentVersion"] == 1
     assert len(loser.json()["remoteChanges"]) >= 1
+
+
+async def test_spatial_write_layer__C01_curved_wall(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """PUT tường cong `curveOffsetMm` → N16 trả lại đúng giá trị; tường thẳng vắng khoá; vượt nửa dây → 422."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    curved = make_wall(floor.level_id).model_copy(update={"curve_offset_mm": -400})
+    layer = simple_layer(floor.level_id, walls=(curved,))
+
+    response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=layer))
+
+    assert response.status_code == 200, response.text
+    read = await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))
+    assert read.json()["layer"]["walls"][0]["curveOffsetMm"] == -400
+    straight = wire(make_wall(floor.level_id))
+    assert "curveOffsetMm" not in straight
+    too_deep = {"baseVersion": 1, "body": {"layer": _raw_layer(straight | {"curveOffsetMm": 600})}}
+    rejected = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, too_deep)
+    assert rejected.status_code == 422

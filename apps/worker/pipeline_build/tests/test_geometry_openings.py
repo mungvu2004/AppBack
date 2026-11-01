@@ -593,3 +593,28 @@ def test_build_walls__hugging_stub_with_opening_or_long_kept(fake_clock: FakeClo
     long = run([walls[0], wall_px(2100, 1300, 3000, 1300, thickness_px=100)], [], fake_clock, Counter())
     assert len(kept.walls) == 2
     assert len(long.walls) == 2
+
+
+def test_build_walls__hugging_stub_closed_both_ends_or_thin_host_kept(fake_clock: FakeClock) -> None:
+    """3b-e: mẩu có hai đầu chạm tường thứ ba, hay tường chủ không dày hơn mẩu → giữ."""
+    host = wall_px(0, 1000, 6000, 1000, thickness_px=300)
+    stub = wall_px(2700, 1300, 3000, 1300, thickness_px=100)
+    closed = run(
+        [
+            host,
+            wall_px(3000, 1000, 3000, 3000, thickness_px=200),
+            wall_px(2700, 1000, 2700, 3000, thickness_px=200),
+            stub,
+        ],
+        [],
+        fake_clock,
+        Counter(),
+    )
+    thin = run(
+        [wall_px(0, 1000, 6000, 1000, thickness_px=100), wall_px(2700, 1200, 3000, 1200, thickness_px=100)],
+        [],
+        fake_clock,
+        Counter(),
+    )
+    assert len(closed.walls) == 4
+    assert len(thin.walls) == 2
