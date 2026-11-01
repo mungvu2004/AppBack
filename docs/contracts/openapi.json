@@ -749,7 +749,7 @@
       },
       "CropRect": {
         "additionalProperties": false,
-        "description": "Vùng cắt của một tầng trên tờ nhiều mặt bằng, theo tỉ lệ trang gốc **chưa nắn**.\n\nTrang gốc là ảnh như trình duyệt hiện (đã xoay theo EXIF) hoặc trang `pageIndex` của PDF;\n`x`, `y` là góc trên-trái. Sai luật → 422 `VALIDATION field=\"crop\"`.",
+        "description": "Vùng cắt của một tầng trên tờ nhiều mặt bằng, theo tỉ lệ trang gốc **chưa nắn**.\n\nTrang gốc là ảnh như trình duyệt hiện (đã xoay theo EXIF) hoặc trang `pageIndex` của PDF;\n`x`, `y` là góc trên-trái. Sai luật → 422 `VALIDATION`, `field` là `crop` hoặc `crop.<khoá>`.",
         "properties": {
           "heightRatio": {
             "maximum": 1.0,
