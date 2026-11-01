@@ -21,10 +21,11 @@ bash tools/verify/run.sh <việc>
 
 | Việc | Làm gì | Ai chạy |
 |---|---|---|
-| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux. **Một lượt một lúc trên cả máy**: lượt sau tự chờ khoá `/work/gate-full.lock` (in "đang chờ") — ~8,4 GiB/lượt, hai lượt chồng từng làm treo Docker | trước khi báo xong; đầy đủ hay chỉ bước/test đích theo đánh giá phạm vi kiểm (`RULE-CODE.md` R-33b) |
+| `verify [--steps 1,2,4]` | 8 bước (BE-00 §12) trong container Linux. **Một lượt một lúc trên cả máy**: lượt sau tự xếp hàng ở khoá cổng (`tools/verify/gate_lock.sh`, in "khoá cổng: chờ…") — ~8,4 GiB/lượt, hai lượt chồng từng làm treo Docker. **Không tự viết vòng chờ** `docker ps \| grep verify`: cứ gọi `run.sh`, nó tự chờ đúng lượt (PERF-11) | trước khi báo xong; đầy đủ hay chỉ bước/test đích theo đánh giá phạm vi kiểm (`RULE-CODE.md` R-33b) |
 | `verify --fast` | **cổng nhanh**: ruff, lint-imports, mypy cache ấm, pytest các **tệp test bị ảnh hưởng** so với `main` (đồ thị import + fixture, PERF-04), độ phủ đơn vị bị chạm, bước 6/7/8 chỉ khi đầu vào đổi, không 5b | mỗi lần sửa; `verify` đầy đủ **chỉ trước merge** (PERF-03) |
 | `lock` | `uv lock` (không `--upgrade`), chép `uv.lock` ra worktree | worker khi thêm thư viện ngoài bảng BE-00 §13.1 |
-| `shell` | bash trong container, để gỡ lỗi (`run.sh shell < lệnh.sh` chạy không tương tác) | worker |
+| `shell` | bash trong container, để gỡ lỗi (`run.sh shell < lệnh.sh` chạy không tương tác). `--fast` và `shell` giữ khoá cổng **dùng chung**: chạy cùng nhau được, không chạy cạnh cổng đầy đủ — đừng giữ shell tương tác lâu, nó chặn cổng của phiên khác | worker |
+| `hold -- <lệnh>` | chạy lệnh trên host khi giữ khoá cổng một mình (dựng ảnh web f14, build nặng), xếp hàng chung với `verify` | mọi phiên |
 | `openapi` | xuất `openapi.json` hợp nhất | **chỉ người điều phối** |
 | `merge-heads <tên>` | tạo revision merge hai head | **chỉ người điều phối** |
 | `gc` | dọn venv/mypy cache của worktree đã xoá | người điều phối |

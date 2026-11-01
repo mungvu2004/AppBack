@@ -61,17 +61,15 @@ export PYTHONPATH=/tmp/w
 export PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
 
 # Một cổng ĐẦY ĐỦ một lúc trên cả máy (ENV §4, GATE-LOCK): mỗi lượt ~8,4 GiB trong VM 12 GB, hai lượt chồng
-# nhau từng làm OOM và treo Docker Desktop (2026-10-27). Khoá nằm trên volume `/work` mọi worktree dùng chung;
-# fd 8 đi theo `exec` sang python và các worker pytest, nên khoá nhả khi lượt kết thúc — kể cả bị giết, không
-# có khoá treo. `--fast` và `shell` nhẹ hơn nhiều, không xếp hàng.
+# nhau từng làm OOM và treo Docker Desktop (2026-10-27). `--fast`/`shell` xếp hàng chung (PERF-11, gate_lock.sh):
+# chạy cùng nhau được, không chạy cạnh cổng đầy đủ — phiên khỏi tự thăm dò `docker ps | grep verify`.
+source tools/verify/gate_lock.sh
 if [[ "${1:-}" == "verify" && " $* " != *" --fast "* ]]; then
-  exec 8> /work/gate-full.lock
-  if ! flock -n 8; then
-    echo "cổng đầy đủ: đang chờ lượt khác xong — $(cat /work/gate-full.owner 2> /dev/null || echo 'không rõ chủ')" >&2
-    flock 8
-  fi
-  echo "${VERIFY_NAME:-?} từ $(date -u +%H:%M:%SZ)" > /work/gate-full.owner
+  gate_lock x "${VERIFY_NAME:-?}"
   mark "giữ khoá cổng đầy đủ"
+elif [[ "${1:-}" == "verify" || "${1:-}" == "shell" ]]; then
+  gate_lock s "${VERIFY_NAME:-?}"
+  mark "giữ khoá cổng dùng chung"
 fi
 # PERF-10: stack dùng chung (`TEST_SHARED_*`, run.sh đặt) chỉ cho MỘT lượt một lúc trên cả máy: tên database và
 # khối Redis theo `gwN` trùng giữa hai lượt, lượt này `DROP`/`FLUSHDB` đúng dữ liệu của lượt kia. Khoá trên `/work`

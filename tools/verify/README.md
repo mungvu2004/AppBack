@@ -3,8 +3,14 @@
 Cổng verify chạy qua `bash tools/verify/run.sh <việc>` (xem `CLAUDE.md`).
 
 - `verify`: ghi log cổng và `<log>.junit.xml` của bước 5 vào `.cache/src-out/verify/` (NO-324).
-- Khoá cổng đầy đủ: `verify` (kể cả `--steps`, trừ `--fast`) giữ `flock /work/gate-full.lock` suốt lượt trong
-  `in_container.sh`; lượt khác in chủ khoá (`/work/gate-full.owner`) rồi chờ. Khoá nhả khi tiến trình chết, không treo.
+- Khoá cổng (PERF-11, `gate_lock.sh`): khoá đọc/ghi `flock /work/gate-full.lock` giữ suốt lượt trong `in_container.sh`.
+  `verify` (kể cả `--steps`, trừ `--fast`) và `hold` giữ **một mình**; `verify --fast` và `shell` giữ **dùng chung** (chạy
+  cùng nhau, không cạnh lượt một mình). Cửa quay `/work/gate-turn.lock`: lượt một mình đang chờ chặn lượt dùng chung
+  mới đến, nên lượt nhẹ không chen mãi trước cổng đầy đủ. Lượt chờ in chủ khoá (`/work/gate-full.owner`). Khoá nhả khi
+  tiến trình chết, không treo.
+- `hold -- <lệnh>` (PERF-11): một container nhỏ (`appback-verify-hold-<worktree>-<pid>`) giữ khoá một mình tới khi
+  stdin đóng; `run.sh` chạy lệnh host trong lúc đó và trả mã thoát của lệnh. Dùng cho dựng ảnh web f14 thay vòng chờ
+  "không còn container verify + RAM trống".
 - `verify --fast` (PERF-03, PERF-04): bước 1, 2, 4; pytest các tệp test bị ảnh hưởng (`affected.py`: test của đơn vị
   bị chạm + test nhập bắc cầu module đổi theo đồ thị grimp + test xin fixture mà module fixture nhập module đổi; đổi
   `conftest.py`, `pyproject.toml`, `uv.lock`, `packages/testing/`, migration hay đầu vào bước 7 thì cả bộ) với độ phủ +
