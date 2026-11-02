@@ -3319,5 +3319,437 @@
   "author": "Smithsonian Institution",
   "source": "https://3d.si.edu/object/3d_package:d8c63a70-4ebc-11ea-b77f-2e728ce88125",
   "model_sha256": "7d970e0f18b487ab6b8a787b6a35659bcac6fa23b59542db26e8ba894e3b9808"
+ },
+ {
+  "id": "flower-gazania-pot",
+  "name": "Cúc huân chương chậu gốm xám",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "James Ray Cock, Jenelle van Heerden (Poly Haven, CC0) + Amazon Berkeley Objects (thương hiệu Rivet, CC BY 4.0)",
+  "source": "https://polyhaven.com/a/flower_gazania ; https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07QD5G1KC.glb",
+  "model_sha256": "4edc1bc5942cddc8a7b25580082af69aa3c9371c6089737842fae7eea8d3ae9a"
+ },
+ {
+  "id": "flower-orchid-white-pot",
+  "name": "Lan hồ điệp trắng chậu sứ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "fakefurfetishferre",
+  "source": "https://sketchfab.com/3d-models/6e6e2ac8986e4fc1bb7c046208e2dacd",
+  "model_sha256": "b4e89f9f46a831307ae7346dcaf6c0d028ca49b9eba0ce7d57e2e26e1c0f5959"
+ },
+ {
+  "id": "flower-periwinkle-clay-pot",
+  "name": "Hoa dừa cạn chậu đất nung",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Amal Kumar",
+  "source": "https://polyhaven.com/a/periwinkle_plant ; https://polyhaven.com/a/planter_pot_clay",
+  "model_sha256": "fa21c060d4de038159c238948e54ea8a4a921c9fee277d85c09334b47195aa1f"
+ },
+ {
+  "id": "flower-rose-pot",
+  "name": "Chậu hoa hồng đỏ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Student13331772T",
+  "source": "https://sketchfab.com/3d-models/3141ff2727a145baa67b08af0b3ad154",
+  "model_sha256": "1b4d16b62142b6730492cfcd903c0d5580035c555c0478dade52c5733192ba3a"
+ },
+ {
+  "id": "flower-rose-vase",
+  "name": "Hoa hồng bình gốm",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Holydust",
+  "source": "https://sketchfab.com/3d-models/2b71962dbf6949deb5883d27e09811ad",
+  "model_sha256": "4a8aa7397e70cfc991f7a545116cce54aef5077a9f55b5138bb3537fe5fd32e1"
+ },
+ {
+  "id": "grass-blue-fescue",
+  "name": "Cỏ lông xanh bạc",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Joseph_Wardle",
+  "source": "https://sketchfab.com/3d-models/4810e810aee040918d6da9fd2c282d85",
+  "model_sha256": "1c8bc293894dbba393ae10354db64638cba2289fff630fe903483373f27387b9"
+ },
+ {
+  "id": "grass-clump-low",
+  "name": "Bụi cỏ thấp",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/grass_medium_01",
+  "model_sha256": "a9371a98fa924d395d1b48ed778e31972eeea78a7db9ab760cd9dca4716fc88e"
+ },
+ {
+  "id": "grass-planter-box",
+  "name": "Bồn gỗ trồng cỏ",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/grass_medium_01 ; https://polyhaven.com/a/planter_box_01",
+  "model_sha256": "ef5349564bcc9ff558fb5419478c708dcd897a09773aea9fadeeb2c0f676cf95"
+ },
+ {
+  "id": "plant-anthurium-clay-pot",
+  "name": "Hồng môn chậu đất nung",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/anthurium_botany_01 ; https://polyhaven.com/a/planter_pot_clay",
+  "model_sha256": "438b441eb4778515a6ab6abfea05d1efb75f64d7d1106b5771a2a0af0e5571ad"
+ },
+ {
+  "id": "plant-anthurium-white-stand",
+  "name": "Hồng môn chậu trắng chân sắt",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Rob Tuytel, Rico Cilliers (Poly Haven, CC0) + Amazon Berkeley Objects (thương hiệu Rivet, CC BY 4.0)",
+  "source": "https://polyhaven.com/a/anthurium_botany_01 ; https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B0842H2F7C.glb",
+  "model_sha256": "4f6e990c8551d42dca4200456a7e9900208f4925a7e097889296150218672db2"
+ },
+ {
+  "id": "plant-areca-white-pot",
+  "name": "Cau tiểu trâm chậu trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "SudiptKmr",
+  "source": "https://sketchfab.com/3d-models/3345ca8861c64885bd01210895d48e5a",
+  "model_sha256": "46106b6e749e35e634baf02beeed502a013f01b30f6ae52bcd60ffa2289613c3"
+ },
+ {
+  "id": "plant-bonsai-ficus",
+  "name": "Bonsai cây sanh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Scar56",
+  "source": "https://sketchfab.com/3d-models/f420ea9edb914e1b9b7adebbacecc7d8",
+  "model_sha256": "815a73b79a312c51bbabec5870828977e53fcc2953e75278cd57bd0e174914d3"
+ },
+ {
+  "id": "plant-bonsai-tray",
+  "name": "Bonsai khay chữ nhật",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "rom4in",
+  "source": "https://sketchfab.com/3d-models/532fd063790541a58905dbfe09898059",
+  "model_sha256": "c03c853e76c34d56b711a590278fee5dda581fcf86608edd368922635f41a8d2"
+ },
+ {
+  "id": "plant-cactus-barrel-gravel",
+  "name": "Xương rồng thùng khay sỏi",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Alexandre González Rivas",
+  "source": "https://sketchfab.com/3d-models/09ac07867d894a85b88c88f6fda198f9",
+  "model_sha256": "cbe94632eedfe10a1854ed78ccec097650fd0ea662346329b647fc1a26111259"
+ },
+ {
+  "id": "plant-cactus-column",
+  "name": "Xương rồng trụ chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "AlpacPoly",
+  "source": "https://sketchfab.com/3d-models/ab4959c1e2ad4c7bbbf236b716b6346d",
+  "model_sha256": "befb6ccddfcc91d5c3e063911bf2758485a219f4f7d4c75b2e19fe9ed8206e7c"
+ },
+ {
+  "id": "plant-cactus-cone-terracotta",
+  "name": "Xương rồng chóp chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "tylernielson18",
+  "source": "https://sketchfab.com/3d-models/eacfb84fe6f04c72bdfafec08096b6cf",
+  "model_sha256": "af5e816538ffd8833e2acb8d4e34ca7583cc4fd711a700b5e0a3e2451910fdee"
+ },
+ {
+  "id": "plant-cactus-round-terracotta",
+  "name": "Xương rồng tròn chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "matousekfoto",
+  "source": "https://sketchfab.com/3d-models/e6a98033cb0e4c02a4d6b50b64247120",
+  "model_sha256": "8387e6b233c893bebae93cef09839ffb3a4a1a8f845673a23366f8288c1ea565"
+ },
+ {
+  "id": "plant-cactus-stenocactus",
+  "name": "Xương rồng cầu gai chậu nhựa",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "matousekfoto",
+  "source": "https://sketchfab.com/3d-models/dda6d1df5d1a40d39d1d2f14657a8fbf",
+  "model_sha256": "8408d81e63e067d06f5ce5dc9eeab9d422465c9960fab5ddb1ff64ef9b24c39a"
+ },
+ {
+  "id": "plant-calathea-blue-pot",
+  "name": "Đuôi công lá tròn chậu men xanh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Rob Tuytel, Rico Cilliers (Poly Haven, CC0) + Amazon Berkeley Objects (thương hiệu Stone & Beam, CC BY 4.0)",
+  "source": "https://polyhaven.com/a/calathea_orbifolia_01 ; https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07QC8CC1V.glb",
+  "model_sha256": "1d9340a1d9160120e90ffc87a837dac4e723382cd62c4dde3a73e0ef1335e14a"
+ },
+ {
+  "id": "plant-coffee-small",
+  "name": "Cây cà phê cảnh chậu nhỏ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "xan1",
+  "source": "https://sketchfab.com/3d-models/cecd9cfe831b4282906064d622df850d",
+  "model_sha256": "244eb0289ce2662ced7807969ddaf4371f33dfffd602a2dbf52e670ef9e476e9"
+ },
+ {
+  "id": "plant-coleus-red",
+  "name": "Cây lá gấm đỏ chậu sỏi",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Emm (Scenario)",
+  "source": "https://sketchfab.com/3d-models/3fca50eb990e473583b8a7f6124697e2",
+  "model_sha256": "5db419510875547cd9f4ea3f3980ecd378068e9e9582233e85bce372714b89ab"
+ },
+ {
+  "id": "plant-dieffenbachia-white-pot",
+  "name": "Cây vạn niên thanh chậu trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Malek Almsri",
+  "source": "https://sketchfab.com/3d-models/7c5e77d572c848458e5d898ac49f6f27",
+  "model_sha256": "4aed15009bf129903d808b6a17fa6133942d187b54bdfc39ab6b50b51dba6109"
+ },
+ {
+  "id": "plant-dracaena-pattern-pot",
+  "name": "Cây phát tài chậu hoa văn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Bindestrek",
+  "source": "https://sketchfab.com/3d-models/9dc8d0836aa04a3baa38bd5630f75924",
+  "model_sha256": "7a286bad0e79e2e1f725e2019f4e214e1dd72719ab21c7e6ec28ffbd0797d9b6"
+ },
+ {
+  "id": "plant-echeveria-pink-pot",
+  "name": "Sen đá chậu hồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "zkalli",
+  "source": "https://sketchfab.com/3d-models/50c2317a5edc43d198ad94f362e59e4f",
+  "model_sha256": "f0ba00a75b251b7dc9f7fe24476e92a1b1cbbc7c4d868e681342ac17c216fe52"
+ },
+ {
+  "id": "plant-fern-ceramic-pot",
+  "name": "Dương xỉ chậu gốm chân gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Rob Tuytel, Rico Cilliers (Poly Haven, CC0) + Amazon Berkeley Objects (thương hiệu Rivet, CC BY 4.0)",
+  "source": "https://polyhaven.com/a/fern_02 ; https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B0831PZJ8X.glb",
+  "model_sha256": "180c09b298ac74de76aa53af885ee43b7addb25f7613a52dcb41490b59bc3faf"
+ },
+ {
+  "id": "plant-fern-clay-pot",
+  "name": "Dương xỉ chậu đất nung",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/fern_02 ; https://polyhaven.com/a/planter_pot_clay",
+  "model_sha256": "7fd98650bc0b644e90b5e4c3aa375e37082cf8aa1d076968a0f9e847dbe8a0d4"
+ },
+ {
+  "id": "plant-ivy-terracotta",
+  "name": "Thường xuân chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "anybody",
+  "source": "https://sketchfab.com/3d-models/507dae90a1f541e0a3e2ccbee5abc333",
+  "model_sha256": "83931a7266a06023c09ba56f4c43a4349ab7b787ffe085ae38d8837d25056e07"
+ },
+ {
+  "id": "plant-jade-white-pot",
+  "name": "Cây ngọc bích chậu trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "avi",
+  "source": "https://sketchfab.com/3d-models/16b1d3a8d213461ca69838d1fa2189be",
+  "model_sha256": "6294b89f49407bfe3d1c5907c4489e472a37116a68f6d110843ed527a723dfcb"
+ },
+ {
+  "id": "plant-orchid-white",
+  "name": "Lan hồ điệp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "gsupancik",
+  "source": "https://sketchfab.com/3d-models/95d96eaba89e4247b7b1966db13c6661",
+  "model_sha256": "d0d129cf87bdf564ed56c0451dd6f65f1543e0cec2be22b67f981147730cc236"
+ },
+ {
+  "id": "plant-pachira-clay-pot",
+  "name": "Kim ngân chậu đất nung",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/pachira_aquatica_01 ; https://polyhaven.com/a/planter_pot_clay",
+  "model_sha256": "0b86e900df31fd2802e8517462c5018e4005ab687cd1e9f865eb52a2941d5a34"
+ },
+ {
+  "id": "plant-pachira-large",
+  "name": "Kim ngân lớn chậu gốm chân gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Rob Tuytel, Rico Cilliers (Poly Haven, CC0) + Amazon Berkeley Objects (thương hiệu Rivet, CC BY 4.0)",
+  "source": "https://polyhaven.com/a/pachira_aquatica_01 ; https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B0831PZJ8X.glb",
+  "model_sha256": "2cfcc56c6c0100967ec51e0d41b1c6cae8a6c2cbbd7558332098fa08565a6f39"
+ },
+ {
+  "id": "plant-peace-lily",
+  "name": "Lan ý chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "aqpetteri",
+  "source": "https://sketchfab.com/3d-models/9036c0e1761b471aa4e8035d8e972308",
+  "model_sha256": "c63645a892bbd4befc18a15714d99b5e9e0ffecc5c54dff20ff9143856fce349"
+ },
+ {
+  "id": "plant-peperomia-terracotta",
+  "name": "Cây trường sinh chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Konstantin Martens",
+  "source": "https://sketchfab.com/3d-models/462dc25fbc2945a4a1436aadc2607bb9",
+  "model_sha256": "227ac6ae9ed452680581edb9bcd30c6aae8b81ad3cc003b0ebfba611b3564ac8"
+ },
+ {
+  "id": "plant-pothos-wood-stand",
+  "name": "Trầu bà chậu chân gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "AllQuad",
+  "source": "https://sketchfab.com/3d-models/e9832f38484f4f85b3f9081b51fa3799",
+  "model_sha256": "a774dd4cad526e2e16cf65f636b2ee1a865f9460d791303fb28aa7d0b861a3bc"
+ },
+ {
+  "id": "plant-sapling-blue-pot",
+  "name": "Cây non chậu xanh lam",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Jack Irwin Miller",
+  "source": "https://sketchfab.com/3d-models/0a61f21d69c54260ab89a93b03a9b541",
+  "model_sha256": "f1987785673f0599feec6d27f4ece1d96e5167d0420910f1abb475fdda0d367c"
+ },
+ {
+  "id": "plant-snake-woven-pot",
+  "name": "Lưỡi hổ chậu cói đan",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Makovetkyi Volodymyr",
+  "source": "https://sketchfab.com/3d-models/975171ebef5d4df0a5a060a5046a755a",
+  "model_sha256": "82c050ca8b96cd9bb011bb33ecfde77f9ccad6b79b9744fee67ad69535ed29b0"
+ },
+ {
+  "id": "plant-succulent-terracotta",
+  "name": "Sen đá chậu đất nung",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "SusanKing",
+  "source": "https://sketchfab.com/3d-models/5a9b00e33ae148b28158a5ecb609fc07",
+  "model_sha256": "6462a5a3df3d83b1c3c7a3f5703245af6f712312f73f98474363effcfc2b80ea"
+ },
+ {
+  "id": "plant-succulent-yellow-flower",
+  "name": "Sen đá nở hoa chậu gốm",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "James Ray Cock, Jenelle van Heerden (Poly Haven, CC0) + Amazon Berkeley Objects (thương hiệu Rivet, CC BY 4.0)",
+  "source": "https://polyhaven.com/a/cheiridopsis_succulent ; https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07QD5G1KC.glb",
+  "model_sha256": "de93d6d0786066636238ac7b085a08a2b8407f6e5c8f771db0f83e917dd1cdb7"
+ },
+ {
+  "id": "plant-zebra-white-pot",
+  "name": "Cây lá vằn chậu trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Kevin N. Murphy",
+  "source": "https://sketchfab.com/3d-models/1e886fb67923452e995e10076b2563e6",
+  "model_sha256": "7941a841c885233ca2f5782bf5a4398fc096a4d2b39bc60f4d67b868b471de2e"
+ },
+ {
+  "id": "shrub-didelta-yellow",
+  "name": "Bụi cúc gai lá vàng",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Jenelle van Heerden",
+  "source": "https://polyhaven.com/a/didelta_spinosa",
+  "model_sha256": "91b3f618b8162d889c8317860d32ee6826da6a2a2272142de19623ba326a14e4"
+ },
+ {
+  "id": "shrub-glossy-leaf",
+  "name": "Bụi cây lá bóng",
+  "group": "decor",
+  "license": "CC0",
+  "author": "James Ray Cock, Jenelle van Heerden",
+  "source": "https://polyhaven.com/a/searsia_lucida",
+  "model_sha256": "bd6709f3e386bba7a1d80c38e511d5d1682dd3afb1f1c42ed6521326d2d63390"
+ },
+ {
+  "id": "shrub-hedge-planter",
+  "name": "Hàng rào cây xanh bồn dài",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Kirill Chechin",
+  "source": "https://sketchfab.com/3d-models/617f53a453ff4eb3be95d0e5bbe6a882",
+  "model_sha256": "81a6be987de8e83a6acb88c23ba51bc363ac68013d0071dd819b033999348292"
+ },
+ {
+  "id": "tree-ash-small",
+  "name": "Cây tần bì nhỏ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "rhcreations",
+  "source": "https://sketchfab.com/3d-models/5382ed9455b44e77ba3d2e128ce4b076",
+  "model_sha256": "99a47a319856f64afcb3b4d47cea17fd865f8f5d2e3292a58ebc547291d97f71"
+ },
+ {
+  "id": "tree-palm-ornamental",
+  "name": "Cây cọ cảnh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Surya",
+  "source": "https://sketchfab.com/3d-models/b9922dd105ee4536b9ca983c26f58e66",
+  "model_sha256": "d604d38996be785ffd08a08fdb57b57d03680b2026da1ed0df4e2f2b3aa589c7"
+ },
+ {
+  "id": "tree-shade-large",
+  "name": "Cây bóng mát lớn",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/island_tree_01",
+  "model_sha256": "f8d1d000195a2c3f0aaccd945b5762a7bdd2558fc066170dc49b4e9af40bc17a"
+ },
+ {
+  "id": "tree-shade-wide",
+  "name": "Cây bóng mát tán rộng",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rob Tuytel, Rico Cilliers",
+  "source": "https://polyhaven.com/a/island_tree_02",
+  "model_sha256": "0b6b2a6f6809e7425dbce562e8d27086a1e91e34c151419d0a3bbaec9574454d"
+ },
+ {
+  "id": "tree-small-green",
+  "name": "Cây xanh thân mảnh",
+  "group": "decor",
+  "license": "CC0",
+  "author": "Rico Cilliers",
+  "source": "https://polyhaven.com/a/tree_small_02",
+  "model_sha256": "8c93fa7c3e65b73944c9c8031df5a9a820c858ae890311c223b68f8db375f30e"
+ },
+ {
+  "id": "tree-small-leafy",
+  "name": "Cây thân gỗ nhỏ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "SomeKevin",
+  "source": "https://sketchfab.com/3d-models/66a8d0ef9b49415a9eaf6af216cb9bce",
+  "model_sha256": "4be3bb7bdbdcd2635e2ea4088efb15470ec8881689d79e597d8680206954b42b"
  }
 ]
