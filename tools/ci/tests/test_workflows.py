@@ -27,8 +27,11 @@ GITLEAKS_TOML = REPO_ROOT / ".gitleaks.toml"
 JOB_SH = REPO_ROOT / "tools" / "ci" / "job.sh"
 COMMIT_MSG_HOOK = REPO_ROOT / ".githooks" / "commit-msg"
 
-GATE_JOBS = ["lint", "typecheck", "unit", "integration", "ml", "contract", "build"]
-EXPECTED_JOBS = ["changes", *GATE_JOBS, "coverage"]
+GATE_JOBS = ["lint", "typecheck", "unit-shards", "integration-shards", "ml-shards", "perf", "build"]
+# Tên check bắt buộc của nhóm test -> ma trận shard mà nó gom kết quả (PERF-CI).
+SHARD_GATHER_JOBS = {"unit": "unit-shards", "integration": "integration-shards", "ml": "ml-shards"}
+TEST_SHARD_JOBS = ["unit-shards", "integration-shards", "ml-shards"]
+EXPECTED_JOBS = ["changes", *GATE_JOBS, *SHARD_GATHER_JOBS, "contract", "coverage"]
 # Workflow của B0-09 chạy mã repo trên push/PR: luật chung (ghim SHA, quyền, không nội suy sự kiện…) áp cho cả hai.
 REPO_WORKFLOWS = [CI_YML, COMMITS_YML]
 
@@ -89,10 +92,14 @@ def test_commits_yml_has_only_commits_job() -> None:
 
 
 def test_ci_yml_only_coverage_waits_on_gate_jobs() -> None:
-    """Job cổng chỉ chờ `changes`; chỉ `coverage` chờ job cổng (cần `.coverage.*` của ba job test)."""
+    """Job cổng chỉ chờ `changes`; chỉ job có phụ thuộc dữ liệu thật chờ job cổng: `coverage` (`.coverage.*`
+    mọi shard + junit perf), `contract` (mẫu golden của shard unit/integration), job gom shard."""
     doc = _load_yaml(CI_YML)
     assert "needs" not in doc["jobs"]["changes"]
-    assert doc["jobs"]["coverage"]["needs"] == ["unit", "integration", "ml"]
+    assert doc["jobs"]["coverage"]["needs"] == [*TEST_SHARD_JOBS, "perf"]
+    assert doc["jobs"]["contract"]["needs"] == ["unit-shards", "integration-shards"]
+    for name, shards in SHARD_GATHER_JOBS.items():
+        assert doc["jobs"][name]["needs"] == shards, name
     for name in GATE_JOBS:
         assert doc["jobs"][name]["needs"] == "changes", name
 
@@ -104,8 +111,11 @@ def test_ci_yml_gate_jobs_skip_only_when_changes_passed_docs_only() -> None:
     for name in GATE_JOBS:
         assert doc["jobs"][name]["if"] == expected, name
     coverage_if = doc["jobs"]["coverage"]["if"]
-    for job in ("unit", "integration", "ml"):
+    for job in (*TEST_SHARD_JOBS, "perf"):
         assert f"needs.{job}.result == 'success'" in coverage_if
+    # Job gom shard bỏ qua đúng khi ma trận bị bỏ (PR chỉ tài liệu); shard hỏng → job chạy và hỏng.
+    for name, shards in SHARD_GATHER_JOBS.items():
+        assert doc["jobs"][name]["if"] == f"${{{{ !cancelled() && needs.{shards}.result != 'skipped' }}}}", name
 
 
 @pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
