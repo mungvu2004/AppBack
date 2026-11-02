@@ -23,6 +23,9 @@ ENVELOPE_PAD_MM: Final = 25
 """Nửa ô lưới 50 mm của W1: bán kính vùng tường = `max(bề dày, 100) / 2 + 25`."""
 OPEN_ENVELOPE_SHARE: Final = 0.10
 """Quá 10 % phòng trong nhà không nằm trong lỗ kín của vỏ tường → vỏ hở (W1 "Đ" cần ≥ 90 %)."""
+OPEN_ENVELOPE_MIN_LEAKED: Final = 2
+OPEN_ENVELOPE_BIG_ROOM_M2: Final = 6.0
+"""Chỉ chặn khi ≥ 2 phòng rò, hoặc phòng rò rộng ≥ 6 m²: một hộp kỹ thuật nhỏ lòi ra ngoài vỏ (cn-03) chỉ báo."""
 OUTDOOR_USAGES: Final = frozenset({"loggia"})
 
 STUB_MAX_MM: Final = 200
@@ -74,11 +77,14 @@ def _open_envelope(walls: Sequence[Wall], lines: Sequence[LineString], rooms: Se
     )
     parts = getattr(body, "geoms", [body])
     filled = shapely.union_all([Polygon(part.exterior) for part in parts if not part.is_empty])
-    leaked = sum(1 for room in indoor if not filled.covers(_inside_point(room)))
-    share = leaked / len(indoor)
+    leaked = [room for room in indoor if not filled.covers(_inside_point(room))]
+    share = len(leaked) / len(indoor)
     if share <= OPEN_ENVELOPE_SHARE:
         return None
-    return GeometryCheck("OPEN_ENVELOPE", True, {"leakedRooms": leaked, "share": round(share, 3)})
+    critical = len(leaked) >= OPEN_ENVELOPE_MIN_LEAKED or any(
+        room.area_m2 >= OPEN_ENVELOPE_BIG_ROOM_M2 for room in leaked
+    )
+    return GeometryCheck("OPEN_ENVELOPE", critical, {"leakedRooms": len(leaked), "share": round(share, 3)})
 
 
 def _parallel(a: LineString, b: LineString) -> bool:

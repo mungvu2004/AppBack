@@ -95,6 +95,16 @@ def test_rectangle_with_one_metre_gap__open_envelope() -> None:
     assert _codes(layer) == [("OPEN_ENVELOPE", True)]
 
 
+def test_lone_small_room_outside_envelope__info_only() -> None:
+    """Một hộp kỹ thuật 1 m² lòi ra ngoài vỏ kín (cn-03): vẫn báo nhưng không chặn cả tầng."""
+    walls = _walls(*_box(0, 0, 5000, 4000))
+    rooms = (
+        _room(1, 0, 0, 5000, 4000, wall_ids=(walls[0].id,)),
+        _room(2, 6000, 0, 7000, 1000, usage="utility", wall_ids=(walls[0].id,)),
+    )
+    assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [("OPEN_ENVELOPE", False)]
+
+
 def test_two_far_rectangles__multiple_plans() -> None:
     walls = _walls(*_box(0, 0, 5000, 4000), *_box(20000, 0, 25000, 4000))
     rooms = (
