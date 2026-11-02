@@ -213,8 +213,15 @@ services:
     networks:
       - appback
     healthcheck:
-      # ảnh worker có HEALTHCHECK theo hàng đợi; beat không nghe hàng nên tắt (hợp đồng §2).
-      disable: true
+      # Ảnh worker có HEALTHCHECK theo hàng đợi; beat không nghe hàng nên kiểm tệp lịch `-s` (beat tạo khi khởi
+      # động; `*` vì dbm.dumb thêm đuôi). `disable: true` cũ làm `compose up --wait` (v2.38) hỏng: "has no
+      # healthcheck configured" (CI build 02/11/2026).
+      test: ["CMD-SHELL", "ls /tmp/celerybeat-schedule* >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
 
   # PERF-03 P2: `ml` chỉ nghe `ml.infer` (tường/YOLO/OCR của một lần chạy chạy song song,
   # ML_INFER_CONCURRENCY tiến trình × ML_ORT_THREADS luồng ≈ số nhân: 3 × 4 = 12);
