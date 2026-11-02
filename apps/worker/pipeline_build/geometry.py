@@ -1099,6 +1099,12 @@ def _centreline(wall: Wall) -> LineString:
     return LineString(((line.start.x, line.start.y), (line.end.x, line.end.y)))
 
 
+def _wall_seg(wall: Wall) -> _Seg:
+    """`Wall` thành `_Seg` để dùng lại `_clash` (luật WALL-OVERLAP của FE)."""
+    line = wall.centreline
+    return _Seg(line.start, line.end, wall.thickness_mm, wall.thickness_mm, wall.confidence, ())
+
+
 def _bridge_hosts(walls: Sequence[Wall], ends: tuple[Point, Point]) -> list[Wall]:
     """Tường thẳng hàng với đoạn nối có đầu mút trùng một đầu của nó (đoạn nối nối hai đầu gần của cặp thẳng hàng).
 
@@ -1184,7 +1190,8 @@ def close_envelope_gaps(
     tường mang một cửa đi phủ cả khe (cánh đọc từ nét vẽ, rộng ≥ 1,5 m không cánh → lùa, còn lại cánh trái tin
     thấp); khe hẹp hơn: kéo một tường chủ khép khe (`_extend_host`).
     Khe trong nhà (hai bên đều là phòng) giữ hở: lối mở thật có tồn tại.
-    Đoạn nối cắt tim tường khác (khe đã có tường qua khe 3c, hay vách chắn ngang) bỏ qua.
+    Đoạn nối cắt tim tường khác (khe đã có tường qua khe 3c, hay vách chắn ngang) hay chồng song song lên tường
+    đang có (`_clash`: đoạn nối xoè từ một đầu tới từng mảnh thẳng hàng phía bên kia) bỏ qua.
     """
     walls, openings = list(wall_set.walls), list(wall_set.openings)
     leaves = dict(wall_set.leaves)
@@ -1198,6 +1205,10 @@ def close_envelope_gaps(
         if not hosts or any(inner.intersects(line) for line in lines):
             continue
         thickness = max(host.thickness_mm for host in hosts)
+        # Đoạn nối xoè từ cùng một đầu (mỗi tường thẳng hàng một đoạn) chạy dọc tường đã có: không phải khe (W4).
+        seg = _Seg(start, end, thickness, thickness, 1.0, ())
+        if any(_clash(seg, _wall_seg(other)) for other in walls):
+            continue
         wall = Wall(
             id=hosts[0].id,
             level_id=level_id,
