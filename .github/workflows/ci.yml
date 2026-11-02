@@ -92,7 +92,7 @@ jobs:
       - run: bash tools/ci/job.sh typecheck
 
   # PERF-CI: ba nhóm test chạy thành ma trận shard (`--ci-shard=K/N` chia theo tệp, `ci_split.py`) —
-  # mỗi shard một runner, đường găng từ ~10 phút (integration rồi coverage) xuống ~4 phút. Tên check
+  # mỗi shard một runner (unit 2, integration 5, ml 3 — đo 02/11: mỗi shard ~2-3 phút). Tên check
   # bắt buộc `unit`/`integration`/`ml` vẫn giữ: job cùng tên bên dưới chỉ đọc kết quả của ma trận.
   # Đổi số shard ở `matrix.shard` thì sửa cả `CI_SHARD` (mẫu số) và `CI_COVERAGE_JOBS` của `coverage`.
   # Shard unit/integration ghi mẫu golden (`CONTRACT_SAMPLES_DIR`, như bước 5 của cổng local) cho `contract`.
@@ -148,9 +148,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5]
     env:
-      CI_SHARD: ${{ matrix.shard }}/3
+      CI_SHARD: ${{ matrix.shard }}/5
       CONTRACT_SAMPLES_DIR: ${{ github.workspace }}/.cache/contract-samples
       APPFRONT_DIR: ${{ github.workspace }}/appfront
       # CONTRACT_NODE_DIR: không đặt ở đây (context `runner` không hợp lệ trong `env:`
@@ -387,7 +387,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Đủ mọi shard của ba ma trận — thiếu artifact nào thì merge_artifacts hỏng (fail-closed).
-      CI_COVERAGE_JOBS: unit-1,unit-2,integration-1,integration-2,integration-3,ml-1,ml-2,ml-3
+      CI_COVERAGE_JOBS: unit-1,unit-2,integration-1,integration-2,integration-3,integration-4,integration-5,ml-1,ml-2,ml-3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

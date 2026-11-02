@@ -466,11 +466,29 @@ job_build_trivy() {
     mkdir -p .cache/trivy
     trivy_dir="$(_host_pwd)/.cache/trivy"
   fi
-  run_step "trivy image ${img}" timeout "${NET_TIMEOUT_S}s" docker run --rm \
+  # CSDL lỗ hổng đã tải sẵn (job_build_trivy_db, chạy trong lúc build ảnh) → mỗi lượt quét một bản chép
+  # riêng (bolt khoá tệp, bốn lượt song song không dùng chung được) và bỏ tải lại. Không có → tự tải như cũ.
+  local db_args=() skip_args=()
+  if [ -n "${RUNNER_TEMP:-}" ] && [ -d "${RUNNER_TEMP}/trivy-db/db" ]; then
+    rm -rf "${RUNNER_TEMP}/trivy-cache-${img}"
+    cp -r "${RUNNER_TEMP}/trivy-db" "${RUNNER_TEMP}/trivy-cache-${img}"
+    db_args=(-v "${RUNNER_TEMP}/trivy-cache-${img}:/root/.cache/trivy")
+    skip_args=(--skip-db-update)
+  fi
+  run_step "trivy image ${img}" timeout "${NET_TIMEOUT_S}s" docker run --rm "${db_args[@]}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${trivy_dir}:/out" \
-    "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --exit-code 1 \
+    "$TRIVY_IMAGE" image "${skip_args[@]}" --severity CRITICAL --ignore-unfixed --exit-code 1 \
     --format sarif --output "/out/trivy-${img}.sarif" "appback-${img}:ci"
+}
+
+# Tải CSDL trivy một lần vào RUNNER_TEMP/trivy-db (chỉ trên runner CI) — chạy cùng lúc với build ảnh.
+# Hỏng thì không chặn: job_build_trivy thấy thiếu `db/` sẽ tự tải như trước.
+job_build_trivy_db() {
+  [ -n "${RUNNER_TEMP:-}" ] || return 0
+  mkdir -p "${RUNNER_TEMP}/trivy-db"
+  timeout "${NET_TIMEOUT_S}s" docker run --rm -v "${RUNNER_TEMP}/trivy-db:/root/.cache/trivy" \
+    "$TRIVY_IMAGE" image --download-db-only || rm -rf "${RUNNER_TEMP}/trivy-db/db"
 }
 
 nginx_floor_for_line() {
@@ -557,19 +575,17 @@ job_build() {
     "NO_PRUNE=1 job_build_one_image api" \
     "NO_PRUNE=1 job_build_one_image worker" \
     "NO_PRUNE=1 job_build_one_image ml --build-arg ML_VARIANT=cpu" \
-    job_build_web
+    job_build_web \
+    job_build_trivy_db
   docker builder prune -f >/dev/null 2>&1 || true
   run_step "nginx -v >= sàn theo dòng phát hành (NO-113)" job_build_check_nginx_version
 
-  job_build_import_all api
-  job_build_import_all worker
-  job_build_import_all ml
-
+  # import_all + smoke và bốn lượt trivy chỉ đọc ảnh đã build, không phụ thuộc nhau → chạy chồng.
+  local checks=("job_build_import_all api; job_build_import_all worker; job_build_import_all ml; job_build_smoke")
   if [ "$no_scan" -eq 0 ]; then
-    run_parallel "job_build_trivy api" "job_build_trivy worker" "job_build_trivy ml" "job_build_trivy web"
+    checks+=("job_build_trivy api" "job_build_trivy worker" "job_build_trivy ml" "job_build_trivy web")
   fi
-
-  job_build_smoke
+  run_parallel "${checks[@]}"
 }
 
 # ---------------------------------------------------------------------------
