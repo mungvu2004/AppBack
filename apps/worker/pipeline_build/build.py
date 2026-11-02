@@ -11,7 +11,7 @@ import math
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Final, Literal, Self, get_args
 
@@ -32,6 +32,7 @@ from packages.domain.rules_ai import apply_post_rules
 from packages.domain.scale import (
     RescaleError,
     ScaleSample,
+    axis_scales,
     classify_scale_range,
     infer_scale,
     rescale_dimensions,
@@ -76,7 +77,23 @@ _CHAIN_ID: Final = re.compile(r"^t(\d+)-chain$")
 
 _DIMENSION_TOLERANCE: Final = 0.02
 _BUILD_SCALE_TARGET_MM: Final = 150.0
-"""Bề dày vách mong muốn khi phải tự chọn tỉ lệ dựng (B5-05 [6] bước 2)."""
+"""Bề dày vách mong muốn khi phải tự chọn tỉ lệ dựng (B5-05 [6] bước 2).
+
+Giữ 150 dù bậc tường sáu mức (100/150/200/220/300/400) cho vách trong 100-110: đây là trung vị bề dày **mặt nạ**
+(nét mực dày hơn tường thật, mặt bằng trộn vách 100-110 với tường bao 200-220). Bench-3d r1, 14 bản có đáp án: bề dày
+dò được ở tỉ lệ đúng có trung vị ≈ 154 mm (95-273); đặt 120 thì ca chuỗi đúng nay ước lệch thêm ~20 %. ch-01 (cần
+~139) và lowres-ch06 (cần ~176) lệch hai phía nên một hằng số không chữa được cả hai."""
+
+_ESTIMATE_AGREEMENT: Final = 0.10
+"""Ước từ cửa đi và từ bề dày tường lệch ≤ 10 % → trung bình nhân hai ước; lệch hơn → giữ ước cửa (bench DOOR-SCALE:
+cửa lệch trung vị 8-10 %, bề dày tường tới 42 %) và ghi `scaleChecks.estimateSpread`."""
+
+_ANISOTROPY_LIMIT: Final = 0.03
+"""Tỉ lệ suy riêng từ chữ ngang và chữ dọc lệch > 3 % → ghi `scaleChecks.anisotropic` (ảnh giãn không đều, ch-13);
+tỉ lệ đã chọn giữ nguyên."""
+
+_VERTICAL_TEXT_RATIO: Final = 1.3
+"""Chữ dọc (đường kích thước đứng): hộp cao > 1,3 lần rộng, như `_VERTICAL_RATIO` của `chains.py`."""
 
 _BUILD_SCALE_MIN: Final = 1.0
 _BUILD_SCALE_MAX: Final = 200.0
@@ -108,8 +125,16 @@ ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "defaul
 ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
 
 _SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
-_OPTIONAL_KEYS: Final = frozenset({"scaleBasis"})
+_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks"})
 """Khoá gốc tuỳ chọn: `layer.json` dựng trước QT-SCALE không có `scaleBasis` vẫn đọc được."""
+
+ScaleChecks = Mapping[str, Mapping[str, float]]
+"""Nghi vấn về tỉ lệ cho bước kiểm chất lượng (chưa lên API): `anisotropic` {x, y} mm/px của hai trục chữ,
+`estimateSpread` {door, wallThickness} mm/px của hai ước. Chỉ ghi khi có; tỉ lệ đã chọn không đổi."""
+_SCALE_CHECK_KEYS: Final = {
+    "anisotropic": frozenset({"x", "y"}),
+    "estimateSpread": frozenset({"door", "wallThickness"}),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +151,7 @@ class BuiltLayer:
     scale_source: Literal["pipeline", "project_default"]
     dropped: Mapping[str, int]
     scale_basis: ScaleBasis | None = None
+    scale_checks: ScaleChecks = field(default_factory=dict)
 
     def to_json(self) -> bytes:
         """`layer.json` UTF-8 gọn, khoá theo thứ tự cố định; `scaleMmPerPx` là chuỗi Decimal."""
@@ -139,6 +165,8 @@ class BuiltLayer:
         }
         if self.scale_basis is not None:
             payload["scaleBasis"] = self.scale_basis
+        if self.scale_checks:
+            payload["scaleChecks"] = {key: dict(value) for key, value in self.scale_checks.items()}
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     @classmethod
@@ -160,6 +188,12 @@ class BuiltLayer:
         basis = payload.get("scaleBasis")
         if basis is not None and basis not in _SCALE_BASES:
             raise ValueError(f"layer.json scaleBasis lạ: {basis!r}")
+        checks = payload.get("scaleChecks", {})
+        if not isinstance(checks, dict) or any(
+            key not in _SCALE_CHECK_KEYS or not isinstance(value, dict) or set(value) != _SCALE_CHECK_KEYS[key]
+            for key, value in checks.items()
+        ):
+            raise ValueError(f"layer.json scaleChecks lạ: {checks!r}")
         return cls(
             layer=SpatialLayer.model_validate(payload["layer"]),
             dimensions=tuple(Dimension.model_validate(item) for item in payload["dimensions"]),
@@ -167,6 +201,7 @@ class BuiltLayer:
             scale_source=payload["scaleSource"],
             dropped={key: int(dropped[key]) for key in DROPPED_KEYS},
             scale_basis=basis,
+            scale_checks={key: {k: float(v) for k, v in value.items()} for key, value in checks.items()},
         )
 
 
@@ -304,6 +339,36 @@ def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
         if value is not None and classify_scale_range(value / text.span_px) == "inRange":
             samples.append(ScaleSample(f"t{index}-chain", text.span_px, float(value)))
     return tuple(samples)
+
+
+def _anisotropy(texts: Sequence[TextPx]) -> dict[str, float]:
+    """`{x, y}` khi tỉ lệ suy riêng từ chữ chuỗi ngang và dọc (cụm đông nhất mỗi trục) lệch > `_ANISOTROPY_LIMIT`."""
+    vertical = {
+        f"t{index}-chain"
+        for index, text in enumerate(texts)
+        if text.box.y_max - text.box.y_min > _VERTICAL_TEXT_RATIO * (text.box.x_max - text.box.x_min)
+    }
+    samples = _chain_samples(texts)
+    scales = axis_scales(
+        densest_cluster([sample for sample in samples if sample.id not in vertical]),
+        densest_cluster([sample for sample in samples if sample.id in vertical]),
+    )
+    if scales is None or max(scales) <= (1 + _ANISOTROPY_LIMIT) * min(scales):
+        return {}
+    return {"x": round(scales[0], 6), "y": round(scales[1], 6)}
+
+
+def _estimate(door: float | None, wall: float) -> tuple[float, ScaleBasis, dict[str, float]]:
+    """Tỉ lệ tạm (U01) từ ước cửa đi và ước bề dày tường: (tỉ lệ, gốc, nghi vấn `estimateSpread`).
+
+    Không có ước cửa → bề dày tường. Hai ước lệch ≤ `_ESTIMATE_AGREEMENT` → trung bình nhân, gốc `door`; lệch hơn →
+    ước cửa, kèm hai giá trị để bước kiểm chất lượng báo.
+    """
+    if door is None:
+        return wall, "wallThickness", {}
+    if max(door, wall) <= (1 + _ESTIMATE_AGREEMENT) * min(door, wall):
+        return math.sqrt(door * wall), "door", {}
+    return door, "door", {"door": round(door, 6), "wallThickness": round(wall, 6)}
 
 
 def _build_scale(walls: Sequence[WallPx], final: float) -> float:
@@ -674,11 +739,14 @@ def build_layer(
     if noted is not None:
         scale, basis = noted, "note"
     estimated = basis == "default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
-    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi, thiếu cửa thì bề dày tường; không phải 1 mm/px
-        door = _door_scale(detections, walls_px)
-        guess = door or _build_scale(walls_px, float(scale))
+    checks: dict[str, dict[str, float]] = {}
+    if anisotropic := _anisotropy(texts):
+        checks["anisotropic"] = anisotropic
+    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi và bề dày tường; không phải 1 mm/px
+        guess, basis, spread = _estimate(_door_scale(detections, walls_px), _build_scale(walls_px, float(scale)))
         scale = Decimal(repr(guess)).quantize(_QUANTUM)
-        basis = "door" if door else "wallThickness"
+        if spread:
+            checks["estimateSpread"] = spread
     source: Literal["pipeline", "project_default"] = "project_default" if basis == "default" else "pipeline"
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
@@ -718,4 +786,5 @@ def build_layer(
         scale_source=source,
         dropped={key: dropped[key] for key in DROPPED_KEYS},
         scale_basis=basis,
+        scale_checks=checks,
     )
