@@ -448,13 +448,81 @@ def test_shower_names_bathroom_and_washer_names_loggia(fake_clock: FakeClock) ->
     assert _usages(_grid_walls(fake_clock), (), detections, fake_clock) == ["bathroom", "loggia"]
 
 
+def _nine_grid(clock: FakeClock) -> list[Wall]:
+    """Lưới 3 x 3 phòng 3 x 3 m; phòng giữa (thứ 5 theo (y, x)) không chạm mặt ngoài."""
+    rows = [((0, k), (9000, k)) for k in (0, 3000, 6000, 9000)]
+    columns = [((k, 0), (k, 9000)) for k in (0, 3000, 6000, 9000)]
+    return [_wall(clock, start, end) for start, end in [*rows, *columns]]
+
+
 def test_washer_in_bathroom_keeps_bathroom(fake_clock: FakeClock) -> None:
-    """Máy giặt đặt trong WC (thường gặp ở căn hộ VN) không đổi phòng tắm thành lô-gia."""
+    """Máy giặt đặt trong WC giữa nhà (thường gặp ở căn hộ VN) không đổi phòng tắm thành lô-gia."""
     detections = (
-        DetectionPx(label="sanitary_fixture", box=_box(500, 500, 900, 900), confidence=0.8),
-        DetectionPx(label="washing_machine", box=_box(1500, 500, 2100, 1100), confidence=0.8),
+        DetectionPx(label="sanitary_fixture", box=_box(3500, 3500, 3900, 3900), confidence=0.8),
+        DetectionPx(label="washing_machine", box=_box(4500, 3500, 5100, 4100), confidence=0.8),
     )
-    assert _usages(_grid_walls(fake_clock), (), detections, fake_clock)[0] == "bathroom"
+    assert _usages(_nine_grid(fake_clock), (), detections, fake_clock)[4] == "bathroom"
+
+
+def test_washer_and_sink_on_the_facade_name_loggia(fake_clock: FakeClock) -> None:
+    """Lô gia mặt ngoài: chậu giặt (dò thành thiết bị vệ sinh) + máy giặt → lô gia; có buồng tắm đứng → phòng tắm."""
+    sink = DetectionPx(label="sanitary_fixture", box=_box(3500, 500, 3900, 900), confidence=0.8)
+    washer = DetectionPx(label="washing_machine", box=_box(4500, 500, 5100, 1100), confidence=0.8)
+    shower = DetectionPx(label="shower", box=_box(4500, 2000, 5300, 2800), confidence=0.8)
+    assert _usages(_grid_walls(fake_clock), (), (sink, washer), fake_clock)[1] == "loggia"
+    assert _usages(_grid_walls(fake_clock), (), (sink, washer, shower), fake_clock)[1] == "bathroom"
+
+
+def _bedroom_and_side_room(clock: FakeClock) -> list[Wall]:
+    """Hộp 5 x 2,5 m chia ở x = 3 m: phòng trái 7,5 m², phòng phải 2 x 2,5 m = 5 m² (cả hai trên mặt ngoài)."""
+    segments = [((0, 0), (5000, 0)), ((0, 2500), (5000, 2500)), ((0, 0), (0, 2500)), ((5000, 0), (5000, 2500))]
+    return [_wall(clock, start, end) for start, end in [*segments, ((3000, 0), (3000, 2500))]]
+
+
+def test_unlabelled_facade_room_becomes_loggia_unless_it_has_a_bed(fake_clock: FakeClock) -> None:
+    """Tầng có nhãn chữ: phòng không tên 5 m² có ≥ 3 m mặt ngoài → lô gia (nguồn suy); có giường → không.
+
+    Tầng không có nhãn chữ nào thì không đoán (`test_grid_gives_two_rooms_with_matching_area`).
+    """
+    texts = (_text("PHONG NGU", 1500, 1250),)
+    rooms = _rooms_with_texts(_bedroom_and_side_room(fake_clock), texts, (), fake_clock)
+    assert [(room.usage, room.name) for room in rooms] == [("bedroom", "phòng ngủ"), ("loggia", "lô gia")]
+    assert rooms[1].confidence < rooms[0].confidence
+    bed = (DetectionPx(label="bed", box=_box(3200, 200, 4800, 2300), confidence=0.9),)
+    assert _usages(_bedroom_and_side_room(fake_clock), texts, bed, fake_clock) == ["bedroom", "other"]
+
+
+def _rooms_with_texts(
+    walls: list[Wall], texts: tuple[TextPx, ...], detections: tuple[DetectionPx, ...], clock: FakeClock
+) -> tuple[Room, ...]:
+    """`build_rooms` ở `_IDENTITY` với chữ và đồ đạc."""
+    return build_rooms(
+        walls, (), texts, detections=detections, level_id=LEVEL_ID, scaling=_IDENTITY, clock=clock, dropped=Counter()
+    )
+
+
+def test_bed_in_a_merged_region_over_25_m2_is_not_a_bedroom(fake_clock: FakeClock) -> None:
+    """Vùng gộp khách-bếp 40 m² có giường (bench-3d cn-19) không thành phòng ngủ."""
+    walls = [
+        _wall(fake_clock, (0, 0), (8000, 0)),
+        _wall(fake_clock, (0, 5000), (8000, 5000)),
+        _wall(fake_clock, (0, 0), (0, 5000)),
+        _wall(fake_clock, (8000, 0), (8000, 5000)),
+    ]
+    bed = (DetectionPx(label="bed", box=_box(500, 500, 2100, 2500), confidence=0.9),)
+    assert _usages(walls, (), bed, fake_clock) == ["other"]
+
+
+def test_wardrobe_alone_in_7_m2_is_not_a_bedroom(fake_clock: FakeClock) -> None:
+    """Tủ áo trong phòng 3,5 x 2 m = 7 m² (kho, phòng thay đồ: bench-3d ch-06, cn-05) không thành phòng ngủ."""
+    walls = [
+        _wall(fake_clock, (0, 0), (3500, 0)),
+        _wall(fake_clock, (0, 2000), (3500, 2000)),
+        _wall(fake_clock, (0, 0), (0, 2000)),
+        _wall(fake_clock, (3500, 0), (3500, 2000)),
+    ]
+    wardrobe = (DetectionPx(label="wardrobe", box=_box(500, 500, 1500, 1100), confidence=0.8),)
+    assert _usages(walls, (), wardrobe, fake_clock) == ["other"]
 
 
 def test_short_cabinet_and_big_wardrobe_room_name_nothing(fake_clock: FakeClock) -> None:

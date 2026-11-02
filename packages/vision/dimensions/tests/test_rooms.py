@@ -120,7 +120,9 @@ def test_match_room_label_table(text: str, expected: RoomLabel | None) -> None:
         ("LOGOA", RoomLabel("loggia", "lô gia")),
         ("Logis 2", RoomLabel("loggia", "lô gia 2")),
         ("BAN CONG", RoomLabel("loggia", "lô gia")),
-        ("Son Phoi", RoomLabel("utility", "phòng kỹ thuật")),
+        ("Son Phoi", RoomLabel("loggia", "lô gia")),
+        ("SAN PHOI", RoomLabel("loggia", "lô gia")),
+        ("Giat phoi 2", RoomLabel("loggia", "lô gia 2")),
         ("HONG THAY BO", RoomLabel("utility", "phòng kỹ thuật")),
         # Không phải nhãn phòng: đồ đạc, khung tên, chú thích diện tích.
         ("Tu lanh", None),

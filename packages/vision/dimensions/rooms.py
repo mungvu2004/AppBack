@@ -44,8 +44,8 @@ _KEYS: Final[Mapping[RoomUsage, tuple[str, ...]]] = MappingProxyType(
         "bathroom": ("ve sinh", "wc", "vs", "toilet", "tam", "phong tam", "p tam"),
         "corridor": ("hanh lang", "sanh", "loi di", "tien sanh"),
         "stairwell": ("cau thang", "thang bo", "buong thang", "thang"),
-        "utility": ("ky thuat", "phong ky thuat", "kho", "giat phoi", "gen", "san phoi", "thay do", "phong thay do"),
-        "loggia": ("lo gia", "loggia", "ban cong", "loggu"),
+        "utility": ("ky thuat", "phong ky thuat", "kho", "gen", "thay do", "phong thay do"),
+        "loggia": ("lo gia", "loggia", "ban cong", "loggu", "san phoi", "giat phoi"),
     }
 )
 _EN_NAMES: Final[tuple[tuple[str, RoomUsage], ...]] = (
