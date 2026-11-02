@@ -18,7 +18,7 @@ from typing import Final, Literal, get_args
 from packages.core.clock import Clock
 
 IdPrefix = Literal[
-    "prj", "usr", "upl", "drw", "ver", "ntf", "tok", "mdl", "dst", "dsv", "job", "run", "tpl", "shl", "bak"
+    "prj", "usr", "upl", "drw", "ver", "ntf", "tok", "mdl", "dst", "dsv", "job", "run", "tpl", "shl", "bak", "dcn"
 ]
 SpatialKind = Literal["level", "wall", "opening", "furniture", "room", "axis", "dimension", "roof"]
 

@@ -21,6 +21,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from apps.api.design_director.state import enqueue_auto
 from apps.api.drawings.progress import LAST_STEP
 from apps.api.drawings.runs import lock_run, publish_progress_after_commit, record_step
 from apps.api.project_settings.read import read_settings
@@ -143,6 +144,21 @@ def _summary(report: RunQualityReport) -> dict[str, object]:
     }
 
 
+async def _enqueue_design_concept(
+    sessionmaker: async_sessionmaker[AsyncSession], project_id: str, clock: Clock
+) -> None:
+    """AID-01: lượt đã `completed` → xếp lượt "AI tự chọn kiểu" cho dự án, giao dịch riêng sau commit.
+
+    Mọi lỗi chỉ ghi log: concept là phần thêm, không được làm hỏng hay giao lại bước cuối của pipeline.
+    """
+    try:
+        async with session_scope(sessionmaker) as db:
+            await enqueue_auto(db, project_id, clock=clock)
+        await after_commit_idle(db)
+    except Exception:  # noqa: BLE001 — cố ý nuốt: lỗi concept không được chạm lượt pipeline
+        _log.exception("design_concept_enqueue_failed", extra={"project_id": project_id})
+
+
 async def run_quality(
     payload: RunStepPayload,
     *,
@@ -180,6 +196,7 @@ async def run_quality(
     await after_commit_idle(db)
     if not completed:
         return "skipped"
+    await _enqueue_design_concept(sessionmaker, ctx.project_id, clock)
     if report.has_critical:
         _log.info("quality_critical_issues", extra={"run_id": payload.run_id, "issue_count": len(report.issues)})
     return "completed"

@@ -27,6 +27,7 @@ from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
 from apps.worker.pipeline_quality.tests.helpers import Arranged, open_run_at_quality
 from packages.core.ids import new_id
+from packages.db.models.design_concept import DesignConceptRow
 from packages.db.models.drawings import PipelineRunRow
 from packages.db.models.floors import FloorRow
 from packages.db.models.notifications import NotificationRow
@@ -390,3 +391,44 @@ async def test_run_quality_records_summary_clean(
     summary, artifact = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
     assert artifact["hasCritical"] is False
     assert summary == {"hasCritical": False, "criticalCount": 0, "lowConfidence": artifact["lowConfidence"]}
+
+
+async def test_run_quality__completed_queues_a_design_concept(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: ObjectStorage,
+    fake_clock: FakeClock,
+    quality_env: None,
+    design_director_on: None,
+) -> None:
+    """AID-01: bước cuối `completed` → một lượt "AI tự chọn kiểu" `queued` cho dự án."""
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+
+    outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+
+    assert outcome == "completed"
+    async with db_sessionmaker() as db:
+        rows = await db.execute(select(DesignConceptRow).where(DesignConceptRow.project_id == arranged.project_id))
+        concepts = rows.scalars().all()
+    assert [(c.status, c.suggested) for c in concepts] == [("queued", True)]
+
+
+async def test_run_quality__design_concept_failure_does_not_break_the_run(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: ObjectStorage,
+    fake_clock: FakeClock,
+    quality_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`enqueue_auto` ném lỗi → chỉ ghi log; lượt vẫn `completed`."""
+
+    async def _boom(*_args: object, **_kwargs: object) -> NoReturn:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service, "enqueue_auto", _boom)
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+
+    outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+
+    assert outcome == "completed"
+    status, step, _ = await _run_row(db_sessionmaker, arranged.run_id)
+    assert (status, step) == ("completed", "qualityCheck")

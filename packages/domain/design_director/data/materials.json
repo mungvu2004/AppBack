@@ -1,0 +1,2096 @@
+[
+ {
+  "id": "wood-finewood27",
+  "ref": "library:wood-finewood27",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   53.2,
+   14.0,
+   37.0
+  ],
+  "lightness": 53,
+  "warmth": 37,
+  "chroma": 40,
+  "pattern": 0
+ },
+ {
+  "id": "wood-floorplank1",
+  "ref": "library:wood-floorplank1",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   60.2,
+   16.5,
+   36.2
+  ],
+  "lightness": 60,
+  "warmth": 36,
+  "chroma": 40,
+  "pattern": 5
+ },
+ {
+  "id": "wood-hungarianparquet10",
+  "ref": "library:wood-hungarianparquet10",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   55.7,
+   10.9,
+   30.6
+  ],
+  "lightness": 56,
+  "warmth": 31,
+  "chroma": 32,
+  "pattern": 3
+ },
+ {
+  "id": "wood-hungarianparquet2",
+  "ref": "library:wood-hungarianparquet2",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   26.9,
+   22.6,
+   21.4
+  ],
+  "lightness": 27,
+  "warmth": 21,
+  "chroma": 31,
+  "pattern": 2
+ },
+ {
+  "id": "wood-squareparquet21",
+  "ref": "library:wood-squareparquet21",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   16.6,
+   11.0,
+   18.9
+  ],
+  "lightness": 17,
+  "warmth": 19,
+  "chroma": 22,
+  "pattern": 1
+ },
+ {
+  "id": "wood-squareparquet23",
+  "ref": "library:wood-squareparquet23",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   34.5,
+   22.4,
+   41.4
+  ],
+  "lightness": 35,
+  "warmth": 41,
+  "chroma": 47,
+  "pattern": 2
+ },
+ {
+  "id": "wood-woodfine1",
+  "ref": "library:wood-woodfine1",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   65.8,
+   8.3,
+   18.4
+  ],
+  "lightness": 66,
+  "warmth": 18,
+  "chroma": 20,
+  "pattern": 4
+ },
+ {
+  "id": "wood-woodfine11",
+  "ref": "library:wood-woodfine11",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   72.3,
+   26.1,
+   52.0
+  ],
+  "lightness": 72,
+  "warmth": 52,
+  "chroma": 58,
+  "pattern": 2
+ },
+ {
+  "id": "wood-woodfine13",
+  "ref": "library:wood-woodfine13",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   73.4,
+   16.3,
+   37.9
+  ],
+  "lightness": 73,
+  "warmth": 38,
+  "chroma": 41,
+  "pattern": 5
+ },
+ {
+  "id": "wood-woodfine2",
+  "ref": "library:wood-woodfine2",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   77.0,
+   7.7,
+   24.7
+  ],
+  "lightness": 77,
+  "warmth": 25,
+  "chroma": 26,
+  "pattern": 5
+ },
+ {
+  "id": "wood-woodfine22",
+  "ref": "library:wood-woodfine22",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   69.4,
+   3.2,
+   24.3
+  ],
+  "lightness": 69,
+  "warmth": 24,
+  "chroma": 24,
+  "pattern": 7
+ },
+ {
+  "id": "wood-woodfine24",
+  "ref": "library:wood-woodfine24",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   40.0,
+   41.6,
+   34.4
+  ],
+  "lightness": 40,
+  "warmth": 34,
+  "chroma": 54,
+  "pattern": 3
+ },
+ {
+  "id": "wood-woodparquet14",
+  "ref": "library:wood-woodparquet14",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   85.6,
+   2.4,
+   11.0
+  ],
+  "lightness": 86,
+  "warmth": 11,
+  "chroma": 11,
+  "pattern": 6
+ },
+ {
+  "id": "wood-woodenparquet11",
+  "ref": "library:wood-woodenparquet11",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   27.2,
+   13.4,
+   13.6
+  ],
+  "lightness": 27,
+  "warmth": 14,
+  "chroma": 19,
+  "pattern": 4
+ },
+ {
+  "id": "wood-woodparquet121",
+  "ref": "library:wood-woodparquet121",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   49.9,
+   6.4,
+   27.6
+  ],
+  "lightness": 50,
+  "warmth": 28,
+  "chroma": 28,
+  "pattern": 2
+ },
+ {
+  "id": "wood-woodparquet56",
+  "ref": "library:wood-woodparquet56",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   61.5,
+   12.0,
+   31.3
+  ],
+  "lightness": 61,
+  "warmth": 31,
+  "chroma": 33,
+  "pattern": 3
+ },
+ {
+  "id": "wood-woodparquet65",
+  "ref": "library:wood-woodparquet65",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   53.2,
+   8.8,
+   35.4
+  ],
+  "lightness": 53,
+  "warmth": 35,
+  "chroma": 37,
+  "pattern": 3
+ },
+ {
+  "id": "wood-woodparquet99",
+  "ref": "library:wood-woodparquet99",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   63.6,
+   7.9,
+   22.9
+  ],
+  "lightness": 64,
+  "warmth": 23,
+  "chroma": 24,
+  "pattern": 2
+ },
+ {
+  "id": "wood-woodplank19",
+  "ref": "library:wood-woodplank19",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   52.7,
+   4.1,
+   17.3
+  ],
+  "lightness": 53,
+  "warmth": 17,
+  "chroma": 18,
+  "pattern": 2
+ },
+ {
+  "id": "wood-woodplank48",
+  "ref": "library:wood-woodplank48",
+  "category": "wood",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   45.9,
+   10.6,
+   19.9
+  ],
+  "lightness": 46,
+  "warmth": 20,
+  "chroma": 23,
+  "pattern": 3
+ },
+ {
+  "id": "flooring-tile85a",
+  "ref": "library:flooring-tile85a",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   30.4,
+   -0.4,
+   1.7
+  ],
+  "lightness": 30,
+  "warmth": 2,
+  "chroma": 2,
+  "pattern": 5
+ },
+ {
+  "id": "flooring-rusticbrick",
+  "ref": "library:flooring-rusticbrick",
+  "category": "brick",
+  "surfaces": [
+   "wall",
+   "floor",
+   "outdoor"
+  ],
+  "lab": [
+   50.8,
+   15.2,
+   21.0
+  ],
+  "lightness": 51,
+  "warmth": 21,
+  "chroma": 26,
+  "pattern": 12
+ },
+ {
+  "id": "flooring-agedbrick",
+  "ref": "library:flooring-agedbrick",
+  "category": "brick",
+  "surfaces": [
+   "wall",
+   "floor",
+   "outdoor"
+  ],
+  "lab": [
+   65.6,
+   9.2,
+   22.7
+  ],
+  "lightness": 66,
+  "warmth": 23,
+  "chroma": 25,
+  "pattern": 2
+ },
+ {
+  "id": "flooring-weatheredbrick",
+  "ref": "library:flooring-weatheredbrick",
+  "category": "brick",
+  "surfaces": [
+   "wall",
+   "floor",
+   "outdoor"
+  ],
+  "lab": [
+   39.9,
+   19.7,
+   22.3
+  ],
+  "lightness": 40,
+  "warmth": 22,
+  "chroma": 30,
+  "pattern": 5
+ },
+ {
+  "id": "flooring-garagedoor",
+  "ref": "library:flooring-garagedoor",
+  "category": "metal",
+  "surfaces": [
+   "wall",
+   "furniture"
+  ],
+  "lab": [
+   86.7,
+   -1.5,
+   1.2
+  ],
+  "lightness": 87,
+  "warmth": 1,
+  "chroma": 2,
+  "pattern": 4
+ },
+ {
+  "id": "flooring-greenlabradorite",
+  "ref": "library:flooring-greenlabradorite",
+  "category": "stone",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   22.0,
+   -6.7,
+   9.2
+  ],
+  "lightness": 22,
+  "warmth": 9,
+  "chroma": 12,
+  "pattern": 10
+ },
+ {
+  "id": "flooring-ground13",
+  "ref": "library:flooring-ground13",
+  "category": "ground",
+  "surfaces": [
+   "outdoor",
+   "floor"
+  ],
+  "lab": [
+   45.9,
+   0.4,
+   5.7
+  ],
+  "lightness": 46,
+  "warmth": 6,
+  "chroma": 6,
+  "pattern": 5
+ },
+ {
+  "id": "flooring-pooltiles",
+  "ref": "library:flooring-pooltiles",
+  "category": "tile",
+  "surfaces": [
+   "floor",
+   "outdoor"
+  ],
+  "lab": [
+   70.1,
+   -12.1,
+   -19.3
+  ],
+  "lightness": 70,
+  "warmth": -19,
+  "chroma": 23,
+  "pattern": 11
+ },
+ {
+  "id": "flooring-tiles3",
+  "ref": "library:flooring-tiles3",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   73.4,
+   1.3,
+   2.8
+  ],
+  "lightness": 73,
+  "warmth": 3,
+  "chroma": 3,
+  "pattern": 19
+ },
+ {
+  "id": "flooring-tiles4",
+  "ref": "library:flooring-tiles4",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   52.9,
+   -0.0,
+   -0.1
+  ],
+  "lightness": 53,
+  "warmth": 0,
+  "chroma": 2,
+  "pattern": 29
+ },
+ {
+  "id": "flooring-wallstone1",
+  "ref": "library:flooring-wallstone1",
+  "category": "stone",
+  "surfaces": [
+   "wall",
+   "floor",
+   "outdoor"
+  ],
+  "lab": [
+   58.6,
+   12.4,
+   28.6
+  ],
+  "lightness": 59,
+  "warmth": 29,
+  "chroma": 31,
+  "pattern": 9
+ },
+ {
+  "id": "flooring-woodenceramic3",
+  "ref": "library:flooring-woodenceramic3",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   51.7,
+   9.9,
+   20.2
+  ],
+  "lightness": 52,
+  "warmth": 20,
+  "chroma": 23,
+  "pattern": 4
+ },
+ {
+  "id": "flooring-ceramic53",
+  "ref": "library:flooring-ceramic53",
+  "category": "tile",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   72.1,
+   -0.8,
+   4.4
+  ],
+  "lightness": 72,
+  "warmth": 4,
+  "chroma": 5,
+  "pattern": 31
+ },
+ {
+  "id": "flooring-terrazzo19",
+  "ref": "library:flooring-terrazzo19",
+  "category": "stone",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   64.0,
+   -4.4,
+   -1.5
+  ],
+  "lightness": 64,
+  "warmth": -2,
+  "chroma": 5,
+  "pattern": 18
+ },
+ {
+  "id": "flooring-tile79",
+  "ref": "library:flooring-tile79",
+  "category": "stone",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   83.4,
+   -0.7,
+   3.3
+  ],
+  "lightness": 83,
+  "warmth": 3,
+  "chroma": 3,
+  "pattern": 4
+ },
+ {
+  "id": "flooring-tile86",
+  "ref": "library:flooring-tile86",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   44.7,
+   0.5,
+   3.9
+  ],
+  "lightness": 45,
+  "warmth": 4,
+  "chroma": 4,
+  "pattern": 16
+ },
+ {
+  "id": "flooring-darkceramic22",
+  "ref": "library:flooring-darkceramic22",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   35.2,
+   -0.7,
+   1.4
+  ],
+  "lightness": 35,
+  "warmth": 1,
+  "chroma": 2,
+  "pattern": 3
+ },
+ {
+  "id": "flooring-lightceramic24",
+  "ref": "library:flooring-lightceramic24",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   64.0,
+   -0.3,
+   3.1
+  ],
+  "lightness": 64,
+  "warmth": 3,
+  "chroma": 3,
+  "pattern": 4
+ },
+ {
+  "id": "flooring-statuarettowhite",
+  "ref": "library:flooring-statuarettowhite",
+  "category": "stone",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   76.8,
+   -0.1,
+   -1.6
+  ],
+  "lightness": 77,
+  "warmth": -2,
+  "chroma": 2,
+  "pattern": 3
+ },
+ {
+  "id": "flooring-tile20",
+  "ref": "library:flooring-tile20",
+  "category": "tile",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   82.0,
+   -1.1,
+   7.5
+  ],
+  "lightness": 82,
+  "warmth": 8,
+  "chroma": 8,
+  "pattern": 5
+ },
+ {
+  "id": "flooring-tile68",
+  "ref": "library:flooring-tile68",
+  "category": "tile",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   60.9,
+   0.8,
+   6.6
+  ],
+  "lightness": 61,
+  "warmth": 7,
+  "chroma": 7,
+  "pattern": 2
+ },
+ {
+  "id": "flooring-woodenceramic2",
+  "ref": "library:flooring-woodenceramic2",
+  "category": "tile",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   42.3,
+   5.4,
+   12.6
+  ],
+  "lightness": 42,
+  "warmth": 13,
+  "chroma": 14,
+  "pattern": 4
+ },
+ {
+  "id": "flooring-woodparquet76",
+  "ref": "library:flooring-woodparquet76",
+  "category": "wood",
+  "surfaces": [
+   "floor"
+  ],
+  "lab": [
+   68.4,
+   4.9,
+   23.1
+  ],
+  "lightness": 68,
+  "warmth": 23,
+  "chroma": 24,
+  "pattern": 3
+ },
+ {
+  "id": "roof-classicshingles",
+  "ref": "library:roof-classicshingles",
+  "category": "roofing",
+  "surfaces": [
+   "roof"
+  ],
+  "lab": [
+   45.9,
+   24.9,
+   23.8
+  ],
+  "lightness": 46,
+  "warmth": 24,
+  "chroma": 34,
+  "pattern": 1
+ },
+ {
+  "id": "roof-claytiles",
+  "ref": "library:roof-claytiles",
+  "category": "roofing",
+  "surfaces": [
+   "roof"
+  ],
+  "lab": [
+   38.5,
+   12.7,
+   16.2
+  ],
+  "lightness": 38,
+  "warmth": 16,
+  "chroma": 21,
+  "pattern": 1
+ },
+ {
+  "id": "roof-terracottatiles",
+  "ref": "library:roof-terracottatiles",
+  "category": "roofing",
+  "surfaces": [
+   "roof"
+  ],
+  "lab": [
+   31.5,
+   -0.4,
+   -1.3
+  ],
+  "lightness": 32,
+  "warmth": -1,
+  "chroma": 1,
+  "pattern": 1
+ },
+ {
+  "id": "roof-greyshingles",
+  "ref": "library:roof-greyshingles",
+  "category": "roofing",
+  "surfaces": [
+   "roof"
+  ],
+  "lab": [
+   34.3,
+   0.1,
+   -0.1
+  ],
+  "lightness": 34,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 2
+ },
+ {
+  "id": "preset-white",
+  "ref": "library:preset-white",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   92.3,
+   0.0,
+   -0.0
+  ],
+  "lightness": 92,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 0
+ },
+ {
+  "id": "preset-softwhite",
+  "ref": "library:preset-softwhite",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   91.7,
+   -0.0,
+   4.4
+  ],
+  "lightness": 92,
+  "warmth": 4,
+  "chroma": 4,
+  "pattern": 0
+ },
+ {
+  "id": "preset-cream",
+  "ref": "library:preset-cream",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   90.6,
+   0.3,
+   12.7
+  ],
+  "lightness": 91,
+  "warmth": 13,
+  "chroma": 13,
+  "pattern": 0
+ },
+ {
+  "id": "preset-beige",
+  "ref": "library:preset-beige",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   81.1,
+   2.2,
+   15.3
+  ],
+  "lightness": 81,
+  "warmth": 15,
+  "chroma": 15,
+  "pattern": 0
+ },
+ {
+  "id": "preset-lightgrey",
+  "ref": "library:preset-lightgrey",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   85.7,
+   -0.2,
+   2.7
+  ],
+  "lightness": 86,
+  "warmth": 3,
+  "chroma": 3,
+  "pattern": 0
+ },
+ {
+  "id": "preset-greige",
+  "ref": "library:preset-greige",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   78.4,
+   0.9,
+   5.4
+  ],
+  "lightness": 78,
+  "warmth": 5,
+  "chroma": 5,
+  "pattern": 0
+ },
+ {
+  "id": "preset-midgrey",
+  "ref": "library:preset-midgrey",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   57.5,
+   -0.4,
+   2.3
+  ],
+  "lightness": 57,
+  "warmth": 2,
+  "chroma": 2,
+  "pattern": 0
+ },
+ {
+  "id": "preset-charcoal",
+  "ref": "library:preset-charcoal",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   34.7,
+   -0.5,
+   -3.5
+  ],
+  "lightness": 35,
+  "warmth": -3,
+  "chroma": 4,
+  "pattern": 0
+ },
+ {
+  "id": "preset-nearblack",
+  "ref": "library:preset-nearblack",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   13.7,
+   -0.2,
+   0.7
+  ],
+  "lightness": 14,
+  "warmth": 1,
+  "chroma": 1,
+  "pattern": 0
+ },
+ {
+  "id": "preset-blush",
+  "ref": "library:preset-blush",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   82.6,
+   11.1,
+   7.5
+  ],
+  "lightness": 83,
+  "warmth": 7,
+  "chroma": 13,
+  "pattern": 0
+ },
+ {
+  "id": "preset-tomato",
+  "ref": "library:preset-tomato",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   50.6,
+   40.5,
+   25.7
+  ],
+  "lightness": 51,
+  "warmth": 26,
+  "chroma": 48,
+  "pattern": 0
+ },
+ {
+  "id": "preset-brickred",
+  "ref": "library:preset-brickred",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   39.0,
+   40.7,
+   25.9
+  ],
+  "lightness": 39,
+  "warmth": 26,
+  "chroma": 48,
+  "pattern": 0
+ },
+ {
+  "id": "preset-oxblood",
+  "ref": "library:preset-oxblood",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   27.7,
+   29.6,
+   16.3
+  ],
+  "lightness": 28,
+  "warmth": 16,
+  "chroma": 34,
+  "pattern": 0
+ },
+ {
+  "id": "preset-peach",
+  "ref": "library:preset-peach",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   81.9,
+   11.2,
+   23.6
+  ],
+  "lightness": 82,
+  "warmth": 24,
+  "chroma": 26,
+  "pattern": 0
+ },
+ {
+  "id": "preset-terracotta",
+  "ref": "library:preset-terracotta",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   56.3,
+   32.0,
+   34.7
+  ],
+  "lightness": 56,
+  "warmth": 35,
+  "chroma": 47,
+  "pattern": 0
+ },
+ {
+  "id": "preset-burntorange",
+  "ref": "library:preset-burntorange",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   48.2,
+   32.4,
+   41.7
+  ],
+  "lightness": 48,
+  "warmth": 42,
+  "chroma": 53,
+  "pattern": 0
+ },
+ {
+  "id": "preset-clay",
+  "ref": "library:preset-clay",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   39.5,
+   26.6,
+   29.5
+  ],
+  "lightness": 39,
+  "warmth": 29,
+  "chroma": 40,
+  "pattern": 0
+ },
+ {
+  "id": "preset-paleyellow",
+  "ref": "library:preset-paleyellow",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   90.4,
+   -2.2,
+   25.3
+  ],
+  "lightness": 90,
+  "warmth": 25,
+  "chroma": 25,
+  "pattern": 0
+ },
+ {
+  "id": "preset-mustard",
+  "ref": "library:preset-mustard",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   69.0,
+   3.0,
+   51.0
+  ],
+  "lightness": 69,
+  "warmth": 51,
+  "chroma": 51,
+  "pattern": 0
+ },
+ {
+  "id": "preset-ochre",
+  "ref": "library:preset-ochre",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   59.1,
+   11.5,
+   51.7
+  ],
+  "lightness": 59,
+  "warmth": 52,
+  "chroma": 53,
+  "pattern": 0
+ },
+ {
+  "id": "preset-gold",
+  "ref": "library:preset-gold",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   51.2,
+   8.3,
+   49.0
+  ],
+  "lightness": 51,
+  "warmth": 49,
+  "chroma": 50,
+  "pattern": 0
+ },
+ {
+  "id": "preset-mint",
+  "ref": "library:preset-mint",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   87.5,
+   -8.8,
+   6.4
+  ],
+  "lightness": 88,
+  "warmth": 6,
+  "chroma": 11,
+  "pattern": 0
+ },
+ {
+  "id": "preset-sage",
+  "ref": "library:preset-sage",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   78.4,
+   -6.5,
+   8.5
+  ],
+  "lightness": 78,
+  "warmth": 8,
+  "chroma": 11,
+  "pattern": 0
+ },
+ {
+  "id": "preset-olive",
+  "ref": "library:preset-olive",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   59.5,
+   -9.6,
+   22.1
+  ],
+  "lightness": 59,
+  "warmth": 22,
+  "chroma": 24,
+  "pattern": 0
+ },
+ {
+  "id": "preset-forest",
+  "ref": "library:preset-forest",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   42.6,
+   -14.8,
+   7.9
+  ],
+  "lightness": 43,
+  "warmth": 8,
+  "chroma": 17,
+  "pattern": 0
+ },
+ {
+  "id": "preset-paleteal",
+  "ref": "library:preset-paleteal",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   82.3,
+   -8.9,
+   -1.4
+  ],
+  "lightness": 82,
+  "warmth": -1,
+  "chroma": 9,
+  "pattern": 0
+ },
+ {
+  "id": "preset-teal",
+  "ref": "library:preset-teal",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   53.6,
+   -20.2,
+   -3.9
+  ],
+  "lightness": 54,
+  "warmth": -4,
+  "chroma": 21,
+  "pattern": 0
+ },
+ {
+  "id": "preset-deepteal",
+  "ref": "library:preset-deepteal",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   37.0,
+   -17.1,
+   -3.3
+  ],
+  "lightness": 37,
+  "warmth": -3,
+  "chroma": 17,
+  "pattern": 0
+ },
+ {
+  "id": "preset-powderblue",
+  "ref": "library:preset-powderblue",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   87.0,
+   -2.7,
+   -7.6
+  ],
+  "lightness": 87,
+  "warmth": -8,
+  "chroma": 8,
+  "pattern": 0
+ },
+ {
+  "id": "preset-softblue",
+  "ref": "library:preset-softblue",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   84.9,
+   -2.5,
+   -8.1
+  ],
+  "lightness": 85,
+  "warmth": -8,
+  "chroma": 8,
+  "pattern": 0
+ },
+ {
+  "id": "preset-sky",
+  "ref": "library:preset-sky",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   71.7,
+   -4.9,
+   -20.2
+  ],
+  "lightness": 72,
+  "warmth": -20,
+  "chroma": 21,
+  "pattern": 0
+ },
+ {
+  "id": "preset-slateblue",
+  "ref": "library:preset-slateblue",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   55.5,
+   -1.4,
+   -18.2
+  ],
+  "lightness": 55,
+  "warmth": -18,
+  "chroma": 18,
+  "pattern": 0
+ },
+ {
+  "id": "preset-royalblue",
+  "ref": "library:preset-royalblue",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   38.9,
+   9.9,
+   -39.5
+  ],
+  "lightness": 39,
+  "warmth": -40,
+  "chroma": 41,
+  "pattern": 0
+ },
+ {
+  "id": "preset-navy",
+  "ref": "library:preset-navy",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   29.9,
+   -0.4,
+   -19.9
+  ],
+  "lightness": 30,
+  "warmth": -20,
+  "chroma": 20,
+  "pattern": 0
+ },
+ {
+  "id": "preset-lavender",
+  "ref": "library:preset-lavender",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   79.6,
+   7.0,
+   -11.1
+  ],
+  "lightness": 80,
+  "warmth": -11,
+  "chroma": 13,
+  "pattern": 0
+ },
+ {
+  "id": "preset-plum",
+  "ref": "library:preset-plum",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   36.1,
+   19.2,
+   -8.6
+  ],
+  "lightness": 36,
+  "warmth": -9,
+  "chroma": 21,
+  "pattern": 0
+ },
+ {
+  "id": "preset-aubergine",
+  "ref": "library:preset-aubergine",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   31.3,
+   12.7,
+   -6.5
+  ],
+  "lightness": 31,
+  "warmth": -6,
+  "chroma": 14,
+  "pattern": 0
+ },
+ {
+  "id": "preset-petal",
+  "ref": "library:preset-petal",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   87.1,
+   11.2,
+   0.3
+  ],
+  "lightness": 87,
+  "warmth": 0,
+  "chroma": 11,
+  "pattern": 0
+ },
+ {
+  "id": "preset-rose",
+  "ref": "library:preset-rose",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   66.3,
+   27.6,
+   -2.3
+  ],
+  "lightness": 66,
+  "warmth": -2,
+  "chroma": 28,
+  "pattern": 0
+ },
+ {
+  "id": "preset-dustyrose",
+  "ref": "library:preset-dustyrose",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   63.2,
+   22.6,
+   7.3
+  ],
+  "lightness": 63,
+  "warmth": 7,
+  "chroma": 24,
+  "pattern": 0
+ },
+ {
+  "id": "preset-berry",
+  "ref": "library:preset-berry",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   40.4,
+   30.9,
+   3.9
+  ],
+  "lightness": 40,
+  "warmth": 4,
+  "chroma": 31,
+  "pattern": 0
+ },
+ {
+  "id": "preset-sand",
+  "ref": "library:preset-sand",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   82.7,
+   1.2,
+   17.1
+  ],
+  "lightness": 83,
+  "warmth": 17,
+  "chroma": 17,
+  "pattern": 0
+ },
+ {
+  "id": "preset-tan",
+  "ref": "library:preset-tan",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   70.4,
+   4.3,
+   25.0
+  ],
+  "lightness": 70,
+  "warmth": 25,
+  "chroma": 25,
+  "pattern": 0
+ },
+ {
+  "id": "preset-taupe",
+  "ref": "library:preset-taupe",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   52.6,
+   4.6,
+   15.1
+  ],
+  "lightness": 53,
+  "warmth": 15,
+  "chroma": 16,
+  "pattern": 0
+ },
+ {
+  "id": "preset-espresso",
+  "ref": "library:preset-espresso",
+  "category": "colors",
+  "surfaces": [],
+  "lab": [
+   25.2,
+   6.0,
+   10.6
+  ],
+  "lightness": 25,
+  "warmth": 11,
+  "chroma": 12,
+  "pattern": 0
+ },
+ {
+  "id": "preset-metal",
+  "ref": "library:preset-metal",
+  "category": "metal",
+  "surfaces": [
+   "furniture",
+   "wall"
+  ],
+  "lab": [
+   77.7,
+   0.0,
+   -0.0
+  ],
+  "lightness": 78,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 0
+ },
+ {
+  "id": "preset-glass",
+  "ref": "library:preset-glass",
+  "category": "glass",
+  "surfaces": [],
+  "lab": [
+   79.2,
+   -14.8,
+   -21.3
+  ],
+  "lightness": 79,
+  "warmth": -21,
+  "chroma": 26,
+  "pattern": 0
+ },
+ {
+  "id": "fabric-linen",
+  "ref": "library:fabric-linen",
+  "category": "fabric",
+  "surfaces": [
+   "furniture",
+   "wall"
+  ],
+  "lab": [
+   67.6,
+   1.2,
+   3.3
+  ],
+  "lightness": 68,
+  "warmth": 3,
+  "chroma": 4,
+  "pattern": 12
+ },
+ {
+  "id": "fabric-cotton",
+  "ref": "library:fabric-cotton",
+  "category": "fabric",
+  "surfaces": [
+   "furniture",
+   "wall"
+  ],
+  "lab": [
+   55.9,
+   -2.1,
+   -33.5
+  ],
+  "lightness": 56,
+  "warmth": -33,
+  "chroma": 34,
+  "pattern": 9
+ },
+ {
+  "id": "fabric-velvet",
+  "ref": "library:fabric-velvet",
+  "category": "fabric",
+  "surfaces": [
+   "furniture"
+  ],
+  "lab": [
+   25.0,
+   42.5,
+   28.1
+  ],
+  "lightness": 25,
+  "warmth": 28,
+  "chroma": 51,
+  "pattern": 0
+ },
+ {
+  "id": "fabric-wool",
+  "ref": "library:fabric-wool",
+  "category": "fabric",
+  "surfaces": [
+   "furniture"
+  ],
+  "lab": [
+   83.9,
+   0.0,
+   -0.0
+  ],
+  "lightness": 84,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 1
+ },
+ {
+  "id": "fabric-suede",
+  "ref": "library:fabric-suede",
+  "category": "fabric",
+  "surfaces": [
+   "furniture"
+  ],
+  "lab": [
+   76.9,
+   -2.6,
+   20.5
+  ],
+  "lightness": 77,
+  "warmth": 20,
+  "chroma": 21,
+  "pattern": 0
+ },
+ {
+  "id": "fabric-boucle",
+  "ref": "library:fabric-boucle",
+  "category": "fabric",
+  "surfaces": [
+   "furniture"
+  ],
+  "lab": [
+   45.5,
+   1.5,
+   8.1
+  ],
+  "lightness": 46,
+  "warmth": 8,
+  "chroma": 9,
+  "pattern": 22
+ },
+ {
+  "id": "leather-black",
+  "ref": "library:leather-black",
+  "category": "leather",
+  "surfaces": [
+   "furniture"
+  ],
+  "lab": [
+   17.5,
+   0.0,
+   -0.0
+  ],
+  "lightness": 18,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 0
+ },
+ {
+  "id": "leather-calf",
+  "ref": "library:leather-calf",
+  "category": "leather",
+  "surfaces": [
+   "furniture"
+  ],
+  "lab": [
+   33.4,
+   20.8,
+   32.7
+  ],
+  "lightness": 33,
+  "warmth": 33,
+  "chroma": 39,
+  "pattern": 1
+ },
+ {
+  "id": "concrete-plaster",
+  "ref": "library:concrete-plaster",
+  "category": "concrete",
+  "surfaces": [
+   "wall",
+   "ceiling"
+  ],
+  "lab": [
+   79.4,
+   -0.1,
+   3.8
+  ],
+  "lightness": 79,
+  "warmth": 4,
+  "chroma": 4,
+  "pattern": 1
+ },
+ {
+  "id": "concrete-polished",
+  "ref": "library:concrete-polished",
+  "category": "concrete",
+  "surfaces": [
+   "floor",
+   "wall"
+  ],
+  "lab": [
+   45.3,
+   0.0,
+   1.0
+  ],
+  "lightness": 45,
+  "warmth": 1,
+  "chroma": 1,
+  "pattern": 3
+ },
+ {
+  "id": "concrete-raw",
+  "ref": "library:concrete-raw",
+  "category": "concrete",
+  "surfaces": [
+   "wall",
+   "floor",
+   "outdoor"
+  ],
+  "lab": [
+   67.9,
+   0.0,
+   -0.0
+  ],
+  "lightness": 68,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 2
+ },
+ {
+  "id": "concrete-plate",
+  "ref": "library:concrete-plate",
+  "category": "concrete",
+  "surfaces": [
+   "wall",
+   "floor"
+  ],
+  "lab": [
+   70.0,
+   -0.2,
+   -0.0
+  ],
+  "lightness": 70,
+  "warmth": 0,
+  "chroma": 1,
+  "pattern": 2
+ },
+ {
+  "id": "concrete-stucco",
+  "ref": "library:concrete-stucco",
+  "category": "concrete",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   82.0,
+   -0.0,
+   0.0
+  ],
+  "lightness": 82,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 0
+ },
+ {
+  "id": "concrete-drywall",
+  "ref": "library:concrete-drywall",
+  "category": "concrete",
+  "surfaces": [
+   "wall",
+   "ceiling"
+  ],
+  "lab": [
+   72.3,
+   -0.1,
+   0.2
+  ],
+  "lightness": 72,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 6
+ },
+ {
+  "id": "metal-copper",
+  "ref": "library:metal-copper",
+  "category": "metal",
+  "surfaces": [
+   "furniture",
+   "wall"
+  ],
+  "lab": [
+   61.7,
+   22.8,
+   32.5
+  ],
+  "lightness": 62,
+  "warmth": 32,
+  "chroma": 40,
+  "pattern": 1
+ },
+ {
+  "id": "metal-polished",
+  "ref": "library:metal-polished",
+  "category": "metal",
+  "surfaces": [
+   "furniture",
+   "wall"
+  ],
+  "lab": [
+   95.9,
+   -0.8,
+   0.1
+  ],
+  "lightness": 96,
+  "warmth": 0,
+  "chroma": 1,
+  "pattern": 0
+ },
+ {
+  "id": "metal-steel",
+  "ref": "library:metal-steel",
+  "category": "metal",
+  "surfaces": [
+   "furniture",
+   "wall"
+  ],
+  "lab": [
+   60.8,
+   6.4,
+   33.7
+  ],
+  "lightness": 61,
+  "warmth": 34,
+  "chroma": 34,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-white",
+  "ref": "library:siding-lap-white",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   92.3,
+   0.0,
+   -0.0
+  ],
+  "lightness": 92,
+  "warmth": 0,
+  "chroma": 0,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-greige",
+  "ref": "library:siding-lap-greige",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   78.4,
+   0.9,
+   5.4
+  ],
+  "lightness": 78,
+  "warmth": 5,
+  "chroma": 5,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-gray",
+  "ref": "library:siding-lap-gray",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   57.5,
+   -0.4,
+   2.3
+  ],
+  "lightness": 57,
+  "warmth": 2,
+  "chroma": 2,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-sage",
+  "ref": "library:siding-lap-sage",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   78.4,
+   -6.5,
+   8.5
+  ],
+  "lightness": 78,
+  "warmth": 8,
+  "chroma": 11,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-cedar",
+  "ref": "library:siding-lap-cedar",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   58.5,
+   14.9,
+   29.3
+  ],
+  "lightness": 59,
+  "warmth": 29,
+  "chroma": 33,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-forest",
+  "ref": "library:siding-lap-forest",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   42.6,
+   -14.8,
+   7.9
+  ],
+  "lightness": 43,
+  "warmth": 8,
+  "chroma": 17,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-navy",
+  "ref": "library:siding-lap-navy",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   29.9,
+   -0.4,
+   -19.9
+  ],
+  "lightness": 30,
+  "warmth": -20,
+  "chroma": 20,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-yellow",
+  "ref": "library:siding-lap-yellow",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   90.4,
+   -2.2,
+   25.3
+  ],
+  "lightness": 90,
+  "warmth": 25,
+  "chroma": 25,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-nearblack",
+  "ref": "library:siding-lap-nearblack",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   13.7,
+   -0.2,
+   0.7
+  ],
+  "lightness": 14,
+  "warmth": 1,
+  "chroma": 1,
+  "pattern": 0
+ },
+ {
+  "id": "siding-lap-clay",
+  "ref": "library:siding-lap-clay",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   39.5,
+   26.6,
+   29.5
+  ],
+  "lightness": 39,
+  "warmth": 29,
+  "chroma": 40,
+  "pattern": 0
+ },
+ {
+  "id": "siding-batten-cream",
+  "ref": "library:siding-batten-cream",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   90.6,
+   0.3,
+   12.7
+  ],
+  "lightness": 91,
+  "warmth": 13,
+  "chroma": 13,
+  "pattern": 0
+ },
+ {
+  "id": "siding-batten-sand",
+  "ref": "library:siding-batten-sand",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   82.7,
+   1.2,
+   17.1
+  ],
+  "lightness": 83,
+  "warmth": 17,
+  "chroma": 17,
+  "pattern": 0
+ },
+ {
+  "id": "siding-batten-charcoal",
+  "ref": "library:siding-batten-charcoal",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   34.7,
+   -0.5,
+   -3.5
+  ],
+  "lightness": 35,
+  "warmth": -3,
+  "chroma": 4,
+  "pattern": 0
+ },
+ {
+  "id": "siding-batten-olive",
+  "ref": "library:siding-batten-olive",
+  "category": "wood",
+  "surfaces": [
+   "wall",
+   "outdoor"
+  ],
+  "lab": [
+   59.5,
+   -9.6,
+   22.1
+  ],
+  "lightness": 59,
+  "warmth": 22,
+  "chroma": 24,
+  "pattern": 0
+ }
+]

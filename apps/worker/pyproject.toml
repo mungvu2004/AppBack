@@ -12,6 +12,7 @@ dependencies = [
     "appback-mail",
     "appback-ml_contracts",
     "appback-observability",
+    "appback-genai",
 ]
 
 [tool.uv]
@@ -27,3 +28,4 @@ appback-messaging = { workspace = true }
 appback-mail = { workspace = true }
 appback-ml_contracts = { workspace = true }
 appback-observability = { workspace = true }
+appback-genai = { workspace = true }

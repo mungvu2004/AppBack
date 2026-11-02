@@ -1,0 +1,16 @@
+[project]
+name = "appback-genai"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # AID-01: xác thực service account Vertex AI; làm mới token qua transport urllib3
+    "google-auth",
+    "urllib3",
+    "appback-core",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+appback-core = { workspace = true }

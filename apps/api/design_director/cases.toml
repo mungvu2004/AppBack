@@ -1,0 +1,8 @@
+# Case thêm của AI chọn phong cách (AID-01, CASE.md §2.3). Case chung C04 C05 C12 C13 C25 do
+# `apps/api/core/tests/test_common.py` chạy. Lịch `sweep_design_concepts` tự bị đòi J01, J06.
+
+[[endpoint]]
+op = "design_director_select_concept"
+# C14: hai lượt chọn cùng kiểu song song → cả hai 202 cùng một concept, một dòng, một task.
+extra = ["C14"]
+waive = { C16 = "thân không có chuỗi người nhập" }
