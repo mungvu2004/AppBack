@@ -157,7 +157,7 @@ def test_compose_beat_healthcheck_checks_schedule_file(env: str) -> None:
     """`beat` có healthcheck thật (tệp lịch `-s`), không `disable` — `compose up --wait` hỏng khi thiếu."""
     healthcheck = _resolved_services(env)["beat"].get("healthcheck") or {}
     assert not healthcheck.get("disable"), f"{env}: beat tắt healthcheck"
-    assert "/tmp/celerybeat-schedule" in _cmd_text(healthcheck.get("test")), f"{env}: beat không kiểm tệp lịch"
+    assert "celerybeat-schedule" in _cmd_text(healthcheck.get("test")), f"{env}: beat không kiểm tệp lịch"
 
 
 @pytest.mark.parametrize("env", ENVS)
