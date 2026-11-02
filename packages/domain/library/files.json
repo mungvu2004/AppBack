@@ -3751,5 +3751,4199 @@
   "author": "SomeKevin",
   "source": "https://sketchfab.com/3d-models/66a8d0ef9b49415a9eaf6af216cb9bce",
   "model_sha256": "4be3bb7bdbdcd2635e2ea4088efb15470ec8881689d79e597d8680206954b42b"
+ },
+ {
+  "id": "chair-bar-stool-black-metal-a1",
+  "name": "Ghế quầy bar khung kim loại đen chéo lưng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B01N7N9XCY.glb",
+  "model_sha256": "c0535dbff2bfbd39e7bb18827a461ccb5bed5f6e0f5904d61942667e576c3327"
+ },
+ {
+  "id": "desk-industrial-wood-black-a2",
+  "name": "Bàn làm việc mặt gỗ khung thép đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu UMI)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B06XZV3F8F.glb",
+  "model_sha256": "9ea6d59adcbd97989acbded4c25f1c1a9feca0607de15a2402e2233d043aef08"
+ },
+ {
+  "id": "lamp-pendant-wire-cage-white-a3",
+  "name": "Đèn thả khung dây trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B0711Q7WK7.glb",
+  "model_sha256": "7bc75359b984fbde1605454741ece7d7edd713082d31ec279cd328d4140d67ad"
+ },
+ {
+  "id": "sofa-chesterfield-brown-leather-a4",
+  "name": "Sofa Chesterfield da nâu 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B0714QGC72.glb",
+  "model_sha256": "249c6f81b2c1c8293e3bf29f8837944750cb7c4320add271566eb7db7e88763d"
+ },
+ {
+  "id": "mirror-herringbone-wood-frame-a5",
+  "name": "Gương khung gỗ xương cá chữ nhật",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B0718ZKQK8.glb",
+  "model_sha256": "ebd9e13ef0197f61edcbdc7a3044567eb06ea4f801e0f523066fd84b0e652f2e"
+ },
+ {
+  "id": "rug-diamond-ivory-grey-a6",
+  "name": "Thảm họa tiết kim cương kem xám",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B0719STF79.glb",
+  "model_sha256": "7da959fa51ecc3f0863d8ab4bf9108b5f0e3f1fcece21c89f46dd29c6483ce5f"
+ },
+ {
+  "id": "rug-ivory-soft-pattern-a7",
+  "name": "Thảm kem họa tiết nhạt",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B0719STKTS.glb",
+  "model_sha256": "9be436f633974af5fb312333e09f4432d14b71abb27a06ab2a391db675c2da3f"
+ },
+ {
+  "id": "mirror-wire-geometric-black-a8",
+  "name": "Gương khung dây kim loại đen hình khối",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B071DQRXDR.glb",
+  "model_sha256": "81fe900247e00f15ee923386b7c5b040fb7955843bb5cb768341c678ea13f07b"
+ },
+ {
+  "id": "lamp-chandelier-starburst-chrome-a9",
+  "name": "Đèn chùm tia chrome phong cách giữa thế kỷ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B071F6WJ9V.glb",
+  "model_sha256": "012d06aed69e1965468c46de112ab97f062934a7783bd02c8e226123f8af53ec"
+ },
+ {
+  "id": "lamp-pendant-chrome-triple-a10",
+  "name": "Đèn thả ba bóng chrome",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B071HSMPHL.glb",
+  "model_sha256": "70c243dabb41f089cb0864fabaaecf98505025eb45703d17044909e98b58457f"
+ },
+ {
+  "id": "lamp-pendant-triple-black-copper-a11",
+  "name": "Đèn thả ba quả cầu đen đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B071LD87KZ.glb",
+  "model_sha256": "f324dae3c7b1ef4e37062313486d05e7a1d681b4756659e5249da07c6bf76ed1"
+ },
+ {
+  "id": "bed-walnut-metal-frame-a12",
+  "name": "Giường gỗ óc chó chân kim loại",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B071FJR4FW.glb",
+  "model_sha256": "68d5ac74adcdc05ca4da6deecfd3959a50589c1f230a16abba1e5943e9a15e24"
+ },
+ {
+  "id": "sofa-sectional-beige-l-a13",
+  "name": "Sofa góc chữ L vải be",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B071FMSYNH.glb",
+  "model_sha256": "bb956e27ee2c2bebd01f61b4db0e1627074f83ade0f9ac203453b9f982249b49"
+ },
+ {
+  "id": "sofa-chesterfield-beige-tufted-a14",
+  "name": "Sofa Chesterfield rút nút vải be",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B071J7Q3J4.glb",
+  "model_sha256": "b37ff8cc145bd1fec6aa92b803a101c567c65ef1c26cd03efe65913ecb1d5c2f"
+ },
+ {
+  "id": "sofa-loveseat-cream-2-seat-a15",
+  "name": "Sofa đôi vải kem",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B071W5VCTH.glb",
+  "model_sha256": "ca1002e790560227fbd15f076b25c7de84d03f340d6700c8c12606358f5ebd9d"
+ },
+ {
+  "id": "bed-pine-herringbone-headboard-a16",
+  "name": "Giường gỗ thông đầu giường xương cá",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B0725Z2499.glb",
+  "model_sha256": "a710dd6edcd2f2b39b6a448a8ef916002c3c27818df5b196318591458e37744b"
+ },
+ {
+  "id": "sofa-sectional-grey-chaise-a17",
+  "name": "Sofa góc vải xám nhạt có chaise",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B072635HS4.glb",
+  "model_sha256": "8160523e8a8c469df9471a0a69c98db7f2aa2300ac32c8ed232c4d4a81c681c6"
+ },
+ {
+  "id": "sofa-olive-2-seat-metal-leg-a18",
+  "name": "Sofa đôi vải xanh rêu chân kim loại",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B072PZJZXW.glb",
+  "model_sha256": "ebcfda2abcffb04463e7fec2b146486dfe84953e2327dd31498cc665cd6e8c48"
+ },
+ {
+  "id": "sofa-grey-tufted-3-seat-a19",
+  "name": "Sofa vải xám rút nút 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B072PZVY6H.glb",
+  "model_sha256": "3cf7493ef04863729991047486b6fdfeff4fd42fbdc81970a619dc71728af360"
+ },
+ {
+  "id": "cabinet-white-mid-century-legs-a20",
+  "name": "Tủ trắng chân gỗ giữa thế kỷ",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B072ZK8897.glb",
+  "model_sha256": "fb506e7b8934d2ff22605f565898b5b31ae01d3e22c650db0eeaa8481ca8d3ab"
+ },
+ {
+  "id": "tv-unit-black-metal-glass-a21",
+  "name": "Kệ tivi khung thép đen kính",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B072ZMT5SD.glb",
+  "model_sha256": "d07341fb6ab4511812e1a7bc2311fdede995b4d6089a12ce2a77e939fd41c09b"
+ },
+ {
+  "id": "tv-unit-reclaimed-wood-a22",
+  "name": "Kệ tivi gỗ tự nhiên thấp",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B072ZNBRR6.glb",
+  "model_sha256": "0400256c25acaeab7f5c566d598e3d2b3438aab30ac1aa0cd98ac61d050e55a9"
+ },
+ {
+  "id": "rug-beige-woven-a23",
+  "name": "Thảm dệt màu be",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B071LQJ4XF.glb",
+  "model_sha256": "85bbe8f4ae14deb0b5550b91d099e3fc358e30071b38013b52607e6901407ec8"
+ },
+ {
+  "id": "rug-jute-natural-a24",
+  "name": "Thảm sợi đay tự nhiên",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B071ZJ6CF8.glb",
+  "model_sha256": "ad1ed3668d401d9bfaf860bd41fdd6072a393332e391c0317e8c768a97616283"
+ },
+ {
+  "id": "rug-shag-brown-a25",
+  "name": "Thảm lông xù nâu",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B072C5SJ8B.glb",
+  "model_sha256": "9ac37cd47fdbf9fd401bd23c88cec1dfbdab739f88264d6f1707c43b3dfdb054"
+ },
+ {
+  "id": "mirror-sunburst-white-wood-a26",
+  "name": "Gương tròn khung gỗ trắng tia nắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B071RNW4SV.glb",
+  "model_sha256": "57f188c6edb2a56a54fc7f6a7dd52ce0ec179f6bfbaa02df10e0ea1324ea1de7"
+ },
+ {
+  "id": "rug-ivory-plain-a27",
+  "name": "Thảm trắng kem trơn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B0732KDJ4G.glb",
+  "model_sha256": "71b4cb2e33785ca73edc1ad2de1dcc42fdd47ca78353d2be2721dcec8563afe8"
+ },
+ {
+  "id": "rug-cream-light-a28",
+  "name": "Thảm kem sáng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B0735SLC3P.glb",
+  "model_sha256": "ccc1eb92610775b8fd8fc38815b35bf1763632f88d82bff99a46ee02a82e97ec"
+ },
+ {
+  "id": "lamp-floor-arc-brass-a29",
+  "name": "Đèn cây đồng cần cong",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B07374K536.glb",
+  "model_sha256": "8a6dec055cb6471d886d7f26f4b8c0052febb3f0279be12ce88bfe0fb46f4175"
+ },
+ {
+  "id": "lamp-chandelier-5-arm-bulb-a30",
+  "name": "Đèn chùm 5 nhánh bóng tròn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07374M9ZT.glb",
+  "model_sha256": "479d97ecebec46aa553624b6807d4607f6f808ca8300c6143f351a5eb6b27c62"
+ },
+ {
+  "id": "lamp-pendant-copper-cone-a31",
+  "name": "Đèn thả chụp đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07374M9ZW.glb",
+  "model_sha256": "12ccdfe48ffd6a0b1a01a89c90859211e68ad54d97c1cd3d108941466393f949"
+ },
+ {
+  "id": "lamp-table-copper-white-shade-a32",
+  "name": "Đèn bàn thân đồng chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07374VCVN.glb",
+  "model_sha256": "bb5cca03506216dfee1fcd7767299ba42a2c3766b3a3b29b8ed568f299b4125d"
+ },
+ {
+  "id": "sofa-sectional-taupe-corner-a33",
+  "name": "Sofa góc vải nâu xám",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B073G6DCMK.glb",
+  "model_sha256": "46957df24ac9994013dc3970d9f67430f75432c9022e9b555c8287a97d26b272"
+ },
+ {
+  "id": "bench-storage-blue-velvet-a34",
+  "name": "Ghế dài có hộc xanh dương",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B073G82HBV.glb",
+  "model_sha256": "86b0de659f874818919f848f9a84d3a14692ce6521d044337377a1deb65e204f"
+ },
+ {
+  "id": "bench-storage-navy-tufted-a35",
+  "name": "Ghế dài hộc chứa xanh navy rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B073GCWSTH.glb",
+  "model_sha256": "e27339469e75a201287dc0331ca8916c15b83a77e589cc5e778b89be5accdda6"
+ },
+ {
+  "id": "chair-armchair-mid-century-orange-a36",
+  "name": "Ghế bành giữa thế kỷ cam khung gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B073GCWSX8.glb",
+  "model_sha256": "32f43d3490d239e6e112738fe27f92f27b03a79e6351cda03769a8c44a2b8678"
+ },
+ {
+  "id": "art-abstract-blush-gold-a37",
+  "name": "Tranh trừu tượng hồng nhạt khung vàng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B073P1J8FH.glb",
+  "model_sha256": "6ca33d4ec30d08b8fcadd77e7db3eafb9bcf40fbc965800bba7155dd22c888e9"
+ },
+ {
+  "id": "art-abstract-gold-cream-a38",
+  "name": "Tranh trừu tượng kem vàng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B073P1JNF6.glb",
+  "model_sha256": "8bfbba016137ae262676a77207362f8a32a501d31efd962dc4f967d99eb78cd9"
+ },
+ {
+  "id": "art-map-white-frame-a39",
+  "name": "Tranh bản đồ trắng khung trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B073P5Y9K3.glb",
+  "model_sha256": "e07f50e2ffbd3629b99435e311a2ce024c09705cdfe7cf777afd50d331429f9f"
+ },
+ {
+  "id": "art-abstract-blue-white-a40",
+  "name": "Tranh trừu tượng xanh trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B073P6TCQL.glb",
+  "model_sha256": "71b804d80eeb323b857b223a9332284c1fd54e25255e242929f46a2a9d5a72c5"
+ },
+ {
+  "id": "lamp-floor-mid-century-black-a41",
+  "name": "Đèn cây giữa thế kỷ thân đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B073P25SXR.glb",
+  "model_sha256": "32de02451f57e041fb8df6a9ee4ecd93e42380125ad19ad90dbfda54e1407fa5"
+ },
+ {
+  "id": "lamp-floor-arc-three-shade-a42",
+  "name": "Đèn cây cong ba chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B073P25SYK.glb",
+  "model_sha256": "352d5cc8e1910c1eb7e46a4292d113ce0227de6bcf719392d5d48b81c37bbec5"
+ },
+ {
+  "id": "lamp-table-edison-brass-a43",
+  "name": "Đèn bàn bóng Edison thân đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B073P39KQP.glb",
+  "model_sha256": "ec334954b856eca72ad6698f85b5c45e1dd0ecdbc8ecbbcd8c257a06d1f2a2ea"
+ },
+ {
+  "id": "lamp-floor-shelf-wood-a44",
+  "name": "Đèn cây có kệ gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B073P3S1NX.glb",
+  "model_sha256": "cbe86df80cb06ebb7c3fa4a5cca56a5de71fa5f8549d8784198837fe964c25dc"
+ },
+ {
+  "id": "mirror-round-gold-wire-a45",
+  "name": "Gương tròn khung vàng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B073WGMTCB.glb",
+  "model_sha256": "29e47f77182d24b91d1ec671fe55a948ca44c410e7726dd0f1461a7867950b44"
+ },
+ {
+  "id": "mirror-octagon-light-wood-a46",
+  "name": "Gương bát giác khung gỗ sáng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B073WGSN2K.glb",
+  "model_sha256": "edabaabb180a8abcf28766114dabffba2b57c672d0b09c85d89cf2bc28e43d97"
+ },
+ {
+  "id": "mirror-round-gold-sunburst-a47",
+  "name": "Gương tròn khung vàng tia nắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B073WHYS32.glb",
+  "model_sha256": "03b646dadbfc584df8e7b05c9825b1f63d835abad4fab502e85252379ef7365f"
+ },
+ {
+  "id": "mirror-round-dark-wood-a48",
+  "name": "Gương tròn khung gỗ tối",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B073WHZK9W.glb",
+  "model_sha256": "c065a605d92ad1fe85cd013b50de100576bcfeeed6ea73b554ad38df648d71f0"
+ },
+ {
+  "id": "mirror-hexagon-wood-a49",
+  "name": "Gương lục giác khung gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B073WHZKBF.glb",
+  "model_sha256": "b66b33180a3fd030cff7b55e9e6457b806345d465e08428ceefd511a61fe7195"
+ },
+ {
+  "id": "lamp-floor-tripod-white-a50",
+  "name": "Đèn cây ba chân chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B0742DJS8J.glb",
+  "model_sha256": "5a9fdc12fcdf6cc6d871e75a05b60fded825ebdb312739ee5d585a8b0463d7d0"
+ },
+ {
+  "id": "chair-armchair-leather-wingback-a51",
+  "name": "Ghế bành da nâu lưng cao",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B0746H7RL8.glb",
+  "model_sha256": "b51405b47468608f54023a57083f06a0f102c815793ae3babc8d76c5ac98dcfb"
+ },
+ {
+  "id": "chair-swivel-egg-leather-ottoman-a52",
+  "name": "Ghế xoay trứng da đen kèm đôn",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B0746HFVWY.glb",
+  "model_sha256": "c27b15ed7d84632b068178a51ee96f66f98a1cb79794e75d7c911c740f532e3f"
+ },
+ {
+  "id": "table-coffee-round-glass-gold-a53",
+  "name": "Bàn trà tròn mặt kính khung vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B074KLRCPW.glb",
+  "model_sha256": "1476ac090a2197e98f932208d5d0ac5e236d881231a94f5c075f392fa0262c09"
+ },
+ {
+  "id": "cabinet-sideboard-wood-slat-a54",
+  "name": "Tủ thấp gỗ cánh nan",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B074KMVVK7.glb",
+  "model_sha256": "7759c4e4716d61e81a79614a82c87462c75c961eb1ad29b9adc50df2d5bb2f3b"
+ },
+ {
+  "id": "table-side-gold-hex-a55",
+  "name": "Bàn phụ khung vàng hình lục giác",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B074KN35MV.glb",
+  "model_sha256": "a4a174bd2b1db2c6c4205b82047d137ced2a3f64f7e8112a94fd6afff7472296"
+ },
+ {
+  "id": "lamp-wall-sconce-copper-a56",
+  "name": "Đèn tường thân đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B075HR1XB1.glb",
+  "model_sha256": "40cec9a69fa975e0fddae0f0932c85c5cd82f86272b369ee02aa4505ea7e6344"
+ },
+ {
+  "id": "vase-cream-geometric-a57",
+  "name": "Bình gốm kem hoạ tiết hình học",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B075HR4ZDB.glb",
+  "model_sha256": "25139001ac40426c688fd1d08740670ad40a290d21ca29e632dc45a563bd1ce9"
+ },
+ {
+  "id": "vase-white-ceramic-angular-a58",
+  "name": "Bình gốm trắng dáng góc cạnh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075HR7DM7.glb",
+  "model_sha256": "9d397b77efa1ceced710570c8ce6ba60f793f5e262a9bd0b7f5ea64e9ad47f31"
+ },
+ {
+  "id": "planter-white-black-stand-a59",
+  "name": "Chậu trắng chân kim loại đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B075HR7LFF.glb",
+  "model_sha256": "d811f624581ef0d3fa250c45851337b1b416eac22264d37e78e2a8fe686ef678"
+ },
+ {
+  "id": "vase-white-dimpled-a60",
+  "name": "Bình gốm trắng nổi hạt",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B075HWDT12.glb",
+  "model_sha256": "a188de2b62972dc24e9d6fc61ba07674b789a76de98c231b64f7e99b2962af0b"
+ },
+ {
+  "id": "vase-white-faceted-a61",
+  "name": "Bình gốm trắng khía kim cương",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B075HWDT2Z.glb",
+  "model_sha256": "39c580037781f9385073654aad9750ece164ed7088dce1c731d424d815d09c2b"
+ },
+ {
+  "id": "vase-white-fluted-tall-a62",
+  "name": "Bình gốm trắng cao có rãnh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B075HWDTMM.glb",
+  "model_sha256": "c83650896b75f75724f19acd74adcb2b812927af8da72fe308d10bdddd727007"
+ },
+ {
+  "id": "vase-blue-woven-tall-a63",
+  "name": "Bình gốm xanh hoạ tiết đan",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B075HWX46N.glb",
+  "model_sha256": "c1d766df734a569b351a5e02bf7a70c57e36de62d86403336102dbbb5879fdf2"
+ },
+ {
+  "id": "planter-white-wall-egg-a64",
+  "name": "Chậu treo tường trắng hình trứng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B075HXLWRL.glb",
+  "model_sha256": "6ac372cccbda24f73286c893127bad306f7adcfb433244ec0cfe1482fcbf5fbb"
+ },
+ {
+  "id": "art-gold-circle-white-a65",
+  "name": "Tranh vòng tròn vàng nền trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B075HXJ6Q9.glb",
+  "model_sha256": "50379acb3fc3d65111e8e4c16c43691d8c8764e6fb39c57536904e8b33007349"
+ },
+ {
+  "id": "art-abstract-blue-wave-a66",
+  "name": "Tranh sóng trừu tượng xanh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B075HXSXNV.glb",
+  "model_sha256": "4de83cd4bafb3d3802864b6ea62b5aeee5be7fcfbee49ff93cb727e9aa61e446"
+ },
+ {
+  "id": "sofa-sectional-light-grey-chaise-a67",
+  "name": "Sofa góc chaise xám nhạt chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B075NMB3HR.glb",
+  "model_sha256": "945f3a9149b2e10de3bb5ea10c9853e1c0aa776f1cc01c2f87eb8d5c48900f62"
+ },
+ {
+  "id": "sofa-blue-3-seat-wood-leg-a68",
+  "name": "Sofa vải xanh 3 chỗ chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B075NNM242.glb",
+  "model_sha256": "2db4039c1eef994045de5b24af875e14032dc2b8b7ca31d35879d36623dfcdb8"
+ },
+ {
+  "id": "chair-armchair-grey-button-a69",
+  "name": "Ghế bành vải xám nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B075NRBB8V.glb",
+  "model_sha256": "ce29410f8ed9dc9978e1b28df03ede7a7ffed329be7c3eb1a829de14e0638f25"
+ },
+ {
+  "id": "bed-brass-arched-headboard-a70",
+  "name": "Giường đầu cong khung đồng",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B075QBL1TB.glb",
+  "model_sha256": "6c3e615cabb3f029591c011c1fc6757eb6d7f75e6b0d6e594b5d039a0b60049a"
+ },
+ {
+  "id": "bed-tufted-upholstered-cream-a71",
+  "name": "Giường bọc vải rút nút kem",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B075QDMWTM.glb",
+  "model_sha256": "242186dbddb6f78842610078ad705d8158d97bc500c425adb2c77ed3c06e50d8"
+ },
+ {
+  "id": "bench-tufted-cream-storage-a72",
+  "name": "Ghế dài hộc chứa rút nút kem",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B075QDQXW1.glb",
+  "model_sha256": "d761e263fe387662d4799291f44668d1b3e35f93973c44d8ce8c6f3d6b514af2"
+ },
+ {
+  "id": "bed-upholstered-wingback-cream-a73",
+  "name": "Giường bọc vải kem đầu giường cánh",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B075QDXWB4.glb",
+  "model_sha256": "608903be4e5ea7cb8391d1977ec3edd766459bd639c9c0674341075a98801a3f"
+ },
+ {
+  "id": "bed-grey-tufted-mid-century-a74",
+  "name": "Giường bọc vải xám đậm rút nút",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B075QFCHLB.glb",
+  "model_sha256": "3e410bd1b857e22ae89a3d19462afe0725ddd6d88fb3662505b4d708551bdb8a"
+ },
+ {
+  "id": "bed-upholstered-beige-winged-tall-a75",
+  "name": "Giường bọc vải be đầu giường cao nẹp",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B075QG3JVF.glb",
+  "model_sha256": "2e9cb8bd8192983fef8e59a2c3f4ea160c66cb25d683dc95ab51291a74ba8453"
+ },
+ {
+  "id": "rug-jute-chevron-natural-a76",
+  "name": "Thảm đay hoa văn chữ V tự nhiên",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B075TZK7X2.glb",
+  "model_sha256": "6fc4b83ae9488503b8defbb7b958ca72e9df61f45d401c66355ff317c40dbe09"
+ },
+ {
+  "id": "lamp-table-striped-base-white-a77",
+  "name": "Đèn bàn thân sọc trắng chụp vải",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B075X2FW7P.glb",
+  "model_sha256": "45adf729263bfb6c4a4426cca1ce660aee5ca0dc4902264f8315666599fec65b"
+ },
+ {
+  "id": "lamp-pendant-smoke-glass-trio-a78",
+  "name": "Đèn thả ba bóng thuỷ tinh khói",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B075X2LLX3.glb",
+  "model_sha256": "e0b39666c26e6400eac4ba5353973adef66898909a4879d26f07a8651fa904c6"
+ },
+ {
+  "id": "chair-armchair-blue-grey-roll-a79",
+  "name": "Ghế bành vải xanh xám",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B075X2WP1S.glb",
+  "model_sha256": "24d1d149dff0c6f27d7adddb3f0ce51539fcc584ff613e278d1af7cacd2cad43"
+ },
+ {
+  "id": "ottoman-blue-grey-rect-a80",
+  "name": "Đôn dài vải xanh xám chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B075X2X4SV.glb",
+  "model_sha256": "9895571a0c365ed1fb8414dddcfe3974cff3f22ad90ac9c737b9c8f86858879a"
+ },
+ {
+  "id": "lamp-floor-tripod-spot-chrome-a81",
+  "name": "Đèn cây ba chân chrome kiểu đèn rọi",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Adesso)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B075X2XYX1.glb",
+  "model_sha256": "df71c9a5dc3e468744fedee38931f2afe23b3a066d06ea096ee87025c0e9a47c"
+ },
+ {
+  "id": "sofa-loveseat-blue-tufted-a82",
+  "name": "Sofa đôi xanh rút nút",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B075X33SQ9.glb",
+  "model_sha256": "4d4412124b3938daaa62cce11cafccf6e42de7916710590bb8d376d1ac1b19d1"
+ },
+ {
+  "id": "sofa-dark-grey-tufted-2-seat-a83",
+  "name": "Sofa vải xám đậm 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B075X33T32.glb",
+  "model_sha256": "a1cd567ff22a5d12175ec63d0e63c6d1a157d04456f2fb857cc5d4b00bd61836"
+ },
+ {
+  "id": "nightstand-wood-black-drawer-a84",
+  "name": "Tủ đầu giường gỗ ngăn kéo đen",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X38PZ7.glb",
+  "model_sha256": "e2d095e758d56dd3c7590755455189814614daf74748e32dab5e644ba9fc8d59"
+ },
+ {
+  "id": "chair-armchair-cream-slope-arm-a85",
+  "name": "Ghế bành vải kem tay xuôi",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B075X43FQZ.glb",
+  "model_sha256": "8bc3c9363da4d2228b18428d6783d01b4b1f553814bf2f5e1e8a8fd46b39274a"
+ },
+ {
+  "id": "sofa-cream-leather-tufted-3-seat-a86",
+  "name": "Sofa da kem rút nút 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B075X4HZPX.glb",
+  "model_sha256": "835262795a1c91071fa55ce544bc381087c28305e340091a8e1301fd9bc86d96"
+ },
+ {
+  "id": "chair-armchair-navy-tufted-a87",
+  "name": "Ghế bành xanh navy rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X4HZS7.glb",
+  "model_sha256": "3742c7f5b131f4718fdf239fe810288d939cbcb525bd1ee994496e32ce8d89df"
+ },
+ {
+  "id": "chair-accent-blue-gold-arm-a88",
+  "name": "Ghế bành xanh tay vàng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B075X4JB1L.glb",
+  "model_sha256": "0bf6c14316c3654b25160f52696a95f0e0c54ade91b85e189198acb248ffdb67"
+ },
+ {
+  "id": "ottoman-round-tufted-beige-a89",
+  "name": "Đôn tròn bọc vải be đinh tán",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B075X4PTKK.glb",
+  "model_sha256": "aaf34d9d7780e8c0a994c69bac777e4e945ab5a1cd5620b4794852f054e48e42"
+ },
+ {
+  "id": "ottoman-brown-leather-a90",
+  "name": "Đôn da nâu chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B075X4QFDW.glb",
+  "model_sha256": "cc34be6aedbe8d41df9c1693d9696b905aa69c709907ca00d177745904783a72"
+ },
+ {
+  "id": "sofa-cream-westport-3-seat-a91",
+  "name": "Sofa vải kem 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B075X4QMX3.glb",
+  "model_sha256": "d3cbeff16233b26484bfc016c912c7c602f842824ea696d5b1f7585aa05968ea"
+ },
+ {
+  "id": "sofa-black-leather-3-seat-a92",
+  "name": "Sofa da đen 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B075X5LXYJ.glb",
+  "model_sha256": "b1ad756808d7feef8f4df749c4a83d3dec4c9946cb770da67a6a2b811e3f70ee"
+ },
+ {
+  "id": "sofa-tan-leather-3-seat-a93",
+  "name": "Sofa da nâu bò 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B075X5NBB5.glb",
+  "model_sha256": "c4a96dd32755d2cab9e90052b542be7ab5254cfdde8f4f431a849b730ad8557b"
+ },
+ {
+  "id": "art-leaf-green-light-frame-a94",
+  "name": "Tranh lá xanh khung gỗ sáng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B075YLSBMR.glb",
+  "model_sha256": "5549cc4349a4320b1a2d07ab4161e9a051a2ab941df3bcce5042240d0ec1394a"
+ },
+ {
+  "id": "shelf-wood-open-console-a95",
+  "name": "Kệ gỗ mở thấp dạng tủ tivi",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B075YYPV3Q.glb",
+  "model_sha256": "91fc9c16399d37b6b2967e383f1cae8cfe87512f4b7452b0190cef7eee8bdd8c"
+ },
+ {
+  "id": "chair-office-leather-tufted-brown-a96",
+  "name": "Ghế văn phòng da nâu rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B075Z6S8FF.glb",
+  "model_sha256": "aa0ee91017ceb23b6e789632603ec850d2e870abf55ff9c9a6e94386a4843ae9"
+ },
+ {
+  "id": "table-coffee-pallet-wood-a97",
+  "name": "Bàn trà gỗ kiểu pallet",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B075Z8KX91.glb",
+  "model_sha256": "d00cbd54801165537770c233dff54e639d55ae67b6d70b24a98b2a41682621a4"
+ },
+ {
+  "id": "table-side-round-wood-pedestal-a98",
+  "name": "Bàn phụ tròn gỗ chân cong",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B075Z8TDQ6.glb",
+  "model_sha256": "8a62034337195d1e2c89f3273c053f9628c151c60163449fd78861de3f6cf520"
+ },
+ {
+  "id": "desk-walnut-metal-leg-a99",
+  "name": "Bàn làm việc gỗ óc chó chân kim loại",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B075Z96KQL.glb",
+  "model_sha256": "05a14559547c1ad20c3bb257163b0e77d593d99df690a78d8e1b7ebf62ba9429"
+ },
+ {
+  "id": "table-round-industrial-adjustable-a100",
+  "name": "Bàn tròn mặt gỗ ghép chân sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B075Z9QB7N.glb",
+  "model_sha256": "5a35a31f28bd381f0aa37369cdca809089f8d2265a706dd8e8bd4e08e441a966"
+ },
+ {
+  "id": "rug-moroccan-ivory-black-a101",
+  "name": "Thảm kiểu Maroc trắng đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B075Z9Z1C5.glb",
+  "model_sha256": "2b01ed48c835bb49de92623f25dc977f2058424169087b9b1f11bb2567534885"
+ },
+ {
+  "id": "table-side-wood-copper-cube-a102",
+  "name": "Bàn phụ mặt gỗ khung đồng khối vuông",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B075ZB5BK5.glb",
+  "model_sha256": "f2de30f90f8b8eb44169543aa283535c3daffdb4cad87d5ca338f94e1adce9d4"
+ },
+ {
+  "id": "shelf-wood-black-frame-wide-a103",
+  "name": "Kệ gỗ khung thép đen rộng",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B078JM1J41.glb",
+  "model_sha256": "e5de2931507eb544d5c6a53125e892f28b85773aef2b0d35a9d756900776233c"
+ },
+ {
+  "id": "chair-armchair-grey-beige-wood-leg-a104",
+  "name": "Ghế bành vải xám be chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07B4D6MRY.glb",
+  "model_sha256": "993f8f768f598f085e411820ae87c9272c860eb4a36e720aa1487d03c66f8e51"
+ },
+ {
+  "id": "ottoman-round-teal-tufted-a105",
+  "name": "Đôn tròn xanh ngọc rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07B4G5SY7.glb",
+  "model_sha256": "a89b2d34a23ab7d807904baba1af70354fa1fbb9e8b377a73e7dbe8a34ee48f5"
+ },
+ {
+  "id": "sofa-sectional-cream-chaise-low-a106",
+  "name": "Sofa góc chaise kem thấp",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07B4M2B98.glb",
+  "model_sha256": "e676eab9fb6a9284a4f17ee5bf934d1fc44684878905bb5f74bb237758bafac0"
+ },
+ {
+  "id": "ottoman-white-tufted-square-a107",
+  "name": "Đôn vuông trắng rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07B4MQQSP.glb",
+  "model_sha256": "75c8a4ba335026e5a7d5c4d9610c2e75d585990ffe3f3a00a8b0ff3089b6e544"
+ },
+ {
+  "id": "sofa-cream-2-seat-slim-leg-a108",
+  "name": "Sofa đôi vải kem chân mảnh",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07B4N1MCL.glb",
+  "model_sha256": "209f8b6a9b774b04eedd6ec177630b2b89b0f8402a20332dfa8fec1bb9672bc0"
+ },
+ {
+  "id": "sofa-sectional-charcoal-chaise-a109",
+  "name": "Sofa góc chaise xám than",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07B4NW6J9.glb",
+  "model_sha256": "eaee91371cc2ee8511d5c808bc4f132f0f6db942983a41c22670e7b59861a77d"
+ },
+ {
+  "id": "lamp-floor-brass-white-shade-a110",
+  "name": "Đèn cây thân đồng chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07B4SB2D9.glb",
+  "model_sha256": "6d5d0af776da28b9f115d7f025df72726b71b1232fd42a989b2cc1c1875cc42c"
+ },
+ {
+  "id": "lamp-chandelier-atomic-brass-a111",
+  "name": "Đèn chùm nguyên tử đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B07B4SC6SS.glb",
+  "model_sha256": "d2f1dd5c5927a273058c0c8454c5cf29b00c3bb605db309fb79be26ab0fc12e6"
+ },
+ {
+  "id": "bench-tufted-black-metal-frame-a112",
+  "name": "Ghế dài đệm rút nút khung thép đen",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07B4SC9RP.glb",
+  "model_sha256": "784a24fe06e8a6bc81d2bbff5533137e6ed5aa6f8d68e4424229f91352017158"
+ },
+ {
+  "id": "bed-blue-upholstered-brass-foot-a113",
+  "name": "Giường bọc vải xanh chân đồng",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07B4SCPH1.glb",
+  "model_sha256": "07e0dc6988212efddd5c943d57e44fd044b6c9adfebff6f40c198986d4c21cbd"
+ },
+ {
+  "id": "lamp-floor-black-cone-brass-a114",
+  "name": "Đèn cây chụp nón đen thân đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Adesso)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07B4VGZ9B.glb",
+  "model_sha256": "55599b86e458d39ac59c8c6d4c9476d2b0555210d4e436653513b99bf6c146aa"
+ },
+ {
+  "id": "bed-beige-tufted-upholstered-a115",
+  "name": "Giường bọc vải be đầu giường rút nút",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07B4VSW78.glb",
+  "model_sha256": "0f3e2d7b45941ddfea5d88d628c748ef432d561703afcf8734482d2aa48d7e1b"
+ },
+ {
+  "id": "bed-grey-wing-upholstered-a116",
+  "name": "Giường bọc vải xám đầu giường cánh",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07B4VY14V.glb",
+  "model_sha256": "4274ba04611a17c6fd5f14a53b64c4440d3e177d0e0afb038aab1b84904c4b11"
+ },
+ {
+  "id": "lamp-table-concrete-white-shade-a117",
+  "name": "Đèn bàn thân bê tông chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07B4VYKPR.glb",
+  "model_sha256": "efa4e4883ec4119b03b7469e696736f44a7466e5909b0c6101ea41341f797c67"
+ },
+ {
+  "id": "dresser-grey-wash-tall-a118",
+  "name": "Tủ ngăn kéo cao gỗ xám",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07B4W2MFM.glb",
+  "model_sha256": "54ac6ebabea950b4f972bb66207fdc7b2254d28db9dabd5e3fa4cb1c908a12b4"
+ },
+ {
+  "id": "bed-wood-slat-headboard-a119",
+  "name": "Giường gỗ đầu giường nan",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07B4W2MFW.glb",
+  "model_sha256": "54476a8e4d855b74da2b30d33e19e8c75b30edeb5b6843f75a8fef75d75a7dac"
+ },
+ {
+  "id": "nightstand-c-shape-wood-metal-a120",
+  "name": "Tủ đầu giường hình chữ C gỗ thép",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07B4W2ZFM.glb",
+  "model_sha256": "6371d816b8421c669c10047b4f894a0e0afb5b5e39229cf09b2006c0ee7e4199"
+ },
+ {
+  "id": "table-console-oak-shelf-a121",
+  "name": "Bàn console gỗ sồi có kệ dưới",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07B4W5RF7.glb",
+  "model_sha256": "9662caae02d1533bb9c883bdf3cd4e34544bbf12c5c226e719f71e7ec4c457b2"
+ },
+ {
+  "id": "bed-blue-grey-upholstered-low-a122",
+  "name": "Giường bọc vải xanh xám thấp",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07B4W5T8N.glb",
+  "model_sha256": "0a3ba1b016b3ad9ef3ef77c887d14da6b012ca9ce2d02c10d561d60488916f61"
+ },
+ {
+  "id": "bed-wood-tapered-leg-low-a123",
+  "name": "Giường gỗ chân côn thấp",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07B4W5TZF.glb",
+  "model_sha256": "12a8d6c9f0d5db344611fa873243ebece62e0a15fd899024dc8488d016d468ae"
+ },
+ {
+  "id": "bed-teal-scalloped-velvet-a124",
+  "name": "Giường nhung xanh ngọc đầu giường lượn sóng",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07B4YNHPF.glb",
+  "model_sha256": "bae6e191f42a961df3fc7f13e5ec23f39a3d8dcbf8049daaacd66dbb64467ebf"
+ },
+ {
+  "id": "lamp-floor-twin-shade-brass-a125",
+  "name": "Đèn cây hai chụp trắng thân đồng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07B4YXR7D.glb",
+  "model_sha256": "06fe4339ce98084188eb0f108f43e683c20949ddb3332498aae23055314489b2"
+ },
+ {
+  "id": "bed-cream-winged-upholstered-a126",
+  "name": "Giường bọc vải kem đầu giường cánh",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07B4Z6PXF.glb",
+  "model_sha256": "e07c3bea914e49f13c33d5c09c3f9bf5b1defb40a5ead51dfc5a84b93f1a8bcf"
+ },
+ {
+  "id": "bed-navy-tufted-upholstered-a127",
+  "name": "Giường bọc vải xanh navy rút nút",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07B4ZBPK7.glb",
+  "model_sha256": "122c401d553c3ffb31c039ca05fc82e47b65080308e0e8a863b94989c65b31d9"
+ },
+ {
+  "id": "lamp-chandelier-black-arm-a128",
+  "name": "Đèn chùm thanh ngang đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B07B4Z98R6.glb",
+  "model_sha256": "441a84f6d29bc26d36e0ff79355b259ecf5024de837f14c01b02f810c25fe2cd"
+ },
+ {
+  "id": "table-nesting-gold-wood-a129",
+  "name": "Bộ bàn lồng khung vàng mặt gỗ",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07B7J8CGH.glb",
+  "model_sha256": "6e29dfe79cff49730a4c26308ab16e12c1d41d9725ae5ae48a01e353b0cc0a3d"
+ },
+ {
+  "id": "table-nesting-black-stone-a130",
+  "name": "Bộ bàn lồng khung đen mặt đá",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07B7J8HFV.glb",
+  "model_sha256": "88f910d9da78c1837b2e0cd68069a87faacbb39fd3db51e24bd643e919756553"
+ },
+ {
+  "id": "table-side-round-marble-steel-a131",
+  "name": "Bàn phụ tròn mặt đá khung thép",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07B7J8J9M.glb",
+  "model_sha256": "b62ec447f4389f1ef845062ec80c38e8973120c8feb1ee0716f32a145d5b8673"
+ },
+ {
+  "id": "table-nesting-round-marble-gold-a132",
+  "name": "Bộ bàn lồng tròn mặt đá chân vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07B7N6JH3.glb",
+  "model_sha256": "1dfbc91580ef7af02fa9252f97ddd652d65e05c2032f32706f308ec0984c2af3"
+ },
+ {
+  "id": "table-bar-cart-gold-wood-a133",
+  "name": "Xe đẩy bar khung vàng kệ gỗ",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B07B8B3NPQ.glb",
+  "model_sha256": "323aae1e15bdd66e77d53f5bd0b2848658332171f0c8e2ee7d5cff8b1e5a49cd"
+ },
+ {
+  "id": "mirror-round-strap-leather-a134",
+  "name": "Gương tròn quai da",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07B8NW6GG.glb",
+  "model_sha256": "f743b42ae2cae02696876b4ed441c56dbff4ac9da3d248ca2d3409e250db657c"
+ },
+ {
+  "id": "vase-marble-gold-base-a135",
+  "name": "Bình vân đá chân vàng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07B8TGC9Z.glb",
+  "model_sha256": "898b8c2c8e9e1346aadb637b77983bdcd2c94ddcca981d84f50887e4cb505e9f"
+ },
+ {
+  "id": "vase-white-cream-glaze-a136",
+  "name": "Bình gốm trắng kem men loang",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07B8W8FBV.glb",
+  "model_sha256": "9fe87069e06bbe951d53f5b935394f4eef063d6451cff8a489a58f7d05e1f4d2"
+ },
+ {
+  "id": "sofa-green-velvet-tufted-a137",
+  "name": "Sofa nhung xanh lá rút nút",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07BKKXRVC.glb",
+  "model_sha256": "c74f6616f3082c188e5fda21e6c754a31fc6008d9f785b0a4b275166881861b9"
+ },
+ {
+  "id": "sofa-sectional-cream-chaise-long-a138",
+  "name": "Sofa góc chaise dài vải kem",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07BW8MJR2.glb",
+  "model_sha256": "d887217467e90599fbc3a814a33ddc1c88a0b3b018aeae39a01a719af49c53b4"
+ },
+ {
+  "id": "sofa-sectional-taupe-chaise-a139",
+  "name": "Sofa góc chaise vải nâu xám",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07BWJCPWR.glb",
+  "model_sha256": "2297af142819fcda58d3a66a8b44dae637d098e2d10d660643241b855c406329"
+ },
+ {
+  "id": "sofa-sectional-blue-chaise-a140",
+  "name": "Sofa góc chaise vải xanh dương",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07BWJCPWV.glb",
+  "model_sha256": "afd2c9e6240f3d805536323d753d144397e34cecd670f98e7a59d4977fbae15e"
+ },
+ {
+  "id": "sofa-blue-tufted-slim-leg-a141",
+  "name": "Sofa vải xanh rút nút chân mảnh",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07BWL4C41.glb",
+  "model_sha256": "de70b7c0d0e938f41e692ddf36721b0c5cb74eaffc7f84be5f2d2dd7688c94a0"
+ },
+ {
+  "id": "sofa-sectional-dark-grey-l-a142",
+  "name": "Sofa góc chữ L xám đậm",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07BWMSQC3.glb",
+  "model_sha256": "f894a305695e34004298c4562d564305b4f14ede778252fad51d44b4375ee256"
+ },
+ {
+  "id": "chair-armchair-grey-nailhead-a143",
+  "name": "Ghế bành xám viền đinh tán",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07DB92GZG.glb",
+  "model_sha256": "d7a19a8fd2f19f7b0694c9c3a76744522c086e4cf7cf6f1fa5af685c30f3ee4e"
+ },
+ {
+  "id": "sofa-taupe-roll-arm-3-seat-a144",
+  "name": "Sofa vải nâu xám tay cuộn 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07DBB77BL.glb",
+  "model_sha256": "bbe3b11b9cb5cd20f96c1e0845c0e9a65d89c7cb2e6233afa8f72a7da23a94f8"
+ },
+ {
+  "id": "chair-armchair-beige-tufted-a145",
+  "name": "Ghế bành be rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07DBDP9B1.glb",
+  "model_sha256": "78a16cd77ea246793d4ea64cee218cfbc19053065c8e1de4b46a03c132f6b388"
+ },
+ {
+  "id": "lamp-floor-boom-arm-cream-a146",
+  "name": "Đèn cây cần xoay chụp kem",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07DTLWMN5.glb",
+  "model_sha256": "d17f471cb97dbe7da855c33b484925bcad4c31a748044a6bc440b152e952ec1e"
+ },
+ {
+  "id": "nightstand-black-x-leg-a147",
+  "name": "Tủ đầu giường đen chân chữ X",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07DVRLW48.glb",
+  "model_sha256": "c063117c863b20f199eb677181403af7b6d3471db094bffaa89fb9183ed1f996"
+ },
+ {
+  "id": "chair-accent-cream-swoop-arm-a148",
+  "name": "Ghế bành kem tay cong chân gỗ tối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07DW16RH2.glb",
+  "model_sha256": "b950ab052c934aab3f4f43ee09ffed3c9c45809c7175f4455dfe2a958630f033"
+ },
+ {
+  "id": "table-coffee-industrial-oak-a149",
+  "name": "Bàn trà gỗ sồi khung thép đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07DW4LG9Y.glb",
+  "model_sha256": "eff5920f4840cd368a8649a6a50b69fb2564dc4dca6f4f8765b2e175209cd007"
+ },
+ {
+  "id": "ottoman-grey-tufted-square-a150",
+  "name": "Đôn vuông xám rút nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Right2Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07F2M2VGG.glb",
+  "model_sha256": "31ecdd210b572241a467e624179790b30197389ba433e25d3eb4e83503a476fe"
+ },
+ {
+  "id": "ottoman-grey-storage-button-a151",
+  "name": "Đôn hộc chứa xám chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Spatial Order)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B07FJP6X9X.glb",
+  "model_sha256": "f6925ea64be753d4d6605b0a4641f04d79817265aa61481f377eae0c7474001a"
+ },
+ {
+  "id": "chair-armchair-charcoal-square-a152",
+  "name": "Ghế bành vải xám đậm khối vuông",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Artum Hill)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07FK69CKR.glb",
+  "model_sha256": "2c968b0cb7fab41ae5b72c84f2a76e8b4f7b7fadf4a1ce46c329c45d3b7fd105"
+ },
+ {
+  "id": "sofa-grey-leather-3-seat-headrest-a153",
+  "name": "Sofa da xám 3 chỗ tựa đầu",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu ROSSINI)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07G2H3L4L.glb",
+  "model_sha256": "34feddf5625a65e9be5ad6db4884478bd844afde6702d6d8d3b7a804712a2e38"
+ },
+ {
+  "id": "sofa-light-grey-slim-metal-leg-a154",
+  "name": "Sofa vải xám nhạt chân kim loại",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07G2WWZC5.glb",
+  "model_sha256": "8621c6af549d649452d22e875027345c6e82938086bf24da9818bfdf811708fd"
+ },
+ {
+  "id": "table-coffee-leaf-wood-black-a155",
+  "name": "Bàn trà hình lá gỗ chân đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07GDMBZJJ.glb",
+  "model_sha256": "83133268e6153e8427890daf1f7c69832dfb4ff8b37aab367de7531725af2053"
+ },
+ {
+  "id": "table-side-white-wood-leg-drawer-a156",
+  "name": "Bàn phụ trắng chân gỗ có ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07GDSDQX7.glb",
+  "model_sha256": "600b256cfbf1df959e91acd5f77bddbf5878b9fae8fec56701ce7cf03328b62b"
+ },
+ {
+  "id": "table-side-round-black-pink-a157",
+  "name": "Bàn phụ tròn khung đen mặt hồng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07GF5DCJ2.glb",
+  "model_sha256": "4f765fe12f8156947af8e6db3462aac7f7d9306317a71fb4e45bb81dd9b175f6"
+ },
+ {
+  "id": "table-coffee-triangle-walnut-hairpin-a158",
+  "name": "Bàn trà hình tam giác mặt gỗ chân kim loại",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07GF7CSLF.glb",
+  "model_sha256": "1c4a1931c9bd78025af7f02fcc93f43d4017e85f562293fdc87ad0608f71327c"
+ },
+ {
+  "id": "chair-stool-tolix-white-a159",
+  "name": "Ghế đẩu kim loại trắng kiểu Tolix",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Pioneer Square)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07GPF4GDL.glb",
+  "model_sha256": "7ea04b4536f9f9992e1f03fa49f82741d189c18109b3a83131d440a1648928f3"
+ },
+ {
+  "id": "shelf-oak-white-cube-a160",
+  "name": "Kệ gỗ sồi ô hộp trắng",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07H8SSBVT.glb",
+  "model_sha256": "5948b78a2175b56f2cb9f5c3d6f532db4f562bae9c0583cf5c74ebde13b64c17"
+ },
+ {
+  "id": "ottoman-grey-storage-cube-a161",
+  "name": "Đôn hộp chứa vải xám",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07HGGPCW3.glb",
+  "model_sha256": "d1f9fe1dfa41310dd2b4c35dd365743e78302adbf73cc931de179aa66750d0cb"
+ },
+ {
+  "id": "lamp-floor-drum-shade-metal-a162",
+  "name": "Đèn cây chụp trụ trắng thân kim loại",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07HK3F2GG.glb",
+  "model_sha256": "4644f698a20cb73b2ddc9986965c76f903a67da2adbfc926c783d9ee7df3c4d0"
+ },
+ {
+  "id": "sofa-taupe-leather-2-seat-slim-leg-a163",
+  "name": "Sofa da nâu xám chân kim loại mảnh",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B07HPJ8S3K.glb",
+  "model_sha256": "3f39ab1dd7b465e88c15aeaacdab583775a43bb8ee4bc0e77952524ca5069c95"
+ },
+ {
+  "id": "table-bar-cart-gold-glass-a164",
+  "name": "Xe đẩy bar khung vàng kệ kính",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07HSBJ65P.glb",
+  "model_sha256": "e6ffbb25c412ca85e5b9a1e09d5f3d1b829a9e9fec9e2e6eba95ae98436337ca"
+ },
+ {
+  "id": "chair-dining-velvet-teal-a165",
+  "name": "Ghế ăn nhung xanh ngọc chân vàng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07HSBRXD4.glb",
+  "model_sha256": "a73d7136dc3eeb30369c1fa0d188ead98726e82a3f78b5d723cdd69ae747f874"
+ },
+ {
+  "id": "desk-oak-black-metal-leg-a166",
+  "name": "Bàn làm việc gỗ sồi chân thép đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07HSCRFTN.glb",
+  "model_sha256": "b7d240b54b08d79e081bea4e4adfcc1f77addab4bc56af5df585bdf2b8861ce3"
+ },
+ {
+  "id": "cabinet-sideboard-black-wood-panel-a167",
+  "name": "Tủ thấp đen cánh gỗ vân",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07HSF15FW.glb",
+  "model_sha256": "c5fefdcb1f914a2663f2c5b12cba905ea0f1e6cc37181f52394d08cd14aa5729"
+ },
+ {
+  "id": "table-coffee-round-glass-wood-shelf-a168",
+  "name": "Bàn trà tròn mặt kính tầng gỗ",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07HSG2V2Y.glb",
+  "model_sha256": "582084d5b0fd0faa1f0f91cf8eb97c46b27e718d75f540dd5d5e6ff6b63cfb96"
+ },
+ {
+  "id": "chair-bar-stool-black-spindle-a169",
+  "name": "Ghế quầy bar nan đen",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07HSHTN13.glb",
+  "model_sha256": "e68c9818da805dfddf17c503b1bd66d9c75ad4aba17cc59f6c3faa21f6fc2a88"
+ },
+ {
+  "id": "planter-white-gold-stand-a170",
+  "name": "Chậu trắng chân kim loại vàng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07HSJKY8H.glb",
+  "model_sha256": "2a82e68d88b11b24b4532dfde3af59bd5bd8dc289dd98db54470553f75afbbb9"
+ },
+ {
+  "id": "table-bar-cart-oval-brass-glass-a171",
+  "name": "Xe đẩy bar bầu dục khung đồng kính",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07HSJVTHP.glb",
+  "model_sha256": "4a3fa6029134f1f2423866a877282c0bce946ea6ff0a771ef376ab073bbccd0f"
+ },
+ {
+  "id": "bed-oak-platform-low-a172",
+  "name": "Giường gỗ sồi thấp đầu giường nan",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07HSL882C.glb",
+  "model_sha256": "d2d7130b18c07021670b396a6fe8572b57e909007a315d211f3955b0fd3bffea"
+ },
+ {
+  "id": "rug-berber-ivory-geometric-a173",
+  "name": "Thảm Berber trắng kem hoạ tiết",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B07HSM8NGX.glb",
+  "model_sha256": "1a1690cf288dc4a9940ab5cba915f7cc54f5e88c768d053998ea58dbb24ea7e8"
+ },
+ {
+  "id": "sofa-taupe-roll-arm-3-seat-a-a174",
+  "name": "Sofa vải nâu xám 3 chỗ tay thấp",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07HZ4ZQS7.glb",
+  "model_sha256": "b3285262db744ce76d829f494cdb5745ce3989865ce77b8a63ad5c4901f5a649"
+ },
+ {
+  "id": "sofa-olive-roll-arm-2-seat-a175",
+  "name": "Sofa vải xanh rêu đậm tay thấp",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07HZ58Q5R.glb",
+  "model_sha256": "e35690f3297fd04c40221aa29e174407ea07e4dd309b8ae2041c218fbd2e7653"
+ },
+ {
+  "id": "sofa-sectional-navy-chaise-a176",
+  "name": "Sofa góc chaise xanh navy",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07HZ5RT6C.glb",
+  "model_sha256": "cbe79686487c58cf26f61460386d930f3b0a49672e85556d652f04c7f03b85e6"
+ },
+ {
+  "id": "ottoman-green-velvet-metal-leg-a177",
+  "name": "Đôn nhung xanh lục chân kim loại",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07HZ6GDJ8.glb",
+  "model_sha256": "c26e76af9ac522ad68ef83b4e4d29825c61980d605e9c6ad2d5bb59b2674a6c2"
+ },
+ {
+  "id": "sofa-sectional-green-velvet-chaise-a178",
+  "name": "Sofa góc nhung xanh lục chaise",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07HZ75QTT.glb",
+  "model_sha256": "a47a81a8dd7ef00ed7ec65ec2b35d1726276122fb7d7b84324325f88687d57f9"
+ },
+ {
+  "id": "sofa-blue-grey-slim-metal-leg-a179",
+  "name": "Sofa xanh xám chân kim loại mảnh",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07J4VK59W.glb",
+  "model_sha256": "ddfeaef8865f1decbc8a651d2aadd1833bc80e1eee18bcc23da4e8dc8c85c6a1"
+ },
+ {
+  "id": "sofa-brown-leather-low-3-seat-a180",
+  "name": "Sofa da nâu thấp 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07JD47NPD.glb",
+  "model_sha256": "913fe29664e017582638505003c5f29a617c0ad51b2c1ebf1ba01f016486f077"
+ },
+ {
+  "id": "tv-unit-white-oak-insert-a181",
+  "name": "Kệ tivi trắng chèn gỗ sồi",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07JGPKSBB.glb",
+  "model_sha256": "5cd4f2a99870f764208230b4712af936004014aeb687847dccfe8d5f83660df6"
+ },
+ {
+  "id": "cabinet-sideboard-white-3-drawer-a182",
+  "name": "Tủ thấp trắng ba ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07JGY5LML.glb",
+  "model_sha256": "a3428f0f65afdba4269ddfc4f232b8f108f749dbd3d42af7eda8542e79f111b6"
+ },
+ {
+  "id": "desk-white-oak-leg-corner-a183",
+  "name": "Bàn làm việc trắng chân gỗ sồi có hộc",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07JQ7T5YP.glb",
+  "model_sha256": "828c4ec48e0d07f244784fe226ae240a4da27ca9281685c418390fd1bcdce382"
+ },
+ {
+  "id": "chair-armchair-taupe-roll-a184",
+  "name": "Ghế bành vải nâu xám tay cuộn",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07JQWZX4T.glb",
+  "model_sha256": "da55c1712c0525baa579475dca268e5d7e50a9198af76715fe47a8c07135e952"
+ },
+ {
+  "id": "sofa-taupe-low-wide-a185",
+  "name": "Sofa vải nâu xám thấp rộng",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B07JW7MBZX.glb",
+  "model_sha256": "3144297adfcd0635abae8cf11a01a71be95c3a5b2ee63a66382bd52a6393bea3"
+ },
+ {
+  "id": "desk-oak-black-trapezoid-leg-a186",
+  "name": "Bàn làm việc gỗ sồi chân thép đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07JXXR83F.glb",
+  "model_sha256": "70e696236eb113108597bea8f49d16dd04554ef8c86a55c35a130e1ee55769e4"
+ },
+ {
+  "id": "table-bar-cart-wood-black-a187",
+  "name": "Xe đẩy gỗ khung thép đen hai tầng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Taylor + Logan)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07K12WN6V.glb",
+  "model_sha256": "2dd02b1198ada9e25f36d0b36f938af32e30c704653c41b902bae7ef42bc5061"
+ },
+ {
+  "id": "lamp-floor-silver-white-shade-a188",
+  "name": "Đèn cây thân bạc chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Umi)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07K4YXTZH.glb",
+  "model_sha256": "b739cab46fa822552b885ba3b3858385a84e45442c20c79fe95a01bb71b405cc"
+ },
+ {
+  "id": "table-coffee-oak-solid-shelf-a189",
+  "name": "Bàn trà gỗ sồi có kệ dưới",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07K7LVMQ7.glb",
+  "model_sha256": "028aef45a9f35cf724caf3c12661923c0dc74c74c2801cfc58abf59ef7200f28"
+ },
+ {
+  "id": "table-coffee-oak-oval-a190",
+  "name": "Bàn trà gỗ sồi hình oval",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07K7M4X4T.glb",
+  "model_sha256": "21d748c37cd324454ffdc253c1de14f100f5d642122af1be9449deddbfce419b"
+ },
+ {
+  "id": "bed-oak-frame-natural-a191",
+  "name": "Giường khung gỗ sồi tự nhiên",
+  "group": "bed",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07K7NSKQ3.glb",
+  "model_sha256": "cb6d73447015a75d0bc93bb4526fda5e5f5589a642879a60419b0d76735fbbf0"
+ },
+ {
+  "id": "table-dining-oak-pedestal-a192",
+  "name": "Bàn ăn gỗ sồi chân trụ đôi",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07K7RX2KJ.glb",
+  "model_sha256": "15bae0f461e8d750a1648dcca35ca0c576aa26b8fb834de999c41755f4a67491"
+ },
+ {
+  "id": "sofa-sectional-grey-chaise-wood-leg-a193",
+  "name": "Sofa góc chaise xám chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07K8V2JRF.glb",
+  "model_sha256": "58358b1a79c66b6daad1b5221e32a569e01be9030ff1b4240ee44bb22af31466"
+ },
+ {
+  "id": "sofa-cream-boucle-curved-a194",
+  "name": "Sofa kem dáng cong bo tròn",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07K94M78Y.glb",
+  "model_sha256": "0c4a3952a3ba922dab460225a6216ef2dd8a6ce0247e4a597a7915537bfd889b"
+ },
+ {
+  "id": "chair-armchair-grey-tufted-wood-leg-a195",
+  "name": "Ghế bành xám nút chân gỗ nhạt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07K95NLNC.glb",
+  "model_sha256": "0541256d2a5ee9ef3d6bb1163cff1564edeb54749e85d7fb7013f8d31b8ef16a"
+ },
+ {
+  "id": "sofa-charcoal-curved-3-seat-a196",
+  "name": "Sofa xám than dáng cong 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07K9JL76J.glb",
+  "model_sha256": "68262ce4ef441d0d3ef102de50352de56563a3ee08a1724ac820f9d07b9fcec9"
+ },
+ {
+  "id": "chair-stool-white-ceramic-garden-a197",
+  "name": "Đôn ngồi sứ trắng hoa văn nổi",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07MF1SRH5.glb",
+  "model_sha256": "eeb3390071e026cafe94918e5bd9600e6b6703b7f33cea806a6c91666fbb6dc1"
+ },
+ {
+  "id": "lamp-table-blue-ceramic-white-shade-a198",
+  "name": "Đèn bàn gốm xanh chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07ML7NZR7.glb",
+  "model_sha256": "9f0755a441f22bb37d369e587cee2c0f3dd9c103769ca6963eeb5a3335bd54cd"
+ },
+ {
+  "id": "ottoman-tan-leather-slim-leg-a199",
+  "name": "Đôn da nâu bò chân mảnh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B07P5LM39Q.glb",
+  "model_sha256": "3de6b9a5707395f3eb74e1871bbddfe7a2821021bd5cb4bde4d805e1194d0a2e"
+ },
+ {
+  "id": "chair-armchair-black-leather-square-a200",
+  "name": "Ghế bành da đen khối vuông",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07P6JTSYP.glb",
+  "model_sha256": "6172ed556776506e9bf4a10366639867995f06d914309b5628ff18633f16a8f1"
+ },
+ {
+  "id": "chair-armchair-tan-leather-button-a201",
+  "name": "Ghế bành da nâu bò nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07P6JTVZV.glb",
+  "model_sha256": "32b705c23d39713941688169d77d893b75ef683b8ff7e1a6c9142dd81de15fe3"
+ },
+ {
+  "id": "sofa-grey-slim-metal-leg-3-seat-a202",
+  "name": "Sofa vải xám 3 chỗ chân kim loại",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07P6JV16D.glb",
+  "model_sha256": "33e776e56f5afeb4899fcfde3f55898795e6453895ca9b3ad553fb9d76b4aacf"
+ },
+ {
+  "id": "chair-armchair-camel-leather-b",
+  "name": "Ghế bành da bò nâu caramel",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07P7NX5ZJ.glb",
+  "model_sha256": "738d58cea6f3b6ff99e4eb10dd5d04bb8abad36b0204066a4d61bb2bbd690f26"
+ },
+ {
+  "id": "sofa-loveseat-grey-leather-2s-b",
+  "name": "Sofa da xám 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07P8ST791.glb",
+  "model_sha256": "fed3bbad13df7d45f2bc43988fdebe076eb6cabc9b94972733d2226b0d7fee51"
+ },
+ {
+  "id": "sofa-cream-fabric-3s-b",
+  "name": "Sofa vải kem 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07P8ST9TY.glb",
+  "model_sha256": "1bc29f2fe80034f2c1600856fa44b2d16c279273757af46ce67df6d2862850f6"
+ },
+ {
+  "id": "sofa-dark-leather-3s-b",
+  "name": "Sofa da nâu đen 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07P8STHZG.glb",
+  "model_sha256": "4fa42e6b809d77ebc0a40b419d07ab693693fb3c2702f33e17731458d035518a"
+ },
+ {
+  "id": "sofa-navy-velvet-midcentury-b",
+  "name": "Sofa nhung xanh navy phong cách mid-century",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B07P8STJ2Q.glb",
+  "model_sha256": "b6be18dcab2b460a305dc641df5f1d8ee81a26c32ba8614368ba306fafdcf215"
+ },
+ {
+  "id": "sofa-black-leather-loveseat-b",
+  "name": "Sofa da đen 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07P8SV5P5.glb",
+  "model_sha256": "e7765fa3bb140ac6dda181b23a3ed6901e0221873123fda2e47887e6856aaee6"
+ },
+ {
+  "id": "sofa-light-grey-loveseat-b",
+  "name": "Sofa vải xám nhạt 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07P9Y4QGP.glb",
+  "model_sha256": "7dd739e2cdf4e97aba98716ae0dc4a0c41c9cf6828e446eb9887a0143958e58f"
+ },
+ {
+  "id": "sofa-camel-leather-loveseat-b",
+  "name": "Sofa da caramel 2 chỗ chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07PBZ74HD.glb",
+  "model_sha256": "3adecfee26b36cca8b3de94bcb66b0189d34923b589fc4733cf1158688403ab4"
+ },
+ {
+  "id": "sofa-beige-fabric-loveseat-b",
+  "name": "Sofa vải be 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B07PBZ9CSS.glb",
+  "model_sha256": "df4fa90725224be0a30818881162830c15dae66aae67889684c6c4731d589906"
+ },
+ {
+  "id": "chair-grey-tufted-armchair-b",
+  "name": "Ghế bành vải xám chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07PBZL51J.glb",
+  "model_sha256": "8a5389ee90dff7adf757687336303b6a4e62ee62debcf9ed5ac1c5301c961084"
+ },
+ {
+  "id": "sofa-brown-leather-3s-b",
+  "name": "Sofa da nâu 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07PBZVNVD.glb",
+  "model_sha256": "a136ecc1e4cbb9570d92a3366857b0c7abe84297de5f0f33217c019bc07f63b3"
+ },
+ {
+  "id": "ottoman-grey-fabric-ottoman-b",
+  "name": "Đôn ghế vải xám chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07PC1PDQV.glb",
+  "model_sha256": "71762bc20cd91498603f780748689cf25c3ae1fcb994261ce52e35b8aab63a85"
+ },
+ {
+  "id": "sofa-green-sectional-b",
+  "name": "Sofa góc chữ L nhung xanh lục",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07PC5GS8J.glb",
+  "model_sha256": "b290cd3c607650ef4b231a853fdc8e08e39d6a7086654f8bc507f7e841cff605"
+ },
+ {
+  "id": "table-nesting-marble-gold-b",
+  "name": "Bàn phụ mặt đá khung vàng đồng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07PMHRKYR.glb",
+  "model_sha256": "a039ac23400b2f85759006909ec638d55b29e76171860a5fee00d6a906eb392f"
+ },
+ {
+  "id": "shelf-iron-wood-5tier-b",
+  "name": "Kệ sách 5 tầng khung sắt mặt gỗ",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07PNG6XLV.glb",
+  "model_sha256": "c0cd0c9b12fafe03ad1889674e1005c01f7536e967bf0feada2ca8cb832dccd5"
+ },
+ {
+  "id": "dresser-dark-grey-6-drawer-b",
+  "name": "Tủ ngăn kéo 6 hộc xám đậm",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ameriwood Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07PVBJ7X8.glb",
+  "model_sha256": "17915be98bdfb63cbf264718436eb22d1aa1268a49fcb42e1feab0ac0033b0d6"
+ },
+ {
+  "id": "desk-black-frame-small-b",
+  "name": "Bàn làm việc khung sắt đen có kệ",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07PVL2N3D.glb",
+  "model_sha256": "5206e52cc10dcb6d460daf183f142ed760912810fa38bfa3cfd2ed6e8446a5a1"
+ },
+ {
+  "id": "nightstand-white-2-drawer-b",
+  "name": "Tủ đầu giường trắng 2 ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B07PX3D82S.glb",
+  "model_sha256": "1d2ed18283def18760966fd052a09c9a5766dc142cc3db1090394cc7af9024be"
+ },
+ {
+  "id": "chair-chaise-black-leather-b",
+  "name": "Ghế chaise da đen chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Phoenix Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07PXDFW6L.glb",
+  "model_sha256": "84a40a0a2185335e501663ecf76893758cacc7d06d01bf8ca2efe3f49bc035a2"
+ },
+ {
+  "id": "rug-honeycomb-cream-b",
+  "name": "Thảm lông họa tiết tổ ong kem",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Basics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07Q4WFQHH.glb",
+  "model_sha256": "4058862e1e28ddb885188f9d15cd1f58ab82e3c1093eaa551fcc0e9ca1fd351a"
+ },
+ {
+  "id": "lamp-task-white-arm-b",
+  "name": "Đèn bàn cần xoay trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07PZCRS6F.glb",
+  "model_sha256": "f66173ccef7e39a7217196af31c234898b5c236dfc4f122dd8a8c90c04a8d127"
+ },
+ {
+  "id": "rug-grey-pile-large-b",
+  "name": "Thảm trải sàn xám đậm cỡ lớn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Basics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07Q5ZXC59.glb",
+  "model_sha256": "8a1a0cff2811af16b2d13994bce6f3f264b5ba1579213b83d78b45ecaed2c6a2"
+ },
+ {
+  "id": "rug-beige-plain-b",
+  "name": "Thảm trải sàn màu be trơn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Basics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07Q5ZXRCM.glb",
+  "model_sha256": "5eda9a95f14453dbe2fce1521fe13a5b1ec44aceb888242c9ca2c36a922411e8"
+ },
+ {
+  "id": "desk-hairpin-black-top-b",
+  "name": "Bàn làm việc mặt đen chân sắt hairpin",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07QB6C9R8.glb",
+  "model_sha256": "3538055fdca66f49edb85dcea51b8cbd85c8fd89356ec7bcc5468cd9cf7bb88c"
+ },
+ {
+  "id": "tv-unit-chevron-grey-wood-b",
+  "name": "Kệ tivi gỗ xám vân chevron chân sắt",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07QB8DQ45.glb",
+  "model_sha256": "7faf6d8f4c80333e6d5f7acdb7a72141f900f6ca61c00ed4ad86f725dbe699dc"
+ },
+ {
+  "id": "chair-grey-fabric-wood-legs-b",
+  "name": "Ghế bành vải xám chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07QBMQFPL.glb",
+  "model_sha256": "c0b52cc33a974b99946d78342454dd7947f81fe4fab68be6457333fe744a9cb6"
+ },
+ {
+  "id": "chair-blue-leather-swivel-b",
+  "name": "Ghế bành xoay da xanh chân sao",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B07QBMQHFS.glb",
+  "model_sha256": "f00c067aa7136484368bf5787438590455081171e14c11b20c964fbc24aad212"
+ },
+ {
+  "id": "chair-grey-boxy-armchair-b",
+  "name": "Ghế bành vải xám dáng vuông",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07QBMQPH3.glb",
+  "model_sha256": "0508961f89105afc509a0568adb8fcc907a67431319f902da33ce0d6f8806800"
+ },
+ {
+  "id": "chair-rocking-wood-cream-b",
+  "name": "Ghế bập bênh gỗ sồi đệm kem",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07QBMQPJ2.glb",
+  "model_sha256": "0f29e664946a46f6c997841d6f8c165527a662969b5f9b80bb6c1308c4a817a3"
+ },
+ {
+  "id": "chair-dining-tufted-cream-b",
+  "name": "Ghế ăn đệm kem chần nút chân gỗ tối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07QBQBXTD.glb",
+  "model_sha256": "3f5914cf9ca9043cfa67b457f87f0d9283929552ea0c6473e889d41c44f64bc4"
+ },
+ {
+  "id": "chair-bar-stool-grey-b",
+  "name": "Ghế đẩu quầy bar bọc xám khung sắt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B07QBQF7SK.glb",
+  "model_sha256": "13a49ad316106201b6fb2b523f4f01222d293906b7f4b2efb963fdf196e9059a"
+ },
+ {
+  "id": "desk-hairpin-gold-legs-b",
+  "name": "Bàn làm việc mặt đen chân vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07QC6354F.glb",
+  "model_sha256": "f8f641a6c64aabbd3510d33b46312d662e429233af5ec8b3afe52850d14589d0"
+ },
+ {
+  "id": "lamp-ceramic-table-white-shade-b",
+  "name": "Đèn bàn gốm vân nổi chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07QC76LVB.glb",
+  "model_sha256": "8f3db597444bf69fedb2d7c2d9fad0a2b6a5cace23921a9c1fbc236db7d854b8"
+ },
+ {
+  "id": "chair-tan-leather-swivel-b",
+  "name": "Ghế xoay da nâu chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07QC84LP1.glb",
+  "model_sha256": "03836ab040c5d26a694eede37afe5e78eff8825020ba9cb827d6f3febce8d145"
+ },
+ {
+  "id": "desk-white-drawer-b",
+  "name": "Bàn làm việc trắng có ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07QC84LTR.glb",
+  "model_sha256": "2a880485921ed3d0deead654b6775d12bacd5daa4af38ce593ec84ff0cf736cf"
+ },
+ {
+  "id": "chair-office-cream-chrome-b",
+  "name": "Ghế văn phòng bọc kem chân chrome",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07QC85YBY.glb",
+  "model_sha256": "d809beafed010859ab7ef22af0bd2c913559972ad8517eac402aa36a52ab8bbc"
+ },
+ {
+  "id": "tv-unit-walnut-low-console-b",
+  "name": "Kệ tivi thấp gỗ óc chó",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07QC864VW.glb",
+  "model_sha256": "13190925d6df7235b159d744181b9cf24583ae179a3e5ec458811f880059b7ab"
+ },
+ {
+  "id": "rug-ikat-global-b",
+  "name": "Thảm họa tiết ikat phong cách hiện đại",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07QC8B1XH.glb",
+  "model_sha256": "027be7094efbff461fb42d73ed9fd2580616c1154ad4804f744a02d0d4fea355"
+ },
+ {
+  "id": "sofa-camel-leather-loveseat-plain-b",
+  "name": "Sofa da bò caramel 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07QCMB9HN.glb",
+  "model_sha256": "f96ffcb6895d334514dc6f642010d55eb621cf5c2de6a7e1e59d02a42db1b113"
+ },
+ {
+  "id": "chair-swivel-mustard-b",
+  "name": "Ghế xoay bọc vải vàng mù tạt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07QCMBCXJ.glb",
+  "model_sha256": "3d836cda80b8cfe906a956ada1da509b332195be83ca93fb32b52d10641a12c5"
+ },
+ {
+  "id": "lamp-blue-ceramic-base-b",
+  "name": "Đèn bàn thân gốm xanh chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07QD5SLYJ.glb",
+  "model_sha256": "ae7239e285b85e8d787c3ff42a239c5eed128a13f29074433b578633e18556f6"
+ },
+ {
+  "id": "nightstand-white-oak-2-drawer-b",
+  "name": "Tủ đầu giường gỗ sồi mặt ngăn kéo trắng",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B07QD6TXWS.glb",
+  "model_sha256": "03d5ab7a7d2a174540d7880b29f3bd2d74fc1ce3c44e2dd672cdec7df8f38955"
+ },
+ {
+  "id": "table-side-round-black-tray-b",
+  "name": "Bàn phụ tròn khay gỗ chân sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07QD6TXXY.glb",
+  "model_sha256": "769e06b8915c35b7fc809160af1c022b694e17d16f1b7ae4a7c65865ff8c0411"
+ },
+ {
+  "id": "cabinet-white-sideboard-b",
+  "name": "Tủ buffet trắng 2 cánh ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07QD6V13M.glb",
+  "model_sha256": "128d53c9daff2ea8d421d6187ba56e0a364fd653fb3560cc3f3f5604904c2d19"
+ },
+ {
+  "id": "vase-ceramic-trio-b",
+  "name": "Bộ ba bình gốm trắng đen xám",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07QC8CFCY.glb",
+  "model_sha256": "9fb65787dccf735f756753d8dfc8de9f08e01a9b138edc84ced059b08eaa8d7d"
+ },
+ {
+  "id": "vase-tall-black-matte-b",
+  "name": "Bình cao gốm đen nhám",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B07QD6ZV9Q.glb",
+  "model_sha256": "ad63cafec390ae65403efcef4e062dde30940d3ad3afe68fd8677d9d393367c2"
+ },
+ {
+  "id": "table-coffee-tray-wood-round-b",
+  "name": "Bàn trà tròn khay gỗ chân cong",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07QD9BBRW.glb",
+  "model_sha256": "922a9e41475d170cc62bda186666883a434556c7a23653bb6447a7993c010b9f"
+ },
+ {
+  "id": "desk-white-hutch-tapered-b",
+  "name": "Bàn làm việc trắng có kệ nhỏ chân thon",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07QD9BLP3.glb",
+  "model_sha256": "1eeae6a634a893006138f2fff8b98cdf31b985044f07b4e651c3b389f8785b85"
+ },
+ {
+  "id": "sofa-blue-loveseat-b",
+  "name": "Sofa vải xanh dương 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07QDL4228.glb",
+  "model_sha256": "e9d7a67bc9549c569192421a5dfce50438232c35914b5f1f8f6c341cbefa6fb8"
+ },
+ {
+  "id": "ottoman-tan-leather-ottoman-b",
+  "name": "Đôn ghế da nâu chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07QDL42CL.glb",
+  "model_sha256": "b3a2674b0ecb2b242c2a531e5b92092ce8c791af2f7f934f184db8226c55dd6e"
+ },
+ {
+  "id": "chair-wingback-cream-tufted-b",
+  "name": "Ghế bành cánh dơi kem chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B07QDL488Q.glb",
+  "model_sha256": "22be4cc8d56d268a64588953295f09764cd38ecaf964fcef6dd82348e536b0c7"
+ },
+ {
+  "id": "bench-upholstered-nailhead-b",
+  "name": "Ghế băng dài bọc be đinh tán",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07QDNQMQV.glb",
+  "model_sha256": "6596d88f7f209610e31104d5dd8e973d511f0a53197be60a566889a89788edf9"
+ },
+ {
+  "id": "chair-dining-tan-leather-tufted-b",
+  "name": "Ghế ăn da nâu chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07QDNRFKG.glb",
+  "model_sha256": "1dbcd57805c2a981aedecb889738df87a824a80fdb6ad2e695a16b3235c4ae65"
+ },
+ {
+  "id": "dresser-walnut-low-sideboard-b",
+  "name": "Tủ thấp gỗ óc chó chân thon",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B07QF9QCYS.glb",
+  "model_sha256": "c882a95145bcbd2a86c3110c092bbbe4bd10ba623b0773baa1f49aeae3d90661"
+ },
+ {
+  "id": "shelf-white-bookcase-5tier-b",
+  "name": "Kệ sách trắng 5 tầng",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07QF9X1LH.glb",
+  "model_sha256": "ee999a7ecb329420fbabea4758c8d8708721ff70b8dabee28c840ddd657a5f1b"
+ },
+ {
+  "id": "tv-unit-white-walnut-media-b",
+  "name": "Kệ tivi trắng cánh gỗ óc chó",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07QF9Y234.glb",
+  "model_sha256": "31b554ea4029c4717c84a70d38f67d9dfcf4322a7450eb1e263510e6e6ff3b3b"
+ },
+ {
+  "id": "cabinet-white-oak-sideboard-b",
+  "name": "Tủ thấp trắng mặt gỗ sồi chân thon",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07QF9Y23Z.glb",
+  "model_sha256": "2562524aa65beaa29ade262ab0b3e77b1ab19332932f82a3f732cb94cbe93519"
+ },
+ {
+  "id": "chair-office-grey-chrome-b",
+  "name": "Ghế văn phòng xám chân chrome",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07QF9Y248.glb",
+  "model_sha256": "eb91fb0b0f650a3810ce76d501337e0ff74d780a99d778a40733a9e340269693"
+ },
+ {
+  "id": "table-cafe-round-iron-b",
+  "name": "Bàn cafe tròn mặt gỗ chân sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07QFB1TMP.glb",
+  "model_sha256": "2c5e29971693e515aa7ba7005fe61353f7ed41c41cf37bdf39f2b400a9ed8d0e"
+ },
+ {
+  "id": "vase-grey-striped-ceramic-b",
+  "name": "Bình gốm xám sọc",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B07QFB5MW6.glb",
+  "model_sha256": "5daeca3ae1fb26a77ae7c1695a070774c7ecb158bd272ccdd187f28157f64468"
+ },
+ {
+  "id": "sofa-grey-fabric-3s-b",
+  "name": "Sofa vải xám 3 chỗ cổ điển",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07QFP4M23.glb",
+  "model_sha256": "1d975811eb4782502aae197fc6068c978bdf67f963e28a38ae6dc2fa40e6216c"
+ },
+ {
+  "id": "sofa-charcoal-tufted-midcentury-b",
+  "name": "Sofa vải xám than chần nút chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07QFP4PV5.glb",
+  "model_sha256": "e916c782525827e2b9e981a9b5cbc940f563e660d3693f8f9be56ae7f1b6bf7c"
+ },
+ {
+  "id": "chair-dining-dark-grey-b",
+  "name": "Ghế ăn bọc xám đậm chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07QFRS812.glb",
+  "model_sha256": "e4d75deef403b79f7ab35439456c21d7e735bfab507866466851239aabe58a8a"
+ },
+ {
+  "id": "chair-bar-stool-blue-b",
+  "name": "Ghế quầy bar bọc xanh navy",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07QFRSC43.glb",
+  "model_sha256": "0405fb48988bbad61ee54ab5c9690d49bc091d7cdea8a38a212ab8dd095e8e7c"
+ },
+ {
+  "id": "chair-bar-stool-black-windsor-b",
+  "name": "Ghế quầy bar gỗ đen kiểu Windsor",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07QFRSCBV.glb",
+  "model_sha256": "b0f938f9f7a72f05e9a88aea806a059124c6d63786ee6fa3b43be52783ca5600"
+ },
+ {
+  "id": "chair-dining-navy-b",
+  "name": "Ghế ăn bọc xanh navy chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07QFRSG35.glb",
+  "model_sha256": "14d5c50d143b604a0074fc813f5facd8f51dfd386a5f76375adb6929a7df2900"
+ },
+ {
+  "id": "chair-grey-cutout-back-b",
+  "name": "Ghế ăn bọc xám lưng khoét chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07QGFYLKT.glb",
+  "model_sha256": "680cb62cbc669dbbf3c7b2327c3fa3463957444d5033b3b8bed241a7a7ac8298"
+ },
+ {
+  "id": "table-side-round-rustic-b",
+  "name": "Bàn phụ tròn mặt gỗ chân sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07QGFYLLM.glb",
+  "model_sha256": "2157ad6e8d1512921169cb39f783d61dccfffc388f690b1081ab673d424a73a0"
+ },
+ {
+  "id": "table-console-industrial-wood-b",
+  "name": "Bàn console gỗ khung sắt công nghiệp",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07QGG1YGZ.glb",
+  "model_sha256": "1c3dc086ba38ff73c145f53eb6dad22740377b6a7ac1b504231c1963c2c0b40e"
+ },
+ {
+  "id": "sofa-grey-clean-line-3s-b",
+  "name": "Sofa vải xám 3 chỗ dáng thẳng",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07QGSZ35F.glb",
+  "model_sha256": "3cd164a955fed76706e129d53c469583bb849be3789b02c84ff4932b9cb613eb"
+ },
+ {
+  "id": "bench-cream-upholstered-dark-legs-b",
+  "name": "Ghế băng dài bọc kem chân gỗ tối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B07QGWLB66.glb",
+  "model_sha256": "3e328ad7b058d275f86cbe31720335d3208c4f53ade5403a9330f49a4c1c4df4"
+ },
+ {
+  "id": "chair-dining-black-spindle-b",
+  "name": "Ghế ăn gỗ đen lưng song",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07QGWM3CY.glb",
+  "model_sha256": "1ac38f8c96c17b7a08c5e766fad5f6cf9242960efe376f6b28e3e091c00ab51c"
+ },
+ {
+  "id": "table-dining-herringbone-black-legs-b",
+  "name": "Bàn ăn mặt gỗ xương cá chân sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07QGWMTDY.glb",
+  "model_sha256": "331e39d0740546bee46d73055c4bf95092888f5e4d7afee525510fad173b5b41"
+ },
+ {
+  "id": "chair-dining-tan-channel-b",
+  "name": "Ghế ăn da nâu lưng kẻ rãnh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07QGWNLTV.glb",
+  "model_sha256": "aef2376e4bc57f90c6ea0887a67614f464d88ef24cafe7f93e011d2090dc00e4"
+ },
+ {
+  "id": "lamp-white-globe-base-b",
+  "name": "Đèn bàn thân tròn trắng chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07QHJZLR9.glb",
+  "model_sha256": "4761c45ed0047ff4df5caa63d4a2ef0d03e47c82b1e0a6eee9bead204be443fe"
+ },
+ {
+  "id": "table-side-marble-brass-b",
+  "name": "Bàn phụ tròn mặt đá khung đồng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B07QHKPD2Q.glb",
+  "model_sha256": "d7992e08e9284c9586d218b9b5f8076bbff528ebcaa301be0be97659e72cd249"
+ },
+ {
+  "id": "vase-tall-white-textured-b",
+  "name": "Bình cao gốm trắng vân nổi",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07QHL2D4B.glb",
+  "model_sha256": "93097ca1c3f821b6b3a3caffb571cecf99b123abca85b24a4fe0c425c9c5bfd1"
+ },
+ {
+  "id": "vase-pale-blue-white-pair-b",
+  "name": "Cặp bình gốm trắng và xanh nhạt",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07QHL8W81.glb",
+  "model_sha256": "518bcb36deb67b2b4da7c1e52b12b257b9e3f9b3ba769812c48e6efe8a583a2a"
+ },
+ {
+  "id": "sofa-cream-tufted-3s-b",
+  "name": "Sofa vải kem chần nút 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07QHYD4KD.glb",
+  "model_sha256": "81af9a236dd107bf3b224897535a55c468f9bba3b8c7e09197282d69c3e2de14"
+ },
+ {
+  "id": "sofa-grey-linen-loveseat-b",
+  "name": "Sofa vải xám nhạt 2 chỗ chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07QHYD5ZP.glb",
+  "model_sha256": "14376e58a310b07e12cc474e8396034f4c04ebf8e9cbd6fb0d54555c32301115"
+ },
+ {
+  "id": "chair-blue-grey-armchair-b",
+  "name": "Ghế bành vải xanh xám dáng vuông",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07QHYD797.glb",
+  "model_sha256": "ade05638eb278bda0e09d49d48d52cbd7bf281f72cfcd79852f538c7a879ef60"
+ },
+ {
+  "id": "sofa-cream-loveseat-wood-legs-b",
+  "name": "Sofa vải kem 2 chỗ chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07QHYD995.glb",
+  "model_sha256": "f37932154115502cef7f4db4901da77cab75b17fbe48e37f8ad8f6c7b3ca6806"
+ },
+ {
+  "id": "bench-blue-fabric-wood-legs-b",
+  "name": "Ghế băng dài bọc vải xanh chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07QJ1X2J4.glb",
+  "model_sha256": "a0702daca4d383c0d9c9c9b448ed03e5b2c04da132dfaf24fb877f16f372bcac"
+ },
+ {
+  "id": "chair-dining-channel-white-b",
+  "name": "Ghế ăn bọc trắng lưng kẻ rãnh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07QJ1YNWH.glb",
+  "model_sha256": "bee96fe91f40507a728568320e6e2fb2586db61c8d42987f8ebbcb0b6233a559"
+ },
+ {
+  "id": "nightstand-dark-walnut-1-drawer-b",
+  "name": "Tủ đầu giường gỗ óc chó tối",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07QJ22WQH.glb",
+  "model_sha256": "fc7ef8fc262be2280ca6ba6ded7854dd3a314ef18a471b880df50d165b47bd58"
+ },
+ {
+  "id": "desk-white-top-gold-hairpin-b",
+  "name": "Bàn làm việc mặt trắng chân vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07QJJXBV8.glb",
+  "model_sha256": "5e18c37d7915b5722517deff59f1c5268ce7f28ab30ec5413cfea47d75898452"
+ },
+ {
+  "id": "lamp-white-drum-slim-b",
+  "name": "Đèn bàn thân thon trắng chụp trụ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07QJL791Z.glb",
+  "model_sha256": "2dfc453b6876549587f78e86e7accaa4075a7c434b65dc1d2f22c894e535aef6"
+ },
+ {
+  "id": "table-side-copper-marble-b",
+  "name": "Bàn phụ khung đồng mặt đá trắng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07QJLWJMC.glb",
+  "model_sha256": "3374c95c9a43918c6f31f6a606cc7da6c9825f4fe306c889cadf9a4338b2c941"
+ },
+ {
+  "id": "sofa-camel-channel-3s-b",
+  "name": "Sofa da caramel kẻ rãnh 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07QJXW4VD.glb",
+  "model_sha256": "59fb13cdfd08c26d34acabe35d3f5237b991aa97e7917379d571122229a4d22f"
+ },
+ {
+  "id": "sofa-brown-leather-sectional-b",
+  "name": "Sofa góc da nâu chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07QJYGDZ9.glb",
+  "model_sha256": "8e3e71c6a770fb8fb34ecb7589bebdb946a2d33857a7d77516bf43022f656484"
+ },
+ {
+  "id": "sofa-navy-tufted-sectional-b",
+  "name": "Sofa góc vải xanh navy chần nút",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07QJYGDZG.glb",
+  "model_sha256": "8da4c24c5ebb75678a279a28c83f7252cae9114b0128cd510760dcd9d1e83336"
+ },
+ {
+  "id": "nightstand-rattan-wood-2-drawer-b",
+  "name": "Tủ đầu giường gỗ mặt mây 2 ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07QK2JLGZ.glb",
+  "model_sha256": "84ad437b6d69052ad9e163277c9cfedd3d2b97768d31c828ff8e945d6d0ef198"
+ },
+ {
+  "id": "table-coffee-black-marble-square-b",
+  "name": "Bàn trà vuông mặt đá đen khung sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07QNWN1NZ.glb",
+  "model_sha256": "44b02f37bf027b0737a11433e43a71b8d232db92b16883f03c3d10c36ba71197"
+ },
+ {
+  "id": "table-coffee-round-dark-glass-b",
+  "name": "Bàn trà tròn mặt kính tối chân sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07QPZLFCB.glb",
+  "model_sha256": "7a4a23a6b11fba7d764ee0bdfedc9b2ea7981fbde68ce79eafe191658adbc756"
+ },
+ {
+  "id": "chair-dining-grey-scandi-b",
+  "name": "Ghế ăn xám kiểu Bắc Âu chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07QR6TB92.glb",
+  "model_sha256": "68f1462e078f3eefe9523ee3d57fbe0a88efaac5bdadc73726d643991ca3dce6"
+ },
+ {
+  "id": "table-side-round-gold-glass-b",
+  "name": "Bàn phụ tròn mặt kính khung vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07QS8SG1C.glb",
+  "model_sha256": "5b14de6892a1ee083bd673bd9fa905b20901a7d1af2064ec4b059bb8772ca137"
+ },
+ {
+  "id": "shelf-iron-wood-geometric-b",
+  "name": "Kệ trang trí khung sắt tầng gỗ",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B07QTS7BWK.glb",
+  "model_sha256": "59113f50cbcd7397ee20c78594ac87f6e095381ae729d2a1e621c2e7c1576b70"
+ },
+ {
+  "id": "table-coffee-lift-top-wood-b",
+  "name": "Bàn trà gỗ mặt nâng chân sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07QVRRMMH.glb",
+  "model_sha256": "5ab5263b26175b5193d4aaeb0c7523c983589c0cb09fffd5d17ab34b16441296"
+ },
+ {
+  "id": "sofa-grey-tufted-3s-wood-legs-b",
+  "name": "Sofa vải xám chần nút 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07R15L3TD.glb",
+  "model_sha256": "6b142b84af16e754df36fe17ddbe5e73f0f5504e641adef26a0ceba58db465ec"
+ },
+ {
+  "id": "desk-oak-top-hairpin-b",
+  "name": "Bàn làm việc mặt gỗ sồi chân hairpin",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07R1JT4JL.glb",
+  "model_sha256": "5a55d0a0dcaa7ae49d280c073938f2a22c232b52cdf6a910019da8fd0cecffe1"
+ },
+ {
+  "id": "sofa-white-loveseat-light-legs-b",
+  "name": "Sofa vải trắng 2 chỗ chân gỗ sáng",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07R3TWDTM.glb",
+  "model_sha256": "628414a66e29647872f8540f14afa8ffe11274aba7528828c29e3ed48d7a855b"
+ },
+ {
+  "id": "sofa-grey-slim-3s-b",
+  "name": "Sofa vải xám 3 chỗ chân sắt đen",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07R4T5PN8.glb",
+  "model_sha256": "b67b03a3a43bc7eaf47838610d4e48e598a6e931276a5c8da904f3ad7291a840"
+ },
+ {
+  "id": "table-coffee-round-stone-black-b",
+  "name": "Bàn trà tròn mặt đá chân sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Artum Hill)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B07R8WD99Z.glb",
+  "model_sha256": "ae3b1e5a6a87c528dfb4a10c7f7b215b33e0016c3281535f9cc1ce425f6067b5"
+ },
+ {
+  "id": "table-coffee-black-low-shelf-b",
+  "name": "Bàn trà đen thấp có ngăn mở",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07RMYYLWY.glb",
+  "model_sha256": "37d9d22ce49e08622e595cec4afee363e5a8fbcb4f54d594ced214c48b03f939"
+ },
+ {
+  "id": "nightstand-light-oak-2-drawer-b",
+  "name": "Tủ đầu giường gỗ sáng 2 ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07RMZ83ZY.glb",
+  "model_sha256": "0542fbd0bf9de57098c46dfd0ccb2f56513827bd46a536ecf7613d339aeff902"
+ },
+ {
+  "id": "tv-unit-dark-grey-hairpin-b",
+  "name": "Kệ tivi xám đậm chân sắt hairpin",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07RMZ8B11.glb",
+  "model_sha256": "fec8927b5aaed300a3fade3d051939587e1b8033fac25f4b19276acc53d299e6"
+ },
+ {
+  "id": "nightstand-grey-wood-legs-2-drawer-b",
+  "name": "Tủ đầu giường xám vân gỗ chân thon",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B07RNZC4TJ.glb",
+  "model_sha256": "ea143f491eacdcfd6132364e6907e66440c9119ce71b1c7107a64e08499914c5"
+ },
+ {
+  "id": "mirror-wall-walnut-frame-b",
+  "name": "Gương treo tường khung gỗ nâu",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Basics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B07RQMSJRX.glb",
+  "model_sha256": "e95d32c1a077af26f10d6565e901fbf3019425ced92309da60ad2d09d500ec6f"
+ },
+ {
+  "id": "nightstand-oak-yellow-drawer-b",
+  "name": "Tủ đầu giường gỗ sồi ngăn kéo vàng nhạt",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07RR3K7M8.glb",
+  "model_sha256": "e5b2ed838a6d3047bd42a5d1f1af7fb8be46d88b1f5e0a85a2d577b7d00b3aae"
+ },
+ {
+  "id": "desk-walnut-top-black-frame-b",
+  "name": "Bàn làm việc mặt gỗ nâu khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07RT5JN33.glb",
+  "model_sha256": "8388c2f93f7dcca4899bbfc37669c43cdf0e81eb6ee229694258c1a03120e9cc"
+ },
+ {
+  "id": "table-side-round-basket-b",
+  "name": "Bàn phụ tròn 2 tầng kèm giỏ xanh",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07RT64HF7.glb",
+  "model_sha256": "cf2d0b59985232076dea055ad23a274f88e5ed7c67aad089ed5f22c61f9d44e1"
+ },
+ {
+  "id": "table-side-c-shape-white-b",
+  "name": "Bàn phụ chữ C khung trắng mặt kem",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07RVBMJB8.glb",
+  "model_sha256": "333968a987f6169dc882619c2dd63f3db2467af34c16c3c5967e85a7a7a530fa"
+ },
+ {
+  "id": "desk-black-frame-shelf-top-b",
+  "name": "Bàn làm việc khung sắt đen có kệ trên",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07RVBPWG9.glb",
+  "model_sha256": "020d68d8c6a8ec2df5d3c85a68ac599e2444e65115151de13c6442df57bfa59e"
+ },
+ {
+  "id": "table-side-c-shape-black-b",
+  "name": "Bàn phụ chữ C khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07RWCQNPL.glb",
+  "model_sha256": "eee0108e93fe24007121a139bb6b3bb2c73c8fa3ace51ae1fb896cf70c53b478"
+ },
+ {
+  "id": "tv-unit-white-oak-shelf-b",
+  "name": "Kệ tivi trắng ngăn gỗ sồi",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07SB8WWHD.glb",
+  "model_sha256": "83b122b902fa74c1d5345004801015fc90d5645d80c2dd029c47e70ea7a55a5f"
+ },
+ {
+  "id": "table-dining-oak-rectangular-b",
+  "name": "Bàn ăn chữ nhật gỗ sồi",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07SH7L5QM.glb",
+  "model_sha256": "d62110b62bddfe4c94a41c67905c3ec46b6dff7efe5186fb7c8b86e446ae0883"
+ },
+ {
+  "id": "table-coffee-oak-shelf-b",
+  "name": "Bàn trà gỗ sồi có kệ dưới",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07SK9M5T4.glb",
+  "model_sha256": "3ec911a0bf436d352975b72a01ed416e77880a012125837cfe91f66b027e0ce2"
+ },
+ {
+  "id": "table-coffee-oak-oval-b",
+  "name": "Bàn trà oval gỗ sồi 2 tầng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B07SK9PJN9.glb",
+  "model_sha256": "03f89b40ab08af8595f04bd59f0aabf48a58fba169fe5f86c3975034b16247b4"
+ },
+ {
+  "id": "sofa-beige-3s-compact-b",
+  "name": "Sofa vải be 3 chỗ gọn",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Brand - Solimo)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07SSJDRL4.glb",
+  "model_sha256": "3b6e8cf948a1d0851fd140f6ccc82ac9b11b5a2a5db1f59f356b2efe23341ac4"
+ },
+ {
+  "id": "chair-dining-white-shell-wood-b",
+  "name": "Ghế ăn vỏ trắng chân gỗ kiểu Bắc Âu",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07TD46R6R.glb",
+  "model_sha256": "9895ae3f1c4fb6f6165ce10d7dbd07a7b983ad1eab206ec7a85e54da5665ed93"
+ },
+ {
+  "id": "chair-dining-grey-shell-black-b",
+  "name": "Ghế ăn bọc xám chân sắt đen",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07TF7XYXM.glb",
+  "model_sha256": "b2cb83bdd860708a63f035d93ffc14e2f059e8ae3989d6ab3f6ba77b837826a0"
+ },
+ {
+  "id": "chair-bucket-tan-leather-black-legs-b",
+  "name": "Ghế bành tròn da nâu chân sắt đen",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07THT1GBV.glb",
+  "model_sha256": "ebf80f6dc8a3034d283cc307315e542b1a6ca97ecdc1f19db19354c4e8233721"
+ },
+ {
+  "id": "chair-bucket-light-grey-black-legs-b",
+  "name": "Ghế bành tròn bọc xám nhạt chân sắt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07TJWB2M1.glb",
+  "model_sha256": "7168fbcc2a7a5bd49496bd148dea323da6d6f54e0f5346231c820ed21e4083c6"
+ },
+ {
+  "id": "desk-reclaimed-wood-iron-b",
+  "name": "Bàn làm việc gỗ tái chế khung sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B07TKY3L6X.glb",
+  "model_sha256": "c5891cd661fd60dc96278afeec3fd5363d8c827be9af10307ab06471d4392f32"
+ },
+ {
+  "id": "desk-midcentury-walnut-2-drawer-b",
+  "name": "Bàn làm việc mid-century gỗ óc chó",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07TLDMQS2.glb",
+  "model_sha256": "294b56fa2c497d29f91a6935e9290a99bcdfb1f2e1ffdb5f37110295375a9772"
+ },
+ {
+  "id": "table-coffee-round-oak-white-top-b",
+  "name": "Bàn trà tròn mặt gỗ sồi sáng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07TLDNPXW.glb",
+  "model_sha256": "4c75a1d026dbc2c71d2b0faf9c7146f1f852fff9efed4f423adacad46b36fe83"
+ },
+ {
+  "id": "table-side-round-dark-tripod-b",
+  "name": "Bàn phụ tròn gỗ tối 3 chân",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07TLDNSKB.glb",
+  "model_sha256": "201e4223cc436f95e0c548768e32fd8e2a08313a72d49e8f1978c3cc1e92c634"
+ },
+ {
+  "id": "desk-oak-writing-2-drawer-b",
+  "name": "Bàn viết gỗ sồi 2 ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07TMGJC9N.glb",
+  "model_sha256": "cb1d046a91afe506c9d33aa8d7ad0b92dd21fa67d8fb29fe34cecc2f40cb53d8"
+ },
+ {
+  "id": "chair-vintage-brown-leather-swivel-b",
+  "name": "Ghế ăn da nâu cũ chân sắt xoay",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07TN2RRDG.glb",
+  "model_sha256": "8688ad84f08f0bc1cffce231b3b4e456961908157eb9b8ee080f863d52bcfa95"
+ },
+ {
+  "id": "desk-white-slim-oak-top-b",
+  "name": "Bàn làm việc trắng mặt gỗ sồi mảnh",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B07TP5LTFX.glb",
+  "model_sha256": "413a436f827cf9bce0e0068ce2b6fe4ba052b0bfd1d5594b1db6c4278504e34b"
+ },
+ {
+  "id": "desk-oak-iron-frame-drawers-b",
+  "name": "Bàn làm việc gỗ sồi khung sắt có ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B07TP5MKP3.glb",
+  "model_sha256": "e91176a8a100c9f90f41f25692c855efe74b9bec78e23431549967b64aeaf3ef"
+ },
+ {
+  "id": "table-side-round-white-oak-b",
+  "name": "Bàn phụ tròn mặt trắng chân gỗ sồi",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07TPPC62D.glb",
+  "model_sha256": "a60bc48760a821e628b35f57d3e7f61c50d7cb8b31db885e8043a4242a0bba92"
+ },
+ {
+  "id": "chair-grey-swivel-quilted-b",
+  "name": "Ghế xoay bọc xám chần ô chân sắt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07TQ7M4QR.glb",
+  "model_sha256": "37f5f61f4574e83b181b11a1f06a2354a5b6cbaf729481e924bf80f7e09e7f2c"
+ },
+ {
+  "id": "desk-white-black-frame-b",
+  "name": "Bàn làm việc trắng khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07TQ8KH1V.glb",
+  "model_sha256": "e00c8893512af5dcbea10d125f023328192afef211ff9540ae6f484c948f6f62"
+ },
+ {
+  "id": "dresser-oak-low-sideboard-b",
+  "name": "Tủ thấp gỗ sồi dài khung sắt",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07TR659G8.glb",
+  "model_sha256": "94a688eba4eb28e66d73291c07eaa72a0e9848c16ca3b2e941b15afad44dc187"
+ },
+ {
+  "id": "table-side-c-shape-wood-black-b",
+  "name": "Bàn phụ chữ C mặt gỗ khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07TT2G9YT.glb",
+  "model_sha256": "f41e88dc4e50a520a91fa5dff28424189d63a22518450f4eeff123c1ec7240dd"
+ },
+ {
+  "id": "rug-trellis-grey-b",
+  "name": "Thảm họa tiết lưới xám",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Basics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07TTCK71R.glb",
+  "model_sha256": "922b2303d37e9972f7d8929a3694dfe6c4652aff02756f63f3fbb250d649bab6"
+ },
+ {
+  "id": "chair-bar-stool-tan-swivel-b",
+  "name": "Ghế quầy bar da nâu xoay chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07TVJ3NMN.glb",
+  "model_sha256": "d4a2a8b0ef9ea8e36e1996a04c430576c96dbcc7a89fb50824b6c237a74af69e"
+ },
+ {
+  "id": "rug-beige-shag-large-b",
+  "name": "Thảm trải sàn lông ngắn màu be cỡ lớn",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Basics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07TZMWH8M.glb",
+  "model_sha256": "43c86b0df4e7af4bc252527418eecaa65162cb753da5141158e7712481a03a5d"
+ },
+ {
+  "id": "chair-dining-cream-arm-brown-legs-b",
+  "name": "Ghế ăn có tay vịn bọc kem chân nâu",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07TZRKLXL.glb",
+  "model_sha256": "38df5bb04af3b7608b0ec4bd5a49f0aa6caa77ee24c4d05ccb55a19238ee10e9"
+ },
+ {
+  "id": "tv-unit-barn-door-oak-b",
+  "name": "Kệ tivi gỗ sồi cánh trượt",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07V24ZSFH.glb",
+  "model_sha256": "d591a5f50821f9a95e1cfcbc08753eaa5511121e61bc6ad38eebd9d14cadae7a"
+ },
+ {
+  "id": "nightstand-oak-cube-open-b",
+  "name": "Tủ đầu giường gỗ sồi ô mở chân thon",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B07V9RKHNC.glb",
+  "model_sha256": "02b99101ce23cddd23efb8078cf894bdd729c0d17c32802bf65d4420509727c6"
+ },
+ {
+  "id": "table-coffee-walnut-shelf-b",
+  "name": "Bàn trà gỗ óc chó có kệ dưới",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B07V9RL63N.glb",
+  "model_sha256": "79736c7431d6dcba8768597731e0231cd6c5a96d3ceea7daaf4e3af7bd6c67d1"
+ },
+ {
+  "id": "table-coffee-wood-black-frame-b",
+  "name": "Bàn trà mặt gỗ khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Alkove)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B07VB3QWF6.glb",
+  "model_sha256": "263218c1c202aea363e39dfbbd29491cc347d1df91d65295fc21cf7b8b9aca87"
+ },
+ {
+  "id": "nightstand-walnut-black-base-b",
+  "name": "Tủ đầu giường gỗ nâu đế sắt đen",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07VB7Q6W7.glb",
+  "model_sha256": "7f85070ca490422ffb3c2e74b74126764aad3f9ab0052d0c5007682f6ec6d637"
+ },
+ {
+  "id": "nightstand-oak-blue-niche-b",
+  "name": "Tủ đầu giường gỗ sồi hốc xanh",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/T/B07VDD47GT.glb",
+  "model_sha256": "a25747763c5d06d78f0da78c0ff1510d622196f85f3f299c1605eb79a986e045"
+ },
+ {
+  "id": "table-coffee-walnut-metal-b",
+  "name": "Bàn trà dài gỗ óc chó khung sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B07VDD47LW.glb",
+  "model_sha256": "c550b4accdb6b56e61de4a40702293959e83184edbf2048e20f8a591d4df9d54"
+ },
+ {
+  "id": "tv-unit-walnut-low-3-door-b",
+  "name": "Kệ tivi gỗ óc chó thấp",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07VDD5HT4.glb",
+  "model_sha256": "be9eb06e025150980ea02da9f78eca71a39a2a00a28e88486fe51aa1f995e542"
+ },
+ {
+  "id": "tv-unit-white-door-oak-open-b",
+  "name": "Kệ tivi cánh trắng ô mở gỗ sồi",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07VHNMRY8.glb",
+  "model_sha256": "5f099c8a53c481e66adb52b94375a7382cdc1b22157a96418d25d4310a6594d9"
+ },
+ {
+  "id": "sofa-forest-green-3s-b",
+  "name": "Sofa vải xanh rêu 3 chỗ chân đen",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/5/B07VLFWG25.glb",
+  "model_sha256": "038150a6a118c47a87bb476c4236d10646320334b36e10a9cc0fbb7abdbe798c"
+ },
+ {
+  "id": "table-coffee-round-gold-x-b",
+  "name": "Bàn trà tròn khung vàng chữ X",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07VLHKN8B.glb",
+  "model_sha256": "9b791a44b20636a9cc4ede3991c0309fce273cf383f37dccd37008c9fa7ee2b5"
+ },
+ {
+  "id": "sofa-brown-fabric-3s-b",
+  "name": "Sofa vải nâu 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B07VMLFZCD.glb",
+  "model_sha256": "97a5f17414c88aa9b4e9e40688ca7e47fbd8c18b9bf8d133d8a32cec36e7b727"
+ },
+ {
+  "id": "sofa-rust-orange-3s-b",
+  "name": "Sofa vải cam đất 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B07VNL8WXY.glb",
+  "model_sha256": "19e7e5b6c16c20dcbc336d6b9873e17b2f20f2b50449ca76302828c05b1dd81a"
+ },
+ {
+  "id": "chair-pink-tufted-armchair-b",
+  "name": "Ghế bành nhung hồng chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B07VNL91Y8.glb",
+  "model_sha256": "a8dce1f3848c2da252f91c207e6726ad4bfab771ab40332dce72d0bf7e524af6"
+ },
+ {
+  "id": "sofa-cream-loveseat-mid-b",
+  "name": "Sofa vải kem 2 chỗ chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07VNL95FP.glb",
+  "model_sha256": "bd09ce36afc47c8be1a25307fef11d8bbb9c80c70329007326040560ee2b0a05"
+ },
+ {
+  "id": "sofa-grey-2s-wood-legs-b",
+  "name": "Sofa vải xám 2 chỗ chân gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B07VNLB6Z4.glb",
+  "model_sha256": "ae727f6fd4a1a612b047a578da94abf73562ee9bb55f9dc995e700ebe9ab8b96"
+ },
+ {
+  "id": "sofa-olive-green-loveseat-b",
+  "name": "Sofa vải xanh olive 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B07VPNX3QL.glb",
+  "model_sha256": "98204aeba74f54396766a40c59b552c481171ddd7c03af4d739e48514a793ac1"
+ },
+ {
+  "id": "sofa-light-grey-3s-black-legs-b",
+  "name": "Sofa vải xám nhạt 3 chỗ chân đen",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B07VQSWN2F.glb",
+  "model_sha256": "7a7858d9862bcb5d981bb7ec0b9f420b5ef70b02d22b04ecd4aefff8c6867f2e"
+ },
+ {
+  "id": "sofa-teal-tufted-retro-b",
+  "name": "Sofa nhung xanh ngọc chần nút phong cách retro",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B07VQSWPXR.glb",
+  "model_sha256": "f3072839dc487b194d907ae53170f29a2022cb9ff38c88a3a085ec8f8adda380"
+ },
+ {
+  "id": "table-coffee-round-marble-gold-b",
+  "name": "Bàn trà tròn mặt đá khung vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07VQVN84H.glb",
+  "model_sha256": "49fd14ab35f69dd5790f6dbca7f53f2321f23d5dfbd438a295b3e3a20fd3e1d4"
+ },
+ {
+  "id": "sofa-charcoal-3s-slim-legs-b",
+  "name": "Sofa vải xám than 3 chỗ chân thon",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B07VSSLKP2.glb",
+  "model_sha256": "7a61bfbe0ab778ed93392e66f9bd285709b1b3d4cc25acdc30a608337c0a2b89"
+ },
+ {
+  "id": "chair-wing-teal-black-legs-b",
+  "name": "Ghế bành cánh xanh ngọc chân sắt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07VSTPCHB.glb",
+  "model_sha256": "d85ee509b35f026de9e79273ce3198619bd8bbcb6dbb7baf84b1e20beb338283"
+ },
+ {
+  "id": "chair-wing-tan-leather-b",
+  "name": "Ghế bành cánh da nâu chân sắt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B07VSTTTHV.glb",
+  "model_sha256": "549d3b77e971ec628e5985fd62a99fe1cc64788424b9cab28c5ed368f4f6b64d"
+ },
+ {
+  "id": "table-side-wood-magazine-rack-b",
+  "name": "Bàn phụ gỗ khung sắt có ngăn tạp chí",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07VZF5L4G.glb",
+  "model_sha256": "5be40cefb7c2ead0ffff3ac398b4e34071e35537a8206b6541dd7b5c4a0266d9"
+ },
+ {
+  "id": "table-side-round-dark-wood-b",
+  "name": "Bàn phụ tròn gỗ tối chân cong",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B07W3LR8Y6.glb",
+  "model_sha256": "37d431767d2695b7e36f67c30d1db7bf3985d8798bace5445eb873b1a06147ad"
+ },
+ {
+  "id": "table-side-round-hairpin-b",
+  "name": "Bàn phụ tròn mặt gỗ chân hairpin",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B07W422B7M.glb",
+  "model_sha256": "046318483ab0bad67536d27766ce3eb9098d9413542f315e1f3dbee171d2c7a2"
+ },
+ {
+  "id": "table-console-iron-wood-top-b",
+  "name": "Bàn console khung sắt mặt gỗ nâu",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07W563NHG.glb",
+  "model_sha256": "59afbce71fd0590e039416deda33d381d89bdde6a52b04075fd282f22e13d4cc"
+ },
+ {
+  "id": "table-side-round-gold-tray-b",
+  "name": "Bàn phụ tròn khay gỗ khung vàng 2 tầng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B07W5648MH.glb",
+  "model_sha256": "5ff4937c90433b31d5fd7e0cde6c9a3c9ab0dca6b2ac1897a45a6210e3309594"
+ },
+ {
+  "id": "table-side-round-marble-tripod-b",
+  "name": "Bàn phụ tròn mặt đá chân gỗ 3 chạc",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B07WL2VHTG.glb",
+  "model_sha256": "f2da394b639c77dff56a422f8a6b3cde52b9e969db79bf1ee288766f8d4ab875"
+ },
+ {
+  "id": "nightstand-white-marble-top-b",
+  "name": "Tủ đầu giường trắng mặt đá chân cong",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07WL4KFKB.glb",
+  "model_sha256": "dc6738ae055a9833c8a60b3209af41c613b08902e7e76bb7bd45cccec81f02b5"
+ },
+ {
+  "id": "lamp-ribbed-cream-ceramic-b",
+  "name": "Đèn bàn gốm sọc kem chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B0824F245V.glb",
+  "model_sha256": "f353038e24265d7376d40a98d65f642037088363db23f538ddb81cdf7f65c6a7"
+ },
+ {
+  "id": "lamp-floor-white-shade-brass-b",
+  "name": "Đèn sàn chụp trắng thân kim loại mảnh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B0824FB7WR.glb",
+  "model_sha256": "359129a1ffab7bdf4479633a3b317096baf1199a5ff43db1a75c0bb0fe012143"
+ },
+ {
+  "id": "lamp-table-blond-wood-base-b",
+  "name": "Đèn bàn thân gỗ sáng chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B0825CP3NS.glb",
+  "model_sha256": "6b48943074730338e11ebf0e0d28707ab30bcfebf21cb7871cfe2fd9516ca628"
+ },
+ {
+  "id": "lamp-table-gold-wire-base-b",
+  "name": "Đèn bàn thân dây kim loại vàng chụp trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B0825CXG8H.glb",
+  "model_sha256": "f4bce75bf22b48fcbeadcbdbb94905042a13334e8a23e1330790d898a8f335f9"
+ },
+ {
+  "id": "lamp-floor-brass-dome-b",
+  "name": "Đèn sàn chụp vòm đồng thân mảnh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B0825D7RYW.glb",
+  "model_sha256": "b9bdafc35c48d7cfbc8bf0401f212043119a7f68196c611b14ae55c2761c6a25"
+ },
+ {
+  "id": "lamp-desk-globe-black-arm-b",
+  "name": "Đèn bàn cầu thủy tinh trắng cần đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B0825F3GC7.glb",
+  "model_sha256": "eb1159553fdc1d3b41825806ff77f4ebf2ce6065409d0410d78fa69efb347811"
+ },
+ {
+  "id": "lamp-floor-slim-black-base-b",
+  "name": "Đèn sàn chụp trụ trắng đế đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B0828FBDV7.glb",
+  "model_sha256": "d38a85e2927c62b309956fb061961eda70893e19efa8177f5723a7c9b1f407a6"
+ },
+ {
+  "id": "chair-swivel-blue-velvet-b",
+  "name": "Ghế xoay bọc nhung xanh dương",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B082BL8QJM.glb",
+  "model_sha256": "5d0fa2f29eb3b4066425df6cd8054fee3ca3abcfd7073398dece2c3273a6b92f"
+ },
+ {
+  "id": "chair-swivel-cream-gold-legs-b",
+  "name": "Ghế xoay bọc kem chân vàng đồng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B082BLFMRC.glb",
+  "model_sha256": "e37a4f90d6228e75b7a42df9d2db71ed149ca322fec76544783c6d58da707efd"
+ },
+ {
+  "id": "chair-swivel-light-grey-b",
+  "name": "Ghế xoay bọc xám nhạt chân trắng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B082BM2BC1.glb",
+  "model_sha256": "75b73474ea6e90fc77c2ed2fddb6150e20907356ae09d5fa19811b1756465160"
+ },
+ {
+  "id": "desk-oak-top-black-frame-drawer-b",
+  "name": "Bàn làm việc mặt gỗ sồi khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B082DFL4JW.glb",
+  "model_sha256": "e99aafef7fcac75c4440bc6f8194fed3fba3659c54e092a40dadc2156ef51d76"
+ },
+ {
+  "id": "chair-office-grey-velvet-wood-arms-b",
+  "name": "Ghế văn phòng nhung xám tay gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B082DMQ8L4.glb",
+  "model_sha256": "2fd7bdfc1d94dd44a54b83de3597e0157c280e9c34e3b68cb32344787815111c"
+ },
+ {
+  "id": "nightstand-oak-2-drawer-tapered-b",
+  "name": "Tủ đầu giường gỗ sồi 2 ngăn kéo chân thon",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B082JH6LSF.glb",
+  "model_sha256": "44187eff2d07edf06f73bc25f59d028fc079091a9f7e0b1ef5d9b4a79bc5ad10"
+ },
+ {
+  "id": "sofa-blue-3s-wood-base-b",
+  "name": "Sofa vải xanh navy 3 chỗ đế gỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B082QCQ6Z8.glb",
+  "model_sha256": "7a0e8a000c87113b0d0f3d87d15a5b7999603d649da7978aeb918a507452351e"
+ },
+ {
+  "id": "bench-storage-teal-channel-b",
+  "name": "Ghế băng chứa đồ bọc xanh ngọc kẻ rãnh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B082QCQ71Q.glb",
+  "model_sha256": "4b6ffc5a8c27a90217d260136e509b312d2c0c9cb06f45e0569379e175e4d390"
+ },
+ {
+  "id": "bench-storage-grey-channel-b",
+  "name": "Ghế băng chứa đồ bọc xám kẻ rãnh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B082QD6R9M.glb",
+  "model_sha256": "57d312028470b4c9912055be7dccc0a76a2d295609f6c776ad3a6f24ad64fb60"
+ },
+ {
+  "id": "sofa-camel-leather-3s-low-b",
+  "name": "Sofa da caramel 3 chỗ dáng thấp",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B082QDZLRC.glb",
+  "model_sha256": "d48e484119e0b14c885d78c54d99f9ae499c207fb4a1696479bcf28f964daf7d"
+ },
+ {
+  "id": "sofa-pale-blush-3s-b",
+  "name": "Sofa vải hồng nhạt 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B082TCCZPN.glb",
+  "model_sha256": "842a8c0b1b36e8ecbca12cd78f396133e333cf63b1eac36af499225a984a645c"
+ },
+ {
+  "id": "chair-wingback-taupe-leather-b",
+  "name": "Ghế bành cánh da xám nâu chân gỗ tối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B082VL24SS.glb",
+  "model_sha256": "b09d49fdbb84e4ed9a881d2c9bd474e7e2e827796adc77c4f41b9a30d078fdaf"
+ },
+ {
+  "id": "chair-brown-leather-lounge-b",
+  "name": "Ghế bành da nâu đậm dáng thanh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B082VL45XY.glb",
+  "model_sha256": "fa6dfe718f390947385ccf1d156e425ef817ba461272d561c9769addbdb09984"
+ },
+ {
+  "id": "chair-cream-lounge-wood-legs-b",
+  "name": "Ghế bành bọc kem dáng thanh",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B082VL6WKP.glb",
+  "model_sha256": "0e0c9d90e0d0a78fc95c663e9e7e8ad32885144ae8962b67b253daa0a2562d4c"
+ },
+ {
+  "id": "sofa-tan-leather-3s-slim-b",
+  "name": "Sofa da nâu nhạt 3 chỗ dáng thấp",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B082VLKSP9.glb",
+  "model_sha256": "8e53feb414b21741ab27d3c28bff4b547c175c09e91499b80fd35b54e8098902"
+ },
+ {
+  "id": "chair-olive-leather-midcentury-b",
+  "name": "Ghế bành da nâu olive mid-century",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B082VLQY4M.glb",
+  "model_sha256": "a89c7afc645bae69c100904aa26e1ef7adf244b7a81e702f213885b3067b1361"
+ },
+ {
+  "id": "sofa-pale-grey-loveseat-gold-legs-b",
+  "name": "Sofa vải xám nhạt 2 chỗ chân vàng",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B082VLRCBX.glb",
+  "model_sha256": "a2fb6a48cc5d9fa38b176611fe4a18c8cabf522160aaccc1b2b203595898ba0c"
+ },
+ {
+  "id": "sofa-dark-brown-leather-3s-b",
+  "name": "Sofa da nâu sẫm 3 chỗ chân vàng",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B082VLTCM4.glb",
+  "model_sha256": "cd5b8a4140a8e69c3a2656b228e67e4f295ecc944bfe9e2c41e0d34b09a94f4f"
+ },
+ {
+  "id": "chair-leather-club-brown-b",
+  "name": "Ghế bành da nâu dáng khối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B082VLWBGD.glb",
+  "model_sha256": "a6055dd9caaf1bf6198af524cf5b52ab919163c7105935801c37a379ba127f3b"
+ },
+ {
+  "id": "sofa-white-3s-deep-b",
+  "name": "Sofa vải trắng kem 3 chỗ sâu",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B082VLYF5W.glb",
+  "model_sha256": "55b9dc70e1612f8f826f1a4dc7be1049d67a3b45c5f001de4e87c0120133e684"
+ },
+ {
+  "id": "chair-wing-cognac-leather-b",
+  "name": "Ghế bành cánh da cognac",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B082VLZ7SC.glb",
+  "model_sha256": "dee77e43268ed68eb3de658d72868a2d884511875ce71cbca50fe260dc807d53"
+ },
+ {
+  "id": "ottoman-cognac-leather-b",
+  "name": "Đôn ghế da cognac chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B082VM3G6N.glb",
+  "model_sha256": "9d7d4db1598b3f96da3bab4bef3748f9b6a9018e8ba00c8ccc7e2d9ffaf68b87"
+ },
+ {
+  "id": "sofa-cobalt-blue-loveseat-b",
+  "name": "Sofa vải xanh cobalt 2 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B082VM4LMQ.glb",
+  "model_sha256": "3aa532880d974ee43231abc7d03d1f5c67c1cddce8d1cc760e5b45e8143a0068"
+ },
+ {
+  "id": "chair-cream-tufted-armchair-b",
+  "name": "Ghế bành vải kem chần nút chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B082VM767S.glb",
+  "model_sha256": "545f45c5128fe76012884e5111c99b75c3dd16e43532a7bd541035d66546825b"
+ },
+ {
+  "id": "chair-teal-tufted-armchair-b",
+  "name": "Ghế bành vải xanh ngọc chân gỗ sáng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B082VM9F98.glb",
+  "model_sha256": "84123fec0d1272a84b51d58308646a9ed5fe0a84e3bc4b1a307f0e81a06926e8"
+ },
+ {
+  "id": "chair-tan-leather-boxy-b",
+  "name": "Ghế bành da nâu nhạt dáng khối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B082VML3Q3.glb",
+  "model_sha256": "1b2a7c72d79baa465a49c88b7aaa755473a740f75185a06aa5a2b9eff1951eb9"
+ },
+ {
+  "id": "chair-grey-tufted-leather-b",
+  "name": "Ghế bành da xám chần nút khung đồng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B082VMMBJY.glb",
+  "model_sha256": "fdf71be871ae2ba47e14611fa3a1f2d064520038ea30a6d10c3a03836f3810cd"
+ },
+ {
+  "id": "chair-white-lounge-wood-legs-b",
+  "name": "Ghế bành trắng chân gỗ sáng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/G/B082VMWB4G.glb",
+  "model_sha256": "350e19a3d190029d3692d8f13fac2fae3d8080b72efc346da58147f35b320a89"
+ },
+ {
+  "id": "lamp-task-black-wood-detail-b",
+  "name": "Đèn bàn đọc sách đen chi tiết gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B082XLC9B4.glb",
+  "model_sha256": "3849d73c0418a87d838214e30cc6592075b525255c0edadcb70dc53bf40bf315"
+ },
+ {
+  "id": "desk-light-oak-drawer-b",
+  "name": "Bàn làm việc gỗ sáng có ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B082YNHQLX.glb",
+  "model_sha256": "011425ddc36dbab8ef2244af39782c1e12ae880dd6460b2334b9e196b7f61149"
+ },
+ {
+  "id": "desk-grey-oak-plain-b",
+  "name": "Bàn làm việc gỗ xám đơn giản",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B082YNV6F7.glb",
+  "model_sha256": "68212458f2843051950621a4c5eea2c210a35afda510bf1c20f0ec61cd4a9c7e"
+ },
+ {
+  "id": "vase-black-totem-set-b",
+  "name": "Bộ bình gốm đen nhám",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B0831PPZY6.glb",
+  "model_sha256": "73cb7161ea981981e476e27d4f90699d90478e980f5d05e3e82eca1ed0801bac"
+ },
+ {
+  "id": "planter-terrazzo-wood-stand-b",
+  "name": "Chậu terrazzo chân gỗ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B0831PZJ8X.glb",
+  "model_sha256": "b2437b2bb77df9bfbbe4dfbda24b74fbdd2047e9ccba719f6d2e8f10640e8bd3"
+ },
+ {
+  "id": "sofa-cream-chesterfield-b",
+  "name": "Sofa chesterfield vải kem 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/4/B0831X3864.glb",
+  "model_sha256": "4c5b1006b1c42df9dd30ba890e0cdff7bc996f9c330018028290538538bea63c"
+ },
+ {
+  "id": "ottoman-grey-blue-bench-b",
+  "name": "Đôn dài bọc xanh xám chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B0831X3W8K.glb",
+  "model_sha256": "8bd55aaedc1170ae192520ee8a28afece6cdbc7eb69c418c9a672b6ab7329dad"
+ },
+ {
+  "id": "chair-grey-tufted-armchair-plain-b",
+  "name": "Ghế bành vải xám chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B0831X7B8V.glb",
+  "model_sha256": "5eef1a03af68d712ff0c7cb003503d97dd617ed62dbaeb3190e92cec1d070490"
+ },
+ {
+  "id": "sofa-taupe-sectional-b",
+  "name": "Sofa góc vải xám nâu",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B0831X8LWR.glb",
+  "model_sha256": "f8a31f7d173c85c262a66b8420241e5defba3c09531cd355b34e48949a0b20d0"
+ },
+ {
+  "id": "sofa-grey-tufted-3s-wood-b",
+  "name": "Sofa vải xám chần nút 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B0831XJQMC.glb",
+  "model_sha256": "38bcf6290d0bbb4dc9baa47a5cd18a0ad2daad3a16d119ac66f4c3b743ba6a77"
+ },
+ {
+  "id": "sofa-cream-nailhead-3s-b",
+  "name": "Sofa vải kem đinh tán 3 chỗ",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/X/B0831XXTDX.glb",
+  "model_sha256": "f7269c6dbaf3aa15faa4a483d9335cecaa926cc449d7225c9c80b831bd100874"
+ },
+ {
+  "id": "sofa-taupe-tufted-chesterfield-b",
+  "name": "Sofa chesterfield vải xám nâu",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B0831Y1G61.glb",
+  "model_sha256": "3514ddfd090a99a0746c8b52841d85270ea9f552c2dc0dafbba1d9a15bb47bd0"
+ },
+ {
+  "id": "planter-white-black-metal-stand-b",
+  "name": "Chậu sứ trắng chân sắt đen",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B0842H2F7C.glb",
+  "model_sha256": "74a38a34e96426efa706c689ea2dc26c407e59c4a37b71f99514f2f4b607a41c"
+ },
+ {
+  "id": "vase-navy-white-ikat-b",
+  "name": "Bình gốm xanh navy họa tiết trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/N/B0842L2D5N.glb",
+  "model_sha256": "140376d5a9acab1661fcc637df9ef8217539d7ad6dc529802213b8db48e02bc8"
+ },
+ {
+  "id": "mirror-quatrefoil-wood-b",
+  "name": "Gương treo tường khung gỗ hình cánh hoa",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B084DQ9VWM.glb",
+  "model_sha256": "8ef1f1fcba9365bffa69d51a67a30a074d51f9e5588016785cacf7031d9c195d"
+ },
+ {
+  "id": "mirror-round-gold-shelf-b",
+  "name": "Gương tròn khung vàng có kệ nhỏ",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/6/B084HTZ2C6.glb",
+  "model_sha256": "810361b054d3ab42551fc01d034a3d4b776ab3f0101e65cc32a0983bc41be1e9"
+ },
+ {
+  "id": "mirror-oval-gold-frame-b",
+  "name": "Gương oval ngang khung vàng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/W/B084HV67GW.glb",
+  "model_sha256": "daedb16105d071814ceddb7e2649248c729e7d2855703c545fa4979df97d3751"
+ },
+ {
+  "id": "mirror-geometric-black-frame-b",
+  "name": "Gương tròn trong khung sắt đen hình học",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/L/B084HV6KDL.glb",
+  "model_sha256": "b209759fa7bcdbc7550e6c460a257ab23695ad39cd4c2824f957b33ba1f8618d"
+ },
+ {
+  "id": "mirror-round-black-cutout-b",
+  "name": "Gương tròn khung đen có tay xách",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B084HV6KDV.glb",
+  "model_sha256": "04970b0d3f64d04d7c82f88186c6117df769bfd7433e02bb663ce3118743d290"
+ },
+ {
+  "id": "mirror-tall-oval-black-b",
+  "name": "Gương oval đứng khung đen mảnh",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B084HV7BC3.glb",
+  "model_sha256": "72306375361bf89d50aa0e22d2506f6e414ab3522a9f601f164b36b166033fb0"
+ },
+ {
+  "id": "mirror-arched-window-white-b",
+  "name": "Gương vòm kiểu cửa sổ khung trắng",
+  "group": "decor",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B084KD18YS.glb",
+  "model_sha256": "e9bf4c4d31dc2712a8941c9ddc19c3aeffeaf2da18a962515c8e66e405e49d7e"
+ },
+ {
+  "id": "table-coffee-navy-2-drawer-b",
+  "name": "Bàn trà xanh navy 2 ngăn kéo chân thon",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B084MLZCXZ.glb",
+  "model_sha256": "d39b60c3e6660d638586ba058ee1bc66ee4cad0ca2fd828a31e1f1890866a6fd"
+ },
+ {
+  "id": "table-console-navy-2-drawer-b",
+  "name": "Bàn console xanh navy 2 ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B084MM451K.glb",
+  "model_sha256": "4a6d282aa3906c869d696df0000711a93aaa260b2676211da5c034ac79033b56"
+ },
+ {
+  "id": "nightstand-reclaimed-oak-2-drawer-b",
+  "name": "Tủ đầu giường gỗ sồi tái chế 2 ngăn kéo",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B084MXXPK9.glb",
+  "model_sha256": "18b8fe2f1b2dab34838c3934074b3b21272f15ed14e002e126848401e850b197"
+ },
+ {
+  "id": "nightstand-slat-wood-hairpin-b",
+  "name": "Tủ đầu giường gỗ nan chân sắt hairpin",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B084MYDTKM.glb",
+  "model_sha256": "708e9d9357044341115866cea369602e8c00172c8611c3f815838b5caa1da44f"
+ },
+ {
+  "id": "dresser-midcentury-walnut-sliding-b",
+  "name": "Tủ thấp mid-century gỗ óc chó cánh trượt",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B084QWW4LR.glb",
+  "model_sha256": "b6e9928e0911961ac075e7fe111a0914b8863f37a49fdae58a74d395f4ab27bd"
+ },
+ {
+  "id": "chair-dining-cream-arm-walnut-b",
+  "name": "Ghế ăn bọc kem có tay vịn chân gỗ nâu",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B084RYTDM7.glb",
+  "model_sha256": "8bd0d0423aba54c967c358b0515ad5b18466fc792d305c65d426e46d92988f24"
+ },
+ {
+  "id": "chair-dining-rattan-back-wood-b",
+  "name": "Ghế ăn gỗ lưng mây ngồi dây dệt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/2/B084RZVHD2.glb",
+  "model_sha256": "5aa46812f8359bb7e87fde0aa7c9385eca71f79002310becc15a46a228f59843"
+ },
+ {
+  "id": "desk-l-shape-light-wood-b",
+  "name": "Bàn làm việc chữ L gỗ sáng khung sắt",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B084S6PZT8.glb",
+  "model_sha256": "d631e4b00796b70f270b51ea1b78d80103149e46e0ba930ff1d7c7686ead6a21"
+ },
+ {
+  "id": "desk-dark-grey-plain-b",
+  "name": "Bàn làm việc xám đậm 3 ngăn kéo",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/V/B084S6W1WV.glb",
+  "model_sha256": "726417f3e28effd615fe74c2c74d588c7b0f19bcfa81203c005d230f880f6f10"
+ },
+ {
+  "id": "chair-wishbone-wood-b",
+  "name": "Ghế ăn gỗ kiểu wishbone ngồi dây",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/J/B084T7WS8J.glb",
+  "model_sha256": "d064cf02c9aa660b8787940e3de73a92434e53fe8dc8c5684a087922fc5710c7"
+ },
+ {
+  "id": "chair-dining-beige-wingback-b",
+  "name": "Ghế ăn bọc be lưng cong chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B084W24C7S.glb",
+  "model_sha256": "c1161a4a1043ee8b4d3bc4e3c7da639da73d9d9455be8fe21de4e93fe19a8e98"
+ },
+ {
+  "id": "chair-dining-navy-curved-b",
+  "name": "Ghế ăn bọc xanh navy lưng cong",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B084W2T4QR.glb",
+  "model_sha256": "543c9ebf58281f632a089bf129f7ca1671506ffa08757010947e09f37aab1014"
+ },
+ {
+  "id": "sofa-blue-leather-sectional-b",
+  "name": "Sofa góc da xanh dương chần nút",
+  "group": "sofa",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Amazon Brand - Solimo)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B084XMYGBF.glb",
+  "model_sha256": "3e2de83dfb6ae9168a45818a5008be5f3bbc5128e5de41de5e4a3db7509de59f"
+ },
+ {
+  "id": "chair-lounge-mustard-leather-b",
+  "name": "Ghế thư giãn da vàng nâu chân xoay",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B0853MY3J3.glb",
+  "model_sha256": "677d4459e9707157b6f6680c390741999e9391ea7d88b861d5710990d6066e62"
+ },
+ {
+  "id": "chair-swivel-tan-leather-tub-b",
+  "name": "Ghế bành tròn xoay da nâu",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B0853N8T7M.glb",
+  "model_sha256": "2710a0efaa4c53b17943f5b4262caa5366c8a1161532890ddecfe439ae27e5df"
+ },
+ {
+  "id": "ottoman-lounge-white-wood-base-b",
+  "name": "Đôn kê chân bọc trắng đế gỗ xoay",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B0853NLYDD.glb",
+  "model_sha256": "775acc1b94ffaa51dfcfe886f60a8e1cfb93e533c76117cbf23f0dbe87101beb"
+ },
+ {
+  "id": "chair-swivel-white-tub-b",
+  "name": "Ghế bành tròn xoay bọc trắng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/9/B0853NR959.glb",
+  "model_sha256": "db54aaf7321273cd9914db2ec38cbf4ed1f517d64c40860db3232c57eb63a7ea"
+ },
+ {
+  "id": "cabinet-oak-2-door-b",
+  "name": "Tủ gỗ sồi 2 cánh chân thon",
+  "group": "storage",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/8/B0853Q7C48.glb",
+  "model_sha256": "58cecad7ed5d2d4eca21bc12b343c7a2c06f2177df3a06bcfa37700f57a2bc45"
+ },
+ {
+  "id": "chair-swivel-cream-tufted-wing-b",
+  "name": "Ghế bành cánh xoay bọc kem chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B0853VH2YF.glb",
+  "model_sha256": "c3151ff6c5599ecf933960965483dbc787e15729a550eaaf261fa0409113df12"
+ },
+ {
+  "id": "chair-swivel-brown-tufted-wing-b",
+  "name": "Ghế bành cánh xoay da nâu chần nút",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B0853VKX9H.glb",
+  "model_sha256": "c4d941b4c88d88cf6e8a50539a2d69fd89aa1b97e1f1b17a69984934bf86c74e"
+ },
+ {
+  "id": "chair-swivel-grey-brown-boxy-b",
+  "name": "Ghế bành xoay vải nâu xám dáng khối",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B0853VNSCC.glb",
+  "model_sha256": "3f297a99adefedede724f30c87623166de7229d22e94d875933d8496024cae57"
+ },
+ {
+  "id": "chair-swivel-cream-wood-trim-b",
+  "name": "Ghế bành xoay kem viền gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/3/B0853VPXF3.glb",
+  "model_sha256": "3a30bcf6fda2fdaedbaa1534b80cf22a62975a34b2989c83124bc9eb1750c5f9"
+ },
+ {
+  "id": "chair-swivel-mustard-tub-b",
+  "name": "Ghế bành tròn xoay bọc vàng mù tạt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Q/B0854SBWPQ.glb",
+  "model_sha256": "48777bee8cca660c30a5699b2b8dd100adbd5db75d00fbb5b49b1a46eb33196e"
+ },
+ {
+  "id": "chair-dining-cream-black-sled-b",
+  "name": "Ghế ăn bọc kem chân sắt đen dạng trượt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Rivet)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B08568VZZR.glb",
+  "model_sha256": "6bb528fe4cab53c78411909902d90c5c17d31c3cc848711e63379daef80353dc"
+ },
+ {
+  "id": "chair-dining-oak-rope-arm-b",
+  "name": "Ghế ăn gỗ sồi ngồi dây dệt có tay vịn",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/C/B0857JM2NC.glb",
+  "model_sha256": "1093e918400732f847527ea845723bf67d7048f4fcc20785df7bd0108636fc35"
+ },
+ {
+  "id": "chair-dining-white-rope-b",
+  "name": "Ghế ăn gỗ trắng ngồi dây dệt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/K/B0857JM2NK.glb",
+  "model_sha256": "4ed7b992b64576188be619e063b1f4a9fa80b88cb031f97592811cf7e82a53ee"
+ },
+ {
+  "id": "chair-dining-walnut-rope-b",
+  "name": "Ghế ăn gỗ óc chó ngồi dây dệt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Z/B0857JQ3BZ.glb",
+  "model_sha256": "7a066ecdeff1db53e2c9e70fe547c7d99ec53197fcd192e203b1c9feff4ef2dc"
+ },
+ {
+  "id": "chair-dining-black-rope-back-b",
+  "name": "Ghế ăn gỗ đen lưng dây dệt",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B0857JV4J7.glb",
+  "model_sha256": "63a2ac7a6015f8d06c31c3dbd26b202dcc84591bfd284792f5d97e4208c294b9"
+ },
+ {
+  "id": "bench-rope-seat-wood-b",
+  "name": "Ghế băng dài ngồi dây dệt chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B0857JZJPR.glb",
+  "model_sha256": "1f248678828e76e1790617c0924b3686f041d135696f4e76542a86effe4df3f9"
+ },
+ {
+  "id": "chair-wishbone-arm-wood-b",
+  "name": "Ghế tay vịn gỗ kiểu wishbone ngồi dây",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Stone & Beam)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B0857K54FM.glb",
+  "model_sha256": "58053ef0fa89d6d5b6f8a8bada05539ae91af84d9efeca115432aefa32191302"
+ },
+ {
+  "id": "chair-swivel-wing-white-b",
+  "name": "Ghế bành cánh xoay bọc trắng",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Ravenna Home)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/D/B085FHH2ZD.glb",
+  "model_sha256": "78f56bab9442137884f2b425038dbecd5f3138cead5150fb90feaf072f4a184c"
+ },
+ {
+  "id": "table-side-c-shape-walnut-b",
+  "name": "Bàn phụ chữ C mặt gỗ khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu UMI)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B0861Y1RQS.glb",
+  "model_sha256": "2b7195b3aea81bd4633234cc41f0d139c87735ba93f64c2cb31a9ebec6b75de7"
+ },
+ {
+  "id": "table-side-round-gold-marble-b",
+  "name": "Bàn phụ tròn mặt đá khung vàng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu UMI)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B0861YKM8S.glb",
+  "model_sha256": "124ba69d229daa76ab1359dad291a6e8015d2c92777ab4165d1eb955f74ee1cc"
+ },
+ {
+  "id": "table-nesting-gold-cutout-b",
+  "name": "Bộ bàn phụ lồng nhau khung vàng mặt đá",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu UMI)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/F/B0861YZY3F.glb",
+  "model_sha256": "150f7d36972b1fafc8e4bd4d98d5e0ddd8ef2a93e3f17be9c0931ebdc718e384"
+ },
+ {
+  "id": "bench-storage-grey-fabric-b",
+  "name": "Ghế băng chứa đồ bọc vải xám",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/M/B0871DD1NM.glb",
+  "model_sha256": "074fbf26c0adb509dc9e6c15b2489c5793d06033a1dc148312339a5d51ffd4d9"
+ },
+ {
+  "id": "desk-walnut-top-black-frame-plain-b",
+  "name": "Bàn làm việc mặt gỗ nâu khung sắt đen",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu AmazonBasics)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B0876PDMJR.glb",
+  "model_sha256": "b1bbb654c728381035e9b0fce865485f1c8ca46a141ad711ac192715d07a2ce6"
+ },
+ {
+  "id": "desk-white-frame-light-top-b",
+  "name": "Bàn làm việc mặt gỗ sáng chân trắng",
+  "group": "table",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Umi)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/Y/B08C2NYN5Y.glb",
+  "model_sha256": "977ec260410aec333c2c3530be05b46fc26cd95be378bfef3536c9e49c567380"
+ },
+ {
+  "id": "chair-navy-velvet-armchair-wood-legs-b",
+  "name": "Ghế bành nhung xanh navy chân gỗ",
+  "group": "chair",
+  "license": "CC-BY 4.0",
+  "author": "Amazon Berkeley Objects (thương hiệu Movian)",
+  "source": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/H/B08G217VYH.glb",
+  "model_sha256": "bf308195b40756995f105abad349d6276de53c787b3b291c74bb87204d71bc62"
  }
 ]
