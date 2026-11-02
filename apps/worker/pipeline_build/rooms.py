@@ -100,10 +100,29 @@ _BATHROOM_MAX_M2 = 10.0
 
 _BEDROOM_MIN_M2 = 6.0
 _BEDROOM_MAX_M2 = 25.0
-"""Tủ áo trong phòng 6-25 m² mới là phòng ngủ: nhỏ hơn là kho / phòng thay đồ, lớn hơn là phòng khách có kệ tủ.
+_WARDROBE_BEDROOM_MIN_M2 = 8.0
+"""Giường trong phòng 6-25 m² là phòng ngủ trước mọi luật khác: thiết bị vệ sinh dò nhầm (ghế, bàn học) không biến
+phòng ngủ thành phòng tắm (H-08 ch-01: phòng ngủ 9,5 m² thành "phòng tắm 3"); lớn hơn là vùng gộp (bench-3d cn-19:
+khách-bếp 40 m² có giường thành "phòng ngủ").
 
-Giường trong phòng ≥ 6 m² là phòng ngủ trước mọi luật khác: thiết bị vệ sinh dò nhầm (ghế, bàn học) không biến
-phòng ngủ thành phòng tắm (H-08 ch-01: phòng ngủ 9,5 m² thành "phòng tắm 3")."""
+Tủ áo đơn lẻ chỉ làm phòng ngủ ở 8-25 m²: nhỏ hơn là kho / phòng thay đồ (bench-3d ch-06, cn-05: kho 6,7-7,6 m²),
+lớn hơn là phòng khách có kệ tủ."""
+
+_FACADE_MM = 3000.0
+_FACADE_LOGGIA_M2 = (2.0, 15.0)
+_NOT_LOGGIA = frozenset({"bed", "sanitary_fixture", "shower"})
+"""Mặt ngoài nhà: cạnh phòng trong 2·`ROOM_SNAP_MM` quanh biên bao lồi của đường khép (tường kéo dài `ROOM_SNAP_MM`
+nên biên bao cách tim tường mặt ngoài đúng `ROOM_SNAP_MM`).
+
+Phòng chưa có tên (chữ, rìa, đồ đạc) 2-15 m², ≥ 3 m cạnh trên mặt ngoài, không giường/thiết bị vệ sinh → lô gia
+(bench-3d r1: 18/21 phòng "khác" như thế là lô gia/ban công/giặt phơi). Chỉ khi tầng có ít nhất một nhãn chữ: tầng
+không đọc được chữ nào (ảnh âm bản, OCR hỏng) thì mọi phòng đều "khác", đoán lô gia là đoán mù. Máy giặt + ≥ 3 m mặt
+ngoài (không buồng tắm đứng) → lô gia trước luật thiết bị vệ sinh: chậu giặt dò thành `sanitary_fixture`."""
+
+_SHAFT_M2 = 2.5
+_DOOR_LABELS = frozenset({"door", "double_door"})
+"""Hộp kỹ thuật: phòng chưa có tên < 2,5 m² không hộp cửa đi nào chạm biên (nới `ROOM_SNAP_MM`) → `utility` tên
+"hộp kỹ thuật" (bench-3d cn-01, cn-06, huge-ch03: ô 1-1,6 m² giữa tường thành "phòng 7")."""
 
 _DINING_LABELS = frozenset({"table", "chair"})
 """Tủ bếp (kể cả ngắn) cùng bàn/ghế ăn trong phòng > 10 m² → bếp; tủ áo cạnh tủ bếp không làm phòng ngủ.
@@ -543,21 +562,33 @@ def _room_labels(
     return [None if item is None else item[1] for item in best]
 
 
-def _fixture_labels(
-    outlines: Sequence[Sequence[Point]],
-    areas_m2: Sequence[float],
-    detections: Sequence[DetectionPx],
-    scaling: Scaling,
-) -> list[RoomLabel | None]:
-    """Công năng suy từ đồ đạc dò được trong biên, cho phòng không có nhãn chữ (bản vẽ không ghi tên, chữ "WC" nhỏ
-    OCR bỏ sót), theo thứ tự: giường và ≥ `_BEDROOM_MIN_M2` → phòng ngủ; dãy tủ bếp dài ≥ `_KITCHEN_RUN_MM` → bếp;
-    thiết bị vệ sinh/buồng tắm đứng và ≤ `_BATHROOM_MAX_M2` → phòng tắm; máy giặt (không kèm thiết bị vệ sinh) và
-    ≤ `_BATHROOM_MAX_M2` → lô-gia; tủ bếp + bàn/ghế ăn và > `_BATHROOM_MAX_M2` → bếp; tủ áo cạnh dài
-    ≥ `_WARDROBE_MIN_MM` (không kèm tủ bếp, máy giặt, thiết bị vệ sinh) và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` →
-    phòng ngủ; không có gì → `None`.
+def _facade_lengths(lines: Sequence[shapely.LineString], outlines: Sequence[Sequence[Point]]) -> list[float]:
+    """Độ dài (mm) biên mỗi `outline` nằm trên mặt ngoài nhà (`_FACADE_MM`)."""
+    if not outlines:
+        return []
+    hull = shapely.convex_hull(shapely.MultiLineString(list(lines)))
+    rim = shapely.boundary(hull).buffer(2 * ROOM_SNAP_MM)
+    return [float(shapely.LinearRing([(p.x, p.y) for p in o]).intersection(rim).length) for o in outlines]
 
-    Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
-    """
+
+def _door_flags(outlines: Sequence[Sequence[Point]], detections: Sequence[DetectionPx], scaling: Scaling) -> list[bool]:
+    """Mỗi `outline` có hộp cửa đi (`_DOOR_LABELS`) chạm biên nới `ROOM_SNAP_MM` không."""
+    corners = [
+        (scaling.point(d.box.x_min, d.box.y_min), scaling.point(d.box.x_max, d.box.y_max))
+        for d in detections
+        if d.label in _DOOR_LABELS
+    ]
+    boxes = [shapely.box(low.x, low.y, high.x, high.y) for low, high in corners]
+    tree = shapely.STRtree(boxes)
+    rings = [shapely.LinearRing([(p.x, p.y) for p in o]).buffer(ROOM_SNAP_MM) for o in outlines]
+    return [bool(tree.query(ring, predicate="intersects").size) for ring in rings]
+
+
+def _fixtures_in(
+    outlines: Sequence[Sequence[Point]], detections: Sequence[DetectionPx], scaling: Scaling
+) -> list[set[str]]:
+    """Nhãn đồ đạc có tâm trong mỗi `outline`; tủ bếp dài ≥ `_KITCHEN_RUN_MM` → `kitchen_run`, tủ áo ngắn hơn
+    `_WARDROBE_MIN_MM` → `wardrobe_short`."""
     found_in: list[set[str]] = [set() for _ in outlines]
     polygons = [shapely.Polygon([(p.x, p.y) for p in outline]) for outline in outlines]
     tree = shapely.STRtree(polygons)
@@ -572,24 +603,44 @@ def _fixture_labels(
             label = label if long_side >= _WARDROBE_MIN_MM else "wardrobe_short"
         for room in tree.query(shapely.Point(centre.x, centre.y), predicate="within"):
             found_in[int(room)].add(label)
+    return found_in
+
+
+def _fixture_labels(
+    found_in: Sequence[set[str]], areas_m2: Sequence[float], facades_mm: Sequence[float]
+) -> list[RoomLabel | None]:
+    """Công năng suy từ đồ đạc trong phòng (`_fixtures_in`), cho phòng không có nhãn chữ (bản vẽ không ghi tên, chữ
+    "WC" nhỏ OCR bỏ sót), theo thứ tự: giường và `_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; dãy tủ bếp dài
+    ≥ `_KITCHEN_RUN_MM` → bếp; máy giặt, không buồng tắm đứng, ≤ `_BATHROOM_MAX_M2` và ≥ `_FACADE_MM` mặt ngoài hay
+    không kèm thiết bị vệ sinh → lô-gia; thiết bị vệ sinh/buồng tắm đứng và ≤ `_BATHROOM_MAX_M2` → phòng tắm; tủ
+    bếp + bàn/ghế ăn và > `_BATHROOM_MAX_M2` → bếp; tủ áo cạnh dài ≥ `_WARDROBE_MIN_MM` (không kèm tủ bếp, máy giặt,
+    thiết bị vệ sinh) và `_WARDROBE_BEDROOM_MIN_M2`-`_BEDROOM_MAX_M2` → phòng ngủ; không có gì → `None`.
+
+    Tủ bếp ngắn không tính: model hay dò bàn lavabo phòng tắm thành `kitchen_cabinet` (bench căn hộ 27/10/2026).
+    """
     labels: list[RoomLabel | None] = []
-    for found, area_m2 in zip(found_in, areas_m2, strict=True):
+    for found, area_m2, facade_mm in zip(found_in, areas_m2, facades_mm, strict=True):
         cabinet = bool(found & {"kitchen_cabinet", "kitchen_run"})
-        if "bed" in found and area_m2 >= _BEDROOM_MIN_M2:
+        if "bed" in found and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2:
             usage: RoomUsage | None = "bedroom"
         elif "kitchen_run" in found:
             usage = "kitchen"
+        elif (
+            "washing_machine" in found
+            and "shower" not in found
+            and (facade_mm >= _FACADE_MM or "sanitary_fixture" not in found)
+            and area_m2 <= _BATHROOM_MAX_M2
+        ):
+            usage = "loggia"
         elif found & {"sanitary_fixture", "shower"} and area_m2 <= _BATHROOM_MAX_M2:
             usage = "bathroom"
-        elif "washing_machine" in found and area_m2 <= _BATHROOM_MAX_M2:
-            usage = "loggia"
         elif cabinet and found & _DINING_LABELS and area_m2 > _BATHROOM_MAX_M2:
             usage = "kitchen"
         elif (
             "wardrobe" in found
             and not cabinet
             and not found & _WET_LABELS
-            and _BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2
+            and _WARDROBE_BEDROOM_MIN_M2 <= area_m2 <= _BEDROOM_MAX_M2
         ):
             usage = "bedroom"
         else:
@@ -734,9 +785,9 @@ def build_rooms(
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
-    Tên: nhãn chữ trong phòng, không có thì suy từ đồ đạc (`_fixture_labels`). Mảnh dưới `MIN_ROOM_AREA_M2` →
-    `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường thật, nên luật FE
-    `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
+    Tên: nhãn chữ trong phòng, không có thì lô gia rìa, suy từ đồ đạc (`_fixture_labels`), rồi lô gia mặt ngoài
+    (`_FACADE_MM`), hộp kỹ thuật (`_SHAFT_M2`). Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng
+    đoạn nối khe không có tường thật, nên luật FE `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
 
     Tin cậy (B12): tích nguồn tên (`_NAME_TRUST`), 1 - phần chu vi không sát tường (kẹp ≥ `_MIN_WALLED_FACTOR`),
     (1 nếu tỉ lệ đáng tin, `_UNTRUSTED_SCALE_FACTOR` nếu không). `scale_trusted=None` → tin khi `scaling.build ==
@@ -770,15 +821,34 @@ def build_rooms(
     outlines = [outline for outline, _ in kept]
     wall_ids = _wall_id_lists(walls, outlines)
     from_text = _room_labels(outlines, texts, parsed, centres)
-    from_fixtures = _fixture_labels(outlines, [area for _, area in kept], detections, scaling)
+    areas = [area for _, area in kept]
+    found_in = _fixtures_in(outlines, detections, scaling)
+    facades = _facade_lengths(lines, outlines)
+    from_fixtures = _fixture_labels(found_in, areas, facades)
     loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
     from_rim = [loggia if tuple(outline) in rim_keys else None for outline in outlines]
-    labels = name_rooms(
-        [text or rim or fixture for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)]
-    )
+    labelled_level = any(from_text)
+    from_facade = [
+        loggia
+        if labelled_level
+        and _FACADE_LOGGIA_M2[0] <= area_m2 <= _FACADE_LOGGIA_M2[1]
+        and facade_mm >= _FACADE_MM
+        and not found & _NOT_LOGGIA
+        else None
+        for area_m2, facade_mm, found in zip(areas, facades, found_in, strict=True)
+    ]
+    shaft = RoomLabel("utility", "hộp kỹ thuật")
+    doored = _door_flags(outlines, detections, scaling)
+    from_shaft = [
+        shaft if area_m2 < _SHAFT_M2 and not door else None for area_m2, door in zip(areas, doored, strict=True)
+    ]
+    guesses = [
+        rim or fix or facade or box
+        for rim, fix, facade, box in zip(from_rim, from_fixtures, from_facade, from_shaft, strict=True)
+    ]
+    labels = name_rooms([text or guess for text, guess in zip(from_text, guesses, strict=True)])
     sources = [
-        "text" if text else "inferred" if rim or fixture else "none"
-        for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)
+        "text" if text else "inferred" if guess else "none" for text, guess in zip(from_text, guesses, strict=True)
     ]
     trusted = scaling.build == scaling.final if scale_trusted is None else scale_trusted
     walled = _walled_shares(bodies, outlines)

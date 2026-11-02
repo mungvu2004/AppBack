@@ -103,3 +103,16 @@ def test_built_layer__scale_basis_round_trips_and_is_optional() -> None:
     payload["scaleBasis"] = "banana"
     with pytest.raises(ValueError, match="scaleBasis"):
         BuiltLayer.from_json(json.dumps(payload).encode())
+
+
+def test_built_layer__scale_checks_round_trip_and_reject_unknown_shapes() -> None:
+    """`scaleChecks` khứ hồi, vắng khi rỗng; khoá lạ hay thiếu trường → lỗi."""
+    built = dataclasses.replace(_built(), scale_checks={"anisotropic": {"x": 26.8, "y": 30.5}})
+    assert BuiltLayer.from_json(built.to_json()) == built
+    assert "scaleChecks" not in json.loads(_built().to_json())
+    shapes: list[object] = [{"banana": {"x": 1}}, {"anisotropic": {"x": 1}}, {"estimateSpread": 3}, []]
+    for bad in shapes:
+        payload = json.loads(built.to_json())
+        payload["scaleChecks"] = bad
+        with pytest.raises(ValueError, match="scaleChecks"):
+            BuiltLayer.from_json(json.dumps(payload).encode())

@@ -155,3 +155,13 @@ def compare_scale_to_ai_estimate(manual: float, ai: float) -> ScaleAiDeviation:
         return ScaleAiDeviation(relative_deviation=0.0, exceeds_limit=False)
     deviation = _round_result((manual - ai) / ai)
     return ScaleAiDeviation(deviation, abs(deviation) > SCALE_THRESHOLDS.ai_deviation_limit)
+
+
+def axis_scales(horizontal: Sequence[ScaleSample], vertical: Sequence[ScaleSample]) -> tuple[float, float] | None:
+    """Tỉ lệ (x, y) suy riêng từ mẫu chữ ngang và chữ dọc (`infer_scale`), khi cả hai trục đều suy được.
+
+    Riêng BE (bench-3d ch-13: ảnh giãn không đều, x 26,8 / y 30,5 mm/px): người gọi so hai trục để ghi lại, không
+    đổi tỉ lệ đã chọn.
+    """
+    x, y = infer_scale(horizontal).mm_per_px, infer_scale(vertical).mm_per_px
+    return None if x is None or y is None else (x, y)

@@ -9,6 +9,7 @@ from packages.domain.scale import (
     SCALE_THRESHOLDS,
     ScaleAiDeviation,
     ScaleSample,
+    axis_scales,
     classify_scale_range,
     compare_scale_to_ai_estimate,
     infer_scale,
@@ -168,3 +169,12 @@ def test_two_samples_without_agreement_stay_unresolved(pair: list[ScaleSample]) 
     """B1: trùng số, lệch > 1 % hay số < 1000 mm → vẫn `tooFewSamples`, không `paired`."""
     result = infer_scale(pair)
     assert (result.mm_per_px, result.reason, result.paired) == (None, "tooFewSamples", False)
+
+
+def test_axis_scales_need_both_axes() -> None:
+    """Ba mẫu ngang ở 26,8 và ba mẫu dọc ở 30,5 → (26,8, 30,5); trục thiếu mẫu → `None`."""
+    horizontal = [ScaleSample(f"h{k}", 100.0 * (k + 1), 2680.0 * (k + 1)) for k in range(3)]
+    vertical = [ScaleSample(f"v{k}", 100.0 * (k + 1), 3050.0 * (k + 1)) for k in range(3)]
+    assert axis_scales(horizontal, vertical) == pytest.approx((26.8, 30.5))
+    assert axis_scales(horizontal, vertical[:1]) is None
+    assert axis_scales([], vertical) is None
