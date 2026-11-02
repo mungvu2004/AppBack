@@ -33,7 +33,7 @@ services:
     extends:
       file: base.yml
       service: minio
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: ghcr.io/mungvu999-ctrl/minio:RELEASE.2025-09-07T16-13-09Z
     environment:
       MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_BASE_URL}
     ports:
@@ -46,7 +46,7 @@ services:
     extends:
       file: base.yml
       service: minio-init
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: ghcr.io/mungvu999-ctrl/minio-mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy
