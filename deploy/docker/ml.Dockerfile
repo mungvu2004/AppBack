@@ -116,7 +116,7 @@ assert not cuda or 'onnxruntime' not in names, names"
 # pyproject.toml gốc: venv nằm ở /opt/venv/lib/python3.12 với C extension
 # cp312, tầng chạy lệch minor thì mọi gói biến mất dù build vẫn thoát 0
 # (NO-177, FIX-104). Nâng minor là việc có chủ đích, kèm `run.sh lock`.
-FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS runtime
+FROM python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS runtime
 WORKDIR /app
 ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \

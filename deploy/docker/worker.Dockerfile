@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # pyproject.toml gốc: venv nằm ở /opt/venv/lib/python3.12 với C extension
 # cp312, tầng chạy lệch minor thì mọi gói biến mất dù build vẫn thoát 0
 # (NO-177, FIX-104). Nâng minor là việc có chủ đích, kèm `run.sh lock`.
-FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS runtime
+FROM python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS runtime
 WORKDIR /app
 ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -71,7 +71,7 @@ CMD ["celery", "-A", "apps.worker.celery_main", "worker", "-Q", "default,pipelin
 # và BuildKit bỏ qua tầng này. Thư viện X/GL: Blender nạp động kể cả khi chạy nền.
 # SHA-256 lấy từ blender-4.5.15.sha256 trên download.blender.org (2026-11-01).
 # Tải ở tầng riêng không phụ thuộc mã: sửa mã chỉ dựng lại tầng `bake`, không tải lại ~300 MB.
-FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS blender
+FROM python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS blender
 ARG BLENDER_VERSION=4.5.15
 ARG BLENDER_SHA256=0d2b8bb2efe97e6c8eb57de6b7322f8800e1984e3125b60decca5f6771e4773e
 RUN apt-get update \
