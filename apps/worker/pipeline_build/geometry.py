@@ -13,6 +13,7 @@ import math
 from collections import Counter, deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Final, Literal
 
 import numpy as np
@@ -33,6 +34,8 @@ from apps.worker.pipeline_build.constants import (
     WALL_JOIN_MM,
 )
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import PageRaster
+from apps.worker.pipeline_build.swing import read_leaf
 from packages.core.clock import Clock
 from packages.domain.spatial import Opening, Point, Segment, Wall, js_round
 from packages.domain.spatial.thickness import snap_thickness
@@ -111,6 +114,8 @@ class WallSet:
     openings: tuple[Opening, ...]
     input_to_wall: Mapping[int, int]
     bridges: tuple[tuple[Point, Point], ...]
+    leaves: Mapping[str, tuple[float, float]] = MappingProxyType({})
+    """Id ô mở → hướng cánh đọc từ nét vẽ, cho `swing.settle_reversed` sau khi có phòng (QT-SWING)."""
 
 
 @dataclass(slots=True)
@@ -143,6 +148,8 @@ class _Cand:
     sill_mm: int
     swing: SwingDirection
     confidence: float
+    leaf: tuple[float, float] | None = None
+    """Hướng cánh tuyệt đối trên mặt bằng đọc từ nét vẽ (QT-SWING); `None` = chưa đọc được."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -868,6 +875,27 @@ def _candidate(
     return _Cand(wall, order, kind, offset, width, target.height_mm, target.sill_mm, target.swing, detection.confidence)
 
 
+def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scaling) -> _Cand:
+    """Cửa một cánh trên tường thẳng: bản lề + phía cánh từ nét vẽ (`swing.read_leaf`); không đọc được → giữ nguyên.
+
+    Khe `a → b` = `[offset, offset + rộng]` dọc tim tính từ `seg.start`, đổi về px trang. Bản lề ở `a` (phía đầu
+    tường) → `"left"`, ở `b` → `"right"` (Pascal `hingesSide`, `swing.py`); hướng cánh lưu tuyệt đối để
+    `settle_reversed` so với luật phía mở của FE.
+    """
+    if page is None or cand.kind != "door" or cand.swing != "left":
+        return cand
+    ux, uy = _unit(seg)
+    scale = scaling.build
+
+    def at(t: float) -> tuple[float, float]:
+        return ((seg.start.x + ux * t) / scale, (seg.start.y + uy * t) / scale)
+
+    leaf = read_leaf(page, at(cand.offset_mm), at(cand.offset_mm + cand.width_mm), seg.measured_mm / 2 / scale)
+    if leaf is None:
+        return cand
+    return replace(cand, swing="right" if leaf.hinge_at_b else "left", leaf=(-uy * leaf.side, ux * leaf.side))
+
+
 def _opening_candidates(
     segs: Sequence[_Seg],
     geoms: Geoms,
@@ -875,11 +903,13 @@ def _opening_candidates(
     scaling: Scaling,
     dropped: Counter[str],
     chains: Mapping[int, tuple[int, ...]],
+    page: PageRaster | None = None,
 ) -> list[_Cand]:
     """Bước 4: mỗi hộp ô mở → tường đầu tiên trong ứng viên của `_attach_walls` mà hộp nằm dọc (`_runs_along`),
     không có thì tường gần tâm nhất; không tường nào với tới → `openingUnattached`.
 
     Cung: xem `_placement` — cửa ban công cong rộng hơn một dây 10° không bị kẹp về dây hay rơi `openingTooWide`.
+    `page` (trang + mặt nạ tường) cho cửa một cánh đọc bản lề/phía cánh từ nét vẽ (`_read_swing`).
     """
     chosen = [(order, det) for order, det in enumerate(detections) if det.label in _OPENING_LABELS]
     rects = [_rect(det.box, scaling) for _, det in chosen]
@@ -893,7 +923,8 @@ def _opening_candidates(
         host, wall, span, length = next((place for place in places if _runs_along(rect, place[2], place[3])), places[0])
         cand = _candidate(order, detection, host, segs[wall], span, dropped, length)
         if cand is not None:
-            cands.append(cand)
+            # Cung (ô mở đo trên cả cung): chưa đọc nét, giữ chiều mở theo nhãn.
+            cands.append(cand if host != wall or wall in chains else _read_swing(cand, segs[wall], page, scaling))
     return cands
 
 
@@ -990,12 +1021,14 @@ def build_walls(
     clock: Clock,
     dropped: Counter[str],
     arc_of: Sequence[int | None] = (),
+    page: PageRaster | None = None,
 ) -> WallSet:
     """Bước 3 + 3b + 3c + 4: tường mm, nối khe ô mở, tường qua khe cửa, ô mở; không sửa đối số vào.
 
     Chỉ nhãn `door|double_door|window` thành ô mở, nhãn khác bỏ qua **không** đếm (đồ đạc là
     việc của `rooms.build_furniture`). `dropped` cộng dồn tại chỗ theo khoá `DROPPED_KEYS`. `arc_of` (từ
-    `arcs.explode_arcs`) cho biết đầu vào nào là dây của cùng một cung để ô mở đo trên cả cung.
+    `arcs.explode_arcs`) cho biết đầu vào nào là dây của cùng một cung để ô mở đo trên cả cung. `page` bật đọc
+    chiều mở cửa từ nét vẽ (QT-SWING, `swing.py`).
     """
     segs = _drop_far_clusters(_drop_isolated(_measure_walls(walls, scaling, dropped), dropped), dropped)
     boxes = _opening_boxes(detections, scaling)
@@ -1005,10 +1038,11 @@ def build_walls(
     input_to_wall = {index: position for position, seg in enumerate(live) for index in seg.inputs}
     geoms = _linestrings(live) if live else np.asarray([], dtype=object)
     chains = _arc_chains(live, arc_of)
-    cands = _resolve_overlaps(_opening_candidates(live, geoms, detections, scaling, dropped, chains), dropped)
+    cands = _resolve_overlaps(_opening_candidates(live, geoms, detections, scaling, dropped, chains, page), dropped)
     live, cands = _drop_bare_gap_walls(live, cands)
     built_walls, openings = _assemble(live, cands, level_id, clock)
-    return WallSet(built_walls, openings, input_to_wall, bridges)
+    leaves = {opening.id: cand.leaf for opening, cand in zip(openings, cands, strict=True) if cand.leaf is not None}
+    return WallSet(built_walls, openings, input_to_wall, bridges, MappingProxyType(leaves))
 
 
 def _drop_bare_gap_walls(segs: Sequence[_Seg], cands: Sequence[_Cand]) -> tuple[list[_Seg], list[_Cand]]:
