@@ -1,33 +1,40 @@
 # Review merge feature/aid-01-design-director → main (lượt 2)
 
-- Ngày: 2026-11-02 · Reviewer: phiên /merge-review (agent độc lập, lượt 2) · Commit đầu nhánh: 27dd09060671 (phán quyết lượt 1: `03526a9d`; soát `git diff 03526a9d..HEAD`, 2 commit `c11de6b7`, `27dd0906`)
-- Cổng: phạm vi **đầy đủ**. Vòng sửa chạm `docs/contracts/openapi.json` và `tools/contract/APPFRONT_SHA`, cả hai nằm trong sàn "đầy đủ" của R-33b (`tools/**`, `docs/contracts*`). Lượt 1 cũng đã đòi một lượt đầy đủ thoát 0 (điều kiện 3).
-  - Lượt 6 @ 27dd0906, `VERIFY_SHARED_STACK=off` (`F:/worktrees/AppBack/_logs/aid-01-verify.log`, log cổng `.cache/src-out/verify/20261102T113802Z-27dd09060671.log`): **mã thoát 1**. Bước 0, 1, 2, 4 đạt. Bước 5: pytest **9721 passed, 0 failed**, nhưng `coverage_gate` hỏng `[độ phủ nhánh tập file bị chạm < 90%] 89.76%`. Bước 3, 5b, 6, 7, 8 **chưa chạy**.
-  - Lượt 1–5: đều thoát 1 (xem phán quyết lượt 1 và `aid-01-verify-5.log`: 1 failed `apps/worker/pipeline_steps/tests/test_sweep_rules.py::test_sweep_resends_remaining_families_when_walls_used`). Lượt 6 không lặp lại các lỗi của 3–5, nên các lỗi đó là lỗi chập chờn ngoài diff. Chúng **không** phải chỗ chặn của lượt này.
-  - `aid-01-steps3678.log` chạy @ **03526a9d**, chưa phải HEAD: bước 3 (mypy) và 6 (migrate_check) đạt; bước 7 hỏng vì thiếu junit của bước 5 (luật đã biết: `--steps 7` cần bước 5 cùng lượt). Vòng sửa chỉ đổi hai hằng số trong `vertex.py`, nên mypy/migration gần như chắc không đổi, nhưng chưa có bằng chứng trên HEAD.
-  - Reviewer tự đối chiếu (`run.sh shell` @ 27dd0906): `python -m apps.api.core.openapi --out /tmp/o.json --compare docs/contracts/openapi.json` → **thoát 0**.
-- Độ phủ (lượt 6): tổng dòng 99,04 % · nhánh 97,20 % | `tools` 94,77/93,86 · **tập file bị chạm 92,14/89,76 (hỏng)** · các đơn vị khác giữ như lượt 1 (`packages/genai` 100/100, `apps/api/design_director` 97,98/96,67, `apps/worker/design_director` 97,44/97,78).
+- Ngày: 2026-11-02 · Reviewer: phiên /merge-review (agent độc lập, lượt 2) · Commit đầu nhánh được soát: efd5e44ca358 (phán quyết lượt 1: `03526a9d`; soát `git diff 03526a9d..efd5e44c`, 3 commit `c11de6b7`, `27dd0906`, `efd5e44c`)
+- Cổng: phạm vi **đầy đủ**. Vòng sửa chạm `docs/contracts/openapi.json`, `tools/contract/APPFRONT_SHA` và thêm tệp test/thư mục `.py` dưới `tools/`, đều thuộc sàn "đầy đủ" của R-33b. Lượt 1 cũng đã đòi một lượt đầy đủ thoát 0.
+  - **Lượt 7** @ `dd449861` (= `efd5e44c` + bản nháp phán quyết này, chỉ thêm `.md`), `VERIFY_SHARED_STACK=off`. Log: `F:/worktrees/AppBack/_logs/aid-01-verify.log`, log cổng `.cache/src-out/verify/20261102T115207Z-dd44986186ec.log`. Kết quả: **mã thoát 1**.
+    - Đạt: bước 0, 1, 2, **3 (mypy)**, 4, **5** (pytest 9724 passed, 0 failed; `coverage_gate: đạt`).
+    - Hỏng: **5b**, 1 failed `apps/worker/pipeline_build/tests/test_perf.py::test_build_layer__perf_under_30_seconds` ("build_layer mất 32.19s, trần 30s").
+    - Bước 6, 7, 8 **chưa chạy**, vì cổng dừng ở 5b.
+  - Lượt 6 @ 27dd0906 (`_logs/aid-01-verify-6.log`): mã thoát 1. Pytest 9721 passed, nhưng `coverage_gate` hỏng (độ phủ nhánh tập file bị chạm 89,76 %) vì `build_materials.py` chưa có test. `efd5e44c` đã sửa, lượt 7 xác nhận.
+  - Reviewer tự chạy lại test perf lẻ (`run.sh shell`, `pytest -m perf … -k perf_under_30`, 3 lần):
+    - nhánh @ dd449861: **hỏng 3/3**, 33,51 / 32,70 / 32,36 s;
+    - **`main` @ 4e1cd3b2** (`F:/App/AppBack`, cây sạch): **hỏng 3/3**, 62,02 / 59,19 / 57,90 s. Lúc đó máy còn chạy song song `appback-verify-sec-deps-…` của phiên khác và `f14-ml-1`.
+    - → Test này đỏ cả trên `main` trong môi trường hiện tại. Nhánh không làm nó chậm thêm: diff không chạm `apps/worker/pipeline_build`, `packages/domain/spatial` hay `packages/vision`; chỉ thêm một tiền tố trong `packages/core/ids.py`.
+  - Reviewer đối chiếu openapi (`run.sh shell` @ 27dd0906): `python -m apps.api.core.openapi --out /tmp/o.json --compare docs/contracts/openapi.json` → **thoát 0**. Vòng `efd5e44c` không đổi API.
+  - Bước 6 (migrate_check) chỉ có bằng chứng @ `03526a9d` (`_logs/aid-01-steps3678.log`, đạt). Sau đó migration không đổi. Bước 7 chưa từng chạy với junit thật của bước 5 trên nhánh này.
+- Độ phủ (lượt 7): tổng dòng 99,35 % · nhánh 97,50 % | `tools` 98,77/96,49 · tập file bị chạm 99,21/98,03 · `packages/genai` 100/100 · `apps/api/design_director` 97,98/96,67 · `apps/worker/design_director` 97,44/97,78.
 
 ## Kiểm từng yêu cầu của lượt 1
 
 | Yêu cầu lượt 1 | Kết quả | Bằng chứng |
 |---|---|---|
 | (1) P1 `openapi.json` thiếu N47/N48 | **Đã sửa** | `c11de6b7`: +260/−0, chỉ thêm `/api/projects/{project_id}/design-concept` (`get`, `post`) cùng 4 schema `DesignConcept*`/`DesignStyleId`; `--compare` thoát 0 |
-| (2) P1 `APPFRONT_SHA` không có trên `master` của FE | **Đã sửa** | `27dd0906`: `99e18dbe`. Trong `F:/App/AppFront`: `git fetch origin` rồi `merge-base --is-ancestor 99e18dbe origin/master` → 0; `origin/master` = `99e18dbe`; có `src/api/schemas/designConcept.ts`. FE `pnpm verify` trên worktree @ `99e18dbe` (cây sạch, log 18:23, sau commit 18:08): đạt cả 7 bước, `exit 0` (`F:/worktrees/AppFront/_logs/aid-01-verify.log`) |
-| (3) Một lượt cổng đầy đủ thoát 0 trên HEAD | **Chưa đạt** | Lượt 6 thoát 1 ở bước 5 (`coverage_gate`), xem finding R2-1 |
-| (4) P2 RES: lượt xấu nhất dài hơn trần quét 15 phút | **Đã sửa** | `packages/genai/vertex.py:35-37`: `TIMEOUT_S` 60, `MAX_ATTEMPTS` 3. Xấu nhất một lời gọi 3 × 60 + 2 + 4 = 186 s, bốn lời gọi ≈ 12,4 phút < 15 phút. Test `test_retry_then_success_with_backoff` sửa theo (3 lần gọi, lùi `[2.0, 4.0]`). `test_retry_exhaustion_unavailable` dùng chính hằng `MAX_ATTEMPTS` |
-| P3 #4–#11 phải có dòng nợ | **Đã ghi** | `changes/AID-01.md`: NO-AID-1..7 phủ finding 4, 5, 6, 8, 9, 10, 7 + 11 |
+| (2) P1 `APPFRONT_SHA` không có trên `master` của FE | **Đã sửa** | `27dd0906`: `99e18dbe`. Trong `F:/App/AppFront`: `git fetch origin` rồi `merge-base --is-ancestor 99e18dbe origin/master` → 0; `origin/master` = `99e18dbe`; có `src/api/schemas/designConcept.ts`. FE `pnpm verify` trên worktree @ `99e18dbe` (cây sạch): đạt cả 7 bước, `exit 0` (`F:/worktrees/AppFront/_logs/aid-01-verify.log`) |
+| (3) Một lượt cổng đầy đủ thoát 0 trên HEAD | **Chưa đạt** | Lượt 7 thoát 1 ở bước 5b, do test perf ngoài diff (xem R2-2) |
+| (4) P2 RES: lượt xấu nhất dài hơn trần quét 15 phút | **Đã sửa** | `packages/genai/vertex.py:35-37`: `TIMEOUT_S` 60, `MAX_ATTEMPTS` 3. Xấu nhất 3 × 60 + 2 + 4 = 186 s một lời gọi, bốn lời gọi ≈ 12,4 phút < 15 phút. Test lùi `[2.0, 4.0]` và `test_retry_exhaustion_unavailable` dùng chính hằng |
+| P3 #4–#11 phải có dòng nợ | **Đã ghi / đã sửa** | NO-AID-1..5, 7 có trong `changes/AID-01.md`. NO-AID-6 (#10) đã sửa ở `efd5e44c` và gỡ khỏi sổ |
 
 ## Finding
 | # | Mức | ID | Mô tả | Vị trí | Đề xuất |
 |---|---|---|---|---|---|
-| R2-1 | P1 | TEST-05 / BE-00 §12 bước 5 | Cổng đầy đủ đỏ vì chính mã của nhánh: `coverage_gate` báo độ phủ nhánh của tập file bị chạm là 89,76 % (< 90 %). Nguyên nhân: `03f9349c` thêm `tools/design_director/__init__.py`, nên `build_materials.py` (160 dòng, 22 nhánh `if/for`) giờ bị đo, mà không test nào nhập nó (`grep build_materials` chỉ thấy một docstring ở `packages/domain/design_director/materials.py:1`). So sánh: lượt 2 @ 037b7823 (chưa có `__init__.py`) cho tập file bị chạm 98,74/98,28, `tools` 98,76/96,52. Lượt 6 cho 92,14/89,76 và 94,77/93,86, trong khi vòng sửa không thêm `.py` nào khác ngoài hai hằng số của `vertex.py` (100/100). Lượt 1 ghi việc này là P3 #10 / NO-AID-6, nhưng nó làm cổng đỏ nên phải nâng lên. Lượt 3–5 dừng ở pytest trước khi tới `coverage_gate`, vì thế chưa ai thấy | `tools/design_director/build_materials.py:26-160`; `tools/design_director/__init__.py`; `changes/AID-01.md` (NO-AID-6) | Chọn một: (a) thêm `tools/design_director/tests/__init__.py` + `test_build_materials.py`, test `srgb_to_lab` (trắng/đen ra L 100/0), `describe` trên mảng nhỏ, `split_sets` theo `DRY_CATEGORIES`/`WET_CATEGORIES`/`DRY_PATTERN_MAX`, `save_jpg` giữ dưới `MAX_JPG`, `main` với thư mục FE giả trong `tmp_path`, sao cho tập file bị chạm ≥ 90/90; hoặc (b) chuyển công cụ chạy tay này ra khỏi repo (vd. `F:/runs/...`), xoá `tools/design_director/` và sửa docstring `materials.py:1`. Sau đó gỡ NO-AID-6 nếu chọn (a) |
-| R2-2 | P2 | R-33b / bằng chứng cổng | Bước 3, 5b, 6, 7, 8 chưa chạy trên HEAD trong cùng một lượt. Bằng chứng mypy/migrate là của `03526a9d`; bước 7 chưa từng chạy được với junit thật của bước 5 trên nhánh này | `_logs/aid-01-steps3678.log` | Sửa xong R2-1 thì chạy lại một lượt `bash tools/verify/run.sh verify` đầy đủ (`VERIFY_SHARED_STACK=off`, sau `docker stop f14-ml-1`). Lượt đó phải thoát 0 và có đủ bước 3, 5b, 6, 7, 8 |
-| R2-3 | Nit | RES | Mức 12,4 phút chỉ tính thời gian chờ Vertex. Tải ảnh, vẽ bảng và ghi kho cộng thêm vào cùng trần 15 phút, nên lề còn khoảng 2,5 phút. Trần tổng theo hạn chót (đề xuất lượt 1) vẫn chắc hơn | `packages/genai/vertex.py:37` | Không chặn. Có thể gom vào NO-AID khi làm hạn chót tổng của lượt |
+| R2-1 | — | TEST-05 (đã đóng trong lượt) | Lượt 6 đỏ vì `build_materials.py` bị đo mà chưa có test. Commit `efd5e44c` thêm 3 test: thư viện Pascal giả trong `tmp_path`, không ghi `data/` thật; `main(argv, out=OUT)` nhận thư mục ghi. Lượt 7: `coverage_gate: đạt`, tập file bị chạm 99,21/98,03. Đã soát diff: mọi hàm test có docstring, có `tests/__init__.py`, không phụ thuộc mạng hay thời gian thật. `monkeypatch` `ImageFont.truetype` và `MAX_JPG` nằm đúng tầng | `tools/design_director/tests/test_build_materials.py`; `tools/design_director/build_materials.py:142-153` | Không cần làm gì |
+| R2-2 | P1 (ngoài diff, có sẵn trên `main`) | BE-00 §12 bước 5b / TEST-02 | Cổng đầy đủ đỏ ở 5b vì `test_build_layer__perf_under_30_seconds`, trần đồng hồ tường 30 s. Test đỏ 3/3 khi chạy lẻ trên nhánh (32–34 s) và **3/3 trên `main` 4e1cd3b2** (58–62 s, máy đang chịu tải). Đây không phải lỗi của AID-01 và nhánh không sửa được trong phạm vi của mình. Nhưng theo ma trận, cổng thoát ≠ 0 thì không duyệt được, và vì nó mà bước 6, 7, 8 chưa chạy trên HEAD | `apps/worker/pipeline_build/tests/test_perf.py:91-124` | Người điều phối đưa lên người dùng, chọn một: (a) chạy lại cổng đầy đủ lúc máy rảnh (không cổng nào khác chạy song song, `docker stop f14-ml-1`), nếu 5b xanh thì đủ; (b) mở FIX/nợ cho chủ `pipeline_build` (trần 30 s đỏ trên `main` ở máy này), rồi người dùng waiver riêng bước 5b cho lượt merge này. Cả hai cách vẫn cần bằng chứng bước 6, 7, 8 trên HEAD (`--steps 5,6,7,8`, bước 7 cần junit của bước 5) |
+| R2-3 | Nit | RES | Mức 12,4 phút chỉ tính thời gian chờ Vertex. Tải ảnh, vẽ bảng và ghi kho cộng thêm vào cùng trần 15 phút, nên lề còn khoảng 2,5 phút. Trần tổng theo hạn chót (đề xuất lượt 1) vẫn chắc hơn | `packages/genai/vertex.py:37` | Không chặn |
 
-Ghi chú về lỗi chập chờn ngoài diff (không chặn lượt này, để người điều phối biết): `apps/api/admin_ml_datasets/tests/test_contract.py::test_ml_create_dataset__C07` (lượt 3, Redis f14), `apps/ml/walls/tests/test_tasks.py::test_segment_walls__J01` (lượt 4, Redis f14), `apps/worker/pipeline_steps/tests/test_sweep_rules.py::test_sweep_resends_remaining_families_when_walls_used` (lượt 5, `VERIFY_SHARED_STACK=off`; ở lượt 6 cùng cấu hình thì đạt).
+Các lỗi chập chờn khác ngoài diff ở lượt 3–5 (không lặp lại ở lượt 6–7): `apps/api/admin_ml_datasets/tests/test_contract.py::test_ml_create_dataset__C07`, `apps/ml/walls/tests/test_tasks.py::test_segment_walls__J01` (cả hai do Redis f14 dùng chung), `apps/worker/pipeline_steps/tests/test_sweep_rules.py::test_sweep_resends_remaining_families_when_walls_used` (lượt 5, `VERIFY_SHARED_STACK=off`).
 
-Điều kiện dừng sớm của vòng sửa: cây sạch. Hai commit đúng mẫu (`fix(design-director)`, `chore(contract)`) và có `Prompt: AID-01`. `openapi.json` sinh bằng `run.sh openapi` (`--compare` thoát 0), `APPFRONT_SHA` do người điều phối ghim, cả hai đúng yêu cầu lượt 1. Không có `pragma`/`noqa` trần/`skip` mới, không hạ ngưỡng.
+Điều kiện dừng sớm của vòng sửa: cây sạch. Ba commit đúng mẫu (`fix(design-director)`, `chore(contract)`, `test(tools)`) và có `Prompt: AID-01`. `openapi.json` sinh bằng `run.sh openapi`, `APPFRONT_SHA` do người điều phối ghim, cả hai đúng yêu cầu lượt 1. Không có `pragma`/`noqa` trần/`skip` mới, không hạ ngưỡng.
 
 ## Điểm
 | Miền | Trọng số | Điểm | Tích |
@@ -38,15 +45,15 @@ Ghi chú về lỗi chập chờn ngoài diff (không chặn lượt này, để
 | PERF | 10% | 4 | 0,40 |
 | RES | 10% | 4,5 | 0,45 |
 | DB/API | 10% | 4,5 | 0,45 |
-| TEST | 7% | 3 | 0,21 |
+| TEST | 7% | 4,5 | 0,315 |
 | OBS/OPS | 5% | 3,5 | 0,175 |
 | MNT | 3% | 4 | 0,12 |
-Tổng: 4,33 / 5
+Tổng: 4,44 / 5
 
 ## PHÁN QUYẾT: REQUEST CHANGES
 
-Vòng sửa đúng và đủ cho P1 #1, P1 #2 và P2 RES; các P3 đã có dòng nợ. Chỗ chặn duy nhất còn lại **không** phải lỗi chập chờn: lượt 6 đã cho toàn bộ 9721 test đạt, nhưng cổng đỏ thật ở `coverage_gate` vì tệp của chính nhánh (`tools/design_director/build_materials.py`, chưa có test, bị đo từ khi thêm `__init__.py`). Để được duyệt:
-1. **R2-1:** thêm test cho `build_materials.py` để tập file bị chạm ≥ 90 % dòng và nhánh, hoặc đưa công cụ ra khỏi repo.
-2. **R2-2:** một lượt `bash tools/verify/run.sh verify` đầy đủ **thoát 0** trên HEAD mới, có đủ bước 3, 5b, 6, 7, 8.
+Mọi yêu cầu về mã và hợp đồng của lượt 1 đã xong: P1 #1, P1 #2, P2 RES, NO-AID-6. Lượt 7 cho 9724 test đạt, `coverage_gate` đạt, mypy đạt. **Chỗ chặn duy nhất còn lại là lỗi có sẵn ngoài diff:** `apps/worker/pipeline_build/tests/test_perf.py::test_build_layer__perf_under_30_seconds` (bước 5b) đỏ cả trên `main` 4e1cd3b2 trong môi trường hiện tại. Ma trận không cho APPROVE khi cổng thoát ≠ 0 và chưa có waiver. Để được duyệt cần một trong hai:
+1. Một lượt `bash tools/verify/run.sh verify` đầy đủ **thoát 0** trên HEAD, chạy lúc máy rảnh; hoặc
+2. Người dùng waiver bước 5b cho test perf trên (kèm dòng nợ/FIX cho chủ `pipeline_build`), cộng bằng chứng `--steps 5,6,7,8` thoát 0 trên HEAD.
 
-Lượt 3 chỉ cần soát diff sửa R2-1 cùng log của lượt cổng ở mục 2.
+Lượt 3 chỉ cần soát log cổng đó (và waiver, nếu đi cách 2). Không cần soát lại mã.
