@@ -1,7 +1,7 @@
 """Kiểm hình học sau dựng (BENCH3D-01): kết quả sai về hình thì bật cờ `critical` của báo cáo chất lượng.
 
 Tách khỏi `check_integrity` (kiểm đó còn chặn lượt lưu của người dùng); hàm thuần, chỉ đọc lớp.
-Ngưỡng theo bộ chấm `F:/runs/bench-3d/tools/score.py` (W1 vỏ kín, W4 mảnh vụn).
+Ngưỡng theo bộ chấm bench-3d: W1 vỏ kín (≥ 90 % phòng trong lỗ kín của vỏ), W4 mảnh vụn (mẩu trôi, tường đôi).
 """
 
 import math
@@ -52,15 +52,18 @@ class GeometryCheck:
     detail: Mapping[str, float]
 
     def to_wire(self) -> dict[str, object]:
+        """Phần tử của khoá `checks` trong `quality.json`."""
         return {"code": self.code, "critical": self.critical, "detail": dict(self.detail)}
 
 
 def _line(wall: Wall) -> LineString:
+    """Đường tim của tường thành `LineString` (mm)."""
     c = wall.centreline
     return LineString([(c.start.x, c.start.y), (c.end.x, c.end.y)])
 
 
 def _inside_point(room: Room) -> Point:
+    """Một điểm chắc chắn nằm trong phòng (kể cả phòng lõm)."""
     return Polygon([(p.x, p.y) for p in room.outline]).representative_point()
 
 
@@ -88,6 +91,7 @@ def _open_envelope(walls: Sequence[Wall], lines: Sequence[LineString], rooms: Se
 
 
 def _parallel(a: LineString, b: LineString) -> bool:
+    """Hai đoạn lệch hướng dưới `OVERLAP_ANGLE_DEG` (không phân biệt chiều)."""
     (ax0, ay0), (ax1, ay1) = a.coords
     (bx0, by0), (bx1, by1) = b.coords
     angle = abs(math.atan2(ay1 - ay0, ax1 - ax0) - math.atan2(by1 - by0, bx1 - bx0)) % math.pi
@@ -141,13 +145,16 @@ def _multiple_plans(walls: Sequence[Wall], lines: Sequence[LineString]) -> Geome
 
 
 def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
-    """Có phòng mà không ô mở nào → chặn; còn lại chỉ báo tỉ lệ phòng không tường nào mang cửa đi."""
-    if not layer.rooms:
+    """Có phòng mà không ô mở nào → chặn; còn lại chỉ báo tỉ lệ phòng không tường nào mang cửa đi.
+
+    Phòng loại miễn (`DOORLESS_USAGES_EXEMPT`) bị lọc trước ở cả hai nhánh: tầng chỉ có lô gia/hành lang thì không bật.
+    """
+    rooms = [room for room in layer.rooms if room.usage not in DOORLESS_USAGES_EXEMPT]
+    if not rooms:
         return None
     if not layer.openings:
-        return GeometryCheck("ROOMS_WITHOUT_DOOR", True, {"rooms": len(layer.rooms), "openings": 0})
+        return GeometryCheck("ROOMS_WITHOUT_DOOR", True, {"rooms": len(rooms), "openings": 0})
     door_walls = {opening.wall_id for opening in layer.openings if opening.kind == "door"}
-    rooms = [room for room in layer.rooms if room.usage not in DOORLESS_USAGES_EXEMPT]
     doorless = sum(1 for room in rooms if door_walls.isdisjoint(room.wall_ids))
     if not doorless:
         return None
@@ -157,6 +164,7 @@ def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
 
 
 def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
+    """Phần lớn phòng là `other`: bước gán công năng hỏng; chặn từ `UNKNOWN_USAGE_CRITICAL_ROOMS` phòng."""
     if not rooms:
         return None
     share = sum(1 for room in rooms if room.usage == "other") / len(rooms)

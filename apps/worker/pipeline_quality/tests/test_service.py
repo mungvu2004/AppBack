@@ -368,13 +368,14 @@ async def test_run_quality_records_summary_with_critical(
     assert outcome == "completed"
     summary, artifact = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
     issues = cast("list[dict[str, object]]", artifact["integrity"])
+    checks = cast("list[dict[str, object]]", artifact["checks"])
     critical = sum(1 for issue in issues if issue["severity"] == "critical")
     assert critical >= 1
     assert summary == {
         "hasCritical": True,
-        "criticalCount": critical,
+        "criticalCount": critical + sum(1 for check in checks if check["critical"]),
         "lowConfidence": artifact["lowConfidence"],
-        "checks": [check["code"] for check in cast("list[dict[str, object]]", artifact["checks"])],
+        "checks": [check["code"] for check in checks],
     }
     status, _, _ = await _run_row(db_sessionmaker, arranged.run_id)
     assert status == "completed"
@@ -387,10 +388,10 @@ async def test_run_quality_records_summary_clean(
     fake_clock: FakeClock,
     quality_env: None,
 ) -> None:
-    """FIX-P0-09: lớp sạch toàn vẹn → `criticalCount` 0, đếm tin cậy thấp như `quality.json`.
+    """FIX-P0-09: lớp sạch toàn vẹn, đếm tin cậy thấp như `quality.json`.
 
-    BENCH3D-01: lớp mẫu là các mẩu tường rời, phòng không được vỏ bao → kiểm hình học `OPEN_ENVELOPE`
-    bật `hasCritical` dù toàn vẹn sạch; tóm tắt liệt kê mã kiểm như `quality.json`.
+    BENCH3D-01: lớp mẫu là các mẩu tường rời, phòng không được vỏ bao → kiểm hình học `critical`
+    bật `hasCritical` dù toàn vẹn sạch; `criticalCount` đếm chúng, tóm tắt liệt kê mã kiểm như `quality.json`.
     """
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
 
@@ -402,7 +403,7 @@ async def test_run_quality_records_summary_clean(
     assert artifact["hasCritical"] is True
     assert summary == {
         "hasCritical": True,
-        "criticalCount": 0,
+        "criticalCount": sum(1 for check in cast("list[dict[str, object]]", artifact["checks"]) if check["critical"]),
         "lowConfidence": artifact["lowConfidence"],
         "checks": ["OPEN_ENVELOPE", "ROOMS_WITHOUT_DOOR"],
     }

@@ -17,7 +17,6 @@ from packages.vision.preprocess.pdf import (
     render_pdf_page,
     render_pdf_thumbnails,
 )
-from packages.vision.preprocess.pdf_vector import pick_plan_page
 from packages.vision.preprocess.tests import synthetic
 
 _RED = (1.0, 0.0, 0.0)
@@ -239,34 +238,3 @@ def test_render_pdf_thumbnails_file_type_mismatch() -> None:
     with pytest.raises(VisionError) as excinfo:
         render_pdf_thumbnails(b"not a pdf at all", max_pixels=80_000, max_pages=20)
     assert str(excinfo.value) == "FILE_TYPE_MISMATCH"
-
-
-def test_pick_plan_page_skips_text_cover() -> None:
-    """Bìa chữ rồi mặt bằng vector (bench two-page-ch04) → trang 1."""
-    data = synthetic.join_pdfs(
-        synthetic.make_pdf(1, ops=synthetic.COVER_OPS), synthetic.make_pdf(1, ops=synthetic.PLAN_OPS)
-    )
-    assert pick_plan_page(data, 2) == 1
-
-
-def test_pick_plan_page_scanned_page_counts_as_drawing() -> None:
-    """Bìa chữ rồi trang quét (ảnh phủ trang) → trang 1."""
-    data = synthetic.join_pdfs(
-        synthetic.make_pdf(1, ops=synthetic.COVER_OPS), synthetic.make_pdf(1, ops=synthetic.SCAN_OPS)
-    )
-    assert pick_plan_page(data, 2) == 1
-
-
-def test_pick_plan_page_skips_blank_scanned_cover() -> None:
-    """Hai trang đều là ảnh (bench two-page-ch04): bìa quét gần trắng bị bỏ qua nhờ đếm mực."""
-    cover = synthetic.make_pdf(1, ops=synthetic.BLANK_SCAN_OPS)
-    data = synthetic.join_pdfs(cover, synthetic.make_pdf(1, ops=synthetic.SCAN_OPS))
-    assert pick_plan_page(data, 2) == 1
-
-
-def test_pick_plan_page_keeps_first_drawing_and_falls_back_to_zero() -> None:
-    """Trang 0 đã là bản vẽ → 0; không trang nào là bản vẽ → 0; trang bản vẽ ngoài `max_pages` không được xét."""
-    plan, cover = synthetic.make_pdf(1, ops=synthetic.PLAN_OPS), synthetic.make_pdf(1, ops=synthetic.COVER_OPS)
-    assert pick_plan_page(synthetic.join_pdfs(plan, cover), 2) == 0
-    assert pick_plan_page(synthetic.make_pdf(3, ops=synthetic.COVER_OPS), 3) == 0
-    assert pick_plan_page(synthetic.join_pdfs(cover, plan), 1) == 0

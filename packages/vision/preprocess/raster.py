@@ -32,6 +32,8 @@ _DARK_PAPER_MEDIAN: Final = 128
 """Trung vị độ sáng (kênh lớn nhất, như V của HSV) dưới số này là bản vẽ nền tối nét sáng
 (bản in âm, ảnh chụp màn hình CAD nền đen, bench nt-05): đảo lại."""
 _PAPER_SAMPLE_STRIDE: Final = 4
+_STROKE_CONTRAST: Final = 32
+"""Điểm ảnh lệch trung vị hơn ngần này mức xám mới tính là nét (bỏ nhiễu nền, vân giấy)."""
 
 
 def _draft_down(image: Image.Image, max_pixels: int) -> None:
@@ -103,9 +105,18 @@ def _light_paper(pixels: NDArray[np.uint8]) -> NDArray[np.uint8]:
     """Đảo màu bản vẽ nền tối (bench nt-05) để mọi bước sau luôn thấy nét tối trên giấy sáng.
 
     Độ sáng = kênh lớn nhất nên mảng màu bão hoà (đỏ, lam) vẫn là sáng; chỉ nền đen/xám tối mới bị đảo.
-    Trung vị lấy trên lưới thưa mỗi 4 điểm ảnh: đủ đại diện cho nền giấy, không tốn một lượt sắp xếp cả ảnh.
+    Nền tối thôi chưa đủ: ảnh chụp giấy trắng thiếu sáng cũng có trung vị < 128 nhưng nét vẫn **tối hơn** nền.
+    Chỉ đảo khi điểm ảnh sáng hơn nền rõ (> `_STROKE_CONTRAST`) nhiều hơn điểm ảnh tối hơn nền rõ: nét sáng trên
+    nền tối. Trung vị lấy trên lưới thưa mỗi 4 điểm ảnh (đủ đại diện cho nền, không sắp xếp cả ảnh); hai tỉ lệ
+    đếm trên cả ảnh vì nét mảnh có thể lọt giữa các ô lưới.
     """
-    if np.median(pixels[::_PAPER_SAMPLE_STRIDE, ::_PAPER_SAMPLE_STRIDE].max(axis=2)) < _DARK_PAPER_MEDIAN:
+    brightness = pixels.max(axis=2)
+    median = float(np.median(brightness[::_PAPER_SAMPLE_STRIDE, ::_PAPER_SAMPLE_STRIDE]))
+    if median >= _DARK_PAPER_MEDIAN:
+        return pixels
+    lighter = np.count_nonzero(brightness > median + _STROKE_CONTRAST)
+    darker = np.count_nonzero(brightness < median - _STROKE_CONTRAST)
+    if lighter > darker:
         return 255 - pixels
     return pixels
 

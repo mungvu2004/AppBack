@@ -212,3 +212,12 @@ def test_load_raster_light_paper_is_kept() -> None:
     pixels = load_raster(synthetic.encode(source, "PNG")).pixels
     assert tuple(pixels[0, 0]) == (0, 0, 0)
     assert tuple(pixels[19, 0]) == (240, 240, 240)
+
+
+def test_load_raster_dim_photo_of_white_paper_is_kept() -> None:
+    """Ảnh chụp giấy trắng thiếu sáng: nền xám 110 (< 128) nhưng nét đen 20 tối hơn nền → không đảo."""
+    source = Image.new("RGB", (40, 20), (110, 110, 110))
+    source.paste((20, 20, 20), (0, 10, 40, 12))
+    pixels = load_raster(synthetic.encode(source, "PNG")).pixels
+    assert tuple(pixels[0, 0]) == (110, 110, 110)
+    assert tuple(pixels[11, 5]) == (20, 20, 20)

@@ -55,10 +55,12 @@ def box_gap(a: Box, b: Box) -> float:
 
 
 def box_union(a: Box, b: Box) -> Box:
+    """Hộp thẳng trục nhỏ nhất bao cả hai hộp."""
     return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
 
 
 def box_area(box: Box) -> float:
+    """Diện tích hộp thẳng trục."""
     return (box[2] - box[0]) * (box[3] - box[1])
 
 

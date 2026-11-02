@@ -143,6 +143,13 @@ def test_rooms_without_any_opening__critical() -> None:
     assert _codes(_layer(walls, (_room(1, 0, 0, 5000, 4000),))) == [("ROOMS_WITHOUT_DOOR", True)]
 
 
+def test_only_exempt_rooms_without_any_opening__no_check() -> None:
+    """Tầng chỉ có lô gia + hành lang, không ô mở nào: phòng miễn bị lọc trước → không bật."""
+    walls = _walls(*_box(0, 0, 5000, 4000))
+    rooms = (_room(1, 0, 0, 2500, 4000, usage="loggia"), _room(2, 2500, 0, 5000, 4000, usage="corridor"))
+    assert _codes(_layer(walls, rooms)) == []
+
+
 def test_room_without_door_on_its_walls__info_only() -> None:
     """Có ô mở nhưng một phòng không tường nào mang cửa đi: chỉ báo, không chặn; hành lang được miễn."""
     walls = _walls(*_box(0, 0, 5000, 4000), ((2500, 0), (2500, 4000)))
