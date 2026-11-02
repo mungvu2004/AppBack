@@ -295,15 +295,36 @@ async def test_touch_projects_locks_then_updates_ids_in_sorted_order(
         await touch_projects(db_session, project_ids=unsorted_ids, clock=fake_clock)
     await db_session.commit()
 
-    assert counter.count == 2  # SELECT ... FOR UPDATE rồi UPDATE, không N+1
+    assert counter.count == 2  # SELECT ... FOR NO KEY UPDATE rồi UPDATE, không N+1
     select_stmt, update_stmt = counter.statements
-    assert "FOR UPDATE" in select_stmt.upper()
+    assert "FOR NO KEY UPDATE" in select_stmt.upper()
     assert "ORDER BY" in select_stmt.upper()
     assert "UPDATE" in update_stmt.upper()
 
     for project in (a, b):
         await db_session.refresh(project)
         assert project.updated_at == fake_clock.now()
+
+
+async def test_touch_project_does_not_wait_for_foreign_key_share_lock(
+    db_sessionmaker: async_sessionmaker[AsyncSession], fake_clock: FakeClock
+) -> None:
+    """MULTI-FLOOR-02: chạm dự án không chờ `KEY SHARE` mà khoá ngoại của giao dịch khác để lại.
+
+    Hai tầng của một dự án dựng song song: mỗi lượt chèn phiên bản (khoá ngoại → `KEY SHARE` trên
+    dòng dự án) rồi chạm dự án. Với `FOR UPDATE` lượt này chờ `KEY SHARE` của lượt kia và ngược
+    lại → deadlock. `holder` giữ `FOR KEY SHARE` (đúng khoá của khoá ngoại); `touch_project` phải
+    xong khi `holder` chưa commit.
+    """
+    async with db_sessionmaker() as setup:
+        project = await _project(setup, [])
+
+    async with db_sessionmaker() as holder, db_sessionmaker() as toucher:
+        key_share = select(Project.id).where(Project.id == project.id).with_for_update(read=True, key_share=True)
+        await holder.execute(key_share)
+        await asyncio.wait_for(touch_project(toucher, project_id=project.id, clock=fake_clock), timeout=5)
+        await toucher.commit()
+        await holder.commit()
 
 
 async def test_touch_projects__reverse_order_sessions_do_not_deadlock(

@@ -171,13 +171,20 @@ async def touch_projects(db: AsyncSession, *, project_ids: Sequence[str], clock:
 
     `UPDATE … WHERE id IN (...)` khoá theo thứ tự kế hoạch của Postgres, không theo `id` tăng
     dần — hai giao dịch gỡ người dùng cùng lúc, có ≥ 2 dự án chung, có thể khoá chéo (NO-142).
-    `SELECT … ORDER BY id FOR UPDATE` trước, với danh sách id đã sắp, ép mọi giao dịch xin
+    `SELECT … ORDER BY id FOR NO KEY UPDATE` trước, với danh sách id đã sắp, ép mọi giao dịch xin
     khoá theo cùng một thứ tự nên không thể khoá chéo.
+
+    `NO KEY UPDATE` chứ không `UPDATE`: mọi lượt ghi chèn dòng con trỏ `projects.id` (phiên bản,
+    thông báo…) trước khi chạm dự án, và khoá ngoại để lại `KEY SHARE` trên dòng dự án. `FOR
+    UPDATE` xung đột với `KEY SHARE`, nên hai lượt dựng hai tầng của cùng một dự án khoá chéo
+    nhau (MULTI-FLOOR-02). `NO KEY UPDATE` — đúng khoá mà `UPDATE updated_at` tự xin — vẫn tuần
+    tự hoá các lượt chạm, nhưng không chờ khoá ngoại.
     """
     if not project_ids:
         return
     ids = sorted(set(project_ids))
-    await db.execute(select(Project.id).where(Project.id.in_(ids)).order_by(Project.id).with_for_update())
+    lock = select(Project.id).where(Project.id.in_(ids)).order_by(Project.id).with_for_update(key_share=True)
+    await db.execute(lock)
     await db.execute(update(Project).where(Project.id.in_(ids)).values(updated_at=clock.now()))
 
 
