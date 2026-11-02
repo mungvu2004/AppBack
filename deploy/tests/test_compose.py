@@ -153,6 +153,14 @@ def test_compose_beat_command_has_schedule_path(env: str) -> None:
 
 
 @pytest.mark.parametrize("env", ENVS)
+def test_compose_beat_healthcheck_checks_schedule_file(env: str) -> None:
+    """`beat` có healthcheck thật (tệp lịch `-s`), không `disable` — `compose up --wait` hỏng khi thiếu."""
+    healthcheck = _resolved_services(env)["beat"].get("healthcheck") or {}
+    assert not healthcheck.get("disable"), f"{env}: beat tắt healthcheck"
+    assert "/tmp/celerybeat-schedule" in _cmd_text(healthcheck.get("test")), f"{env}: beat không kiểm tệp lịch"
+
+
+@pytest.mark.parametrize("env", ENVS)
 def test_compose_no_container_name_for_api_and_worker(env: str) -> None:
     """Không `container_name` ở `api`/`worker` (B0-10 chạy hai bản song song lúc deploy)."""
     services = _resolved_services(env)
