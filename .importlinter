@@ -20,6 +20,7 @@ source_modules =
     packages.core
 forbidden_modules =
     packages.domain
+    packages.genai
     packages.vision
     packages.db
     packages.storage
@@ -44,6 +45,7 @@ ignore_imports =
 unmatched_ignore_imports_alerting = warn
 source_modules =
     packages.domain
+    packages.genai
     packages.vision
 forbidden_modules =
     packages.db
@@ -182,6 +184,7 @@ source_modules =
     packages.core
     packages.db
     packages.domain
+    packages.genai
     packages.mail
     packages.messaging
     packages.ml_contracts

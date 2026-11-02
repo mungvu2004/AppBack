@@ -144,5 +144,7 @@ export const SCHEMA_MAP: Readonly<Record<string, SchemaMapEntry>> = {
   lighting_bake_download_file: EMPTY, // N44 (LB-01) — thân nhị phân, miễn H1 (BE-00 §12 bước 7)
   spatial_read_dimension_strings: object('@/api/schemas/quality', 'DimensionStringsSchema'), // N45 (QT-SCALE-API)
   spatial_read_detected_geometry: object('@/api/schemas/quality', 'DetectedGeometrySchema'), // N46 (QT-SCALE-API)
+  design_director_read_state: object('@/api/schemas/designConcept', 'DesignConceptStateSchema'), // N47 (AID-01)
+  design_director_select_concept: object('@/api/schemas/designConcept', 'DesignConceptSchema'), // N48 (AID-01)
   projects_cancel_create_project: object(INDEX, 'ProjectSchema'), // N40
 };

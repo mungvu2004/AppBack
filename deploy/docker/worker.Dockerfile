@@ -20,6 +20,7 @@ COPY packages/messaging/pyproject.toml packages/messaging/pyproject.toml
 COPY packages/mail/pyproject.toml packages/mail/pyproject.toml
 COPY packages/observability/pyproject.toml packages/observability/pyproject.toml
 COPY packages/ml_contracts/pyproject.toml packages/ml_contracts/pyproject.toml
+COPY packages/genai/pyproject.toml packages/genai/pyproject.toml
 COPY packages/testing/pyproject.toml packages/testing/pyproject.toml
 COPY apps/api/pyproject.toml apps/api/pyproject.toml
 COPY apps/worker/pyproject.toml apps/worker/pyproject.toml
@@ -53,6 +54,7 @@ COPY packages/messaging/ packages/messaging/
 COPY packages/mail/ packages/mail/
 COPY packages/observability/ packages/observability/
 COPY packages/ml_contracts/ packages/ml_contracts/
+COPY packages/genai/ packages/genai/
 
 RUN mkdir -p /var/lib/appback/storage \
  && chown -R 10001:10001 /var/lib/appback/storage \

@@ -1252,6 +1252,154 @@
         "title": "DeleteUserBody",
         "type": "object"
       },
+      "DesignConcept": {
+        "additionalProperties": false,
+        "description": "Một concept: `styleId` vắng khi lượt AI-tự-chọn chưa chọn xong; `result` chỉ khi `done`.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endedat"
+          },
+          "failureCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurecode"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DesignConceptStatus"
+          },
+          "styleId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignStyleId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suggested": {
+            "title": "Suggested",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "suggested",
+          "status",
+          "createdAt"
+        ],
+        "title": "DesignConcept",
+        "type": "object"
+      },
+      "DesignConceptState": {
+        "additionalProperties": false,
+        "description": "N47: công tắc, kiểu AI đề xuất mới nhất, concept đang chọn.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignConcept"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "suggestedStyleId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignStyleId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "DesignConceptState",
+        "type": "object"
+      },
+      "DesignConceptStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "DesignStyleId": {
+        "enum": [
+          "japandi",
+          "scandinavian",
+          "modern-min",
+          "modern-lux",
+          "indochine",
+          "wabi-sabi",
+          "industrial",
+          "tropical",
+          "korean-min",
+          "neoclassic",
+          "midcentury",
+          "rustic"
+        ],
+        "type": "string"
+      },
       "DetectedGeometryOut": {
         "additionalProperties": false,
         "description": "`GET …/detected-geometry`; chưa có lượt hay artifact → danh sách rỗng, hộp/bề dày `null`.",
@@ -6510,6 +6658,24 @@
         "title": "SegmentOut",
         "type": "object"
       },
+      "SelectDesignConceptIn": {
+        "additionalProperties": false,
+        "description": "Thân N48: `styleId` vắng hoặc `null` = quay về đề xuất AI.",
+        "properties": {
+          "styleId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignStyleId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "SelectDesignConceptIn",
+        "type": "object"
+      },
       "SetActiveModelVersionBody": {
         "additionalProperties": false,
         "description": "Thân trong của N24: `versionId` **bắt buộc**, `null` là lựa chọn có chủ đích.\n\nHọ nằm trên đường dẫn, nên luật \"`null` chỉ cho `wallSegmentation`\" không kiểm được ở\nđây — `service.py` trả 422 `MODEL_VERSION_FAMILY_MISMATCH` (`adminMl.ts:30-34`).",
@@ -10080,6 +10246,100 @@
         "summary": "Projects Cancel Create Project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/design-concept": {
+      "get": {
+        "description": "N47 — công tắc, kiểu AI đề xuất và concept đang chọn của dự án.",
+        "operationId": "design_director_read_state_api_projects__project_id__design_concept_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignConceptState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Design Director Read State",
+        "tags": [
+          "design_director"
+        ]
+      },
+      "post": {
+        "description": "N48 — 202 với concept đã chọn (mới `queued` hoặc dùng lại cùng đầu vào); 503 tắt, 429 hết hạn mức.",
+        "operationId": "design_director_select_concept_api_projects__project_id__design_concept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectDesignConceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignConcept"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Design Director Select Concept",
+        "tags": [
+          "design_director"
         ]
       }
     },

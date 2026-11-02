@@ -687,3 +687,21 @@ ruleConfig.ts       RULE_OVERRIDE_SEVERITIES · RuleOverrideSchema · ProjectRul
   Bearer (không dùng `<img src>`), đổi sang blob URL cho bản xem thử.
 - Mã hỏng (`failureCode`): `LIGHTING_BAKE_FAILED`, `LIGHTING_BAKE_TIMEOUT`, `LIGHTING_BAKE_OUTPUT_INVALID`,
   `LIGHTING_BAKE_STALLED`.
+
+## 12. AI chọn phong cách nội thất → `designConcept.ts` (AID-01)
+
+- Kết quả AI **không ghi vào tài liệu tầng**: mỗi concept là một bản JSON riêng (bảng `design_concepts`). FE dựng
+  `SceneStyle` từ `result`; trường người dùng đã đặt (`floorMaterial`, `paint`, `model`, `slots`) vẫn thắng phong cách.
+  `additions` là đồ sinh ở FE như `furnishEmptyRooms` (không lưu; sửa một món thì cả bộ phòng thành đồ thật).
+- `DESIGN_STYLE_IDS` (12): `japandi scandinavian modern-min modern-lux indochine wabi-sabi industrial tropical korean-min
+  neoclassic midcentury rustic`. `DESIGN_CONCEPT_STATUSES = ['queued', 'running', 'done', 'failed']`.
+- `DesignConceptSchema` (strict): `id` (`dcn_` + ULID), `suggested`, `status`, `createdAt`; `styleId` khi đã có kiểu;
+  `endedAt` khi `done | failed`; `failureCode` khi `failed`; `result` khi `done`. `DesignConceptStateSchema`: `enabled`,
+  `suggestedStyleId?`, `active?`. Vắng, không `null` (W2); bên trong `result` giữ `null` của `variant`, `modelId`.
+- `result`: `nameVi`, `summaryVi`, `baseStyle` (5 kiểu cũ), `wall {interior, exterior?}`, `floor` (khoá `RoomFinish`),
+  `models` (`FurnitureRole` → id `library_items`), `additions[] {levelId, roomId, kind, variant, centre, widthMm, depthMm,
+  rotationDeg, modelId}`.
+- N48 thân `{"styleId": <mã> | null}` hoặc `{}` (= quay về đề xuất AI) → 202 `DesignConcept`; cùng `input_key` (kiểu,
+  revision mọi tầng, phiên bản thư viện, vật liệu, prompt) thì dùng lại, không gọi AI. Lỗi 503 `DESIGN_DIRECTOR_DISABLED`,
+  429 `DESIGN_DIRECTOR_QUOTA` (cả hai `Retry-After: 10`). Mã hỏng: `DESIGN_DIRECTOR_FAILED`, `DESIGN_DIRECTOR_OUTPUT_INVALID`,
+  `DESIGN_DIRECTOR_STALLED`. FE coi mọi lỗi là "dùng cách bày mặc định", không báo lỗi chặn.
