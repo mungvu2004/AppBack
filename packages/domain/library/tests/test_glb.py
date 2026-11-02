@@ -282,6 +282,30 @@ def test_measure_glb_applies_node_transforms() -> None:
     assert measured.triangle_count == 2 * asset.triangle_count
 
 
+@pytest.mark.parametrize(("component", "div"), [(5122, 32767), (5120, 127), (5123, 65535), (5121, 255)])
+def test_measure_glb_dequantises_normalized_positions(component: int, div: int) -> None:
+    """POSITION `normalized` (meshopt lượng tử hoá): `min`/`max` thô chia về [-1, 1] rồi mới qua `scale` của nút."""
+    asset = build_glb(CATALOGUE[0])
+    doc, bin_ = read_glb(asset.data)
+    acc = doc["accessors"][doc["meshes"][0]["primitives"][0]["attributes"]["POSITION"]]
+    signed = component in (5120, 5122)
+    acc.update(componentType=component, normalized=True, min=[-div if signed else 0] * 3, max=[div, div // 2, div])
+    for prim in doc["meshes"][0]["primitives"][1:]:
+        doc["accessors"][prim["attributes"]["POSITION"]].update(acc)
+    doc["nodes"] = [{"mesh": 0, "scale": [0.5, 2.0, 0.25]}]
+    js = json.dumps(doc).encode()
+    js += b" " * (-len(js) % 4)
+    body = struct.pack("<II", len(js), 0x4E4F534A) + js + struct.pack("<II", len(bin_), 0x004E4942) + bin_
+    measured = measure_glb(struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body)
+    span = 2.0 if signed else 1.0
+    half = (div // 2) / div - (-1.0 if signed else 0.0)
+    assert (measured.width_mm, measured.height_mm, measured.depth_mm) == (
+        round(span * 0.5 * 1000),
+        round(half * 2.0 * 1000),
+        round(span * 0.25 * 1000),
+    )
+
+
 def test_measure_glb_rejects_non_glb() -> None:
     """Byte không phải GLB → `ValueError`."""
     with pytest.raises(ValueError, match="GLB"):
