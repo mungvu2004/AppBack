@@ -226,6 +226,12 @@ job_test_group() {
   fi
   local trace="trace-${name}.jsonl"
   : >"$trace"
+  # Shard ghi mẫu golden (CONTRACT_SAMPLES_DIR) thì `tools.verify.steps` cũng chép mẫu ra VERIFY_OUT_DIR,
+  # mặc định `/src-out` chỉ ghi được trong container cổng — trỏ về thư mục ghi được như job contract.
+  if [ -n "${CONTRACT_SAMPLES_DIR:-}" ]; then
+    export VERIFY_OUT_DIR="${VERIFY_OUT_DIR:-${RUNNER_TEMP:-/tmp}/verify-out}"
+    mkdir -p "$VERIFY_OUT_DIR"
+  fi
   # all-check đếm cả repo: chỉ chạy một lần (shard 1 hoặc chạy tay).
   if [ "$group" = "unit" ] && { [ -z "$shard" ] || [ "${shard%/*}" = "1" ]; }; then
     run_step "pytest --collect-only --ci-split=all-check" \
