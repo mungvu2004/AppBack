@@ -347,8 +347,9 @@ async def test_orchestrate_pipeline_start__U01(
 async def test_orchestrate_pipeline_start__U02(
     db_sessionmaker: Maker, local_storage: LocalDiskStorage, fake_clock: FakeClock
 ) -> None:
-    """PNG 16-bit (mode `I`) và JPEG CMYK: cả hai qua bước tiền xử lý mà không hỏng."""
-    png16 = Image.new("I", (320, 240), 1000)
+    """PNG 16-bit (mode `I;16`) và JPEG CMYK: cả hai qua bước tiền xử lý mà không hỏng."""
+    # Pillow 13 bỏ ghi PNG từ mode `I` (32-bit); `I;16` là đúng thứ một PNG 16-bit giải ra.
+    png16 = Image.new("I;16", (320, 240), 1000)
     png_data = encode(png16, "PNG")
     _scene, run = await _upload_and_run(
         db_sessionmaker, local_storage, data=png_data, file_name="a.png", clock=fake_clock
