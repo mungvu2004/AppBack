@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import pytest
 
-from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls, close_envelope_gaps
+from apps.worker.pipeline_build.geometry import Scaling, WallSet, _bridge_hosts, build_walls, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster
 from apps.worker.pipeline_build.rooms import build_rooms
@@ -903,6 +903,21 @@ def test_close_envelope_gaps__narrow_exterior_gap_extends_a_host(fake_clock: Fak
     assert len(result.walls) == 5
     assert (result.walls[0].centreline.start, result.walls[0].centreline.end) == (Point(x=0, y=0), Point(x=2500, y=0))
     assert result.openings == ()
+
+
+def test_close_envelope_gaps__narrow_gap_skips_perpendicular_partition(fake_clock: FakeClock) -> None:
+    """C5: vách vuông góc chạm mép khe (chữ T) không phải tường chủ — chỉ tường thẳng hàng với khe được kéo."""
+    shared: dict[str, Any] = {
+        "level_id": new_spatial_id("level", fake_clock),
+        "scaling": Scaling(1.0, 1.0),
+        "clock": fake_clock,
+    }
+    walls = [wall_px(2000, 4000, 2000, 0), *_box_with_top_gap(2000, 2500)]
+    wall_set = build_walls(walls, [], dropped=Counter(), **shared)
+    gap = (Point(x=2000, y=0), Point(x=2500, y=0))
+    hosts = _bridge_hosts(wall_set.walls, gap)
+    assert hosts
+    assert all(host.centreline.start.y == host.centreline.end.y == 0 for host in hosts)
 
 
 def test_close_envelope_gaps__narrow_gap_moves_start_and_shifts_openings(fake_clock: FakeClock) -> None:

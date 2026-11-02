@@ -14,3 +14,4 @@
   tin 0,3); khe < 600 mm → kéo một tường chủ khép khe. Khe trong nhà giữ hở như cũ.
 - Không đổi API, DB, migration, hợp đồng FE–BE.
 - Cổng áp dụng: lint/type, test `packages/vision/walls`, `apps/worker/pipeline_build`.
+- Vòng sửa review: tường chủ khép khe hẹp phải thẳng hàng với khe (vách chữ T không bị kéo xiên).

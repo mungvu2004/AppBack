@@ -1161,8 +1161,23 @@ def _centreline(wall: Wall) -> LineString:
 
 
 def _bridge_hosts(walls: Sequence[Wall], ends: tuple[Point, Point]) -> list[Wall]:
-    """Tường có đầu mút trùng một đầu của đoạn nối (đoạn nối nối đúng hai đầu gần của cặp thẳng hàng)."""
-    return [wall for wall in walls if {wall.centreline.start, wall.centreline.end} & set(ends)]
+    """Tường thẳng hàng với đoạn nối có đầu mút trùng một đầu của nó (đoạn nối nối hai đầu gần của cặp thẳng hàng).
+
+    Vách vuông góc chạm mép khe (chữ T/L) không phải tường chủ: kéo nó qua khe sẽ thành tường xiên.
+    """
+    gx, gy = ends[1].x - ends[0].x, ends[1].y - ends[0].y
+    gap = math.hypot(gx, gy)
+    hosts = []
+    for wall in walls:
+        line = wall.centreline
+        if not {line.start, line.end} & set(ends):
+            continue
+        wx, wy = line.end.x - line.start.x, line.end.y - line.start.y
+        length = math.hypot(wx, wy)
+        if gap and length and abs(gx * wx + gy * wy) / (gap * length) < _HUG_COS_MIN:
+            continue
+        hosts.append(wall)
+    return hosts
 
 
 def _gap_door(
