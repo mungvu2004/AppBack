@@ -9,15 +9,6 @@
   "model_sha256": "bd452bc733e9a2fae21b4f076fda6daadf49fd476cb8fbbec92682531f7e573c"
  },
  {
-  "id": "desk-hq",
-  "name": "Bàn học gỗ",
-  "group": "table",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/office-table (tô lại vật liệu)",
-  "model_sha256": "dbf52991b93c5139df393a05a650040416eb929c47057ff5f4d8e1f106630fbe"
- },
- {
   "id": "dining-table-hq",
   "name": "Bàn ăn gỗ",
   "group": "table",
@@ -54,15 +45,6 @@
   "model_sha256": "a0874dddf193ea2f2378b24e5edb90a3d92542781fb44fc7aa307e95400aef5e"
  },
  {
-  "id": "desk-chair-hq",
-  "name": "Ghế bàn học",
-  "group": "chair",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/dining-chair (tô lại vật liệu)",
-  "model_sha256": "989c2404ebd339fdd0075d5e3f9c8ae92db3f112ab828b630d5741beae8d6c83"
- },
- {
   "id": "dining-chair-hq",
   "name": "Ghế ăn bọc nệm da tối",
   "group": "chair",
@@ -79,33 +61,6 @@
   "author": "3DError404",
   "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/a5aa4613bc5b46baba4d9254d6c9c038 \"Dining_chair_241120\"",
   "model_sha256": "664c2d250ffffffb7b51008459e999a3c2a904e6d9a73126f49a2a22002f79ad"
- },
- {
-  "id": "bed-double-hq",
-  "name": "Giường đôi gỗ óc chó, chăn nâu xám",
-  "group": "bed",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/single-bed (tô lại vật liệu)",
-  "model_sha256": "acae1b688c5ca201349148417e43361d1a8722147967f1b297d0e9b80deabfc7"
- },
- {
-  "id": "bed-double-sage-hq",
-  "name": "Giường đôi chăn xám xanh",
-  "group": "bed",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/single-bed (tô lại vật liệu)",
-  "model_sha256": "55f5f9eab671dfc7c6db641d71f1c5302d0a480015c692f039c9abd4d2137ef9"
- },
- {
-  "id": "bed-pink-hq",
-  "name": "Giường 1,2 m chăn hồng",
-  "group": "bed",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/single-bed (tô lại vật liệu)",
-  "model_sha256": "0d45b5e2ada5ec5bd425a1ee4b6e575dcf6823244a26628d0c7638c789c76ffb"
  },
  {
   "id": "bed-double-pro",
@@ -153,15 +108,6 @@
   "model_sha256": "eeaca1d56b64b6f216d8ef4d47c04813eaa230dc8419516fce0711fcc281f346"
  },
  {
-  "id": "sofa-hq",
-  "name": "Sofa văng be có gối",
-  "group": "sofa",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/sofa (tô lại vật liệu)",
-  "model_sha256": "5c81ae3f2b250ef995133c1ee556f83d68005e3828f49504be40d311ca08cde0"
- },
- {
   "id": "sofa-l-pro",
   "name": "Sofa góc chữ L vải trắng kem",
   "group": "sofa",
@@ -178,33 +124,6 @@
   "author": "AleixoAlonso",
   "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/f3a71dc05afb46f8a2fae64eba0acc64 \"Gray L-Shaped Couch\"",
   "model_sha256": "b5ebd9ba67baf62abdb5db6e82ba9b13029427de53d3122aba620d997359bfbe"
- },
- {
-  "id": "dresser-hq",
-  "name": "Tủ ngăn kéo gỗ",
-  "group": "storage",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/dresser (tô lại vật liệu)",
-  "model_sha256": "02239bbf2a14bda92864564fdcd70550a5821bb7fbd4fcedf7cbd21c88bc5ab4"
- },
- {
-  "id": "nightstand-hq",
-  "name": "Tủ đầu giường gỗ",
-  "group": "storage",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/bedside-table (tô lại vật liệu)",
-  "model_sha256": "599ab1f8e0a369d8498062ef38fb9af935b52b5275e3ba06a29bbbf68bf62efe"
- },
- {
-  "id": "wardrobe-hq",
-  "name": "Tủ áo gỗ cao",
-  "group": "storage",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/closet (tô lại vật liệu)",
-  "model_sha256": "2f69104ffe5d39fe48baea149b7a4853f173b4b385fe73e1b047198cc7b994c5"
  },
  {
   "id": "wardrobe-pro",
@@ -243,15 +162,6 @@
   "model_sha256": "7de7d946c402ae60d55e37192ecbd4d46cf4929b8c75a8b8ee61dd1d3a283951"
  },
  {
-  "id": "toilet-hq",
-  "name": "Bồn cầu",
-  "group": "sanitary",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/toilet (tô lại vật liệu)",
-  "model_sha256": "a81f6f7047cbba22b90b5552a6ba20a27195e5a181bb95067740b55061be5b9c"
- },
- {
   "id": "toilet-pro",
   "name": "Bồn cầu sứ trắng",
   "group": "sanitary",
@@ -268,15 +178,6 @@
   "author": "Urpo",
   "source": "https://sketchfab.com/3d-models/adb3b931f3ef4941830eea9705657a3d",
   "model_sha256": "719fc038e3f67ad46f4b39882e4072a648c01e8904b514a1887acf0438fb6a4d"
- },
- {
-  "id": "basin-hq",
-  "name": "Lavabo đôi",
-  "group": "sanitary",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/bathroom-sink (tô lại vật liệu)",
-  "model_sha256": "5c88d2ca49eef4adc2fe324f3c441f11ea54393317d0f45bd74e1d0851f29104"
  },
  {
   "id": "basin-vanity-pro",
@@ -297,15 +198,6 @@
   "model_sha256": "01b6838f806cdc38f07fc65d390aeeb67f163d8870665944b006e58726a7a655"
  },
  {
-  "id": "shower-hq",
-  "name": "Vách tắm kính vuông",
-  "group": "sanitary",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/shower-square (tô lại vật liệu)",
-  "model_sha256": "dd9f3e62147501214573cc74a5f54002ba36c1efb398703e1f40dcf11cbf034b"
- },
- {
   "id": "shower-glass-pro",
   "name": "Vách tắm kính góc",
   "group": "sanitary",
@@ -324,15 +216,6 @@
   "model_sha256": "689e1dde45697cacf29bdccec664b8f5a0a6f036288b4cd6475b94292668a60c"
  },
  {
-  "id": "fridge-hq",
-  "name": "Tủ lạnh inox",
-  "group": "kitchen",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/fridge (tô lại vật liệu)",
-  "model_sha256": "1a67e27bc63fc8627821ce329fa5ee715f4eec94f5425dfcf417489313a93386"
- },
- {
   "id": "fridge-pro",
   "name": "Tủ lạnh cửa đôi inox",
   "group": "kitchen",
@@ -342,15 +225,6 @@
   "model_sha256": "62b8d6f2ee43d519102df8cc2f5679fc3ae9ba6d19ba6effb23a87d788a615d9"
  },
  {
-  "id": "kitchen-base-hq",
-  "name": "Tủ bếp dưới gỗ, mặt đá",
-  "group": "kitchen",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/kitchen-cabinet (tô lại vật liệu)",
-  "model_sha256": "6f30a07a3b3ae0f31f770634f62737f2253912407d1b5c464685fe6fc06a1b65"
- },
- {
   "id": "kitchen-l-pro",
   "name": "Bếp chữ L gỗ sáng trọn bộ",
   "group": "kitchen",
@@ -358,24 +232,6 @@
   "author": "butortervezo",
   "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/6ad39b0f52ad439ea12cbfdc1a1dd37f \"Kitchen cabinet 1\"",
   "model_sha256": "27db3054c3c488e843e8f868d6d1acc12c61367f365e77c526ed93ea128e0a44"
- },
- {
-  "id": "stove-hq",
-  "name": "Bếp mặt kính đen",
-  "group": "kitchen",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/stove (tô lại vật liệu)",
-  "model_sha256": "2c9ea13c94318c0a3749b0c3e4cb430b1b9fe211178d29cdd2af4d9b8464dcc6"
- },
- {
-  "id": "tv-hq",
-  "name": "TV màn phẳng",
-  "group": "technical",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/television (tô lại vật liệu)",
-  "model_sha256": "8baff02efad88477c541cbad31744996700be100dbf2cd9f37c2c94f3ade1abe"
  },
  {
   "id": "tv-pro",
@@ -396,15 +252,6 @@
   "model_sha256": "4ecbd4fd525ab8f6b9b7d4b5211ffc44dc7cc62cd115a51cfe8b79fd8edf18ed"
  },
  {
-  "id": "washer-hq",
-  "name": "Máy giặt cửa trước",
-  "group": "technical",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/washing-machine (tô lại vật liệu)",
-  "model_sha256": "8f8ce24edc51ea34837208ad0fed80f139fd73d180691896e6d7a9068976fd45"
- },
- {
   "id": "washer-pro",
   "name": "Máy giặt cửa trước trắng",
   "group": "technical",
@@ -412,15 +259,6 @@
   "author": "RMrando",
   "source": "Objaverse (allenai/objaverse) ← Sketchfab https://sketchfab.com/3d-models/a7fc42a0751c4be6a4cc22775b9b2cc5 \"Washing machine\"",
   "model_sha256": "9baff6cbc57bc768752977441b8535888306c79ccdf289adee2a7a0268a2e5df"
- },
- {
-  "id": "plant-indoor-hq",
-  "name": "Cây chậu trắng cao",
-  "group": "decor",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/indoor-plant (tô lại vật liệu)",
-  "model_sha256": "4d71bb15129bb9402b6210b7c11d35d921a6b7450de69746c402631234eea3d2"
  },
  {
   "id": "plant-large-hq",
@@ -486,24 +324,6 @@
   "model_sha256": "0d5ec1a3ba1eced0ac5597ee440fdc9c01b2de7b6926b722449d3e63bf04850f"
  },
  {
-  "id": "rug-rect-hq",
-  "name": "Thảm chữ nhật be",
-  "group": "decor",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/rectangular-carpet (tô lại vật liệu)",
-  "model_sha256": "4f04116926c8252c36a1f997b5c86854b6f280c73cfb7e48afdeb413aa627bdd"
- },
- {
-  "id": "rug-round-hq",
-  "name": "Thảm tròn be",
-  "group": "decor",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/round-carpet (tô lại vật liệu)",
-  "model_sha256": "d8a41f415d809f37415908d8a6f59b8f0fb2c5345388f86ed2a40149156aaa23"
- },
- {
   "id": "desk-lamp-hq",
   "name": "Đèn bàn học tay gập",
   "group": "decor",
@@ -511,15 +331,6 @@
   "author": "",
   "source": "https://polyhaven.com/a/desk_lamp_arm_01",
   "model_sha256": "3fed846aef9daf9f2b66886ae6f980a999490fb692f225f448e69886c4e6ed8e"
- },
- {
-  "id": "table-lamp-hq",
-  "name": "Đèn bàn đầu giường",
-  "group": "decor",
-  "license": "MIT",
-  "author": "",
-  "source": "Pascal vendor/pascal/assets/items/table-lamp (tô lại vật liệu)",
-  "model_sha256": "e904b2baa10c404cc1ca02c0d6219318d15c310613b13f726439b1d72fb4a8cf"
  },
  {
   "id": "curtain-pro",
