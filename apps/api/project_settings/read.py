@@ -27,6 +27,8 @@ class ProjectSettingsValue:
     scene_style: str | None = None
     detect_furniture: bool = False
     """QT-FURN-TOGGLE: dựng đồ đạc AI vào lớp; `False` = chỉ tường, ô mở, phòng."""
+    separate_units: bool = False
+    """UX-R2 K34: các tầng là những căn hộ riêng, không phải tầng chồng của một toà nhà."""
 
 
 DEFAULT_SETTINGS: Final = ProjectSettingsValue(
@@ -53,6 +55,7 @@ def value_of(row: ProjectSettingsRow) -> ProjectSettingsValue:
         default_scale_mm_per_px=row.default_scale_mm_per_px,
         scene_style=row.scene_style,
         detect_furniture=row.detect_furniture,
+        separate_units=row.separate_units,
     )
 
 

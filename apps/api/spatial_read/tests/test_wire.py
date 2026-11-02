@@ -119,6 +119,7 @@ def test_layer_document_omits_scale_status() -> None:
         dimensions=[],
     ).model_dump(by_alias=True)
     assert "scaleStatus" not in body
+    assert "scaleSource" not in body
     assert body["readiness"]["state"] == "notEvaluated"
     assert not body["readiness"]["reasons"]
 

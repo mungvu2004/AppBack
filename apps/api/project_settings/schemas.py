@@ -63,11 +63,12 @@ type ScaleMmPerPx = Annotated[Decimal, BeforeValidator(_to_decimal), Field(ge=De
 
 
 class ProjectSettingsBodyIn(WireRequest):
-    """Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, đây là PUT thay thế) và `sceneStyle`.
+    """Thân của N6: mọi trường bắt buộc trừ `notes` (vắng = xoá ghi chú, PUT thay thế), `sceneStyle`, `separateUnits`.
 
     `sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này
     không xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.
     `detectFurniture` (QT-FURN-TOGGLE) cũng vắng = giữ; có hiệu lực từ lượt pipeline sau.
+    `separateUnits` (UX-R2 K34) cũng vậy: vắng = giữ giá trị đang lưu; chỉ nhận `true`/`false`.
     """
 
     building_type: BuildingType
@@ -78,6 +79,7 @@ class ProjectSettingsBodyIn(WireRequest):
     default_scale_mm_per_px: ScaleMmPerPx
     scene_style: SceneStyle | None = None
     detect_furniture: StrictBool | None = None
+    separate_units: Annotated[bool, Field(strict=True)] = False
 
 
 class ProjectSettingsWriteIn(WireRequest):
@@ -102,6 +104,7 @@ class ProjectSettingsOut(WireModel):
     default_scale_mm_per_px: float
     scene_style: str | None = None
     detect_furniture: bool
+    separate_units: bool = False
 
     @classmethod
     def of(cls, value: ProjectSettingsValue) -> "ProjectSettingsOut":
@@ -116,4 +119,5 @@ class ProjectSettingsOut(WireModel):
             default_scale_mm_per_px=float(value.default_scale_mm_per_px),
             scene_style=value.scene_style,
             detect_furniture=value.detect_furniture,
+            separate_units=value.separate_units,
         )

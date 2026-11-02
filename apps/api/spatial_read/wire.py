@@ -295,6 +295,11 @@ class FloorLayerDocumentOut(WireModel):
     scale_status: Literal["unresolved"] | None = None
     source_dpi: Annotated[float, Field(gt=0)] | None = None
     """DPI của trang pipeline đã dựng (PDF biết khổ giấy), `null` với ảnh raster; FE đổi `1:N` → mm/px (U01)."""
+    scale_source: Literal["pipeline", "project_default"] | None = None
+    """Nguồn tỉ lệ tạm, chỉ có khi có `scaleStatus` (UX-R1 K12): `project_default` = không đo được."""
+    suggested_scale_mm_per_px: Annotated[float, Field(gt=0)] | None = None
+    """Tỉ lệ đề xuất (mm/px) khi `scaleSource` là `project_default` và tầng có tường (UX-R2 K01): đưa bề dày
+    tường trung vị về 150 mm. Chỉ để người dùng xác nhận, không áp vào tầng."""
     readiness: ReadinessOut
     layer: SpatialLayerOut
     axes: list[AxisOut]

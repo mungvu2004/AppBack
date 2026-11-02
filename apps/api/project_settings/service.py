@@ -37,6 +37,7 @@ def _columns(body: ProjectSettingsBodyIn) -> dict[str, Any]:
 
     `scene_style` chỉ có mặt khi thân gửi khoá `sceneStyle` (kể cả `null`): vắng thì `UPDATE` không đụng cột
     và băm của thân cũ không đổi. `detect_furniture` cũng vậy; `null` gửi lên = giữ như vắng (cột NOT NULL).
+    và băm của thân cũ không đổi. `separate_units` theo cùng luật với khoá `separateUnits`.
     """
     columns: dict[str, Any] = {
         "building_type": body.building_type,
@@ -50,6 +51,8 @@ def _columns(body: ProjectSettingsBodyIn) -> dict[str, Any]:
         columns["scene_style"] = body.scene_style
     if body.detect_furniture is not None:
         columns["detect_furniture"] = body.detect_furniture
+    if "separate_units" in body.model_fields_set:
+        columns["separate_units"] = body.separate_units
     return columns
 
 
