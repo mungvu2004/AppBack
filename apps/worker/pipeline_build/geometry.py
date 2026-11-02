@@ -56,6 +56,12 @@ _DIAGONAL_PERPENDICULAR_COS: Final = math.cos(math.radians(90.0 - DIAGONAL_ALIGN
 _DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
 """Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
+_MAX_SINGLE_LEAF_MM: Final = 1200
+"""Cửa một cánh rộng hơn ngần này không có thật: đọc được cung mở mà rộng hơn → hai cánh (C3)."""
+_SLIDING_MIN_MM: Final = 1500
+"""Cửa đi không đọc được cung mở mà rộng ≥ ngần này là cửa lùa (C3)."""
+_SPLIT_GAP_MM: Final = 60
+"""Hai ô mở cùng loại cùng tường cách nhau ≤ ngần này là một ô mở bị bộ dò cắt đôi (C4: 1400 + 600 cách 3-40 mm)."""
 """Cửa đôi hẹp hơn 600 mm là cửa đơn bị dò nhầm lớp: giữ thành cửa đơn (B11, chẩn đoán quy trình lần 2)."""
 _OPENING_REACH_SHARE: Final = 0.25
 """Tầm gắn ô mở theo cỡ hộp: hộp rộng `w` với tới tường cách ≤ 0,25·w (vẫn không dưới ½ dày + 150 mm)."""
@@ -939,11 +945,14 @@ def _candidate(
 def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scaling) -> _Cand:
     """Cửa một cánh trên tường thẳng: bản lề + phía cánh từ nét vẽ (`swing.read_leaf`); không đọc được → giữ nguyên.
 
+    C3: không đọc được cung (hay không có trang) mà rộng ≥ `_SLIDING_MIN_MM` → `"sliding"`; đọc được mà rộng hơn
+    `_MAX_SINGLE_LEAF_MM` → `"double"` (vẫn giữ phía cánh cho `settle_reversed`).
+
     Khe `a → b` = `[offset, offset + rộng]` dọc tim tính từ `seg.start`, đổi về px trang. Bản lề ở `a` (phía đầu
     tường) → `"left"`, ở `b` → `"right"` (Pascal `hingesSide`, `swing.py`); hướng cánh lưu tuyệt đối để
     `settle_reversed` so với luật phía mở của FE.
     """
-    if page is None or cand.kind != "door" or cand.swing != "left":
+    if cand.kind != "door" or cand.swing != "left":
         return cand
     ux, uy = _unit(seg)
     scale = scaling.build
@@ -951,10 +960,16 @@ def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scalin
     def at(t: float) -> tuple[float, float]:
         return ((seg.start.x + ux * t) / scale, (seg.start.y + uy * t) / scale)
 
-    leaf = read_leaf(page, at(cand.offset_mm), at(cand.offset_mm + cand.width_mm), seg.measured_mm / 2 / scale)
+    leaf = None
+    if page is not None:
+        leaf = read_leaf(page, at(cand.offset_mm), at(cand.offset_mm + cand.width_mm), seg.measured_mm / 2 / scale)
     if leaf is None:
-        return cand
-    return replace(cand, swing="right" if leaf.hinge_at_b else "left", leaf=(-uy * leaf.side, ux * leaf.side))
+        # C3: không cung mở mà rộng ≥ 1,5 m → cửa lùa (trước đây giữ "left" theo nhãn).
+        return replace(cand, swing="sliding") if cand.width_mm >= _SLIDING_MIN_MM else cand
+    swing: SwingDirection = "right" if leaf.hinge_at_b else "left"
+    if cand.width_mm > _MAX_SINGLE_LEAF_MM:
+        swing = "double"
+    return replace(cand, swing=swing, leaf=(-uy * leaf.side, ux * leaf.side))
 
 
 def _opening_candidates(
@@ -1016,7 +1031,7 @@ def _overlaps(a: _Cand, b: _Cand) -> bool:
 
 
 def _resolve_overlaps(cands: Sequence[_Cand], dropped: Counter[str]) -> list[_Cand]:
-    """Chồng khoảng cùng tường → giữ `confidence` cao hơn (hoà: đứng trước), còn lại `openingOverlap`."""
+    """Chồng khoảng cùng tường → giữ `confidence` cao hơn (hoà: đứng trước), còn lại `openingOverlap`; rồi gộp mảnh."""
     kept: list[_Cand] = []
     for cand in cands:
         clashes = [other for other in kept if _overlaps(other, cand)]
@@ -1027,7 +1042,32 @@ def _resolve_overlaps(cands: Sequence[_Cand], dropped: Counter[str]) -> list[_Ca
         kept = [other for other in kept if other.order not in losers]
         dropped["openingOverlap"] += len(losers)
         kept.append(cand)
-    return sorted(kept, key=lambda item: item.order)
+    return _merge_split(kept, dropped)
+
+
+def _merge_split(cands: Sequence[_Cand], dropped: Counter[str]) -> list[_Cand]:
+    """C4: ô mở cùng loại cùng tường cách ≤ `_SPLIT_GAP_MM` → một khoảng, lấy thuộc tính của mảnh `confidence` cao hơn.
+
+    Mảnh bị nhập đếm `openingOverlap`. Cửa bản lề gộp lại rộng hơn `_MAX_SINGLE_LEAF_MM` thành hai cánh.
+    """
+    merged: list[_Cand] = []
+    for cand in sorted(cands, key=lambda item: (item.wall, item.kind, item.offset_mm)):
+        prev = merged[-1] if merged else None
+        if prev is None or (prev.wall, prev.kind) != (cand.wall, cand.kind):
+            merged.append(cand)
+            continue
+        end = max(prev.offset_mm + prev.width_mm, cand.offset_mm + cand.width_mm)
+        if cand.offset_mm - (prev.offset_mm + prev.width_mm) > _SPLIT_GAP_MM:
+            merged.append(cand)
+            continue
+        lead = prev if prev.confidence >= cand.confidence else cand
+        width = end - prev.offset_mm
+        hinged = lead.swing in ("left", "right")
+        swing: SwingDirection = "double" if hinged and width > _MAX_SINGLE_LEAF_MM else lead.swing
+        order = min(prev.order, cand.order)
+        merged[-1] = replace(lead, order=order, offset_mm=prev.offset_mm, width_mm=width, swing=swing)
+        dropped["openingOverlap"] += 1
+    return sorted(merged, key=lambda item: item.order)
 
 
 def _assemble(

@@ -8,10 +8,13 @@ import math
 from collections import Counter
 from datetime import UTC, datetime
 
+import cv2
+import numpy as np
 import pytest
 
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import PageRaster
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
 from packages.domain.spatial import Point
@@ -788,3 +791,63 @@ def test_build_walls__thinner_wall_beside_thick_wall_body_kept(fake_clock: FakeC
         dropped,
     )
     assert len(result.walls) == 3
+
+
+def test_build_walls__window_split_20mm_apart_merges_into_one(fake_clock: FakeClock) -> None:
+    """C4 (cn-10/cn-11): cửa sổ 1400 + 600 cùng tường cách 20 mm là một cửa sổ bị cắt đôi → một khoảng 2020."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000)],
+        [det("window", 1000, 950, 2400, 1050, 0.6), det("window", 2420, 950, 3020, 1050, 0.9)],
+        fake_clock,
+        dropped,
+    )
+    (opening,) = result.openings
+    assert (opening.kind, opening.offset_mm, opening.width_mm, opening.confidence) == ("window", 1000, 2020, 0.9)
+    assert dropped["openingOverlap"] == 1
+
+
+def _door_page(width_px: int, *, arc: bool) -> PageRaster:
+    """Trang 10 mm/px: tường ngang y=100 dày 10 px có khe [130, 130 + rộng], cánh vuông tường + cung 1/4 (nếu `arc`)."""
+    gray = np.full((300, 400), 255, np.uint8)
+    walls = np.zeros((300, 400), np.uint8)
+    cv2.line(walls, (0, 100), (130, 100), 1, 10)
+    cv2.line(walls, (130 + width_px, 100), (399, 100), 1, 10)
+    gray[walls > 0] = 60
+    cv2.line(gray, (130, 105), (130, 105 + width_px), 0, 2)
+    if arc:
+        pts = [(130 + width_px * math.cos(q), 105 + width_px * math.sin(q)) for q in np.linspace(0, math.pi / 2, 60)]
+        cv2.polylines(gray, [np.rint(pts).astype(np.int32)], False, 0, 1)
+    return PageRaster(gray=gray, walls=walls.astype(bool))
+
+
+@pytest.mark.parametrize(
+    ("width_px", "arc", "swing"),
+    [
+        pytest.param(160, False, "sliding", id="wide-no-arc"),
+        pytest.param(140, True, "double", id="1.4m-with-arc"),
+        pytest.param(140, False, "left", id="1.4m-no-arc"),
+        pytest.param(90, True, "left", id="single-leaf"),
+    ],
+)
+def test_build_walls__door_swing_from_width_and_arc(
+    width_px: int, arc: bool, swing: str, fake_clock: FakeClock
+) -> None:
+    """C3: cửa đi không cung mà rộng ≥ 1,5 m → lùa; có cung mà rộng > 1,2 m → hai cánh; còn lại cánh đơn."""
+    result = build_walls(
+        [wall_px(0, 100, 400, 100, thickness_px=10)],
+        [det("door", 130, 90, 130 + width_px, 110)],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(10.0, 10.0),
+        clock=fake_clock,
+        dropped=Counter(),
+        page=_door_page(width_px, arc=arc),
+    )
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.swing, opening.door_style) == (width_px * 10, swing, None)
+
+
+def test_build_walls__wide_door_without_page_is_sliding(fake_clock: FakeClock) -> None:
+    """C3: không có trang để đọc cung, cửa đi 1,6 m vẫn thành cửa lùa."""
+    result = run([wall_px(0, 1000, 4000, 1000)], [det("door", 1000, 950, 2600, 1050)], fake_clock, Counter())
+    assert result.openings[0].swing == "sliding"
