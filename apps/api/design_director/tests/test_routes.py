@@ -6,7 +6,7 @@ Postgres và broker thật (K23). Case chung C04 C05 C12 C13 C25 ở `test_commo
 import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Final
+from typing import Any, Final
 
 import pytest
 from httpx import AsyncClient
@@ -208,6 +208,35 @@ async def test_design_director_select_concept__C14(
     assert len({r.json()["id"] for r in responses}) == 1
     assert len(await _rows(db_session, project.id)) == 1
     assert len(_tasks(broker)) == 1
+
+
+async def test_select_concept_returns_the_winner_after_losing_the_insert_race(
+    db_session: AsyncSession,
+    api_client: AsyncClient,
+    broker: SyncRedis,
+    design_director_on: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C14 tất định: tìm đầu trượt, chèn đụng lượt mở cùng khoá → tìm lại, trả lượt thắng, không gửi task."""
+    owner, project, _ = await _project(db_session)
+    key = await state.compute_input_key(db_session, project.id, "tropical")
+    winner = await make_design_concept(db_session, project_id=project.id, style_id="tropical", input_key=key)
+    real_find = state.find_reusable
+    calls = 0
+
+    async def find_after_first_miss(*args: Any, **kwargs: Any) -> dict[str, Any] | None:
+        nonlocal calls
+        calls += 1
+        return None if calls == 1 else await real_find(*args, **kwargs)
+
+    monkeypatch.setattr(state, "find_reusable", find_after_first_miss)
+
+    response = await api_client.post(_path(project.id), json={"styleId": "tropical"}, headers=headers_of(owner))
+
+    assert response.status_code == 202, response.text
+    assert response.json()["id"] == winner.id
+    assert len(await _rows(db_session, project.id)) == 1
+    assert _tasks(broker) == []
 
 
 async def test_design_director_select_concept__C17(
