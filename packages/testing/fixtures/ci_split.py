@@ -19,6 +19,7 @@ import pytest
 from _pytest.terminal import TerminalReporter
 
 OPTION_NAME = "--ci-split"
+SHARD_OPTION = "--ci-shard"
 ALL_CHECK = "all-check"
 
 SERVICE_FIXTURE_NAMES = frozenset(
@@ -44,6 +45,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         metavar="NHOM",
         help="Lọc test theo nhóm CI: unit,integration,ml (hợp) hoặc 'all-check' (chỉ đếm).",
+    )
+    parser.addoption(
+        SHARD_OPTION,
+        action="store",
+        default=None,
+        metavar="K/N",
+        help="Sau --ci-split, chỉ giữ phần K trong N phần, chia theo tệp (CI chạy song song nhiều runner).",
     )
 
 
@@ -81,6 +89,18 @@ def _parse_groups(raw: str) -> set[str]:
     return groups
 
 
+def _shard(items: list[pytest.Item], raw: str) -> list[pytest.Item]:
+    """Phần `K/N` của `items`: tệp xếp theo tên, tệp thứ i vào phần `i % N` — cả tệp đi cùng nhau
+    (khớp `--dist loadfile`), các tệp cạnh nhau (thường cùng nặng) rải đều các phần. Mọi tiến trình
+    xdist và mọi runner thu cùng danh sách nên cùng một phép chia. Giá trị lạ → `UsageError`."""
+    k, _, n = raw.partition("/")
+    if not (k.isdigit() and n.isdigit() and 1 <= int(k) <= int(n)):
+        raise pytest.UsageError(f"{SHARD_OPTION}: '{raw}' không đúng dạng K/N với 1 <= K <= N")
+    files = sorted({str(item.path) for item in items})
+    mine = {f for i, f in enumerate(files) if i % int(n) == int(k) - 1}
+    return [item for item in items if str(item.path) in mine]
+
+
 def _explicit_group_marker(item: pytest.Item) -> str | None:
     """Nhóm test tự khai tường minh (`@pytest.mark.ci_integration`…), nếu có, trước khi plugin gắn gì.
 
@@ -115,7 +135,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
     requested = _parse_groups(raw)
     keep = [item for item in items if any(item.get_closest_marker(GROUP_MARKERS[g]) for g in requested)]
-    deselected = [item for item in items if item not in keep]
+    shard = config.getoption(SHARD_OPTION)
+    if shard is not None:
+        keep = _shard(keep, shard)
+    kept = set(map(id, keep))
+    deselected = [item for item in items if id(item) not in kept]
     if deselected:
         config.hook.pytest_deselected(items=deselected)
     items[:] = keep
