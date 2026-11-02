@@ -13,7 +13,7 @@ from packages.domain.design_director.materials import DATA_DIR
 from packages.domain.design_director.profiles import Profile
 from packages.domain.design_director.styles import STYLE_IDS, STYLES, anchor_text
 
-PROMPT_VERSION: Final = "aid-01.1"
+PROMPT_VERSION: Final = "aid-01.2"
 MATERIALS_VERSION: Final = hashlib.sha256(
     b"".join((DATA_DIR / name).read_bytes() for name in ("materials.json", "sheets.json"))
 ).hexdigest()[:12]
@@ -122,10 +122,12 @@ def fill_prompt(edges: Sequence[Mapping[str, Any]]) -> str:
         "Ảnh 2: sơ đồ CÙNG HƯỚNG do máy dựng: phòng đánh số R0, R1…; mỗi cạnh tường đánh số E1, E2… (chữ đỏ, "
         "nằm phía trong phòng); chấm cam = cửa; khung xám = đồ ĐÃ CÓ. Lưu ý máy có thể gộp nhiều phòng của "
         "bản vẽ gốc thành một phòng.\n\n"
-        "Việc của bạn: đề xuất các món CÒN THIẾU để căn hộ trông như nhà thật ở Việt Nam:\n"
+        "Việc của bạn: bày đủ đồ để căn hộ trông như nhà thật ở Việt Nam (phần mềm KHÔNG tự bày gì thêm):\n"
         "- Ưu tiên món bản vẽ gốc CÓ VẼ mà sơ đồ chưa có (seenInDrawing=true), đặt đúng phía tường như bản vẽ gốc.\n"
-        "- Sau đó là món tối thiểu của nhà thật: WC có bồn cầu + lavabo + vòi sen; bếp có tủ bếp + bếp nấu + "
-        "tủ lạnh; lô gia có máy giặt; phòng ngủ có tủ áo; phòng khách có kệ TV (nếu có TV).\n"
+        "- Sau đó là món tối thiểu của nhà thật: phòng ngủ có giường (đầu giường dựa cạnh KHÔNG có cửa) + tủ đầu "
+        "giường (cùng cạnh giường, pos sát giường) + tủ áo; phòng khách có sofa + bàn trà (chọn CÙNG cạnh với sofa, "
+        "máy tự đặt bàn ra trước sofa) + kệ TV ở cạnh đối diện sofa; có chỗ ăn thì bàn ăn (máy tự đặt cách tường); "
+        "WC có bồn cầu + lavabo + vòi sen; bếp có tủ bếp + bếp nấu + tủ lạnh; lô gia có máy giặt.\n"
         "- Không thêm món đã có. Không chọn cạnh có cửa nếu món che cửa. Mỗi món: roomRef = phòng, "
         "edgeRef = cạnh tường của phòng đó để món dựa vào, pos = vị trí dọc cạnh: 0 = đầu trái/trên, "
         "1 = đầu phải/dưới, 0.5 = giữa.\n\n"

@@ -115,6 +115,17 @@ def test_place_inside_no_overlap_facing_room() -> None:
     assert place_additions([re], [], answers) == placed  # tất định
 
 
+def test_coffee_table_set_off_the_sofa_wall() -> None:
+    """Bàn trà cùng cạnh sofa đứng trước sofa (lùi thêm `AWAY_MM`), không dính tường."""
+    re = edges_of(room("r1", 4000, 4000), "R1", [], [])
+    answers = [{"type": "sofa", "edge": "R1:E1", "pos": 0.5}, {"type": "coffeeTable", "edge": "R1:E1", "pos": 0.5}]
+    sofa, table = place_additions([re], [], answers)
+    assert (sofa["kind"], sofa["variant"], table["kind"], table["variant"]) == ("chair", "sofa", "table", "sideTable")
+    assert sofa["centre"] == {"x": 2000, "y": 540}
+    assert table["centre"] == {"x": 2000, "y": 1240 + 275}
+    assert table["rotationDeg"] == sofa["rotationDeg"] == 0
+
+
 def test_door_zone_avoided() -> None:
     """Cửa giữa cạnh trên: món không nằm trong vùng cánh cửa quét."""
     walls = [wall("w1", (0, 0), (3000, 0))]

@@ -46,6 +46,13 @@ ADD: Final[Mapping[str, tuple[str, str | None]]] = {
     "wardrobe": ("wardrobe", "wardrobe"),
     "plant": ("other", "planter"),
     "desk": ("table", "table"),
+    "bed": ("bed", "bed"),
+    "nightstand": ("other", "nightstand"),
+    "sofa": ("chair", "sofa"),
+    "armchair": ("chair", "armchair"),
+    "coffeeTable": ("table", "sideTable"),
+    "diningTable": ("table", "table"),
+    "bookshelf": ("other", "shelves"),
 }
 """Loại món AI được thêm → (`kind`, `variant`) của `Furniture`. Khoá trùng `type` hồ sơ mẫu khi có."""
 
@@ -61,8 +68,18 @@ DEFAULT_SIZES: Final[Mapping[str, tuple[int, int]]] = {
     "wardrobe": (1200, 600),
     "plant": (400, 400),
     "desk": (1200, 600),
+    "bed": (1600, 2000),
+    "nightstand": (450, 400),
+    "sofa": (2000, 900),
+    "armchair": (800, 800),
+    "coffeeTable": (1000, 550),
+    "diningTable": (1400, 800),
+    "bookshelf": (800, 350),
 }
 """(rộng, sâu) mm khi thư viện không có mẫu cùng loại; FE tự chọn mẫu theo vai trò (`modelId=None`)."""
+
+AWAY_MM: Final[Mapping[str, int]] = {"coffeeTable": 1150, "diningTable": 600}
+"""Món đứng giữa phòng: khoảng lùi thêm khỏi cạnh AI chọn (bàn trà trước sofa dựa cùng cạnh; bàn ăn chừa ghế)."""
 
 WALL_GAP: Final = 85
 """Nửa tường 75 + khe 10 mm: đường bao phòng là tim tường."""
@@ -191,12 +208,12 @@ def _door_zones(room: RoomEdges) -> list[Polygon]:
 
 
 def _place_on(
-    e: Edge, width: float, depth: float, pos: float, inner: Polygon, blocked: Sequence[Polygon]
+    e: Edge, width: float, depth: float, pos: float, inner: Polygon, blocked: Sequence[Polygon], away: float = 0
 ) -> tuple[Vec, Polygon] | None:
     """Dò dọc cạnh từ vị trí mong muốn, bước 50 mm; chỗ hợp lệ gần nhất (hoà → `t` nhỏ hơn)."""
     want = pos * e.length
     lo, hi = math.ceil(width / 2), math.floor(e.length - width / 2)
-    offset = WALL_GAP + 5 + depth / 2
+    offset = WALL_GAP + 5 + away + depth / 2
     for t in sorted(range(lo, hi + 1, STEP_MM), key=lambda t: (abs(t - want), t)):
         c = (e.a[0] + e.dir[0] * t + e.n[0] * offset, e.a[1] + e.dir[1] * t + e.n[1] * offset)
         p = _rect(c, e.dir, e.n, width, depth)
@@ -248,7 +265,8 @@ def place_additions(
         for e in tries:
             if width > e.length - 100:
                 continue
-            hit = _place_on(e, width, depth, pos if e is e0 else 0.5, inner, taken + zones[room.room.id])
+            away = AWAY_MM.get(str(ans["type"]), 0)
+            hit = _place_on(e, width, depth, pos if e is e0 else 0.5, inner, taken + zones[room.room.id], away)
             if hit is None:
                 continue
             centre, poly = hit
