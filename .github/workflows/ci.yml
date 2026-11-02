@@ -109,6 +109,7 @@ jobs:
         shard: [1, 2]
     env:
       CI_SHARD: ${{ matrix.shard }}/2
+      CI_PYTEST_WORKERS: "4" # runner 4 vCPU; ml giữ mặc định 2 (torch mỗi tiến trình)
       CONTRACT_SAMPLES_DIR: ${{ github.workspace }}/.cache/contract-samples
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -151,6 +152,7 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     env:
       CI_SHARD: ${{ matrix.shard }}/5
+      CI_PYTEST_WORKERS: "4" # runner 4 vCPU; ml giữ mặc định 2 (torch mỗi tiến trình)
       CONTRACT_SAMPLES_DIR: ${{ github.workspace }}/.cache/contract-samples
       APPFRONT_DIR: ${{ github.workspace }}/appfront
       # CONTRACT_NODE_DIR: không đặt ở đây (context `runner` không hợp lệ trong `env:`
