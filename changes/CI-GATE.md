@@ -6,5 +6,8 @@
 - MinIO đã lưu trữ bản cộng đồng (quay.io 401, dl.min.io 410): ảnh `minio` và `mc` chuyển sang
   `ghcr.io/mungvu999-ctrl/` (`pinned_images.py`, compose ci/dev/prod); `mc` dựng từ mã nguồn (`mc.Dockerfile`,
   workflow `minio-images.yml`), `minio` là bản sao nguyên ảnh cũ.
-- Không đổi mã sản phẩm, API, DB, migration, hợp đồng FE–BE. Đề xuất: F:/App/docs/ci-gate/DE-XUAT.md.
+- Lỗi thật do CI lộ ra: `POST /api/notifications/read` với id chứa NUL → 500 (H2); `NotificationMarkReadBody`
+  nay trả 422 `field:"ids"` (file của B4-02, sửa trong phiên này vì chặn cổng; ghi để người điều phối biết).
+  `tools/ci/job.sh`: giữ `trace-<nhóm>.jsonl` rỗng để job `coverage` không báo thiếu.
+- Không đổi API khác, DB, migration, hợp đồng FE–BE. Đề xuất: F:/App/docs/ci-gate/DE-XUAT.md.
 - Cổng áp dụng: lint/type, test `tools/ci/tests`. Migration/hợp đồng: không áp dụng.
