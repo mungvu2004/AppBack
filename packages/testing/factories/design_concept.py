@@ -17,6 +17,17 @@ from packages.db.models.design_concept import DesignConceptRow
 _STARTED = frozenset({"running", "done", "failed"})
 _FINISHED = frozenset({"done", "failed"})
 
+# Kết quả hợp lệ theo schema FE (`DesignResultSchema`): mẫu response của test qua được H1.
+RESULT: dict[str, Any] = {
+    "nameVi": "Japandi",
+    "summaryVi": "Gỗ sáng, tường kem.",
+    "baseStyle": "go-am",
+    "wall": {"interior": "scene:paint-cream"},
+    "floor": {"wood": "scene:oak", "tile": "scene:tile-grey", "mosaic": "scene:tile-grey"},
+    "models": {},
+    "additions": [],
+}
+
 
 async def make_design_concept(
     db: AsyncSession,
@@ -35,7 +46,7 @@ async def make_design_concept(
     """Một dòng `design_concepts` đã `commit`.
 
     `running|done|failed` tự đặt `started_at = created_at`; `done|failed` tự đặt `ended_at`; `failed` có mã
-    `DESIGN_DIRECTOR_FAILED`; `done` có `result` `{}` và `style_id` `japandi` khi không truyền.
+    `DESIGN_DIRECTOR_FAILED`; `done` có `result` `RESULT` và `style_id` `japandi` khi không truyền.
     """
     clock = SystemClock()
     at = created_at if created_at is not None else clock.now()
@@ -49,7 +60,7 @@ async def make_design_concept(
         input_key=input_key if input_key is not None else secrets.token_hex(32),
         status=status,
         failure_code="DESIGN_DIRECTOR_FAILED" if status == "failed" else None,
-        result=result if result is not None or not done else {},
+        result=result if result is not None or not done else RESULT,
         usage={} if done else None,
         created_by=created_by,
         started_at=start,

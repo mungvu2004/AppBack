@@ -19,7 +19,7 @@ from packages.db.models.auth import User
 from packages.db.models.projects import Project
 from packages.messaging.redis import SyncRedis, broker_redis_sync
 from packages.testing.factories.auth import make_user
-from packages.testing.factories.design_concept import make_design_concept
+from packages.testing.factories.design_concept import RESULT, make_design_concept
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.design_director import TEST_QUOTA
 from packages.testing.fixtures.messaging import queued_payloads
@@ -81,7 +81,7 @@ async def test_design_director_read_state__C01(
         project_id=project.id,
         status="done",
         style_id="rustic",
-        result={"nameVi": "Mộc"},
+        result={**RESULT, "nameVi": "Mộc"},
         selected_at=now + timedelta(seconds=1),
     )
 
@@ -92,7 +92,7 @@ async def test_design_director_read_state__C01(
     assert body["enabled"] is True
     assert body["suggestedStyleId"] == "indochine"
     assert body["active"]["id"] == picked.id
-    assert body["active"]["result"] == {"nameVi": "Mộc"}
+    assert body["active"]["result"] == {**RESULT, "nameVi": "Mộc"}
     assert body["active"]["styleId"] == "rustic"
 
 
