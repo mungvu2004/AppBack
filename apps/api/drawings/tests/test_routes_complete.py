@@ -19,6 +19,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.access.kinds import ActivityKind
+from apps.api.drawings import complete
 from apps.api.drawings.settings import reset_drawings_settings_cache
 from apps.api.drawings.tests._helpers import sync_bus_reset as sync_bus_reset
 from apps.api.drawings.tests._upload_helpers import (
@@ -39,7 +40,9 @@ from apps.api.drawings.tests._upload_helpers import (
     upload_png,
     upload_through,
 )
+from apps.api.drawings.uploads import UploadFacts
 from packages.core.error_codes import DEPENDENCY_UNAVAILABLE
+from packages.core.errors import AppError
 from packages.db.models.drawings import PipelineRunRow, UploadRow
 from packages.db.models.floors import FloorRow
 from packages.messaging import broker_redis_sync
@@ -50,6 +53,7 @@ from packages.testing.factories.auth import make_user
 from packages.testing.fixtures.access import activity_rows
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.messaging import queued_payloads
+from packages.vision.preprocess import VisionError
 
 CPU_QUEUE: Final = "pipeline.cpu"
 GATE_WAIT_S: Final = 10.0
@@ -511,3 +515,26 @@ async def test_complete__storage_error_503_keeps_upload_receiving(
     assert (row.status, row.rejected_code) == ("receiving", None)
     assert retry.status_code == 200, retry.text
     assert retry.json()["status"] == "pending"
+
+
+def test_check_pages__plan_page_pick_failure_is_app_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BENCH3D-01: `pick_plan_page` hỏng giữa chừng → `AppError` cùng mã (thành dòng `rejected`), không 500."""
+
+    def broken(data: bytes, max_pages: int) -> int:
+        raise VisionError("FILE_CORRUPT")
+
+    monkeypatch.setattr(complete, "pick_plan_page", broken)
+    facts = UploadFacts(
+        id="u",
+        project_id="p",
+        floor_pk=1,
+        level_id="L",
+        file_name="ho-so.pdf",
+        declared_size_bytes=1,
+        page_index=0,
+        chunk_count=1,
+        status="receiving",
+    )
+    with pytest.raises(AppError) as caught:
+        complete._check_pages(pdf_bytes(2), facts)
+    assert caught.value.code.code == "FILE_CORRUPT"

@@ -13,7 +13,10 @@ import zlib
 from collections.abc import Sequence
 from typing import Final, Literal
 
+import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
 from PIL import Image
+
+from packages.vision.preprocess.pdf import PDF_LOCK
 
 Encryption = Literal["none", "owner_only", "user_password"]
 Rect = tuple[float, float, float, float, tuple[float, float, float]]
@@ -170,6 +173,34 @@ def make_pdf(
         objects.append(encrypt_dict)
         return _serialize(objects, b"/Encrypt %d 0 R" % len(objects))
     return _serialize(objects, b"")
+
+
+COVER_OPS: Final = b"BT /F1 24 Tf 72 700 Td (HO SO THIET KE) Tj ET\n"
+"""Trang bìa toàn chữ: không nét, không ảnh."""
+PLAN_OPS: Final = b"".join(b"%d 100 m %d 700 l S\n" % (50 + 4 * i, 50 + 4 * i) for i in range(120))
+"""Trang bản vẽ vector: 120 nét thẳng."""
+SCAN_OPS: Final = b"q %g 0 0 %g 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\xff\xff\x00 EI Q\n" % A4_PT
+"""Trang quét: một ảnh nhúng phủ cả trang, nửa đen nửa trắng (đủ mực)."""
+BLANK_SCAN_OPS: Final = SCAN_OPS.replace(bytes([0]), bytes([255]))
+"""Bìa quét: ảnh phủ cả trang nhưng trắng trơn (không mực)."""
+
+
+def join_pdfs(*documents: bytes) -> bytes:
+    """Ghép các PDF một trang thành một tài liệu nhiều trang **khác** nội dung (`make_pdf` chỉ lặp một trang)."""
+    with PDF_LOCK:
+        out = pdfium.PdfDocument.new()
+        try:
+            for data in documents:
+                source = pdfium.PdfDocument(data)
+                try:
+                    out.import_pages(source)
+                finally:
+                    source.close()
+            buffer = io.BytesIO()
+            out.save(buffer)
+            return buffer.getvalue()
+        finally:
+            out.close()
 
 
 def encode(image: Image.Image, image_format: str, **options: object) -> bytes:

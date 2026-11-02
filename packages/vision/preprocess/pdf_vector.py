@@ -16,9 +16,16 @@ import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 kh�
 import pypdfium2.raw as pdfium_c  # type: ignore[import-untyped]  # ctypes sinh tự động, không stub
 from numpy.typing import NDArray
 
-from packages.vision.preprocess.pdf import PDF_LOCK, _open_document, _open_page, _page_size_pt
+from packages.vision.preprocess.pdf import (
+    PDF_LOCK,
+    POINTS_PER_INCH,
+    _open_document,
+    _open_page,
+    _page_size_pt,
+    _render_page,
+)
 
-__all__ = ["PdfPageVectors", "pdf_page_vectors"]
+__all__ = ["PdfPageVectors", "pdf_page_vectors", "pick_plan_page"]
 
 type Affine = tuple[float, float, float, float, float, float]
 """Ma trận PDF `(a, b, c, d, e, f)`, vector hàng: `(x, y) -> (ax + cy + e, bx + dy + f)`."""
@@ -27,6 +34,18 @@ type Row = tuple[float, float, float, float, float]
 _IDENTITY: Final[Affine] = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 _MAX_FORM_DEPTH: Final = 8
 """Form XObject lồng sâu hơn ngần này thì bỏ — chặn tệp dựng ác ý lồng vô hạn (khối [7])."""
+PLAN_MIN_SEGMENTS: Final = 100
+"""Trang có ít nhất ngần này đoạn thẳng là bản vẽ: mặt bằng CAD cỡ 10³-10⁵ nét, bìa chữ chỉ vài khung."""
+PLAN_MIN_IMAGE_RATIO: Final = 0.3
+"""Ảnh nhúng phủ ≥ 30 % trang là bản quét/ảnh: chỉ khi đó mới dựng ảnh nhỏ để đếm mực."""
+PLAN_PICK_DPI: Final = 36.0
+"""Ảnh nhỏ để đếm mực: A3 ra ~600 x 420 điểm ảnh, đủ thấy nét tường, rẻ."""
+PLAN_INK_MARGIN: Final = 0.08
+"""Bỏ 8 % mỗi mép khi đếm mực: khung tên/khung giấy nằm ở mép, có cả trên trang bìa."""
+PLAN_INK_LEVEL: Final = 230
+PLAN_MIN_INK: Final = 0.02
+"""Trang ảnh có ≥ 2 % điểm ảnh lõi tối hơn 230 là bản vẽ. Bench two-page-ch04 ở 36 dpi: bìa quét 0,09 %,
+mặt bằng 11,7 %."""
 _MAX_SEGMENTS: Final = 200_000
 """Trần số đoạn thẳng đọc từ một trang (K13): bản CAD thật cỡ 10⁴-10⁵, vượt thì dừng đọc."""
 
@@ -149,21 +168,60 @@ def pdf_page_vectors(data: bytes, page_index: int) -> PdfPageVectors:
 
     Không dựng ảnh. Đọc tối đa `_MAX_SEGMENTS` đoạn, lồng Form tối đa `_MAX_FORM_DEPTH` tầng.
     """
-    out: list[Row] = []
     with PDF_LOCK:
         pdf = _open_document(data)
         try:
-            _page_size_pt(pdf, page_index)  # `page_index` ngoài khoảng → VALIDATION
-            with _open_page(pdf, page_index) as page:
-                display, width_pt, height_pt = _display_transform(page)
-                image_area = _walk_objects(page.raw, is_page=True, parent=display, depth=0, out=out)
-                textpage = page.get_textpage()
-                try:
-                    text = str(textpage.get_text_range())
-                finally:
-                    textpage.close()
+            return _read_page(pdf, page_index)
         finally:
             pdf.close()
+
+
+def _read_page(pdf: pdfium.PdfDocument, page_index: int) -> PdfPageVectors:
+    """Thân `pdf_page_vectors` trên tài liệu đã mở; gọi khi đang giữ `PDF_LOCK`."""
+    out: list[Row] = []
+    _page_size_pt(pdf, page_index)  # `page_index` ngoài khoảng → VALIDATION
+    with _open_page(pdf, page_index) as page:
+        display, width_pt, height_pt = _display_transform(page)
+        image_area = _walk_objects(page.raw, is_page=True, parent=display, depth=0, out=out)
+        textpage = page.get_textpage()
+        try:
+            text = str(textpage.get_text_range())
+        finally:
+            textpage.close()
     segments = np.asarray(out, dtype=np.float64).reshape(-1, 5)
     image_ratio = min(1.0, image_area / max(width_pt * height_pt, 1e-9))
     return PdfPageVectors(float(width_pt), float(height_pt), segments, image_ratio, text)
+
+
+def _is_drawing(pdf: pdfium.PdfDocument, page_index: int) -> bool:
+    """Trang mang bản vẽ: đủ nét vector, hoặc ảnh nhúng lớn mà đủ mực; bìa/thuyết minh toàn chữ thì không.
+
+    Gọi khi đang giữ `PDF_LOCK`. Chữ không phải nét nên trang chữ vector có ít đoạn; bìa quét thành ảnh
+    thì phải dựng ảnh nhỏ mới phân biệt được với mặt bằng quét.
+    """
+    page = _read_page(pdf, page_index)
+    if len(page.segments) >= PLAN_MIN_SEGMENTS:
+        return True
+    if page.image_ratio < PLAN_MIN_IMAGE_RATIO:
+        return False
+    gray = _render_page(pdf, page_index, PLAN_PICK_DPI / POINTS_PER_INCH).mean(axis=2)
+    dy, dx = (int(side * PLAN_INK_MARGIN) for side in gray.shape)
+    core = gray[dy : gray.shape[0] - dy, dx : gray.shape[1] - dx]
+    return float((core < PLAN_INK_LEVEL).mean()) >= PLAN_MIN_INK
+
+
+def pick_plan_page(data: bytes, max_pages: int) -> int:
+    """Trang đầu tiên (trong `max_pages` trang đầu) mang bản vẽ; trang 0 đã là bản vẽ hay không trang nào là → 0.
+
+    Mở tài liệu **một** lần dưới `PDF_LOCK`; lỗi như `pdf_page_vectors`. Dùng khi người dùng không chọn trang:
+    PDF hồ sơ hay có trang bìa chữ trước mặt bằng (bench two-page-ch04 → `NOT_A_FLOOR_PLAN`).
+    """
+    with PDF_LOCK:
+        pdf = _open_document(data)
+        try:
+            for index in range(min(len(pdf), max_pages)):
+                if _is_drawing(pdf, index):
+                    return index
+            return 0
+        finally:
+            pdf.close()

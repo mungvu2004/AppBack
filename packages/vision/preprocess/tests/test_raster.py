@@ -194,3 +194,21 @@ def test_encode_png_round_trip_without_metadata() -> None:
     assert b"tEXt" not in data
     with Image.open(io.BytesIO(data), formats=["PNG"]) as decoded:
         assert decoded.info.get("exif") is None
+
+
+def test_load_raster_dark_paper_is_inverted() -> None:
+    """Bản vẽ nền đen nét trắng (bench nt-05): trung vị xám < 128 → đảo về giấy trắng nét đen."""
+    source = Image.new("RGB", (40, 20), (10, 10, 10))
+    source.paste((250, 250, 250), (0, 10, 40, 12))
+    pixels = load_raster(synthetic.encode(source, "PNG")).pixels
+    assert tuple(pixels[0, 0]) == (245, 245, 245)
+    assert tuple(pixels[11, 5]) == (5, 5, 5)
+
+
+def test_load_raster_light_paper_is_kept() -> None:
+    """Giấy sáng giữ nguyên, kể cả nét đen dày."""
+    source = Image.new("RGB", (40, 20), (240, 240, 240))
+    source.paste((0, 0, 0), (0, 0, 40, 8))
+    pixels = load_raster(synthetic.encode(source, "PNG")).pixels
+    assert tuple(pixels[0, 0]) == (0, 0, 0)
+    assert tuple(pixels[19, 0]) == (240, 240, 240)
