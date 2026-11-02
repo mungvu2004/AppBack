@@ -37,7 +37,8 @@ from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster
 from apps.worker.pipeline_build.swing import read_leaf
 from packages.core.clock import Clock
-from packages.domain.spatial import Opening, Point, Segment, Wall, js_round
+from packages.domain.rules_ai import wall_side
+from packages.domain.spatial import Opening, Point, Room, Segment, Wall, js_round
 from packages.domain.spatial.thickness import snap_thickness
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
 from packages.ml_contracts.labels import LABEL_TARGETS, SwingDirection
@@ -56,6 +57,18 @@ _DIAGONAL_PERPENDICULAR_COS: Final = math.cos(math.radians(90.0 - DIAGONAL_ALIGN
 _DIAGONAL_MIN_SIN2: Final = math.sin(math.radians(2 * DIAGONAL_ALIGN_DEG))
 """Tường lệch trục gần nhất > `DIAGONAL_ALIGN_DEG` khi `|sin 2θ| = |2·ux·uy|` vượt số này."""
 _MIN_DOUBLE_DOOR_MM: Final = 600
+_MAX_SINGLE_LEAF_MM: Final = 1200
+"""Cửa một cánh rộng hơn ngần này không có thật: đọc được cung mở mà rộng hơn → hai cánh (C3)."""
+_SLIDING_MIN_MM: Final = 1500
+"""Cửa đi không đọc được cung mở mà rộng ≥ ngần này là cửa lùa (C3)."""
+_SPLIT_GAP_MM: Final = 60
+_ENVELOPE_DOOR_MIN_MM: Final = 600
+"""Khe thẳng hàng trên tường ngoài ≥ ngần này là cửa bộ dò bỏ sót (C5); hẹp hơn thì xây kín."""
+_GUESSED_DOOR_CONFIDENCE: Final = 0.3
+"""Cửa đoán từ khe tường ngoài, không đọc được cánh và hẹp hơn cửa lùa: tin thấp để người duyệt thấy (C5)."""
+_INFERRED_DOOR_CONFIDENCE: Final = 0.5
+"""Cửa đoán từ khe tường ngoài mà đọc được cánh hay đủ rộng thành cửa lùa (C5)."""
+"""Hai ô mở cùng loại cùng tường cách nhau ≤ ngần này là một ô mở bị bộ dò cắt đôi (C4: 1400 + 600 cách 3-40 mm)."""
 """Cửa đôi hẹp hơn 600 mm là cửa đơn bị dò nhầm lớp: giữ thành cửa đơn (B11, chẩn đoán quy trình lần 2)."""
 _OPENING_REACH_SHARE: Final = 0.25
 """Tầm gắn ô mở theo cỡ hộp: hộp rộng `w` với tới tường cách ≤ 0,25·w (vẫn không dưới ½ dày + 150 mm)."""
@@ -70,6 +83,10 @@ _DANGLE_DOOR_REACH_MM: Final = 1200
 _HUG_STUB_MAX_MM: Final = 600
 _HUG_FACE_MAX_MM: Final = 150
 _HUG_COS_MIN: Final = math.cos(math.radians(10))
+_HAIRLINE_MM: Final = 40
+"""Bề dày đo dưới ngần này là nét mảnh (kính cửa lùa, nét ký hiệu), không phải tường; bậc chuẩn từng nâng lên 100."""
+_NIB_MAX_MM: Final = 200
+"""Mẩu ngắn hơn ngần này có đầu lơ lửng, không mang ô mở là vụn nét, không phải tường (C2)."""
 # Đầu mút "chạm" tường khác khi cách tim ≤ ½ tổng bề dày + 10 mm (cùng thước của bộ đo F:/runs/r4-bd/tidy.py).
 _TOUCH_SLACK_MM: Final = 10
 # Luật WALL-OVERLAP của FE (AppFront rules/geometry): song song <= 5 độ chạm thân và chồng > 10 mm, hoặc tim cắt
@@ -187,7 +204,7 @@ class _Centrelines:
         return any(index not in skip for index in _hits(self.tree, gap))
 
 
-def _hits(tree: STRtree, geom: LineString) -> list[int]:
+def _hits(tree: STRtree, geom: shapely.Geometry) -> list[int]:
     """Chỉ số các hình trong cây giao với `geom` (một truy vấn, không quét tuyến tính)."""
     return [int(index) for index in tree.query(geom, predicate="intersects")]
 
@@ -253,6 +270,48 @@ def _drop_isolated(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     geoms = _linestrings(segs)
     near = neighbours(STRtree(geoms), geoms, float(WALL_JOIN_MM))
     kept = [seg for index, seg in enumerate(segs) if _length(seg) > seg.measured_mm or near[index]]
+    dropped["isolatedBlock"] += len(segs) - len(kept)
+    return kept
+
+
+def _drop_hairlines(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
+    """Bước 3: bỏ tường đo mỏng hơn `_HAIRLINE_MM` (đếm `isolatedBlock`).
+
+    Chỉ khi bản vẽ có tường dày ≥ `_HAIRLINE_MM`: cả bản toàn nét mảnh là tỉ lệ sai, bỏ hết thì mất nhà.
+    """
+    kept = [seg for seg in segs if seg.measured_mm >= _HAIRLINE_MM]
+    if not kept:
+        return segs
+    dropped["isolatedBlock"] += len(segs) - len(kept)
+    return kept
+
+
+def _inside(dup: _Seg, host: _Seg) -> bool:
+    """`dup` song song (≤ 10°), đo mỏng hơn `host`, hai đầu cách tim `host` ≤ ½ dày, chiếu trong `host` ± ½ dày."""
+    if host is dup or host.measured_mm <= dup.measured_mm:
+        return False
+    (ax, ay), (bx, by) = _unit(dup), _unit(host)
+    if abs(ax * bx + ay * by) < _HUG_COS_MIN:
+        return False
+    half, span = host.thickness_mm / 2, _length(host)
+    for tip in (dup.start, dup.end):
+        along = (tip.x - host.start.x) * bx + (tip.y - host.start.y) * by
+        side = abs((tip.x - host.start.x) * by - (tip.y - host.start.y) * bx)
+        if not -half <= along <= span + half or side > half:
+            return False
+    return True
+
+
+def _drop_inside_body(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
+    """Bước 3: tường nằm trong thân một tường dày hơn (nét kính cửa lùa giữa tường 220) là nét trùng → bỏ.
+
+    Không giới hạn dài, không tha khi chạm hộp ô mở: ô mở về tường chủ ở bước 4 (C2).
+    """
+    if not segs:
+        return segs
+    geoms = _linestrings(segs)
+    near = neighbours(STRtree(geoms), geoms, max(seg.thickness_mm for seg in segs) / 2)
+    kept = [seg for index, seg in enumerate(segs) if not any(_inside(seg, segs[other]) for other in near[index])]
     dropped["isolatedBlock"] += len(segs) - len(kept)
     return kept
 
@@ -630,6 +689,20 @@ def _drop_hugging_stubs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes:
             dropped["isolatedBlock"] += 1
 
 
+def _drop_dangling_nibs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
+    """3b (f): mẩu < `_NIB_MAX_MM` có đầu lơ lửng sau khi đã kéo (b, d), thân không chạm hộp ô mở → bỏ (C2).
+
+    Thân nới thêm một bề dày khi dò hộp: mẩu cạnh khe cửa (má cửa) chạm mép hộp vẫn được giữ.
+    """
+    for index, nib in enumerate(segs):
+        if not nib.alive or _length(nib) >= _NIB_MAX_MM or _hits(boxes.tree, _line(nib).buffer(nib.thickness_mm)):
+            continue
+        near = [segs[item] for item in sorted(neighbours[index])]
+        if _dangling(nib, nib.start, near) or _dangling(nib, nib.end, near):
+            nib.alive = False
+            dropped["isolatedBlock"] += 1
+
+
 def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tuple[tuple[Point, Point], ...]:
     """3b (c): cặp thẳng hàng còn khe mà không gộp → đoạn nối hai đầu gần, chỉ để khép phòng."""
     pairs = [
@@ -652,6 +725,7 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
     _extend_all(segs, near, boxes, dropped)
     _reach_dangling(segs, near, boxes, dropped)
     _drop_hugging_stubs(segs, near, boxes, dropped)
+    _drop_dangling_nibs(segs, near, boxes, dropped)
     return _bridge_segments(segs, near)
 
 
@@ -817,11 +891,14 @@ def _candidate(
 def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scaling) -> _Cand:
     """Cửa một cánh trên tường thẳng: bản lề + phía cánh từ nét vẽ (`swing.read_leaf`); không đọc được → giữ nguyên.
 
+    C3: không đọc được cung (hay không có trang) mà rộng ≥ `_SLIDING_MIN_MM` → `"sliding"`; đọc được mà rộng hơn
+    `_MAX_SINGLE_LEAF_MM` → `"double"` (vẫn giữ phía cánh cho `settle_reversed`).
+
     Khe `a → b` = `[offset, offset + rộng]` dọc tim tính từ `seg.start`, đổi về px trang. Bản lề ở `a` (phía đầu
     tường) → `"left"`, ở `b` → `"right"` (Pascal `hingesSide`, `swing.py`); hướng cánh lưu tuyệt đối để
     `settle_reversed` so với luật phía mở của FE.
     """
-    if page is None or cand.kind != "door" or cand.swing != "left":
+    if cand.kind != "door" or cand.swing != "left":
         return cand
     ux, uy = _unit(seg)
     scale = scaling.build
@@ -829,10 +906,16 @@ def _read_swing(cand: _Cand, seg: _Seg, page: PageRaster | None, scaling: Scalin
     def at(t: float) -> tuple[float, float]:
         return ((seg.start.x + ux * t) / scale, (seg.start.y + uy * t) / scale)
 
-    leaf = read_leaf(page, at(cand.offset_mm), at(cand.offset_mm + cand.width_mm), seg.measured_mm / 2 / scale)
+    leaf = None
+    if page is not None:
+        leaf = read_leaf(page, at(cand.offset_mm), at(cand.offset_mm + cand.width_mm), seg.measured_mm / 2 / scale)
     if leaf is None:
-        return cand
-    return replace(cand, swing="right" if leaf.hinge_at_b else "left", leaf=(-uy * leaf.side, ux * leaf.side))
+        # C3: không cung mở mà rộng ≥ 1,5 m → cửa lùa (trước đây giữ "left" theo nhãn).
+        return replace(cand, swing="sliding") if cand.width_mm >= _SLIDING_MIN_MM else cand
+    swing: SwingDirection = "right" if leaf.hinge_at_b else "left"
+    if cand.width_mm > _MAX_SINGLE_LEAF_MM:
+        swing = "double"
+    return replace(cand, swing=swing, leaf=(-uy * leaf.side, ux * leaf.side))
 
 
 def _opening_candidates(
@@ -894,7 +977,7 @@ def _overlaps(a: _Cand, b: _Cand) -> bool:
 
 
 def _resolve_overlaps(cands: Sequence[_Cand], dropped: Counter[str]) -> list[_Cand]:
-    """Chồng khoảng cùng tường → giữ `confidence` cao hơn (hoà: đứng trước), còn lại `openingOverlap`."""
+    """Chồng khoảng cùng tường → giữ `confidence` cao hơn (hoà: đứng trước), còn lại `openingOverlap`; rồi gộp mảnh."""
     kept: list[_Cand] = []
     for cand in cands:
         clashes = [other for other in kept if _overlaps(other, cand)]
@@ -905,7 +988,32 @@ def _resolve_overlaps(cands: Sequence[_Cand], dropped: Counter[str]) -> list[_Ca
         kept = [other for other in kept if other.order not in losers]
         dropped["openingOverlap"] += len(losers)
         kept.append(cand)
-    return sorted(kept, key=lambda item: item.order)
+    return _merge_split(kept, dropped)
+
+
+def _merge_split(cands: Sequence[_Cand], dropped: Counter[str]) -> list[_Cand]:
+    """C4: ô mở cùng loại cùng tường cách ≤ `_SPLIT_GAP_MM` → một khoảng, lấy thuộc tính của mảnh `confidence` cao hơn.
+
+    Mảnh bị nhập đếm `openingOverlap`. Cửa bản lề gộp lại rộng hơn `_MAX_SINGLE_LEAF_MM` thành hai cánh.
+    """
+    merged: list[_Cand] = []
+    for cand in sorted(cands, key=lambda item: (item.wall, item.kind, item.offset_mm)):
+        prev = merged[-1] if merged else None
+        if prev is None or (prev.wall, prev.kind) != (cand.wall, cand.kind):
+            merged.append(cand)
+            continue
+        end = max(prev.offset_mm + prev.width_mm, cand.offset_mm + cand.width_mm)
+        if cand.offset_mm - (prev.offset_mm + prev.width_mm) > _SPLIT_GAP_MM:
+            merged.append(cand)
+            continue
+        lead = prev if prev.confidence >= cand.confidence else cand
+        width = end - prev.offset_mm
+        hinged = lead.swing in ("left", "right")
+        swing: SwingDirection = "double" if hinged and width > _MAX_SINGLE_LEAF_MM else lead.swing
+        order = min(prev.order, cand.order)
+        merged[-1] = replace(lead, order=order, offset_mm=prev.offset_mm, width_mm=width, swing=swing)
+        dropped["openingOverlap"] += 1
+    return sorted(merged, key=lambda item: item.order)
 
 
 def _assemble(
@@ -969,7 +1077,8 @@ def build_walls(
     `arcs.explode_arcs`) cho biết đầu vào nào là dây của cùng một cung để ô mở đo trên cả cung. `page` bật đọc
     chiều mở cửa từ nét vẽ (QT-SWING, `swing.py`).
     """
-    segs = _drop_far_clusters(_drop_isolated(_measure_walls(walls, scaling, dropped), dropped), dropped)
+    segs = _drop_hairlines(_measure_walls(walls, scaling, dropped), dropped)
+    segs = _drop_inside_body(_drop_far_clusters(_drop_isolated(segs, dropped), dropped), dropped)
     boxes = _opening_boxes(detections, scaling)
     bridges = _join_gaps(segs, boxes, dropped) if segs else ()
     live = [seg for seg in segs if seg.alive]
@@ -982,6 +1091,154 @@ def build_walls(
     built_walls, openings = _assemble(live, cands, level_id, clock)
     leaves = {opening.id: cand.leaf for opening, cand in zip(openings, cands, strict=True) if cand.leaf is not None}
     return WallSet(built_walls, openings, input_to_wall, bridges, MappingProxyType(leaves))
+
+
+def _centreline(wall: Wall) -> LineString:
+    """Tim `Wall` thành `LineString` (mm)."""
+    line = wall.centreline
+    return LineString(((line.start.x, line.start.y), (line.end.x, line.end.y)))
+
+
+def _bridge_hosts(walls: Sequence[Wall], ends: tuple[Point, Point]) -> list[Wall]:
+    """Tường thẳng hàng với đoạn nối có đầu mút trùng một đầu của nó (đoạn nối nối hai đầu gần của cặp thẳng hàng).
+
+    Vách vuông góc chạm mép khe (chữ T/L) không phải tường chủ: kéo nó qua khe sẽ thành tường xiên.
+    """
+    gx, gy = ends[1].x - ends[0].x, ends[1].y - ends[0].y
+    gap = math.hypot(gx, gy)
+    hosts = []
+    for wall in walls:
+        line = wall.centreline
+        if not {line.start, line.end} & set(ends):
+            continue
+        wx, wy = line.end.x - line.start.x, line.end.y - line.start.y
+        length = math.hypot(wx, wy)
+        if gap and length and abs(gx * wx + gy * wy) / (gap * length) < _HUG_COS_MIN:
+            continue
+        hosts.append(wall)
+    return hosts
+
+
+def _gap_door(
+    start: Point, end: Point, thickness_mm: int, page: PageRaster | None, scaling: Scaling
+) -> tuple[SwingDirection, float, tuple[float, float] | None]:
+    """Chiều mở + tin cậy + hướng cánh của cửa đoán trên khe `start → end` (C5), cùng luật C3 của `_read_swing`."""
+    span = math.dist((start.x, start.y), (end.x, end.y))
+    ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
+    scale = scaling.build
+    leaf = None
+    if page is not None:
+        a, b = (start.x / scale, start.y / scale), (end.x / scale, end.y / scale)
+        leaf = read_leaf(page, a, b, thickness_mm / 2 / scale)
+    if leaf is not None:
+        swing: SwingDirection = "right" if leaf.hinge_at_b else "left"
+        swing = "double" if span > _MAX_SINGLE_LEAF_MM else swing
+        return swing, _INFERRED_DOOR_CONFIDENCE, (-uy * leaf.side, ux * leaf.side)
+    if span >= _SLIDING_MIN_MM:
+        return "sliding", _INFERRED_DOOR_CONFIDENCE, None
+    return "left", _GUESSED_DOOR_CONFIDENCE, None
+
+
+def _extend_host(
+    walls: list[Wall],
+    openings: list[Opening],
+    lines: list[LineString],
+    hosts: Sequence[Wall],
+    ends: tuple[Point, Point],
+) -> None:
+    """Khe tường ngoài < `_ENVELOPE_DOOR_MIN_MM`: kéo một tường chủ tới đầu kia của khe (gộp, không thêm tường vụn).
+
+    Ưu tiên tường có **cuối** ở khe (độ lệch ô mở tính từ đầu không đổi); không có thì dời đầu của tường đầu tiên và
+    cộng phần kéo thêm vào `offsetMm` các ô mở của nó.
+    """
+    at_end = next((host for host in hosts if host.centreline.end in ends), None)
+    host = hosts[0] if at_end is None else at_end
+    index = next(position for position, wall in enumerate(walls) if wall.id == host.id)
+    line = walls[index].centreline
+    tip = line.start if at_end is None else line.end
+    target = ends[1] if tip == ends[0] else ends[0]
+    if at_end is not None:
+        walls[index] = walls[index].model_copy(update={"centreline": Segment(start=line.start, end=target)})
+    else:
+        walls[index] = walls[index].model_copy(update={"centreline": Segment(start=target, end=line.end)})
+        shift = js_round(math.dist((target.x, target.y), (tip.x, tip.y)))
+        openings[:] = [
+            item.model_copy(update={"offset_mm": item.offset_mm + shift}) if item.wall_id == host.id else item
+            for item in openings
+        ]
+    lines[index] = _centreline(walls[index])
+
+
+def close_envelope_gaps(
+    wall_set: WallSet,
+    rooms: Sequence[Room],
+    *,
+    level_id: str,
+    scaling: Scaling,
+    clock: Clock,
+    page: PageRaster | None = None,
+) -> WallSet:
+    """C5: đoạn nối khe thẳng hàng nằm trên **mặt ngoài** các phòng → tường qua khe (không đầu vào) thay vì bỏ hở.
+
+    Phòng đã khép qua đoạn nối nên lớp tường hở đúng chỗ bộ dò bỏ sót cửa. Khe ≥ `_ENVELOPE_DOOR_MIN_MM` thành
+    tường mang một cửa đi phủ cả khe (cánh đọc từ nét vẽ, rộng ≥ 1,5 m không cánh → lùa, còn lại cánh trái tin
+    thấp); khe hẹp hơn: kéo một tường chủ khép khe (`_extend_host`).
+    Khe trong nhà (hai bên đều là phòng) giữ hở: lối mở thật có tồn tại.
+    Đoạn nối cắt tim tường khác (khe đã có tường qua khe 3c, hay vách chắn ngang) bỏ qua.
+    """
+    walls, openings = list(wall_set.walls), list(wall_set.openings)
+    leaves = dict(wall_set.leaves)
+    lines = [_centreline(wall) for wall in walls]
+    door = LABEL_TARGETS["door"]
+    for start, end in wall_set.bridges:
+        span = math.dist((start.x, start.y), (end.x, end.y))
+        hosts = _bridge_hosts(wall_set.walls, (start, end))
+        ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
+        inner = LineString(((start.x + ux, start.y + uy), (end.x - ux, end.y - uy)))
+        if not hosts or any(inner.intersects(line) for line in lines):
+            continue
+        thickness = max(host.thickness_mm for host in hosts)
+        wall = Wall(
+            id=hosts[0].id,
+            level_id=level_id,
+            centreline=Segment(start=start, end=end),
+            thickness_mm=thickness,
+            detected_thickness_mm=thickness,
+            height_mm=DEFAULT_WALL_HEIGHT_MM,
+            kind="partition",
+            opening_ids=(),
+            confidence=min(host.confidence for host in hosts),
+            source="ai",
+            reviewed=False,
+        )
+        if wall_side(wall, rooms) != "exterior":
+            continue
+        if span < _ENVELOPE_DOOR_MIN_MM:
+            _extend_host(walls, openings, lines, hosts, (start, end))
+            continue
+        wall_id = new_spatial_id("wall", clock)
+        wall = wall.model_copy(update={"id": wall_id})
+        swing, confidence, leaf = _gap_door(start, end, thickness, page, scaling)
+        opening = Opening(
+            id=new_spatial_id("opening", clock),
+            wall_id=wall_id,
+            kind="door",
+            offset_mm=0,
+            width_mm=math.floor(span),
+            height_mm=door.height_mm or 2200,
+            sill_height_mm=door.sill_mm or 0,
+            swing=swing,
+            confidence=confidence,
+            source="ai",
+            reviewed=False,
+        )
+        wall = wall.model_copy(update={"opening_ids": (opening.id,)})
+        openings.append(opening)
+        if leaf is not None:
+            leaves[opening.id] = leaf
+        walls.append(wall)
+        lines.append(_centreline(wall))
+    return replace(wall_set, walls=tuple(walls), openings=tuple(openings), leaves=MappingProxyType(leaves))
 
 
 def _drop_bare_gap_walls(segs: Sequence[_Seg], cands: Sequence[_Cand]) -> tuple[list[_Seg], list[_Cand]]:

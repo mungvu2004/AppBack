@@ -216,9 +216,24 @@ _ci_pytest_workers() {
 
 job_test_group() {
   local group="$1"
-  local trace="trace-${group}.jsonl"
+  # CI_SHARD=K/N (ma trận `<nhóm>-shards` của ci.yml): chỉ chạy phần K, tệp đầu ra mang tên
+  # `<nhóm>-K` để job `coverage` gộp đủ N phần. Rỗng → cả nhóm, tên cũ (chạy tay).
+  local shard="${CI_SHARD:-}" name="$group"
+  local shard_args=()
+  if [ -n "$shard" ]; then
+    name="${group}-${shard%/*}"
+    shard_args=("--ci-shard=${shard}")
+  fi
+  local trace="trace-${name}.jsonl"
   : >"$trace"
-  if [ "$group" = "unit" ]; then
+  # Shard ghi mẫu golden (CONTRACT_SAMPLES_DIR) thì `tools.verify.steps` cũng chép mẫu ra VERIFY_OUT_DIR,
+  # mặc định `/src-out` chỉ ghi được trong container cổng — trỏ về thư mục ghi được như job contract.
+  if [ -n "${CONTRACT_SAMPLES_DIR:-}" ]; then
+    export VERIFY_OUT_DIR="${VERIFY_OUT_DIR:-${RUNNER_TEMP:-/tmp}/verify-out}"
+    mkdir -p "$VERIFY_OUT_DIR"
+  fi
+  # all-check đếm cả repo: chỉ chạy một lần (shard 1 hoặc chạy tay).
+  if [ "$group" = "unit" ] && { [ -z "$shard" ] || [ "${shard%/*}" = "1" ]; }; then
     run_step "pytest --collect-only --ci-split=all-check" \
       python -m pytest --collect-only -q --ci-split=all-check
   fi
@@ -234,17 +249,39 @@ job_test_group() {
   # NO-269: `pytest -n … --cov` như bước 5 (`coverage run` chỉ đo tiến trình chủ, xdist dựng tiến
   # trình con nên độ phủ về ~0). pytest-cov gộp dữ liệu các tiến trình vào COVERAGE_FILE — đặt
   # `.coverage.<nhóm>` để khớp glob `.coverage.*` mà ci.yml tải lên và merge_artifacts đòi.
-  run_step "pytest -n --cov --ci-split=${group}" \
-    env "CASE_TRACE_FILE=${trace}" "COVERAGE_FILE=.coverage.${group}" \
+  run_step "pytest -n --cov --ci-split=${group} ${shard}" \
+    env "CASE_TRACE_FILE=${trace}" "COVERAGE_FILE=.coverage.${name}" \
     pytest -n "$(_ci_pytest_workers "$group")" --dist loadfile --cov --cov-report= \
-    "--ci-split=${group}" "--junitxml=junit-${group}.xml"
+    "--ci-split=${group}" "${shard_args[@]}" "--junitxml=junit-${name}.xml"
   # upload-artifact bỏ tệp rỗng, nên nhóm không có test case nào (unit) mất `trace-<nhóm>.jsonl` và
   # `merge_artifacts` báo thiếu (02/11/2026). Một dòng trống: `_trace_lines` bỏ dòng trống cuối, gộp vẫn rỗng.
   [ -s "$trace" ] || echo >"$trace"
 }
 
+# Job `unit`/`integration`/`ml` của ci.yml (tên check bắt buộc) chỉ đọc kết quả ma trận shard
+# qua SHARDS_RESULT — đạt khi mọi shard đạt. Không có biến → chạy cả nhóm như trước (chạy tay).
+job_group_or_shards() {
+  if [ -n "${SHARDS_RESULT:-}" ]; then
+    run_step "mọi shard ${1} đạt (${SHARDS_RESULT})" test "$SHARDS_RESULT" = success
+  else
+    job_test_group "$1"
+  fi
+}
+
+# perf — nửa đầu bước 5b, chạy song song với test thường (khỏi kéo dài đường găng); job
+# `coverage` chạy nửa sau (`case_gate`) trên junit-perf.xml tải về.
+job_perf() {
+  run_step "test perf không mang tên case" python -c '
+import sys
+from tools.verify.steps import _collect_perf, perf_case_named
+bad = perf_case_named(_collect_perf([]))
+print(*bad, sep="\n")
+sys.exit(1 if bad else 0)'
+  run_step "pytest -m perf" pytest -m "perf and not gpu" --junitxml=junit-perf.xml
+}
+
 # ---------------------------------------------------------------------------
-# contract — Node + AppFront @ SHA; sinh mẫu; bước 7; H2
+# contract — Node + AppFront @ SHA; mẫu golden từ shard unit/integration; bước 7; H2
 # ---------------------------------------------------------------------------
 
 job_contract() {
@@ -258,13 +295,11 @@ job_contract() {
   # container (CI thật), nên phải tự trỏ vào một thư mục ghi được.
   export VERIFY_OUT_DIR="${VERIFY_OUT_DIR:-${RUNNER_TEMP:-/tmp}/verify-out}"
   mkdir -p "$VERIFY_OUT_DIR"
-  # Làm ấm TRƯỚC pytest — gọi riêng "--steps 0" (không dựa vào "--steps 7" tự
-  # thêm bước 0): bước pytest sinh mẫu chạy TRƯỚC "--steps 7" trong hàm này,
-  # nên bước 0 tự thêm ở đó vẫn tới sau khi pytest đã tải mạng giữa test rồi
-  # (/merge-review lượt 1 #7).
   run_step "verify --steps 0 (làm ấm node_modules)" python -m tools.verify.steps verify --steps 0
-  run_step "pytest --ci-split=unit,integration (sinh mẫu)" \
-    python -m pytest --ci-split=unit,integration
+  # Mẫu golden do chính các shard unit/integration ghi lúc chạy test (ci.yml đặt CONTRACT_SAMPLES_DIR
+  # ở đó rồi tải về đây) — như bước 5 → 7 của cổng local. Trước đây job này tự chạy lại 9150 test
+  # tuần tự (~13 phút, đường găng của cả CI). Bộ ghi an toàn khi nhiều tiến trình cùng ghi (recorder.py).
+  run_step "có mẫu golden từ shard" test -n "$(ls -A "$CONTRACT_SAMPLES_DIR")"
   run_step "verify --steps 7 (H1 H3 H4 H5)" python -m tools.verify.steps verify --steps 7
   run_step "tools.ci.h2" python -m tools.ci.h2
 }
@@ -311,24 +346,66 @@ job_commits() {
 
 job_coverage() {
   local trace_out="${RUNNER_TEMP:-/tmp}/ci-case-trace.jsonl"
+  # Artifact `cov-<nhóm>-<K>` tải về `artifacts/cov-…/` → `artifacts/<nhóm>-<K>/` (dạng merge_artifacts đòi);
+  # CI_COVERAGE_JOBS (ci.yml) liệt kê đủ shard — thiếu một cái thì merge_artifacts hỏng (fail-closed).
+  local d
+  for d in artifacts/cov-*/; do
+    d="${d%/}"
+    if [ -d "$d" ]; then mv "$d" "artifacts/${d#artifacts/cov-}"; fi
+  done
   run_step "tools.ci.merge_artifacts" python -m tools.ci.merge_artifacts \
-    --root artifacts --jobs unit,integration,ml \
+    --root artifacts --jobs "${CI_COVERAGE_JOBS:-unit,integration,ml}" \
     --junit-out /tmp/junit.xml --trace-out "$trace_out"
   run_step "coverage combine" coverage combine artifacts/*/
   run_step "coverage json" coverage json
   run_step "tools.coverage_gate (VERIFY_BRANCH=integration)" \
     env VERIFY_BRANCH=integration python -m tools.coverage_gate
-  # Bước 5b đứng riêng (không kèm 5): case_gate đọc thẳng /tmp/junit.xml +
-  # /tmp/junit-perf.xml đã có sẵn từ merge_artifacts — hop-dong.md §3, xác nhận
-  # bằng steps.py:253-272 (`wanted` chỉ chạy số có trong tập, không tự thêm "5").
-  run_step "verify --steps 5b (case_gate, vết gộp)" \
-    env VERIFY_BRANCH=integration "CASE_TRACE_FILE=${trace_out}" \
-    python -m tools.verify.steps verify --steps 5b
+  # Bước 5b: CI chạy test perf ở job `perf` (song song) và tải junit về `artifacts/perf/`; ở đây chỉ
+  # còn `case_gate` đọc /tmp/junit.xml (merge_artifacts) + /tmp/junit-perf.xml. Không có artifact perf
+  # (chạy tay) → đủ `verify --steps 5b` như trước (`wanted` chỉ chạy số có trong tập, không tự thêm "5").
+  if [ -f artifacts/perf/junit-perf.xml ]; then
+    cp artifacts/perf/junit-perf.xml /tmp/junit-perf.xml
+    run_step "case_gate (vết gộp, perf từ job perf)" \
+      env VERIFY_BRANCH=integration "CASE_TRACE_FILE=${trace_out}" python -m tools.case_gate
+  else
+    run_step "verify --steps 5b (case_gate, vết gộp)" \
+      env VERIFY_BRANCH=integration "CASE_TRACE_FILE=${trace_out}" \
+      python -m tools.verify.steps verify --steps 5b
+  fi
 }
 
 # ---------------------------------------------------------------------------
 # build — dọn đĩa; build 4 ảnh; import_all trong ảnh; trivy; smoke compose
 # ---------------------------------------------------------------------------
+
+# Chạy các lệnh (mỗi đối số một lệnh shell, thường gọi hàm có run_step) cùng lúc, mỗi lệnh trong
+# subshell riêng; xong cả nhóm thì in log từng lệnh liền khối và nối dòng bảng theo thứ tự đối số.
+# Job build đợi phần lớn vào mạng/đĩa (kéo cache gha, tải CSDL trivy) nên chạy chồng rút ~2 phút.
+run_parallel() {
+  local dir i=0 j cmd n s
+  dir="$(mktemp -d)"
+  for cmd in "$@"; do
+    (
+      STEP_NAMES=()
+      STEP_STATUS=()
+      eval "$cmd" >"$dir/$i.log" 2>&1
+      for j in "${!STEP_NAMES[@]}"; do
+        printf '%s\t%s\n' "${STEP_NAMES[$j]}" "${STEP_STATUS[$j]}"
+      done >"$dir/$i.steps"
+    ) &
+    i=$((i + 1))
+  done
+  wait
+  for ((j = 0; j < i; j++)); do
+    cat "$dir/$j.log"
+    while IFS=$'\t' read -r n s; do
+      STEP_NAMES+=("$n")
+      STEP_STATUS+=("$s")
+      if [ "$s" = "hỏng" ]; then FAILED=1; fi
+    done <"$dir/$j.steps"
+  done
+  rm -rf "$dir"
+}
 
 job_build_clean_runner_disk() {
   if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -350,7 +427,8 @@ job_build_one_image() {
     run_step "docker build ${img}" timeout "${BUILD_TIMEOUT_S}s" \
       docker build -t "appback-${img}:ci" -f "deploy/docker/${img}.Dockerfile" "$@" .
   fi
-  docker builder prune -f >/dev/null 2>&1 || true
+  # NO_PRUNE=1 khi đang build song song: prune giữa chừng có thể giành cache của build bên cạnh.
+  [ -n "${NO_PRUNE:-}" ] || docker builder prune -f >/dev/null 2>&1 || true
 }
 
 job_build_import_all() {
@@ -388,11 +466,29 @@ job_build_trivy() {
     mkdir -p .cache/trivy
     trivy_dir="$(_host_pwd)/.cache/trivy"
   fi
-  run_step "trivy image ${img}" timeout "${NET_TIMEOUT_S}s" docker run --rm \
+  # CSDL lỗ hổng đã tải sẵn (job_build_trivy_db, chạy trong lúc build ảnh) → mỗi lượt quét một bản chép
+  # riêng (bolt khoá tệp, bốn lượt song song không dùng chung được) và bỏ tải lại. Không có → tự tải như cũ.
+  local db_args=() skip_args=()
+  if [ -n "${RUNNER_TEMP:-}" ] && [ -d "${RUNNER_TEMP}/trivy-db/db" ]; then
+    rm -rf "${RUNNER_TEMP}/trivy-cache-${img}"
+    cp -r "${RUNNER_TEMP}/trivy-db" "${RUNNER_TEMP}/trivy-cache-${img}"
+    db_args=(-v "${RUNNER_TEMP}/trivy-cache-${img}:/root/.cache/trivy")
+    skip_args=(--skip-db-update)
+  fi
+  run_step "trivy image ${img}" timeout "${NET_TIMEOUT_S}s" docker run --rm "${db_args[@]}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${trivy_dir}:/out" \
-    "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --exit-code 1 \
+    "$TRIVY_IMAGE" image "${skip_args[@]}" --severity CRITICAL --ignore-unfixed --exit-code 1 \
     --format sarif --output "/out/trivy-${img}.sarif" "appback-${img}:ci"
+}
+
+# Tải CSDL trivy một lần vào RUNNER_TEMP/trivy-db (chỉ trên runner CI) — chạy cùng lúc với build ảnh.
+# Hỏng thì không chặn: job_build_trivy thấy thiếu `db/` sẽ tự tải như trước.
+job_build_trivy_db() {
+  [ -n "${RUNNER_TEMP:-}" ] || return 0
+  mkdir -p "${RUNNER_TEMP}/trivy-db"
+  timeout "${NET_TIMEOUT_S}s" docker run --rm -v "${RUNNER_TEMP}/trivy-db:/root/.cache/trivy" \
+    "$TRIVY_IMAGE" image --download-db-only || rm -rf "${RUNNER_TEMP}/trivy-db/db"
 }
 
 nginx_floor_for_line() {
@@ -464,32 +560,32 @@ job_build_smoke() {
   trap - EXIT
 }
 
-job_build() {
-  job_build_clean_runner_disk
-  job_build_one_image api
-  job_build_one_image worker
-  job_build_one_image ml --build-arg ML_VARIANT=cpu
-
+job_build_web() {
   local web_ctx=".cache/ci-appfront-web-context"
   rm -rf "$web_ctx"
   local sha
   sha="$(tr -d '[:space:]' <tools/contract/APPFRONT_SHA)"
   run_step "web-context.sh (AppFront @ ${sha})" bash deploy/docker/web-context.sh "$sha" "$web_ctx"
-  job_build_one_image web --build-context "appfront=${web_ctx}" --build-arg "APPFRONT_SHA=${sha}"
+  NO_PRUNE=1 job_build_one_image web --build-context "appfront=${web_ctx}" --build-arg "APPFRONT_SHA=${sha}"
+}
+
+job_build() {
+  # Bốn ảnh build cùng lúc với việc dọn đĩa (mỗi build chủ yếu kéo cache gha); prune một lần sau cùng.
+  run_parallel job_build_clean_runner_disk \
+    "NO_PRUNE=1 job_build_one_image api" \
+    "NO_PRUNE=1 job_build_one_image worker" \
+    "NO_PRUNE=1 job_build_one_image ml --build-arg ML_VARIANT=cpu" \
+    job_build_web \
+    job_build_trivy_db
+  docker builder prune -f >/dev/null 2>&1 || true
   run_step "nginx -v >= sàn theo dòng phát hành (NO-113)" job_build_check_nginx_version
 
-  job_build_import_all api
-  job_build_import_all worker
-  job_build_import_all ml
-
+  # import_all + smoke và bốn lượt trivy chỉ đọc ảnh đã build, không phụ thuộc nhau → chạy chồng.
+  local checks=("job_build_import_all api; job_build_import_all worker; job_build_import_all ml; job_build_smoke")
   if [ "$no_scan" -eq 0 ]; then
-    job_build_trivy api
-    job_build_trivy worker
-    job_build_trivy ml
-    job_build_trivy web
+    checks+=("job_build_trivy api" "job_build_trivy worker" "job_build_trivy ml" "job_build_trivy web")
   fi
-
-  job_build_smoke
+  run_parallel "${checks[@]}"
 }
 
 # ---------------------------------------------------------------------------
@@ -510,16 +606,20 @@ main() {
   case "$job" in
     lint) job_lint ;;
     typecheck) job_typecheck ;;
-    unit) job_test_group unit ;;
-    integration) job_test_group integration ;;
-    ml) job_test_group ml ;;
+    unit) job_group_or_shards unit ;;
+    integration) job_group_or_shards integration ;;
+    ml) job_group_or_shards ml ;;
+    unit-shards) job_test_group unit ;;
+    integration-shards) job_test_group integration ;;
+    ml-shards) job_test_group ml ;;
+    perf) job_perf ;;
     contract) job_contract ;;
     build) job_build ;;
     commits) job_commits ;;
     changes) job_changes ;;
     coverage) job_coverage ;;
     *)
-      echo "usage: tools/ci/job.sh <lint|typecheck|unit|integration|ml|contract|build|commits|coverage|changes> [--no-scan]" >&2
+      echo "usage: tools/ci/job.sh <lint|typecheck|unit|integration|ml|unit-shards|integration-shards|ml-shards|perf|contract|build|commits|coverage|changes> [--no-scan]" >&2
       exit 2
       ;;
   esac

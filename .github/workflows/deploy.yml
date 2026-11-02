@@ -51,7 +51,7 @@ jobs:
         run: echo "sha=$(tr -d '[:space:]' < tools/contract/APPFRONT_SHA)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: mungvu2004/AppFront
+          repository: mungvu999-ctrl/AppFront
           ref: ${{ steps.appfront-sha.outputs.sha }}
           path: appfront
           persist-credentials: false
@@ -66,18 +66,18 @@ jobs:
           SHA12: ${{ steps.sha12.outputs.sha12 }}
         run: |
           docker buildx build --cache-from "type=gha,scope=appback-api" --cache-to "type=gha,mode=max,scope=appback-api" \
-            --push -t "ghcr.io/mungvu2004/appback-api:sha-${SHA12}" -f deploy/docker/api.Dockerfile .
+            --push -t "ghcr.io/mungvu999-ctrl/appback-api:sha-${SHA12}" -f deploy/docker/api.Dockerfile .
       - env:
           SHA12: ${{ steps.sha12.outputs.sha12 }}
         run: |
           docker buildx build --cache-from "type=gha,scope=appback-worker" --cache-to "type=gha,mode=max,scope=appback-worker" \
-            --push -t "ghcr.io/mungvu2004/appback-worker:sha-${SHA12}" -f deploy/docker/worker.Dockerfile .
+            --push -t "ghcr.io/mungvu999-ctrl/appback-worker:sha-${SHA12}" -f deploy/docker/worker.Dockerfile .
       - env:
           SHA12: ${{ steps.sha12.outputs.sha12 }}
         run: |
           docker buildx build --cache-from "type=gha,scope=appback-ml" --cache-to "type=gha,mode=max,scope=appback-ml" \
             --build-arg ML_VARIANT=cpu \
-            --push -t "ghcr.io/mungvu2004/appback-ml:sha-${SHA12}" -f deploy/docker/ml.Dockerfile .
+            --push -t "ghcr.io/mungvu999-ctrl/appback-ml:sha-${SHA12}" -f deploy/docker/ml.Dockerfile .
       - env:
           APPFRONT_SHA: ${{ steps.appfront-sha.outputs.sha }}
         run: bash deploy/docker/web-context.sh "$APPFRONT_SHA" .cache/ci-appfront-web-context
@@ -87,7 +87,7 @@ jobs:
         run: |
           docker buildx build --cache-from "type=gha,scope=appback-web" --cache-to "type=gha,mode=max,scope=appback-web" \
             --build-context "appfront=.cache/ci-appfront-web-context" --build-arg "APPFRONT_SHA=${APPFRONT_SHA}" \
-            --push -t "ghcr.io/mungvu2004/appback-web:sha-${SHA12}" -f deploy/docker/web.Dockerfile .
+            --push -t "ghcr.io/mungvu999-ctrl/appback-web:sha-${SHA12}" -f deploy/docker/web.Dockerfile .
 
   staging:
     needs: images
@@ -166,8 +166,8 @@ jobs:
         run: |
           for img in api worker ml web; do
             docker buildx imagetools create \
-              -t "ghcr.io/mungvu2004/appback-${img}:${TAG_NAME}" \
-              "ghcr.io/mungvu2004/appback-${img}:sha-${SHA12}"
+              -t "ghcr.io/mungvu999-ctrl/appback-${img}:${TAG_NAME}" \
+              "ghcr.io/mungvu999-ctrl/appback-${img}:sha-${SHA12}"
           done
 
   production:

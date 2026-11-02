@@ -141,6 +141,28 @@ def test_split_union_whitespace_tolerant(pytester: pytest.Pytester) -> None:
     result.assert_outcomes(passed=2, deselected=2)
 
 
+@pytest.mark.parametrize(("shard", "passed", "deselected"), [("1/2", 1, 3), ("2/2", 3, 1)])
+def test_shard_splits_by_file_after_group_filter(
+    pytester: pytest.Pytester, shard: str, passed: int, deselected: int
+) -> None:
+    """Case thường: `--ci-shard=K/N` chia theo tệp (xếp tên: `apps/ml/…` trước `test_group.py`) — hai phần
+    rời nhau, hợp lại đủ 4 test, cả tệp đi cùng một phần."""
+    _write_project(pytester)
+    result = pytester.runpytest_inprocess(
+        PLUGIN_ARG, PLUGIN_NAME, "--ci-split=unit,integration,ml", f"--ci-shard={shard}"
+    )
+    result.assert_outcomes(passed=passed, deselected=deselected)
+
+
+@pytest.mark.parametrize("shard", ["0/2", "3/2", "1", "a/b", ""])
+def test_shard_bad_value_is_usage_error(pytester: pytest.Pytester, shard: str) -> None:
+    """Case lỗi: `--ci-shard` không đúng dạng K/N (1 <= K <= N) → `UsageError`, không chạy test nào."""
+    _write_project(pytester)
+    result = pytester.runpytest_inprocess(PLUGIN_ARG, PLUGIN_NAME, "--ci-split=unit", f"--ci-shard={shard}")
+    assert result.ret == 4
+    result.stderr.fnmatch_lines(["*--ci-shard*"])
+
+
 def test_split_unknown_group_is_usage_error(pytester: pytest.Pytester) -> None:
     """Case lỗi: nhóm lạ → thoát mã dùng sai (`UsageError`), không chạy test nào."""
     _write_project(pytester)

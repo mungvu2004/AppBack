@@ -35,8 +35,10 @@ def _run_group(tmp_path: Path, group: str, extra_env: dict[str, str] | None = No
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env.pop("CI_PYTEST_WORKERS", None)
+    env.pop("CI_SHARD", None)  # job shard của ci.yml đặt sẵn biến này cho cả tiến trình test
     env.update(extra_env or {})
-    trace = REPO_ROOT / f"trace-{group}.jsonl"
+    shard = (extra_env or {}).get("CI_SHARD", "")
+    trace = REPO_ROOT / (f"trace-{group}-{shard.split('/')[0]}.jsonl" if shard else f"trace-{group}.jsonl")
     try:
         result = subprocess.run(  # noqa: S603 — script cục bộ dựng trong tmp_path
             ["bash", str(script)],  # noqa: S607 — `bash` có sẵn trên PATH của runner
@@ -66,6 +68,17 @@ def test_job_test_group__runs_pytest_with_xdist_and_cov(tmp_path: Path, group: s
     assert f"--ci-split={group}" in args
     assert f"--junitxml=junit-{group}.xml" in args
     assert cov_env == f"COVERAGE_FILE=.coverage.{group}"
+
+
+def test_job_test_group__shard_env_passes_ci_shard_and_suffixes_outputs(tmp_path: Path) -> None:
+    """`CI_SHARD=K/N` (ma trận ci.yml): truyền `--ci-shard=K/N`, đầu ra mang tên `<nhóm>-K` để
+    `coverage` gộp đủ mọi shard (`CI_COVERAGE_JOBS`)."""
+    code, args, cov_env = _run_group(tmp_path, "integration", {"CI_SHARD": "2/3"})
+    assert code == 0
+    assert "--ci-split=integration" in args
+    assert "--ci-shard=2/3" in args
+    assert "--junitxml=junit-integration-2.xml" in args
+    assert cov_env == "COVERAGE_FILE=.coverage.integration-2"
 
 
 def test_job_test_group__workers_env_overrides_and_bad_value_falls_back(tmp_path: Path) -> None:

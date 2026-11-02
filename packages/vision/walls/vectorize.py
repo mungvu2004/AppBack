@@ -802,8 +802,14 @@ def _root(parent: list[int], item: int) -> int:
     return item
 
 
+def _same_thickness(one: _Seg, other: _Seg) -> bool:
+    """Bề dày lớn/nhỏ ≤ `_PIECE_THICKNESS_RATIO`: tường ngoài 220 và vách 110 cùng trục qua chữ T không gộp (C1)."""
+    thin, thick = sorted((one.thickness, other.thickness))
+    return thick <= _PIECE_THICKNESS_RATIO * thin
+
+
 def _groups(segs: list[_Seg]) -> list[list[_Seg]]:
-    """Gom các đoạn chung nút và thẳng hàng thành một nhóm (tường liền qua chữ T, chữ +)."""
+    """Gom các đoạn chung nút, thẳng hàng và cùng bề dày thành một nhóm (tường liền qua chữ T, chữ +)."""
     parent = list(range(len(segs)))
     incident: defaultdict[_Key, list[int]] = defaultdict(list)
     for i, seg in enumerate(segs):
@@ -811,7 +817,7 @@ def _groups(segs: list[_Seg]) -> list[list[_Seg]]:
         incident[seg.b_key].append(i)
     for members in incident.values():
         for i, j in itertools.combinations(members, 2):
-            if _collinear(segs[i], segs[j]):
+            if _collinear(segs[i], segs[j]) and _same_thickness(segs[i], segs[j]):
                 parent[_root(parent, i)] = _root(parent, j)
     buckets: defaultdict[int, list[_Seg]] = defaultdict(list)
     for i, seg in enumerate(segs):
