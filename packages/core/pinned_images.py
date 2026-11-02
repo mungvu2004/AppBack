@@ -9,5 +9,6 @@ from __future__ import annotations
 
 POSTGRES_IMAGE = "postgres:16-alpine"
 REDIS_IMAGE = "redis:7-alpine"
-# Docker Hub minio/minio không còn phát hành bản cộng đồng; quay.io là nguồn chính thức.
-MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+# MinIO đã lưu trữ bản cộng đồng: quay.io (401), Docker Hub và dl.min.io (410) không còn phát (02/11/2026).
+# Bản sao nguyên ảnh quay.io cũ (digest sha256:8d70bc15…) trên GHCR của repo; không còn bản vá bảo mật.
+MINIO_IMAGE = "ghcr.io/mungvu999-ctrl/minio:RELEASE.2025-09-07T16-13-09Z"

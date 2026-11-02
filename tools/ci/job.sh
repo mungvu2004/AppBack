@@ -238,6 +238,9 @@ job_test_group() {
     env "CASE_TRACE_FILE=${trace}" "COVERAGE_FILE=.coverage.${group}" \
     pytest -n "$(_ci_pytest_workers "$group")" --dist loadfile --cov --cov-report= \
     "--ci-split=${group}" "--junitxml=junit-${group}.xml"
+  # upload-artifact bỏ tệp rỗng, nên nhóm không có test case nào (unit) mất `trace-<nhóm>.jsonl` và
+  # `merge_artifacts` báo thiếu (02/11/2026). Một dòng trống: `_trace_lines` bỏ dòng trống cuối, gộp vẫn rỗng.
+  [ -s "$trace" ] || echo >"$trace"
 }
 
 # ---------------------------------------------------------------------------
@@ -264,6 +267,34 @@ job_contract() {
     python -m pytest --ci-split=unit,integration
   run_step "verify --steps 7 (H1 H3 H4 H5)" python -m tools.verify.steps verify --steps 7
   run_step "tools.ci.h2" python -m tools.ci.h2
+}
+
+# ---------------------------------------------------------------------------
+# changes — PR chỉ đổi tài liệu thì tám job cổng bỏ qua (ci.yml, fail-closed)
+# ---------------------------------------------------------------------------
+
+# Đường KHÔNG là đầu vào của cổng. Trừ `docs/charter/` (case_gate, contract đọc BE-BIND.md, BE-00.md)
+# và `docs/contracts*` (bước 7, 8). Một đường ngoài danh sách → chạy đủ cổng.
+_is_docs_only_path() {
+  case "$1" in
+    docs/charter/* | docs/contracts*) return 1 ;;
+    docs/* | .claude/* | DEBT.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Ghi `code=true|false` vào $GITHUB_OUTPUT. push/workflow_dispatch luôn `true`; PR: checkout là commit
+# gộp thử, cha 1 là đầu nhánh đích. `git diff` hỏng → set -e làm job hỏng → ci.yml vẫn chạy đủ cổng.
+job_changes() {
+  local code=true files path
+  if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+    files="$(git diff --name-only HEAD^1 HEAD)"
+    code=false
+    while IFS= read -r path; do
+      [ -z "$path" ] || _is_docs_only_path "$path" || code=true
+    done <<<"$files"
+  fi
+  echo "code=$code" | tee -a "${GITHUB_OUTPUT:-/dev/null}"
 }
 
 # ---------------------------------------------------------------------------
@@ -485,9 +516,10 @@ main() {
     contract) job_contract ;;
     build) job_build ;;
     commits) job_commits ;;
+    changes) job_changes ;;
     coverage) job_coverage ;;
     *)
-      echo "usage: tools/ci/job.sh <lint|typecheck|unit|integration|ml|contract|build|commits|coverage> [--no-scan]" >&2
+      echo "usage: tools/ci/job.sh <lint|typecheck|unit|integration|ml|contract|build|commits|coverage|changes> [--no-scan]" >&2
       exit 2
       ;;
   esac

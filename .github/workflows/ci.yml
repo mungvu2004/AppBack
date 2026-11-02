@@ -27,9 +27,24 @@ env:
   UV_COMPILE_BYTECODE: "1"
 
 jobs:
-  # Chỉ `coverage` có `needs:`. Bảy job kia (lint, typecheck, unit, integration,
-  # ml, contract, build) đọc cùng một commit và không job nào ăn đầu ra
-  # của job khác — nối chuỗi chỉ để "gọn" sẽ biến một job chậm hoặc hạ tầng hỏng
+  # PR chỉ đổi tài liệu (`job.sh changes`, `_is_docs_only_path`) → tám job dưới "skipped", check bắt
+  # buộc tính là đạt, khỏi 20+ phút runner. push/workflow_dispatch luôn chạy đủ cổng.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # commit gộp thử của PR + cha 1 (đầu nhánh đích)
+          persist-credentials: false # job chỉ đọc, không push (/merge-review #15)
+      - id: changes
+        run: bash tools/ci/job.sh changes
+
+  # Ngoài `changes` (chỉ quyết có chạy hay không, fail-closed), chỉ `coverage` chờ job khác. Bảy
+  # job kia (lint, typecheck, unit, integration, ml, contract, build) đọc cùng một commit và không
+  # job nào ăn đầu ra của job khác — nối chuỗi chỉ để "gọn" sẽ biến một job chậm hoặc hạ tầng hỏng
   # (mạng, Docker) thành bảy job "skipped", tức bảy phán quyết bị che chứ không
   # phải bảy phán quyết xanh. `coverage` là ngoại lệ THẬT: nó cần `.coverage.*`
   # của cả ba job test để gộp và tính ngưỡng — không thể tính trước khi cả ba
@@ -43,7 +58,11 @@ jobs:
   # ngược lại. Repo này public (K4): phút CI không tính phí, nên phí thời gian
   # máy nhỏ hơn giá trị của hai phán quyết độc lập.
   lint:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,7 +78,11 @@ jobs:
       - run: bash tools/ci/job.sh lint
 
   typecheck:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,7 +100,11 @@ jobs:
       - run: bash tools/ci/job.sh typecheck
 
   unit:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,7 +129,11 @@ jobs:
             trace-unit.jsonl
 
   integration:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       APPFRONT_DIR: ${{ github.workspace }}/appfront
@@ -126,7 +157,7 @@ jobs:
           cache-dependency-path: tools/contract/package-lock.json
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: mungvu2004/AppFront
+          repository: mungvu999-ctrl/AppFront
           ref: ${{ steps.appfront-sha.outputs.sha }}
           path: appfront
           persist-credentials: false
@@ -145,7 +176,11 @@ jobs:
             trace-integration.jsonl
 
   ml:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -170,7 +205,11 @@ jobs:
             trace-ml.jsonl
 
   contract:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       APPFRONT_DIR: ${{ github.workspace }}/appfront
@@ -193,7 +232,7 @@ jobs:
         run: echo "sha=$(tr -d '[:space:]' < tools/contract/APPFRONT_SHA)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: mungvu2004/AppFront
+          repository: mungvu999-ctrl/AppFront
           ref: ${{ steps.appfront-sha.outputs.sha }}
           path: appfront
           persist-credentials: false
@@ -202,7 +241,11 @@ jobs:
       - run: bash tools/ci/job.sh contract
 
   build:
-    runs-on: ubuntu-latest
+    needs: changes
+    # Fail-closed: chỉ bỏ qua khi `changes` ĐẠT và báo chỉ có tài liệu. `changes` hỏng → vẫn chạy
+    # đủ cổng (job "skipped" được check bắt buộc tính là đạt, nên bỏ qua khi không biết là lỗ hổng).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       APPFRONT_REPO: ${{ github.workspace }}/appfront
@@ -214,7 +257,7 @@ jobs:
         run: echo "sha=$(tr -d '[:space:]' < tools/contract/APPFRONT_SHA)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: mungvu2004/AppFront
+          repository: mungvu999-ctrl/AppFront
           ref: ${{ steps.appfront-sha.outputs.sha }}
           path: appfront
           persist-credentials: false
@@ -237,7 +280,9 @@ jobs:
 
   coverage:
     needs: [unit, integration, ml]
-    runs-on: ubuntu-latest
+    # Chạy đúng khi cả ba job test ĐẠT (không `always()`); ba job đó bị bỏ vì PR chỉ đổi tài liệu → bỏ theo.
+    if: ${{ !cancelled() && needs.unit.result == 'success' && needs.integration.result == 'success' && needs.ml.result == 'success' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

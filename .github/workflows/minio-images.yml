@@ -1,0 +1,35 @@
+name: MinIO images
+
+# MinIO đã lưu trữ bản cộng đồng (02/11/2026): `quay.io/minio/mc` không kéo được, `dl.min.io` trả 410.
+# Dựng lại `mc` từ mã nguồn (`deploy/docker/mc.Dockerfile`) và đẩy lên GHCR của repo; server `minio` là
+# bản sao nguyên ảnh quay.io cũ, đẩy tay một lần (không dựng lại được bằng đúng byte cũ).
+# Chạy khi Dockerfile hoặc tệp này đổi, hoặc bấm tay; đẩy lại cùng tag là vô hại.
+on:
+  push:
+    paths:
+      - deploy/docker/mc.Dockerfile
+      - .github/workflows/minio-images.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  mc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/mungvu999-ctrl/minio-mc:RELEASE.2025-08-13T08-35-41Z
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -t "$IMAGE" -f deploy/docker/mc.Dockerfile deploy/docker
+      - run: docker run --rm "$IMAGE" --version
+      - env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<<"$GHCR_TOKEN"
+      - run: docker push "$IMAGE"

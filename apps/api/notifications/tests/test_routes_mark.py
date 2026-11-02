@@ -36,10 +36,19 @@ async def test_notifications_mark_read__C01(
 
 @pytest.mark.parametrize(
     "body",
-    [{"ids": []}, {"ids": "x"}, {"ids": _TOO_MANY}, {"ids": [""]}, {"ids": ["a", 7]}, {"ids": ["x" * 65]}, {}],
+    [
+        {"ids": []},
+        {"ids": "x"},
+        {"ids": _TOO_MANY},
+        {"ids": [""]},
+        {"ids": ["a", 7]},
+        {"ids": ["x" * 65]},
+        {"ids": ["a\x00b"]},
+        {},
+    ],
 )
 async def test_notifications_mark_read__C02(api_client: httpx.AsyncClient, db_session: AsyncSession, body: Any) -> None:
-    """`ids` rỗng, sai kiểu, 201 phần tử, id rỗng/quá dài/không phải chuỗi, thiếu `ids` → 422 `field:"ids"`."""
+    """`ids` rỗng, sai kiểu, 201 phần tử, id rỗng/quá dài/chứa NUL/không phải chuỗi, thiếu `ids` → 422 `field:"ids"`."""
     user = await make_user(db_session)
     response = await post_json(api_client, user, READ, body)
     assert (response.status_code, response.json()["code"], response.json().get("field")) == (422, "VALIDATION", "ids")

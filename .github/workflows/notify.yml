@@ -14,6 +14,12 @@ permissions: {}
 
 jobs:
   notify:
+    # Lọc thô ở mức job để lượt ngoài `main` (PR, Dependabot) không chiếm runner chỉ để in "không gửi";
+    # bước đầu vẫn lọc đúng bảng. Không gồm cả kết luận: Deploy gửi cả khi thành công.
+    if: >-
+      github.event.workflow_run.head_branch == 'main'
+      || github.event.workflow_run.name == 'Deploy'
+      || github.event.workflow_run.name == 'Restore drill'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # Secret ALERT_WEBHOOK_URL nằm ở Environment `alerts` (không protection rule), không ở cấp repository (SEC-061).
