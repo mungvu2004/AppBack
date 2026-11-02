@@ -8,7 +8,7 @@ bị chặn đúng luật).
 
 ## 1. Ruleset nhánh `main`
 
-**Ai:** admin repo (`mungvu2004`). **Ở đâu:** Settings → Rules → Rulesets → New
+**Ai:** admin repo (`mungvu999-ctrl`). **Ở đâu:** Settings → Rules → Rulesets → New
 branch ruleset, target `main` (hoặc pattern `main`).
 
 Bật:
@@ -37,8 +37,8 @@ Bật:
 **Kiểm bằng `gh api`:**
 
 ```bash
-gh api repos/mungvu2004/AppBack/rulesets --jq '.[] | {id, name, target}'
-gh api repos/mungvu2004/AppBack/rulesets/<id>
+gh api repos/mungvu999-ctrl/AppBack/rulesets --jq '.[] | {id, name, target}'
+gh api repos/mungvu999-ctrl/AppBack/rulesets/<id>
 ```
 
 ## 2. Ruleset tag `v*`
@@ -53,7 +53,7 @@ hạn bypass list chỉ **Repository admin** — tag `v*` kích hoạt luồng p
 **Kiểm:**
 
 ```bash
-gh api repos/mungvu2004/AppBack/rulesets --jq '.[] | select(.target=="tag")'
+gh api repos/mungvu999-ctrl/AppBack/rulesets --jq '.[] | select(.target=="tag")'
 ```
 
 ## 3. Cài đặt chung (General → Pull Requests)
@@ -80,7 +80,7 @@ gh api repos/mungvu2004/AppBack/rulesets --jq '.[] | select(.target=="tag")'
 **Kiểm:**
 
 ```bash
-gh api repos/mungvu2004/AppBack --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, squash_merge_commit_title, delete_branch_on_merge}'
+gh api repos/mungvu999-ctrl/AppBack --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, squash_merge_commit_title, delete_branch_on_merge}'
 ```
 
 ## 4. Bảo mật (Settings → Code security)
@@ -102,9 +102,9 @@ gh api repos/mungvu2004/AppBack --jq '{allow_squash_merge, allow_merge_commit, a
 **Kiểm:**
 
 ```bash
-gh api repos/mungvu2004/AppBack/vulnerability-alerts        # 204 = Dependabot alerts bật
-gh api repos/mungvu2004/AppBack/automated-security-fixes    # bật security updates
-gh api repos/mungvu2004/AppBack | jq '.security_and_analysis'
+gh api repos/mungvu999-ctrl/AppBack/vulnerability-alerts        # 204 = Dependabot alerts bật
+gh api repos/mungvu999-ctrl/AppBack/automated-security-fixes    # bật security updates
+gh api repos/mungvu999-ctrl/AppBack | jq '.security_and_analysis'
 ```
 
 ## 5. Actions (Settings → Actions → General)
@@ -121,8 +121,8 @@ gh api repos/mungvu2004/AppBack | jq '.security_and_analysis'
 **Kiểm:**
 
 ```bash
-gh api repos/mungvu2004/AppBack/actions/permissions/workflow
-gh api repos/mungvu2004/AppBack/actions/permissions/access
+gh api repos/mungvu999-ctrl/AppBack/actions/permissions/workflow
+gh api repos/mungvu999-ctrl/AppBack/actions/permissions/access
 ```
 
 ## 6. Chạy job trên máy

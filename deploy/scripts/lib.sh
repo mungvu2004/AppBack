@@ -8,7 +8,7 @@ set -euo pipefail
 : "${APPBACK_DIR:=/opt/appback}"
 # Không dùng ":=" — drill.sh cố ý đặt IMAGE_REGISTRY="" (ảnh cục bộ, không registry);
 # ":=" coi rỗng như chưa đặt và sẽ ghi đè lại registry mặc định.
-: "${IMAGE_REGISTRY=ghcr.io/mungvu2004}"
+: "${IMAGE_REGISTRY=ghcr.io/mungvu999-ctrl}"
 : "${APPBACK_BASE_URL:=http://127.0.0.1}"
 : "${APPBACK_HEALTH_TIMEOUT_S:=180}"
 : "${APPBACK_HEALTH_POLL_S:=2}"

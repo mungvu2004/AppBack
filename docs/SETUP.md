@@ -9,8 +9,8 @@ Luật viết mã không nằm ở đây: AppBack xem `CLAUDE.md`, `RULE-CODE.md
 
 | Repo | Đường | Ngăn xếp | Chạy bằng |
 |---|---|---|---|
-| AppBack | `F:/App/AppBack` (`github.com/mungvu2004/AppBack`) | Python 3.12, FastAPI + Celery worker/beat + ML (onnxruntime, torch CPU), Postgres 16, Redis 7 ×2, MinIO, Mailpit, nginx (`web`) (`docs/charter/BE-00.md:41-60`; Mailpit, nginx: `deploy/compose/base.yml`) | Docker: compose cho dịch vụ, container `verify` cho cổng |
-| AppFront | `F:/App/AppFront` (`github.com/mungvu2004/AppFront`, nhánh chính `master`) | React 19 + Vite 5, TypeScript, pnpm workspace (gồm `vendor/pascal/*`) (`package.json`, `pnpm-workspace.yaml`) | Node + pnpm trên máy |
+| AppBack | `F:/App/AppBack` (`github.com/mungvu999-ctrl/AppBack`) | Python 3.12, FastAPI + Celery worker/beat + ML (onnxruntime, torch CPU), Postgres 16, Redis 7 ×2, MinIO, Mailpit, nginx (`web`) (`docs/charter/BE-00.md:41-60`; Mailpit, nginx: `deploy/compose/base.yml`) | Docker: compose cho dịch vụ, container `verify` cho cổng |
+| AppFront | `F:/App/AppFront` (`github.com/mungvu999-ctrl/AppFront`, nhánh chính `master`) | React 19 + Vite 5, TypeScript, pnpm workspace (gồm `vendor/pascal/*`) (`package.json`, `pnpm-workspace.yaml`) | Node + pnpm trên máy |
 
 Ai gọi ai:
 
@@ -68,8 +68,8 @@ và `web-context.sh` tự tắt autocrlf khi `git archive` (`run.sh:71`, `web-co
    `APPFRONT_REPO=<đường>` (`tools/verify/README.md:15`).
    ```bash
    cd /f/App
-   git clone https://github.com/mungvu2004/AppBack.git
-   git clone https://github.com/mungvu2004/AppFront.git
+   git clone https://github.com/mungvu999-ctrl/AppBack.git
+   git clone https://github.com/mungvu999-ctrl/AppFront.git
    ```
    Thư mục `AppBack/backend/` (tài liệu điều phối, `prompts/`, `dieu-phoi/`) bị `.gitignore` (`.gitignore:1-2`):
    clone mới **không có** nó, kể cả `chuoi.sh` của F-14.

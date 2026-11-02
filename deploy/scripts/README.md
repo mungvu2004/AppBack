@@ -143,7 +143,7 @@ reviewers" đã bật và có ít nhất một người.
 **Ai:** admin repo (đặt public) hoặc người vận hành VPS (nếu để private).
 
 - **Cách A — public:** sau lượt đẩy ảnh đầu tiên, vào
-  `github.com/mungvu2004?tab=packages` → từng gói `appback-{api,worker,ml,web}`
+  `github.com/mungvu999-ctrl?tab=packages` → từng gói `appback-{api,worker,ml,web}`
   → Package settings → Change visibility → Public. VPS `docker pull` không
   cần đăng nhập.
 - **Cách B — giữ private:** tạo Personal Access Token (classic) phạm vi
@@ -153,7 +153,7 @@ reviewers" đã bật và có ít nhất một người.
   ```
   (chạy một lần, Docker lưu credential ở `~deploy/.docker/config.json`).
 
-**Kiểm:** `docker pull ghcr.io/mungvu2004/appback-api:<tag>` trên VPS không
+**Kiểm:** `docker pull ghcr.io/mungvu999-ctrl/appback-api:<tag>` trên VPS không
 hỏi mật khẩu và tải được.
 
 ## 7. Tên miền, chứng chỉ TLS
@@ -287,7 +287,7 @@ hành cần đặt tay trong `appback.env` hoặc secret GitHub:
 | Biến | Mặc định | Đặt ở đâu |
 |---|---|---|
 | `APPBACK_DIR` | `/opt/appback` | môi trường shell trên VPS (thường không cần đổi) |
-| `IMAGE_REGISTRY` | `ghcr.io/mungvu2004` | `appback.env` (để trống nếu chạy ảnh cục bộ) |
+| `IMAGE_REGISTRY` | `ghcr.io/mungvu999-ctrl` | `appback.env` (để trống nếu chạy ảnh cục bộ) |
 | `APPBACK_BASE_URL` | `http://127.0.0.1` | `appback.env` → domain thật sau khi có TLS (§7) |
 | `APPBACK_HEALTH_TIMEOUT_S` | `180` | `appback.env`, chỉnh nếu máy chậm khởi động |
 | `ALERT_WEBHOOK_URL` | rỗng | Environment `alerts` của GitHub + `appback.env` (§4) |
