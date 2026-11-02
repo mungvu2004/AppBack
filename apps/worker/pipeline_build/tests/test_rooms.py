@@ -8,7 +8,13 @@ import shapely
 from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
 from apps.worker.pipeline_build.geometry import Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
-from apps.worker.pipeline_build.rooms import _outline_points, build_furniture, build_rooms, room_confidence
+from apps.worker.pipeline_build.rooms import (
+    _gap_closers,
+    _outline_points,
+    build_furniture,
+    build_rooms,
+    room_confidence,
+)
 from packages.domain.rules_ai import LOW_CONFIDENCE_CAP
 from packages.domain.spatial import Point, Room, Segment, Wall, js_round, polygon_area_m2
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, TextPx
@@ -122,8 +128,10 @@ def test_build_rooms__closer_crossing_other_wall_not_added(fake_clock: FakeClock
 
 
 def test_build_rooms__sideways_stub_does_not_split_room(fake_clock: FakeClock) -> None:
-    """Vách cụt song song tường trên, cách 800 mm: nối ngang lệch 90° (< `ROOM_GAP_CLOSE_MIN_COS`) → vẫn 1 phòng."""
-    walls = [*_grid_walls(fake_clock)[:4], _wall(fake_clock, (1500, 800), (4500, 800))]
+    """Vách cụt song song tường trên, cách 800 mm: nối ngang lệch 90° (< `ROOM_GAP_CLOSE_MIN_COS`) → vẫn 1 phòng.
+
+    Hai đầu cách tường bên 2500 mm (> `ROOM_GAP_EVIDENCE_MM`): khe chữ T chĩa thẳng ≤ 2400 mm nay khép (QT-ROOMS3)."""
+    walls = [*_grid_walls(fake_clock)[:4], _wall(fake_clock, (2500, 800), (3500, 800))]
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert len(rooms) == 1
@@ -563,7 +571,7 @@ def test_door_box_closes_gap_between_a_corner_and_a_wall(fake_clock: FakeClock) 
         ((0, 0), (0, 3000)),
         ((6000, 0), (6000, 3000)),
         ((3000, 900), (3000, 3000)),
-        ((2000, 900), (3000, 900)),
+        ((2500, 900), (3000, 900)),  # cách tường trái 2500 mm > `ROOM_GAP_EVIDENCE_MM`: khe chữ T không khép
     ]
     walls = [_wall(fake_clock, start, end) for start, end in segments]
     door = (DetectionPx(label="door", box=_box(2900, 100, 2960, 800), confidence=0.7),)
@@ -676,3 +684,90 @@ def test_furniture_outside_the_flat_is_suggested(fake_clock: FakeClock) -> None:
         detections, (room,), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter()
     )
     assert [item.suggested for item in items] == [True, False]
+
+
+def test_gap_closers__long_t_gap_closes_only_head_on(fake_clock: FakeClock) -> None:
+    """QT-ROOMS3 (NO-435): tường giữa dừng cách tường trên 1800 mm (> `ROOM_GAP_CLOSE_MM`), chĩa thẳng vào nó → một
+    đoạn nối 1800 mm; vách chĩa chéo (chân đoạn lệch ngang) hay góc chữ L hở hai đầu tự do → không nối."""
+    frame = _grid_walls(fake_clock)[:4]
+    head_on = _gap_closers([*frame, _wall(fake_clock, (3000, 1800), (3000, 3000))], ())
+    slanted = _gap_closers([*frame, _wall(fake_clock, (3000, 1800), (4000, 3000))], ())
+    open_corner = _gap_closers(_square_with_corner_gap(fake_clock, 2000), ())
+    assert [round(line.length) for line in head_on] == [1801]
+    assert slanted == []
+    assert open_corner == []
+
+
+def _fragment_walls(clock: FakeClock) -> list[Wall]:
+    """Phòng 4 m x 4 m, góc phải dưới có ô 1 m x 1,5 m (1,5 m²) ngăn bằng một tường dọc và một `bridges` ngang."""
+    return [
+        _wall(clock, (0, 0), (4000, 0)),
+        _wall(clock, (4000, 0), (4000, 4000)),
+        _wall(clock, (4000, 4000), (0, 4000)),
+        _wall(clock, (0, 4000), (0, 0)),
+        _wall(clock, (3000, 0), (3000, 1500)),
+    ]
+
+
+_FRAGMENT_BRIDGE = ((Point(x=3000, y=1500), Point(x=4000, y=1500)),)
+
+
+def test_build_rooms__unlabelled_fragment_merges_across_bridge(fake_clock: FakeClock) -> None:
+    """QT-ROOMS3: mảnh 1,5 m² không nhãn chung với phòng lớn 1 m cạnh chỉ có `bridges` (vách ảo) → gộp, 16 m²."""
+    rooms = build_rooms(
+        _fragment_walls(fake_clock),
+        _FRAGMENT_BRIDGE,
+        (),
+        level_id=LEVEL_ID,
+        scaling=_IDENTITY,
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    assert [round(room.area_m2, 2) for room in rooms] == [16.0]
+    assert rooms[0].area_m2 == float(polygon_area_m2(rooms[0].outline))
+
+
+def test_build_rooms__labelled_or_walled_fragment_is_kept(fake_clock: FakeClock) -> None:
+    """QT-ROOMS3: mảnh nhỏ có nhãn chữ ("WC") giữ dù chung vách ảo; mảnh không nhãn mà cạnh chung là tường thật giữ."""
+    wc = (TextPx(text="WC", box=BoxPx(x_min=3400, y_min=600, x_max=3600, y_max=800), confidence=0.9),)
+    labelled = build_rooms(
+        _fragment_walls(fake_clock),
+        _FRAGMENT_BRIDGE,
+        wc,
+        level_id=LEVEL_ID,
+        scaling=_IDENTITY,
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    walled = build_rooms(
+        [*_fragment_walls(fake_clock), _wall(fake_clock, (3000, 1500), (4000, 1500))],
+        (),
+        (),
+        level_id=LEVEL_ID,
+        scaling=_IDENTITY,
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    assert sorted(round(room.area_m2, 2) for room in labelled) == [1.5, 14.5]
+    assert sorted(round(room.area_m2, 2) for room in walled) == [1.5, 14.5]
+
+
+def test_build_rooms__sliver_merges_into_longest_shared_side(fake_clock: FakeClock) -> None:
+    """QT-ROOMS3: dải 6 m x 0,3 m (1,8 m², rộng < `_SLIVER_WIDTH_MM`) kín tường → gộp vào phòng kề, 1 phòng."""
+    walls = [*_grid_walls(fake_clock)[:4], _wall(fake_clock, (0, 300), (6000, 300))]
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter())
+    assert [round(room.area_m2, 2) for room in rooms] == [18.0]
+
+
+def test_build_rooms__fragment_closing_a_ring_is_kept(fake_clock: FakeClock) -> None:
+    """QT-ROOMS3: gộp mảnh 2 m² vào phòng chữ C quanh một phòng giữa sẽ thành vành có lỗ → bỏ gộp, giữ 3 phòng."""
+    outer = [(0, 0), (6000, 0), (6000, 6000), (0, 6000)]
+    inner = [(2000, 2000), (4000, 2000), (4000, 4000), (2000, 4000)]
+    walls = [
+        *(_wall(fake_clock, a, b) for a, b in zip(outer, outer[1:] + outer[:1], strict=True)),
+        *(_wall(fake_clock, a, b) for a, b in zip(inner, inner[1:] + inner[:1], strict=True)),
+        _wall(fake_clock, (2500, 4000), (2500, 6000)),
+    ]
+    bridges = ((Point(x=3500, y=4000), Point(x=3500, y=6000)),)
+    rooms = build_rooms(walls, bridges, (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter())
+    assert sorted(round(room.area_m2, 2) for room in rooms) == [2.0, 4.0, 30.0]

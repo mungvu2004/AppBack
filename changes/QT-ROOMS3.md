@@ -1,0 +1,7 @@
+# QT-ROOMS3 — gộp mảnh phòng vụn + khép khe chữ T dài (NO-435)
+
+- Gộp mảnh vụn (`_merge_fragments`): phòng < 3,5 m² không chứa nhãn chữ, chung ≥ 300 mm cạnh không có tường thật (ngoài thân tường và khe ô mở `_door_closers`; tức là `bridges`/đoạn nối khe) → gộp vào phòng kề có cạnh ảo dài nhất; dải hẹp (2·diện tích/chu vi < 400 mm) → phòng kề có cạnh chung dài nhất. Mảnh có nhãn và mảnh nhỏ kín tường (WC, lô gia không ghi tên) giữ. Đo trên bench: mọi phòng nhỏ không nhãn có trong đáp án đều kín tường; mảnh thừa đều giáp phòng lớn qua `bridges`.
+- NO-435: chẩn đoán lại — ch-09 mất phòng vì khe KHÔNG được khép (khe chữ T 1,45–2,05 m ở tỉ lệ đúng), không phải khép nhầm. Khe 1200–2400 mm nay khép thêm khi đầu tường chĩa thẳng (cos ≥ 0,97, lệch ngang ≤ 150 mm) vào tường vuông góc và chân đoạn không ở đầu tự do của tường đích. Vách lệch / chéo / góc chữ L hở hai đầu vẫn không khép.
+- Khe dài chỉ để kín vùng hở, không để chia không gian mở: phòng không nhãn giáp phòng khác qua đoạn nối dài thì gộp lại (giữ hành vi UX-04: chia theo hai nhãn là việc của `_split_by_labels`).
+- Bench 14 ca (dựng lại từ artifact): tổng |lệch số phòng| 20 → 14 (trước lô 1+2: 15). ch-04 3→1, ch-09 4→2, ch-10 3→0, ch-02 1→0; ch-05 0→1, ch-08 0→1 (mảnh vụn bị gộp; số cũ đúng nhờ mảnh thừa bù phòng bếp/kho bị nhập).
+- Test sửa vì hành vi đổi có chủ ý: `test_build_rooms__sideways_stub_does_not_split_room`, `test_door_box_closes_gap_between_a_corner_and_a_wall` dời vách để khe bên > 2400 mm (khe chữ T ≤ 2400 nay khép, ý test giữ nguyên).
