@@ -7,5 +7,7 @@
 - Đo trên bench-3d r1 (ước bằng biên bao tim tường): 21 phòng "khác" có đáp án bị đổi, 18 đúng (lô gia/ban công/giặt phơi), 3 sai (ch-01 phòng khác 5,8 m², cn-09 khách-bếp 13,9 m², cn-19 kho 3,8 m²).
 - Hộp kỹ thuật: phòng chưa có tên < 2,5 m² (`_SHAFT_M2`) không hộp cửa đi nào chạm biên → `utility` tên "hộp kỹ thuật" (giữ hình học, không xoá).
 - `name_rooms`: phòng không tên là "phòng khác", "phòng khác 2"… thay cho "phòng {vị trí}" (đọc như tên phòng thật); `_NOT_LABELS` sẵn có giữ tên sinh không bị đọc lại thành nhãn.
+- Tỉ lệ (`apps/worker/pipeline_build/build.py`): suy riêng tỉ lệ chữ chuỗi ngang/dọc (`axis_scales` mới trong `packages/domain/scale`); lệch > 3 % → ghi `scaleChecks.anisotropic` {x, y} trong `layer.json`, tỉ lệ đã chọn không đổi. Nhánh ước lượng U01: cửa và bề dày tường lệch ≤ 10 % → trung bình nhân; lệch hơn → giữ ước cửa, ghi `scaleChecks.estimateSpread`. Mục tiêu bề dày giữ 150 mm (trung vị bề dày mặt nạ ở tỉ lệ đúng trên bench-3d r1 ≈ 154 mm).
+- `scaleChecks` là khoá gốc tuỳ chọn của `layer.json` (như `scaleBasis`), chưa lên API; bước kiểm chất lượng đọc sau.
 - Không đổi API, DB, migration, hợp đồng FE–BE.
 - Cổng áp dụng: lint/type, test apps/worker/pipeline_build, packages/vision/dimensions. Migration/hợp đồng: không áp dụng.
