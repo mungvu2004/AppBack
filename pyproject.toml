@@ -11,6 +11,16 @@ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 # rapidocr-onnxruntime kéo opencv-python (bản GUI) qua transitive deps; loại nó
 # khỏi lock thay cho --no-deps thủ công (ENV §3, K29).
 override-dependencies = ["opencv-python ; sys_platform == 'never'"]
+# Sàn bảo mật (pip-audit, job `lint`, 02/11/2026): `run.sh lock` không `--upgrade`, nên sàn ở đây là
+# cách ép lock lấy bản đã vá cho gói gián tiếp; gỡ một dòng khi gói cha tự kéo bản cao hơn.
+constraint-dependencies = [
+    "certifi>=2026.10.18",
+    "filelock>=4.2.1",
+    "mako>=1.4.2",
+    "pillow>=13.0.0",
+    "setuptools>=84.1.0",
+    "werkzeug>=3.1.9",
+]
 
 [tool.uv.workspace]
 members = ["packages/*", "apps/*"]

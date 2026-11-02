@@ -21,6 +21,12 @@ RUN npm install -g pnpm@9.4.0 \
 # Nâng: chỉ lên tag stable 1.30.x mới hơn; sang mainline phải ≥ 1.31.6.
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
 
+# trivy CRITICAL (CVE-2026-111497, 02/11/2026): ảnh nền, kể cả 1.30.6-alpine, còn brotli-libs 1.2.0-r1.
+# Sàn `>=` chứ không ghim `=`: Alpine gỡ bản cũ khỏi kho. Bỏ khối này khi ảnh nền tự có ≥ 1.2.1-r0.
+USER root
+RUN apk add --no-cache --upgrade 'brotli-libs>=1.2.1-r0'
+USER 101
+
 # Ảnh nền giữ server mặc định (server_name localhost, listen 8080) tại
 # /etc/nginx/conf.d/default.conf: mọi yêu cầu Host: localhost khớp nó TRƯỚC
 # app.conf, nuốt /api (404 HTML) và mất CSP của SPA (review 2026-09-22 #1,
