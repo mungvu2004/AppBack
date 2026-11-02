@@ -689,8 +689,23 @@ def _drop_hugging_stubs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes:
             dropped["isolatedBlock"] += 1
 
 
+def _buried(nib: _Seg, segs: Sequence[_Seg]) -> bool:
+    """Cả hai đầu `nib` nằm trong thân **cùng** một tường sống khác (cách tim ≤ ½ dày nó + `_TOUCH_SLACK_MM`).
+
+    Mẩu như vậy không nối hai tường nào, chỉ là phần thò của một nét đã có (W4); má cửa nối hai tường không bị bắt.
+    """
+    tips = shapely.points([(nib.start.x, nib.start.y), (nib.end.x, nib.end.y)])
+    return any(
+        other is not nib
+        and other.alive
+        and bool((shapely.distance(tips, _line(other)) <= other.thickness_mm / 2 + _TOUCH_SLACK_MM).all())
+        for other in segs
+    )
+
+
 def _drop_dangling_nibs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
-    """3b (f): mẩu < `_NIB_MAX_MM` có đầu lơ lửng sau khi đã kéo (b, d), thân không chạm hộp ô mở → bỏ (C2).
+    """3b (f): mẩu < `_NIB_MAX_MM` có đầu lơ lửng hay nằm trọn trong thân tường khác (`_buried`) sau khi đã kéo
+    (b, d), thân không chạm hộp ô mở → bỏ (C2).
 
     Thân nới thêm một bề dày khi dò hộp: mẩu cạnh khe cửa (má cửa) chạm mép hộp vẫn được giữ.
     """
@@ -698,7 +713,7 @@ def _drop_dangling_nibs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes:
         if not nib.alive or _length(nib) >= _NIB_MAX_MM or _hits(boxes.tree, _line(nib).buffer(nib.thickness_mm)):
             continue
         near = [segs[item] for item in sorted(neighbours[index])]
-        if _dangling(nib, nib.start, near) or _dangling(nib, nib.end, near):
+        if _dangling(nib, nib.start, near) or _dangling(nib, nib.end, near) or _buried(nib, near):
             nib.alive = False
             dropped["isolatedBlock"] += 1
 
@@ -1199,7 +1214,7 @@ def close_envelope_gaps(
     door = LABEL_TARGETS["door"]
     for start, end in wall_set.bridges:
         span = math.dist((start.x, start.y), (end.x, end.y))
-        hosts = _bridge_hosts(wall_set.walls, (start, end))
+        hosts = _bridge_hosts(walls, (start, end))
         ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
         inner = LineString(((start.x + ux, start.y + uy), (end.x - ux, end.y - uy)))
         if not hosts or any(inner.intersects(line) for line in lines):

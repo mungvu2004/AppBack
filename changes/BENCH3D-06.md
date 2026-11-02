@@ -7,3 +7,8 @@
   theo `_clash` — cùng luật WALL-OVERLAP của FE đã chặn lượt kéo tường ở 3b. Áp cho cả khe hẹp (kéo tường chủ).
 - Không đổi API, DB, migration, hợp đồng FE–BE.
 - Cổng áp dụng: lint/type, test `apps/worker/pipeline_build`.
+- Lượt 2: 3b (f) `_drop_dangling_nibs` bỏ thêm mẩu < 200 mm không chạm hộp ô mở mà **cả hai đầu** nằm trong thân cùng
+  một tường khác (≤ ½ dày tường đó + 10 mm, `_buried`) — mẩu thò 11–62 mm ở chữ T/góc trước đây lọt vì đầu nào cũng
+  "chạm" tường. Mẩu nối hai tường (má cửa, đoạn nối hai tường song song) vẫn giữ.
+- Lượt 2: `close_envelope_gaps` tìm tường chủ trên danh sách đang sửa, không trên `wall_set.walls` gốc: tường chủ đã kéo
+  qua một khe không bị kéo lùi khi khe thứ hai chung đầu mút.
