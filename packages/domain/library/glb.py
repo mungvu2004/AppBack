@@ -22,6 +22,8 @@ _BIN_CHUNK = 0x004E4942
 _FLOAT = 5126
 _USHORT = 5123
 _UINT = 5125
+# Số chia của accessor `normalized` theo `componentType` (glTF 2.0 §3.11): byte, ubyte, short, ushort.
+_NORMALIZED_DIVISOR = {5120: 127.0, 5121: 255.0, 5122: 32767.0, _USHORT: 65535.0}
 _ARRAY_BUFFER = 34962
 _ELEMENT_ARRAY_BUFFER = 34963
 _MAX_USHORT_VERTICES = 65535  # chỉ số 65535 là mốc restart, nên tối đa 65535 đỉnh (chỉ số 0..65534)
@@ -231,6 +233,14 @@ def _glb_document(data: bytes) -> dict[str, Any]:
     return document
 
 
+def _bounds(acc: dict[str, Any]) -> tuple[list[float], list[float]]:
+    """`min`/`max` của accessor về số thực; accessor `normalized` (vd. meshopt lượng tử int16) chia về [-1, 1]."""
+    if not acc.get("normalized"):
+        return acc["min"], acc["max"]
+    div = _NORMALIZED_DIVISOR[acc["componentType"]]
+    return [max(v / div, -1.0) for v in acc["min"]], [max(v / div, -1.0) for v in acc["max"]]
+
+
 def measure_glb(data: bytes) -> GlbAsset:
     """Đo một `.glb` bất kỳ: hộp bao thế giới (góc hộp `POSITION` qua ma trận nút) và số tam giác.
 
@@ -248,7 +258,7 @@ def measure_glb(data: bytes) -> GlbAsset:
         world = _matmul(parent, _local_matrix(node))
         for prim in doc["meshes"][node["mesh"]]["primitives"] if "mesh" in node else ():
             acc = doc["accessors"][prim["attributes"]["POSITION"]]
-            a, b = acc["min"], acc["max"]
+            a, b = _bounds(acc)
             for corner in ((x, y, z) for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])):
                 for axis in range(3):
                     value = sum(world[axis][k] * corner[k] for k in range(3)) + world[axis][3]
