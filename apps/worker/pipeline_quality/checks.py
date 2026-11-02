@@ -1,0 +1,180 @@
+"""Kiểm hình học sau dựng (BENCH3D-01): kết quả sai về hình thì bật cờ `critical` của báo cáo chất lượng.
+
+Tách khỏi `check_integrity` (kiểm đó còn chặn lượt lưu của người dùng); hàm thuần, chỉ đọc lớp.
+Ngưỡng theo bộ chấm `F:/runs/bench-3d/tools/score.py` (W1 vỏ kín, W4 mảnh vụn).
+"""
+
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Final
+
+import numpy as np
+import shapely
+from shapely import LineString, Point, Polygon, STRtree
+
+from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
+from apps.worker.pipeline_build.constants import FAR_CLUSTER_LENGTH_SHARE
+from packages.domain.spatial.model import Room, SpatialLayer, Wall
+
+ENVELOPE_MIN_WIDTH_MM: Final = 100
+"""Tường mỏng hơn vẫn vẽ dày 100 mm khi dò vỏ (W1)."""
+ENVELOPE_PAD_MM: Final = 25
+"""Nửa ô lưới 50 mm của W1: bán kính vùng tường = `max(bề dày, 100) / 2 + 25`."""
+OPEN_ENVELOPE_SHARE: Final = 0.10
+"""Quá 10 % phòng trong nhà không nằm trong lỗ kín của vỏ tường → vỏ hở (W1 "Đ" cần ≥ 90 %)."""
+OPEN_ENVELOPE_MIN_LEAKED: Final = 2
+OPEN_ENVELOPE_BIG_ROOM_M2: Final = 6.0
+"""Chỉ chặn khi ≥ 2 phòng rò, hoặc phòng rò rộng ≥ 6 m²: một hộp kỹ thuật nhỏ lòi ra ngoài vỏ (cn-03) chỉ báo."""
+OUTDOOR_USAGES: Final = frozenset({"loggia"})
+
+STUB_MAX_MM: Final = 200
+"""Mẩu tường ngắn hơn số này mà cách mọi tường khác > `STUB_CLEARANCE_MM` là mảnh vụn (W4)."""
+STUB_CLEARANCE_MM: Final = 50
+OVERLAP_ANGLE_DEG: Final = 5.0
+OVERLAP_DISTANCE_MM: Final = 30
+OVERLAP_SHARE: Final = 0.5
+"""Hai tường gần song song (< 5°), cách < 30 mm, chồng > 50 % tường ngắn hơn là tường đôi (W4)."""
+WALL_FRAGMENTS_MIN: Final = 3
+
+DOORLESS_USAGES_EXEMPT: Final = frozenset({"loggia", "corridor"})
+UNKNOWN_USAGE_SHARE: Final = 0.8
+UNKNOWN_USAGE_CRITICAL_ROOMS: Final = 3
+"""`ROOM_USAGE_UNKNOWN` chỉ chặn khi tầng có ít nhất 3 phòng (1-2 phòng "khác" là bản vẽ lạ, không phải lỗi)."""
+
+
+@dataclass(frozen=True)
+class GeometryCheck:
+    """Một kiểm hình học đã bật; `detail` là số đo để người đọc `quality.json` biết vì sao."""
+
+    code: str
+    critical: bool
+    detail: Mapping[str, float]
+
+    def to_wire(self) -> dict[str, object]:
+        return {"code": self.code, "critical": self.critical, "detail": dict(self.detail)}
+
+
+def _line(wall: Wall) -> LineString:
+    c = wall.centreline
+    return LineString([(c.start.x, c.start.y), (c.end.x, c.end.y)])
+
+
+def _inside_point(room: Room) -> Point:
+    return Polygon([(p.x, p.y) for p in room.outline]).representative_point()
+
+
+def _open_envelope(walls: Sequence[Wall], lines: Sequence[LineString], rooms: Sequence[Room]) -> GeometryCheck | None:
+    """Phòng trong nhà phải nằm trong một lỗ kín của hợp vùng tường (W1 lũ từ ngoài vào)."""
+    indoor = [room for room in rooms if room.usage not in OUTDOOR_USAGES]
+    if not walls or not indoor:
+        return None
+    body = shapely.union_all(
+        [
+            line.buffer(max(wall.thickness_mm, ENVELOPE_MIN_WIDTH_MM) / 2 + ENVELOPE_PAD_MM, cap_style="flat")
+            for wall, line in zip(walls, lines, strict=True)
+        ]
+    )
+    parts = getattr(body, "geoms", [body])
+    filled = shapely.union_all([Polygon(part.exterior) for part in parts if not part.is_empty])
+    leaked = [room for room in indoor if not filled.covers(_inside_point(room))]
+    share = len(leaked) / len(indoor)
+    if share <= OPEN_ENVELOPE_SHARE:
+        return None
+    critical = len(leaked) >= OPEN_ENVELOPE_MIN_LEAKED or any(
+        room.area_m2 >= OPEN_ENVELOPE_BIG_ROOM_M2 for room in leaked
+    )
+    return GeometryCheck("OPEN_ENVELOPE", critical, {"leakedRooms": len(leaked), "share": round(share, 3)})
+
+
+def _parallel(a: LineString, b: LineString) -> bool:
+    (ax0, ay0), (ax1, ay1) = a.coords
+    (bx0, by0), (bx1, by1) = b.coords
+    angle = abs(math.atan2(ay1 - ay0, ax1 - ax0) - math.atan2(by1 - by0, bx1 - bx0)) % math.pi
+    return min(angle, math.pi - angle) < math.radians(OVERLAP_ANGLE_DEG)
+
+
+def _wall_fragments(lines: Sequence[LineString]) -> GeometryCheck | None:
+    """Mẩu tường trôi + cặp tường đôi chồng nhau (W4)."""
+    if len(lines) < 2:
+        return None
+    geoms = np.asarray(lines, dtype=object)
+    tree = STRtree(geoms)
+    stubs = 0
+    for index, line in enumerate(lines):
+        if line.length < STUB_MAX_MM:
+            near = tree.query(line, predicate="dwithin", distance=STUB_CLEARANCE_MM)
+            stubs += all(other == index for other in near.tolist())
+    sources, targets = tree.query(geoms, predicate="dwithin", distance=OVERLAP_DISTANCE_MM)
+    overlaps = 0
+    for i, j in zip(sources.tolist(), targets.tolist(), strict=True):
+        if i >= j or not _parallel(lines[i], lines[j]):
+            continue
+        short, long_ = sorted((lines[i], lines[j]), key=lambda line: line.length)
+        if (
+            short.length > 0
+            and short.intersection(long_.buffer(OVERLAP_DISTANCE_MM)).length > OVERLAP_SHARE * short.length
+        ):
+            overlaps += 1
+    if stubs + overlaps < WALL_FRAGMENTS_MIN:
+        return None
+    return GeometryCheck("WALL_FRAGMENTS", True, {"stubs": stubs, "overlaps": overlaps})
+
+
+def _multiple_plans(walls: Sequence[Wall], lines: Sequence[LineString]) -> GeometryCheck | None:
+    """≥ 2 vùng tường tách xa nhau, mỗi vùng giữ ≥ `FAR_CLUSTER_LENGTH_SHARE` tổng dài (bước dựng giữ cả hai)."""
+    if len(walls) < 2:
+        return None
+    groups = wall_clusters(np.asarray(lines, dtype=object), [float(wall.thickness_mm) for wall in walls])
+    lengths = [sum(lines[i].length for i in group) for group in groups]
+    boxes: list[Box] = [shapely.MultiLineString([lines[i] for i in group]).bounds for group in groups]
+    total = sum(lengths)
+    remaining = set(range(len(groups)))
+    big = 0
+    while remaining:
+        _, rest = grow_region(boxes, remaining, max(remaining, key=lengths.__getitem__))
+        big += sum(lengths[i] for i in remaining - rest) >= FAR_CLUSTER_LENGTH_SHARE * total
+        remaining = rest
+    if big < 2:
+        return None
+    return GeometryCheck("MULTIPLE_PLANS", True, {"plans": big})
+
+
+def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
+    """Có phòng mà không ô mở nào → chặn; còn lại chỉ báo tỉ lệ phòng không tường nào mang cửa đi."""
+    if not layer.rooms:
+        return None
+    if not layer.openings:
+        return GeometryCheck("ROOMS_WITHOUT_DOOR", True, {"rooms": len(layer.rooms), "openings": 0})
+    door_walls = {opening.wall_id for opening in layer.openings if opening.kind == "door"}
+    rooms = [room for room in layer.rooms if room.usage not in DOORLESS_USAGES_EXEMPT]
+    doorless = sum(1 for room in rooms if door_walls.isdisjoint(room.wall_ids))
+    if not doorless:
+        return None
+    return GeometryCheck(
+        "ROOMS_WITHOUT_DOOR", False, {"doorlessRooms": doorless, "share": round(doorless / len(rooms), 3)}
+    )
+
+
+def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
+    if not rooms:
+        return None
+    share = sum(1 for room in rooms if room.usage == "other") / len(rooms)
+    if share < UNKNOWN_USAGE_SHARE:
+        return None
+    critical = len(rooms) >= UNKNOWN_USAGE_CRITICAL_ROOMS
+    return GeometryCheck("ROOM_USAGE_UNKNOWN", critical, {"share": round(share, 3)})
+
+
+def geometry_checks(layer: SpatialLayer) -> tuple[GeometryCheck, ...]:
+    """Mọi kiểm hình học đã bật, thứ tự cố định."""
+    walls = layer.walls
+    lines = [_line(wall) for wall in walls]
+    found = (
+        _open_envelope(walls, lines, layer.rooms),
+        _wall_fragments(lines),
+        _multiple_plans(walls, lines),
+        _rooms_without_door(layer),
+        _room_usage_unknown(layer.rooms),
+    )
+    return tuple(check for check in found if check is not None)

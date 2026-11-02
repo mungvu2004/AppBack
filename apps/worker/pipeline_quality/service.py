@@ -141,6 +141,7 @@ def _summary(report: RunQualityReport) -> dict[str, object]:
         "hasCritical": report.has_critical,
         "criticalCount": sum(1 for issue in report.issues if issue.severity == "critical"),
         "lowConfidence": dict(report.low_confidence),
+        "checks": [check.code for check in report.checks],
     }
 
 

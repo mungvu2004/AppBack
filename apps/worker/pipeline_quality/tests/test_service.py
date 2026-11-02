@@ -370,7 +370,12 @@ async def test_run_quality_records_summary_with_critical(
     issues = cast("list[dict[str, object]]", artifact["integrity"])
     critical = sum(1 for issue in issues if issue["severity"] == "critical")
     assert critical >= 1
-    assert summary == {"hasCritical": True, "criticalCount": critical, "lowConfidence": artifact["lowConfidence"]}
+    assert summary == {
+        "hasCritical": True,
+        "criticalCount": critical,
+        "lowConfidence": artifact["lowConfidence"],
+        "checks": [check["code"] for check in cast("list[dict[str, object]]", artifact["checks"])],
+    }
     status, _, _ = await _run_row(db_sessionmaker, arranged.run_id)
     assert status == "completed"
 
@@ -382,15 +387,25 @@ async def test_run_quality_records_summary_clean(
     fake_clock: FakeClock,
     quality_env: None,
 ) -> None:
-    """FIX-P0-09: lớp sạch → tóm tắt `hasCritical` false, `criticalCount` 0, đếm tin cậy thấp như `quality.json`."""
+    """FIX-P0-09: lớp sạch toàn vẹn → `criticalCount` 0, đếm tin cậy thấp như `quality.json`.
+
+    BENCH3D-01: lớp mẫu là các mẩu tường rời, phòng không được vỏ bao → kiểm hình học `OPEN_ENVELOPE`
+    bật `hasCritical` dù toàn vẹn sạch; tóm tắt liệt kê mã kiểm như `quality.json`.
+    """
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
 
     outcome = await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
 
     assert outcome == "completed"
     summary, artifact = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
-    assert artifact["hasCritical"] is False
-    assert summary == {"hasCritical": False, "criticalCount": 0, "lowConfidence": artifact["lowConfidence"]}
+    assert artifact["integrity"] == []
+    assert artifact["hasCritical"] is True
+    assert summary == {
+        "hasCritical": True,
+        "criticalCount": 0,
+        "lowConfidence": artifact["lowConfidence"],
+        "checks": ["OPEN_ENVELOPE", "ROOMS_WITHOUT_DOOR"],
+    }
 
 
 async def test_run_quality__completed_queues_a_design_concept(
