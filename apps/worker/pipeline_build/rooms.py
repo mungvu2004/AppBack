@@ -119,6 +119,11 @@ Phòng chưa có tên (chữ, rìa, đồ đạc) 2-15 m², ≥ 3 m cạnh trên
 không đọc được chữ nào (ảnh âm bản, OCR hỏng) thì mọi phòng đều "khác", đoán lô gia là đoán mù. Máy giặt + ≥ 3 m mặt
 ngoài (không buồng tắm đứng) → lô gia trước luật thiết bị vệ sinh: chậu giặt dò thành `sanitary_fixture`."""
 
+_SHAFT_M2 = 2.5
+_DOOR_LABELS = frozenset({"door", "double_door"})
+"""Hộp kỹ thuật: phòng chưa có tên < 2,5 m² không hộp cửa đi nào chạm biên (nới `ROOM_SNAP_MM`) → `utility` tên
+"hộp kỹ thuật" (bench-3d cn-01, cn-06, huge-ch03: ô 1-1,6 m² giữa tường thành "phòng 7")."""
+
 _DINING_LABELS = frozenset({"table", "chair"})
 """Tủ bếp (kể cả ngắn) cùng bàn/ghế ăn trong phòng > 10 m² → bếp; tủ áo cạnh tủ bếp không làm phòng ngủ.
 
@@ -566,6 +571,19 @@ def _facade_lengths(lines: Sequence[shapely.LineString], outlines: Sequence[Sequ
     return [float(shapely.LinearRing([(p.x, p.y) for p in o]).intersection(rim).length) for o in outlines]
 
 
+def _door_flags(outlines: Sequence[Sequence[Point]], detections: Sequence[DetectionPx], scaling: Scaling) -> list[bool]:
+    """Mỗi `outline` có hộp cửa đi (`_DOOR_LABELS`) chạm biên nới `ROOM_SNAP_MM` không."""
+    corners = [
+        (scaling.point(d.box.x_min, d.box.y_min), scaling.point(d.box.x_max, d.box.y_max))
+        for d in detections
+        if d.label in _DOOR_LABELS
+    ]
+    boxes = [shapely.box(low.x, low.y, high.x, high.y) for low, high in corners]
+    tree = shapely.STRtree(boxes)
+    rings = [shapely.LinearRing([(p.x, p.y) for p in o]).buffer(ROOM_SNAP_MM) for o in outlines]
+    return [bool(tree.query(ring, predicate="intersects").size) for ring in rings]
+
+
 def _fixtures_in(
     outlines: Sequence[Sequence[Point]], detections: Sequence[DetectionPx], scaling: Scaling
 ) -> list[set[str]]:
@@ -768,8 +786,8 @@ def build_rooms(
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
     Tên: nhãn chữ trong phòng, không có thì lô gia rìa, suy từ đồ đạc (`_fixture_labels`), rồi lô gia mặt ngoài
-    (`_FACADE_MM`). Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng đoạn nối khe không có tường
-    thật, nên luật FE `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
+    (`_FACADE_MM`), hộp kỹ thuật (`_SHAFT_M2`). Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng
+    đoạn nối khe không có tường thật, nên luật FE `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
 
     Tin cậy (B12): tích nguồn tên (`_NAME_TRUST`), 1 - phần chu vi không sát tường (kẹp ≥ `_MIN_WALLED_FACTOR`),
     (1 nếu tỉ lệ đáng tin, `_UNTRUSTED_SCALE_FACTOR` nếu không). `scale_trusted=None` → tin khi `scaling.build ==
@@ -819,7 +837,15 @@ def build_rooms(
         else None
         for area_m2, facade_mm, found in zip(areas, facades, found_in, strict=True)
     ]
-    guesses = [rim or fix or facade for rim, fix, facade in zip(from_rim, from_fixtures, from_facade, strict=True)]
+    shaft = RoomLabel("utility", "hộp kỹ thuật")
+    doored = _door_flags(outlines, detections, scaling)
+    from_shaft = [
+        shaft if area_m2 < _SHAFT_M2 and not door else None for area_m2, door in zip(areas, doored, strict=True)
+    ]
+    guesses = [
+        rim or fix or facade or box
+        for rim, fix, facade, box in zip(from_rim, from_fixtures, from_facade, from_shaft, strict=True)
+    ]
     labels = name_rooms([text or guess for text, guess in zip(from_text, guesses, strict=True)])
     sources = [
         "text" if text else "inferred" if guess else "none" for text, guess in zip(from_text, guesses, strict=True)

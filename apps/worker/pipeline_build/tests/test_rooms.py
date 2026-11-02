@@ -61,12 +61,12 @@ def _grid_walls(clock: FakeClock, confidences: Callable[[int], float] | None = N
 
 
 def test_grid_gives_two_rooms_with_matching_area(fake_clock: FakeClock) -> None:
-    """Lưới 2 phòng → 2 phòng, `areaM2 == float(polygon_area_m2(outline))`, tên `phòng 1`/`phòng 2` theo (y, x)."""
+    """Lưới 2 phòng → 2 phòng, `areaM2 == float(polygon_area_m2(outline))`, tên `phòng khác`/`phòng khác 2`."""
     walls = _grid_walls(fake_clock)
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert len(rooms) == 2
-    assert [r.name for r in rooms] == ["phòng 1", "phòng 2"]
+    assert [r.name for r in rooms] == ["phòng khác", "phòng khác 2"]
     for room in rooms:
         assert room.area_m2 == float(polygon_area_m2(room.outline))
 
@@ -839,3 +839,18 @@ def test_build_rooms__fragment_closing_a_ring_is_kept(fake_clock: FakeClock) -> 
     bridges = ((Point(x=3500, y=4000), Point(x=3500, y=6000)),)
     rooms = build_rooms(walls, bridges, (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter())
     assert sorted(round(room.area_m2, 2) for room in rooms) == [2.0, 4.0, 30.0]
+
+
+def test_small_room_without_a_door_is_a_shaft(fake_clock: FakeClock) -> None:
+    """Ô 1 x 1,2 m không cửa giữa tường → `utility` "hộp kỹ thuật"; ô 1 x 2,2 m có hộp cửa đi → giữ "phòng khác"."""
+    shaft = _rooms_of(_box_room(fake_clock, 1200), (), fake_clock)
+    assert [(room.usage, room.name) for room in shaft] == [("utility", "hộp kỹ thuật")]
+    door = (DetectionPx(label="door", box=_box(1000, 600, 1100, 1400), confidence=0.9),)
+    closet = _rooms_of(_box_room(fake_clock, 2200), door, fake_clock)
+    assert [(room.usage, room.name) for room in closet] == [("other", "phòng khác")]
+
+
+def _box_room(clock: FakeClock, depth: int) -> list[Wall]:
+    """Phòng 1000 x `depth` mm."""
+    corners = [(0, 0), (1000, 0), (1000, depth), (0, depth)]
+    return [_wall(clock, a, b) for a, b in zip(corners, corners[1:] + corners[:1], strict=True)]

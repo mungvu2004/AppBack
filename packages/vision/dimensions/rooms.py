@@ -222,12 +222,13 @@ def match_room_label(text: str) -> RoomLabel | None:
 def name_rooms(labels: Sequence[RoomLabel | None]) -> tuple[RoomLabel, ...]:
     """Đặt tên cho mọi phòng, giữ thứ tự; tên trùng thêm ` n` nhỏ nhất (từ 2) chưa dùng.
 
-    `None` ở vị trí `k` (đếm từ 1) → `other` tên `phòng k`. Tên `phòng ngủ` hai lần → `phòng ngủ`, `phòng ngủ 2`.
+    `None` → `other` tên `phòng khác` (rồi `phòng khác 2`…; bench-3d: "phòng 7" đọc như tên phòng thật). Tên
+    `phòng ngủ` hai lần → `phòng ngủ`, `phòng ngủ 2`.
     """
     used: set[str] = set()
     named: list[RoomLabel] = []
-    for position, label in enumerate(labels, start=1):
-        label = label or RoomLabel("other", f"phòng {position}")
+    for label in labels:
+        label = label or RoomLabel("other", ROOM_USAGE_NAMES["other"])
         name, suffix = label.name, 2
         while name in used:
             name, suffix = f"{label.name} {suffix}", suffix + 1

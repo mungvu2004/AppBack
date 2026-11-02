@@ -5,5 +5,7 @@
 - Giường chỉ làm phòng ngủ ở 6–25 m² (vùng gộp 40 m² có giường không thành phòng ngủ); tủ áo đơn lẻ chỉ làm phòng ngủ từ 8 m² (`_WARDROBE_BEDROOM_MIN_M2`, trước 6).
 - `packages/vision/dimensions/rooms.py`: "sân phơi", "giặt phơi" → `loggia` (trước `utility`; chủ dự án chốt).
 - Đo trên bench-3d r1 (ước bằng biên bao tim tường): 21 phòng "khác" có đáp án bị đổi, 18 đúng (lô gia/ban công/giặt phơi), 3 sai (ch-01 phòng khác 5,8 m², cn-09 khách-bếp 13,9 m², cn-19 kho 3,8 m²).
+- Hộp kỹ thuật: phòng chưa có tên < 2,5 m² (`_SHAFT_M2`) không hộp cửa đi nào chạm biên → `utility` tên "hộp kỹ thuật" (giữ hình học, không xoá).
+- `name_rooms`: phòng không tên là "phòng khác", "phòng khác 2"… thay cho "phòng {vị trí}" (đọc như tên phòng thật); `_NOT_LABELS` sẵn có giữ tên sinh không bị đọc lại thành nhãn.
 - Không đổi API, DB, migration, hợp đồng FE–BE.
 - Cổng áp dụng: lint/type, test apps/worker/pipeline_build, packages/vision/dimensions. Migration/hợp đồng: không áp dụng.
