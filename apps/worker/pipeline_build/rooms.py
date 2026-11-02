@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import shapely
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import split
 
 from apps.worker.pipeline_build.constants import (
@@ -609,14 +610,18 @@ def room_confidence(source: str, gap_share: float, *, scale_trusted: bool) -> fl
     return round(_NAME_TRUST[source] * factor * (1.0 if scale_trusted else _UNTRUSTED_SCALE_FACTOR), 2)
 
 
-def _wall_bodies(walls: Sequence[Wall]) -> list[shapely.Polygon]:
-    """Thân mỗi tường: tim nới nửa bề dày + `ROOM_SNAP_MM` (cạnh phòng trong thân là tường thật, ngoài: khe đã nối)."""
-    return [
-        shapely.LineString(
-            [(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)]
-        ).buffer(w.thickness_mm / 2 + ROOM_SNAP_MM)
-        for w in walls
-    ]
+def _wall_bodies(walls: Sequence[Wall]) -> np.ndarray:
+    """Thân mỗi tường: tim nới nửa bề dày + `ROOM_SNAP_MM` (cạnh phòng trong thân là tường thật, ngoài: khe đã nối).
+
+    Một lượt GEOS cho cả mảng; `quad_segs=16` là mặc định của `LineString.buffer`.
+    """
+    ends = np.array(
+        [[(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)] for w in walls],
+        dtype=float,
+    ).reshape(-1, 2, 2)
+    return shapely.buffer(
+        shapely.linestrings(ends), np.array([w.thickness_mm / 2 + ROOM_SNAP_MM for w in walls]), quad_segs=16
+    )
 
 
 _FRAGMENT_M2 = 3.5
@@ -629,7 +634,7 @@ vào phòng kề có cạnh chung dài nhất."""
 
 def _merge_fragments(
     kept: Sequence[tuple[list[Point], float]],
-    walls: Sequence[Wall],
+    bodies: np.ndarray,
     doors: Sequence[shapely.LineString],
     long_closers: Sequence[shapely.LineString],
     labels: Sequence[Point],
@@ -642,14 +647,17 @@ def _merge_fragments(
     ≥ `_FRAGMENT_OPEN_MM` cạnh ngoài thân tường (`_wall_bodies`) và ngoài `doors` (khe ô mở: ở lớp là tường mang
     cửa); hoặc nhỏ và là dải hẹp (`_SLIVER_WIDTH_MM`) → phòng kề có cạnh chung dài nhất. Đích là phòng kề có cạnh
     thoả dài nhất. Phòng nhỏ không nhãn kín tường (lô gia, WC không ghi tên) giữ nguyên. Hợp không thành một đa giác
-    đặc thì bỏ qua. Phòng kề tra bằng `STRtree` trên đa giác gốc.
+    đặc thì bỏ qua. Phòng kề tra bằng `STRtree` trên đa giác gốc; nhãn và thân tường quanh phòng cũng tra `STRtree`
+    (K18: không O(n²), không hợp cả nghìn thân tường một lượt).
     """
     originals = [shapely.Polygon([(p.x, p.y) for p in o]) for o, _ in kept]
     tree = shapely.STRtree(originals)
     alive = dict(enumerate(originals))
-    bodies = shapely.union_all([*_wall_bodies(walls), *(door.buffer(ROOM_SNAP_MM) for door in doors)])
+    bodies = np.array([*bodies, *(door.buffer(ROOM_SNAP_MM) for door in doors)], dtype=object)
+    body_tree = shapely.STRtree(bodies)
     weak = shapely.union_all([line.buffer(1.0) for line in long_closers])
-    points = [shapely.Point(p.x, p.y) for p in labels]
+    shapely.prepare(weak)
+    points = shapely.STRtree([shapely.Point(p.x, p.y) for p in labels])
     owner = list(range(len(kept)))
 
     def find(i: int) -> int:
@@ -661,14 +669,19 @@ def _merge_fragments(
         polygon = alive[i]
         small = polygon.area / 1e6 < _FRAGMENT_M2
         sliver = small and 2 * polygon.area / polygon.length < _SLIVER_WIDTH_MM
-        if any(polygon.contains(p) for p in points) or not (small or polygon.intersects(weak)):
+        if points.query(polygon, predicate="contains").size or not (small or polygon.intersects(weak)):
             continue
         best: tuple[float, int] | None = None
+        near: shapely.Geometry | None = None
         for j in {find(int(k)) for k in tree.query(polygon, predicate="intersects")} - {i}:
             shared = polygon.exterior.intersection(alive[j].exterior)
             score = shared.intersection(weak).length
-            if score < _FRAGMENT_OPEN_MM and small:
-                score = shared.length if sliver else shared.difference(bodies).length
+            if score < _FRAGMENT_OPEN_MM and small and sliver:
+                score = shared.length
+            elif score < _FRAGMENT_OPEN_MM and small:
+                if near is None:
+                    near = shapely.union_all(bodies[body_tree.query(polygon, predicate="intersects")])
+                score = shared.difference(near).length
             if score >= (1.0 if sliver else _FRAGMENT_OPEN_MM) and (best is None or score > best[0]):
                 best = (score, j)
         if best is None:
@@ -689,12 +702,11 @@ def _with_area(outline: list[Point]) -> tuple[list[Point], float]:
     return outline, float(polygon_area_m2(outline))
 
 
-def _walled_shares(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[float]:
+def _walled_shares(bodies: np.ndarray, outlines: Sequence[Sequence[Point]]) -> list[float]:
     """Phần chu vi mỗi `outline` nằm sát tường (≤ nửa bề dày + `ROOM_SNAP_MM` quanh tim); phần còn lại là khe đã nối.
 
     Thân tường tra bằng `STRtree` theo từng phòng (K18: không O(n²)).
     """
-    bodies = _wall_bodies(walls)
     tree = shapely.STRtree(bodies)
     shares: list[float] = []
     for outline in outlines:
@@ -702,8 +714,8 @@ def _walled_shares(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -
         if ring is None or ring.length == 0:
             shares.append(0.0)
             continue
-        near = [bodies[int(i)] for i in tree.query(ring, predicate="intersects")]
-        covered = ring.intersection(shapely.union_all(near)).length if near else 0.0
+        near = bodies[tree.query(ring, predicate="intersects")]
+        covered = ring.intersection(shapely.union_all(near)).length if near.size else 0.0
         shares.append(min(1.0, covered / ring.length))
     return shares
 
@@ -746,9 +758,10 @@ def build_rooms(
             dropped["roomTooSmall"] += 1
             continue
         kept.append((outline, area_m2))
+    bodies = _wall_bodies(walls)
     kept = _merge_fragments(
         kept,
-        walls,
+        bodies,
         doors,
         [line for line in closers if line.length > ROOM_GAP_CLOSE_MM + 2 * _CLOSER_TRIM_MM],
         [centre for label, centre in zip(parsed, centres, strict=True) if label is not None],
@@ -768,7 +781,7 @@ def build_rooms(
         for text, rim, fixture in zip(from_text, from_rim, from_fixtures, strict=True)
     ]
     trusted = scaling.build == scaling.final if scale_trusted is None else scale_trusted
-    walled = _walled_shares(walls, outlines)
+    walled = _walled_shares(bodies, outlines)
     rooms = []
     for (outline, area_m2), ids, label, source, share in zip(kept, wall_ids, labels, sources, walled, strict=True):
         confidence = room_confidence(source, 1.0 - share, scale_trusted=trusted) if ids else LOW_CONFIDENCE_CAP
@@ -826,7 +839,8 @@ def build_furniture(
     """
     polygons = [shapely.Polygon([(p.x, p.y) for p in room.outline]) for room in rooms]
     tree = shapely.STRtree(polygons)
-    reach = shapely.union_all(polygons).buffer(_OUTSIDE_REACH_MM)
+    # Hợp phòng nới `_OUTSIDE_REACH_MM`: dựng khi lần đầu có đồ giao phòng ít (hợp cả nghìn phòng tốn giây).
+    reach: BaseGeometry | None = None
     tables = [
         shapely.box(*_xy(scaling.point(d.box.x_min, d.box.y_min)), *_xy(scaling.point(d.box.x_max, d.box.y_max)))
         for d in detections
@@ -848,7 +862,12 @@ def build_furniture(
         centre = Point(x=js_round((box_min.x + box_max.x) / 2), y=js_round((box_min.y + box_max.y) / 2))
         footprint = shapely.box(box_min.x, box_min.y, box_max.x, box_max.y)
         room, share = _room_of_box(tree, polygons, footprint)
-        outside = bool(rooms) and share < _OUTSIDE_SHARE and not reach.contains(shapely.Point(centre.x, centre.y))
+        outside = bool(rooms) and share < _OUTSIDE_SHARE
+        if outside:
+            if reach is None:
+                reach = shapely.union_all(polygons).buffer(_OUTSIDE_REACH_MM)
+                shapely.prepare(reach)
+            outside = not reach.contains(shapely.Point(centre.x, centre.y))
         box = detection.box
         kind, variant = target.domain_kind, None
         if scale_trusted:
