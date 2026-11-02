@@ -77,7 +77,7 @@ def _walk_key(node: Any, key: str) -> list[str]:
 
 
 def test_ci_yml_has_eight_jobs() -> None:
-    """`ci.yml` đúng tám job của bảng [2] hop-dong.md + `changes`; thêm hay bớt job phải sửa `job.sh` và required check cùng lúc."""
+    """`ci.yml` đúng tám job của bảng [2] hop-dong.md + `changes`; thêm/bớt job phải sửa `job.sh` và required check."""
     doc = _load_yaml(CI_YML)
     assert set(doc["jobs"]) == set(EXPECTED_JOBS)
 

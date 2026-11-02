@@ -32,7 +32,7 @@ class NotificationOut(WireModel):
 
 
 class NotificationMarkReadBody(WireRequest):
-    """#20: `{ids}`, 1-`NOTIFICATIONS_MARK_MAX` id, mỗi id 1-64 ký tự không NUL; sai bất kỳ điểm nào → `field:"ids"`."""
+    """#20: `{ids}`, 1-`NOTIFICATIONS_MARK_MAX` id, mỗi id 1-64 ký tự; sai bất kỳ điểm nào → `field:"ids"`."""
 
     # Ràng buộc chỉ để `openapi.json` phơi `minItems`/`maxItems`/`maxLength` (số theo mặc định của settings);
     # lỗi vẫn do validator `before` ném trước nên `field` luôn là `ids`.
