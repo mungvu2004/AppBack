@@ -32,8 +32,9 @@ ENDPOINT: Final = (
     "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model}"
     ":generateContent"
 )
-TIMEOUT_S: Final = 120.0
-MAX_ATTEMPTS: Final = 4
+TIMEOUT_S: Final = 60.0
+MAX_ATTEMPTS: Final = 3
+"""Xấu nhất một lời gọi 3 lần 60 s + lùi 2 + 4 s; bốn lời gọi một lượt ~12,4 phút, dưới trần quét `running` 15 phút."""
 MAX_OUTPUT_TOKENS: Final = 8192
 RETRY_STATUSES: Final = frozenset({429, 500, 503, 504})
 _ERROR_BODY_CHARS: Final = 300

@@ -121,11 +121,11 @@ def test_thought_parts_skipped_and_text_joined() -> None:
 
 def test_retry_then_success_with_backoff() -> None:
     sleeps: list[float] = []
-    post = FakePost((429, b"quota"), OSError("reset"), (503, b""), ok([{"text": "{}"}]))
+    post = FakePost((429, b"quota"), OSError("reset"), ok([{"text": "{}"}]))
     res = make(post, sleeps=sleeps).generate_json([TextPart("x")], SCHEMA)
     assert res.data == {}
-    assert sleeps == [2.0, 4.0, 8.0]
-    assert len(post.calls) == 4
+    assert sleeps == [2.0, 4.0]
+    assert len(post.calls) == 3
 
 
 def test_retry_exhaustion_unavailable() -> None:
