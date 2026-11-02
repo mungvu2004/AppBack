@@ -40,6 +40,7 @@ async def test_settings_replace_settings__C01(api_client: httpx.AsyncClient, db_
         "snapToleranceMm": 40,
         "confidenceThreshold": 0.5,
         "defaultScaleMmPerPx": 2.5,
+        "detectFurniture": False,
     }
     second = await put_settings(api_client, project.id, owner, replace_body(1, snapToleranceMm=41))
     assert second.status_code == 200
@@ -94,6 +95,8 @@ async def test_settings_replace_settings__rounding_and_writer(
         {"notes": 5},
         {"sceneStyle": "neon"},
         {"sceneStyle": 1},
+        {"detectFurniture": "yes"},
+        {"detectFurniture": 1},
     ],
 )
 async def test_settings_replace_settings__C02(
@@ -128,6 +131,28 @@ async def test_settings_replace_settings__C01_scene_style(
     assert cleared.status_code == 200
     assert "sceneStyle" not in cleared.json()
     assert (await read_settings(db_session, project.id)).scene_style is None
+
+
+async def test_settings_replace_settings__C01_detect_furniture(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """QT-FURN-TOGGLE: mặc định tắt; bật lưu và trả lại; PUT vắng khoá (hay `null`) giữ giá trị cũ; tắt lại được."""
+    owner, project = await seed_engineer_project(db_session)
+    on = await put_settings(api_client, project.id, owner, replace_body(0, detectFurniture=True))
+    assert on.status_code == 200
+    assert on.json()["detectFurniture"] is True
+
+    kept = await put_settings(api_client, project.id, owner, replace_body(1, snapToleranceMm=41))
+    assert kept.status_code == 200
+    assert kept.json()["detectFurniture"] is True
+    payload = replace_body(2)
+    payload["body"]["detectFurniture"] = None
+    still = await put_settings(api_client, project.id, owner, payload)
+    assert still.json()["detectFurniture"] is True
+
+    off = await put_settings(api_client, project.id, owner, replace_body(3, detectFurniture=False))
+    assert off.json()["detectFurniture"] is False
+    assert (await read_settings(db_session, project.id)).detect_furniture is False
 
 
 async def test_settings_replace_settings__C02_missing_field(

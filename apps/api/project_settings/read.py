@@ -25,6 +25,8 @@ class ProjectSettingsValue:
     confidence_threshold: Decimal
     default_scale_mm_per_px: Decimal
     scene_style: str | None = None
+    detect_furniture: bool = False
+    """QT-FURN-TOGGLE: dựng đồ đạc AI vào lớp; `False` = chỉ tường, ô mở, phòng."""
 
 
 DEFAULT_SETTINGS: Final = ProjectSettingsValue(
@@ -50,6 +52,7 @@ def value_of(row: ProjectSettingsRow) -> ProjectSettingsValue:
         confidence_threshold=row.confidence_threshold,
         default_scale_mm_per_px=row.default_scale_mm_per_px,
         scene_style=row.scene_style,
+        detect_furniture=row.detect_furniture,
     )
 
 

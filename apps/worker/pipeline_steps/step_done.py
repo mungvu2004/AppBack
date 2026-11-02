@@ -88,16 +88,17 @@ async def queue_build(db: AsyncSession, run: RunRow, *, clock: Clock) -> bool:
             db, run_id=run.id, step=BUILD_STEP, status="failed", clock=clock, error_code=PIPELINE_RESULT_INVALID
         )
         return False
-    scale = (await read_settings(db, ctx.project_id)).default_scale_mm_per_px
+    settings = await read_settings(db, ctx.project_id)
     payload = BuildStepPayload(
         run_id=run.id,
         level_id=ctx.level_id,
         run_prefix=ctx.run_prefix,
         width_px=ctx.drawing.width_px,
         height_px=ctx.drawing.height_px,
-        fallback_mm_per_px=scale,
+        fallback_mm_per_px=settings.default_scale_mm_per_px,
         page_key=ctx.drawing.page_key,
         px_per_paper_mm=ctx.drawing.px_per_paper_mm,
+        detect_furniture=settings.detect_furniture,
     )
     on_after_commit(db, lambda: send_task(BUILD_TASK, payload))
     return True

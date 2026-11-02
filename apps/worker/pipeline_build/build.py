@@ -38,6 +38,7 @@ from packages.domain.scale import (
 )
 from packages.domain.spatial import (
     Dimension,
+    Furniture,
     Segment,
     SpatialLayer,
     Wall,
@@ -536,6 +537,8 @@ class _Attempt:
     """Tường trước khi nổ cung: chữ kích thước ghép với cả tường cong (dây lớn), không với dây 10° (bước 2, 7)."""
     first_of: tuple[int, ...] = ()
     """Vị trí trong `walls_px` của mảnh đầu mỗi tường `whole_px`."""
+    furniture: bool = True
+    """Dựng đồ đạc từ hộp phát hiện (QT-FURN-TOGGLE); `False` → lớp không có đồ, hộp vẫn dùng cho ô mở và phòng."""
 
 
 def _assembled(
@@ -557,9 +560,11 @@ def _assembled(
         room_walls, wall_set.bridges, context.texts, detections=context.detections, scale_trusted=trusted, **shared
     )
     wall_set, rooms = join_arcs(wall_set, rooms, context.arc_of)
-    furniture = build_furniture(context.detections, rooms, scale_trusted=trusted, **shared)
-    suggested = build_furniture(context.suggestions, rooms, scale_trusted=trusted, **shared)
-    furniture = (*furniture, *(item.model_copy(update={"suggested": True}) for item in suggested))
+    furniture: tuple[Furniture, ...] = ()
+    if context.furniture:
+        detected = build_furniture(context.detections, rooms, scale_trusted=trusted, **shared)
+        suggested = build_furniture(context.suggestions, rooms, scale_trusted=trusted, **shared)
+        furniture = (*detected, *(item.model_copy(update={"suggested": True}) for item in suggested))
     layer = SpatialLayer(walls=wall_set.walls, openings=wall_set.openings, rooms=rooms, furniture=furniture)
     return layer, wall_set
 
@@ -628,6 +633,7 @@ def build_layer(
     clock: Clock,
     page: PageRaster | None = None,
     px_per_paper_mm: float | None = None,
+    furniture: bool = True,
 ) -> BuiltLayer:
     """Ba artifact ML (px) → lớp không gian (mm) theo B5-05 [6]; không sửa đối số, không I/O.
 
@@ -636,7 +642,8 @@ def build_layer(
     Dựng ở `s_dựng` rồi đổi về `s`; `RescaleError` → dựng lại thẳng ở `s`, không ném. `page` (trang + mặt nạ
     tường) bật nguồn gợi ý mực dư: hộp `other` với `suggested=True`, không bao giờ trùng hộp phát hiện.
     `px_per_paper_mm` (PDF) cho phép đọc ghi chú `TL 1:N` khi chuỗi kích thước không ra tỉ lệ (U01):
-    thắng tỉ lệ dự án và ước lượng từ bề dày tường.
+    thắng tỉ lệ dự án và ước lượng từ bề dày tường. `furniture=False` (cài đặt dự án `detectFurniture` tắt):
+    không dựng đồ, không gợi ý mực dư; hộp phát hiện vẫn cho ô mở, tỉ lệ theo cửa và nhãn phòng.
     """
     if width_px < 1 or height_px < 1:
         raise ValueError(f"ảnh {width_px}x{height_px} px không hợp lệ")
@@ -663,11 +670,22 @@ def build_layer(
     final = float(scale)
     build = final if source == "pipeline" else _build_scale(walls_px, final)
     trusted = source == "pipeline" and not estimated
-    suggestions = _suggestions(page, walls_px, detections, texts, final if trusted else None)
+    suggestions = _suggestions(page, walls_px, detections, texts, final if trusted else None) if furniture else ()
     # Tỉ lệ ước từ tường chỉ đúng tầm ±30 %: không dựng `Dimension` từ mẫu "khớp" nó (bước 7).
     attempt_source = source if trusted else "estimate"
     context = _Attempt(
-        walls_px, detections, texts, samples, rejected, level_id, attempt_source, suggestions, arc_of, whole, first_of
+        walls_px,
+        detections,
+        texts,
+        samples,
+        rejected,
+        level_id,
+        attempt_source,
+        suggestions,
+        arc_of,
+        whole,
+        first_of,
+        furniture,
     )
     dropped = base.copy()
     layer, dimensions = _attempt(context, scaling=Scaling(build, final), clock=clock, dropped=dropped)

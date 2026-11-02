@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from apps.worker.pipeline_build.build import BuiltLayer
-from apps.worker.pipeline_build.tests.helpers import SPATIAL_LEVEL_ID, build_from_plan
+from apps.worker.pipeline_build.tests.helpers import SPATIAL_LEVEL_ID, build_from_plan, build_wrapped
 from packages.domain.spatial import ai_reviewed_ids
 from packages.domain.spatial.integrity import check_integrity, has_critical
 from packages.domain.spatial.model import SpatialLayer
@@ -141,3 +141,21 @@ def test_build_layer__every_millimetre_is_int(fake_clock: FakeClock) -> None:
     assert values, "không tìm thấy khoá mm nào — bài test mất ý nghĩa"
     wrong = [(path, value) for path, value in values if not isinstance(value, int) or isinstance(value, bool)]
     assert wrong == [], f"khoá mm không phải int: {wrong[:5]}"
+
+
+def test_build_layer__furniture_off_keeps_openings_and_rooms(fake_clock: FakeClock) -> None:
+    """QT-FURN-TOGGLE: `furniture=False` → không đồ đạc; tường, ô mở, phòng y như khi bật."""
+    plan = render_plan(EVAL_SET_SEEDS[0])
+    shared: dict[str, Any] = {
+        "walls": plan.walls,
+        "detections": plan.detections,
+        "texts": plan.texts,
+        "width_px": plan.pixels.shape[1],
+        "height_px": plan.pixels.shape[0],
+    }
+    on = build_wrapped(**shared, clock=FakeClock(start=fake_clock.now()))
+    off = build_wrapped(**shared, clock=FakeClock(start=fake_clock.now()), furniture=False)
+    assert on.layer.furniture, "seed đầu phải có đồ để test có nghĩa"
+    assert off.layer.furniture == ()
+    assert len(off.layer.openings) == len(on.layer.openings)
+    assert [room.area_m2 for room in off.layer.rooms] == [room.area_m2 for room in on.layer.rooms]

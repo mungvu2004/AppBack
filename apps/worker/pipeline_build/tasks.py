@@ -142,6 +142,7 @@ async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, ke
             clock=SystemClock(),
             page=page,
             px_per_paper_mm=payload.px_per_paper_mm,
+            furniture=payload.detect_furniture,
         )
     except ValueError as exc:
         raise PermanentError(PIPELINE_BUILD_INVALID) from exc

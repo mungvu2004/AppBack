@@ -49,6 +49,8 @@ class BuildStepPayload(TaskPayload):
     """Trang đã nắn cho nguồn gợi ý mực dư (B4); vắng ở thông điệp cũ → không gợi ý."""
     px_per_paper_mm: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
     """px mỗi mm giấy (PDF, `drawings.px_per_paper_mm`); vắng → không đọc ghi chú `TL 1:N` (U01)."""
+    detect_furniture: bool = True
+    """Cài đặt dự án `detectFurniture` (QT-FURN-TOGGLE); vắng ở thông điệp cũ → dựng đồ như trước."""
 
     @model_validator(mode="after")
     def _check_run_prefix(self) -> Self:
