@@ -135,12 +135,23 @@ async def _handle_early_exit(
         await _reconcile_stale_progress(sessionmaker, ctx.upload_id)
 
 
+def _critical_count(report: RunQualityReport) -> int:
+    """Số lỗi toàn vẹn `critical` cộng số kiểm hình học `critical`."""
+    return sum(1 for issue in report.issues if issue.severity == "critical") + sum(
+        1 for check in report.checks if check.critical
+    )
+
+
 def _summary(report: RunQualityReport) -> dict[str, object]:
-    """Tóm tắt lưu cột `quality_summary` (FIX-P0-09): đủ để tính readiness mà không cần `quality.json`."""
+    """Tóm tắt lưu cột `quality_summary` (FIX-P0-09): đủ để tính readiness mà không cần `quality.json`.
+
+    `criticalCount` đếm cả lỗi toàn vẹn lẫn kiểm hình học `critical` (BENCH3D-01): `hasCritical` true thì nó ≥ 1.
+    """
     return {
         "hasCritical": report.has_critical,
-        "criticalCount": sum(1 for issue in report.issues if issue.severity == "critical"),
+        "criticalCount": _critical_count(report),
         "lowConfidence": dict(report.low_confidence),
+        "checks": [check.code for check in report.checks],
     }
 
 
@@ -198,7 +209,14 @@ async def run_quality(
         return "skipped"
     await _enqueue_design_concept(sessionmaker, ctx.project_id, clock)
     if report.has_critical:
-        _log.info("quality_critical_issues", extra={"run_id": payload.run_id, "issue_count": len(report.issues)})
+        _log.info(
+            "quality_critical_issues",
+            extra={
+                "run_id": payload.run_id,
+                "issue_count": _critical_count(report),
+                "checks": [check.code for check in report.checks],
+            },
+        )
     return "completed"
 
 

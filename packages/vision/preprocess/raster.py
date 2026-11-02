@@ -28,6 +28,12 @@ _MAX_DRAFT_SCALE: Final = 4
 
 _GRAY16_MODES: Final = frozenset(("I", "I;16", "I;16B", "I;16L"))
 _WHITE: Final = (255, 255, 255)
+_DARK_PAPER_MEDIAN: Final = 128
+"""Trung vị độ sáng (kênh lớn nhất, như V của HSV) dưới số này là bản vẽ nền tối nét sáng
+(bản in âm, ảnh chụp màn hình CAD nền đen, bench nt-05): đảo lại."""
+_PAPER_SAMPLE_STRIDE: Final = 4
+_STROKE_CONTRAST: Final = 32
+"""Điểm ảnh lệch trung vị hơn ngần này mức xám mới tính là nét (bỏ nhiễu nền, vân giấy)."""
 
 
 def _draft_down(image: Image.Image, max_pixels: int) -> None:
@@ -95,6 +101,26 @@ def _to_rgb_array(image: Image.Image) -> NDArray[np.uint8]:
     return np.asarray(image.convert("RGB"), dtype=np.uint8)
 
 
+def _light_paper(pixels: NDArray[np.uint8]) -> NDArray[np.uint8]:
+    """Đảo màu bản vẽ nền tối (bench nt-05) để mọi bước sau luôn thấy nét tối trên giấy sáng.
+
+    Độ sáng = kênh lớn nhất nên mảng màu bão hoà (đỏ, lam) vẫn là sáng; chỉ nền đen/xám tối mới bị đảo.
+    Nền tối thôi chưa đủ: ảnh chụp giấy trắng thiếu sáng cũng có trung vị < 128 nhưng nét vẫn **tối hơn** nền.
+    Chỉ đảo khi điểm ảnh sáng hơn nền rõ (> `_STROKE_CONTRAST`) nhiều hơn điểm ảnh tối hơn nền rõ: nét sáng trên
+    nền tối. Trung vị lấy trên lưới thưa mỗi 4 điểm ảnh (đủ đại diện cho nền, không sắp xếp cả ảnh); hai tỉ lệ
+    đếm trên cả ảnh vì nét mảnh có thể lọt giữa các ô lưới.
+    """
+    brightness = pixels.max(axis=2)
+    median = float(np.median(brightness[::_PAPER_SAMPLE_STRIDE, ::_PAPER_SAMPLE_STRIDE]))
+    if median >= _DARK_PAPER_MEDIAN:
+        return pixels
+    lighter = np.count_nonzero(brightness > median + _STROKE_CONTRAST)
+    darker = np.count_nonzero(brightness < median - _STROKE_CONTRAST)
+    if lighter > darker:
+        return 255 - pixels
+    return pixels
+
+
 def load_raster(data: bytes, *, max_pixels: int = DEFAULT_MAX_PIXELS) -> RgbImage:
     """PNG/JPEG → `RgbImage` đã áp EXIF orientation và chuẩn hoá về RGB 8-bit.
 
@@ -102,7 +128,7 @@ def load_raster(data: bytes, *, max_pixels: int = DEFAULT_MAX_PIXELS) -> RgbImag
     một tệp không bao giờ được thử bằng bộ giải của định dạng khác (K14). Loại
     khác PNG/JPEG → `FILE_TYPE_MISMATCH`; vượt trần → `IMAGE_TOO_LARGE`; tệp cụt
     hay hỏng chunk → `FILE_CORRUPT` (U07). EXIF không đọc được thì Pillow trả thẻ
-    rỗng, coi như orientation 1 — không phải lỗi dữ liệu (U01).
+    rỗng, coi như orientation 1 — không phải lỗi dữ liệu (U01). Nền tối được đảo về giấy sáng.
     """
     pil_format = _PIL_FORMATS.get(sniff_kind(data))
     if pil_format is None:
@@ -115,7 +141,8 @@ def load_raster(data: bytes, *, max_pixels: int = DEFAULT_MAX_PIXELS) -> RgbImag
             # PNG cụt → "image file is truncated"; PNG sai CRC → "broken data stream";
             # JPEG cụt → "Truncated File Read". Pillow ném cả ba dưới dạng `OSError`.
             raise VisionError("FILE_CORRUPT") from exc
-        return RgbImage(np.ascontiguousarray(_to_rgb_array(ImageOps.exif_transpose(image) or image)))
+        pixels = _to_rgb_array(ImageOps.exif_transpose(image) or image)
+        return RgbImage(np.ascontiguousarray(_light_paper(pixels)))
 
 
 def encode_png(img: RgbImage, *, compress_level: int = 1) -> bytes:

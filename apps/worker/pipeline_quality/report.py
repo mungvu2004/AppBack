@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from apps.worker.pipeline_quality.checks import GeometryCheck, geometry_checks
 from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, has_critical
 from packages.domain.spatial.model import Reviewed, SpatialLayer
 
@@ -33,6 +34,8 @@ class RunQualityReport:
     issues: tuple[IntegrityIssue, ...]
     has_critical: bool
     low_confidence: Mapping[str, int]
+    checks: tuple[GeometryCheck, ...] = ()
+    """Kiểm hình học đã bật (BENCH3D-01); mục `critical` cũng bật `has_critical`."""
 
     def to_json_bytes(self) -> bytes:
         """`quality.json` theo B5-07 [2]: khoá cố định, `refId` vắng khi `None`, byte tất định."""
@@ -44,6 +47,7 @@ class RunQualityReport:
             "hasCritical": self.has_critical,
             "integrity": [_issue_wire(issue) for issue in self.issues],
             "lowConfidence": dict(self.low_confidence),
+            "checks": [check.to_wire() for check in self.checks],
         }
         return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
@@ -71,8 +75,9 @@ def _low_confidence_count(entities: Iterable[Reviewed], threshold: float) -> int
 def build_report(
     *, run_id: str, revision: int, layer: SpatialLayer, level_id: str, threshold: Decimal
 ) -> RunQualityReport:
-    """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách."""
+    """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học."""
     issues = tuple(check_integrity(layer, level_id=level_id))
+    checks = geometry_checks(layer)
     threshold_f = float(threshold)
     low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(
@@ -80,6 +85,7 @@ def build_report(
         revision=revision,
         confidence_threshold=threshold_f,
         issues=issues,
-        has_critical=has_critical(issues),
+        has_critical=has_critical(issues) or any(check.critical for check in checks),
         low_confidence=low_confidence,
+        checks=checks,
     )

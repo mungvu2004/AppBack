@@ -46,6 +46,7 @@ from packages.storage.port import ObjectStorage
 from packages.testing.factories.drawings import make_upload
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
+from packages.vision.preprocess.tests.synthetic import COVER_OPS, PLAN_OPS, join_pdfs, make_pdf
 
 _log: Final = logging.getLogger(__name__)
 MIB: Final = 1024 * 1024
@@ -111,6 +112,24 @@ async def test_full_flow_pdf_page_index_one(
     stored = await local_storage.stat(row.original_key)
     assert stored is not None
     assert stored.sha256 == hashlib.sha256(data).hexdigest()
+
+
+async def test_full_flow_pdf_explicit_page_zero_on_cover_is_kept(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    sync_bus_reset: None,
+) -> None:
+    """`pageIndex: 0` người dùng chọn giữ nguyên dù trang 0 là bìa chữ: #7 không tự đổi trang (FE bắt chọn trang)."""
+    stage = await make_stage(db_session)
+    data = join_pdfs(make_pdf(1, ops=COVER_OPS), make_pdf(1, ops=PLAN_OPS))
+
+    upload_id, response = await upload_through(
+        api_client, stage, data, file_name="ho-so.pdf", mime_type="application/pdf", page_index=0
+    )
+
+    assert response.status_code == 200, response.text
+    assert (await _upload_row(db_sessionmaker, upload_id)).page_index == 0
 
 
 async def test_full_flow_accepts_blank_mime_and_jpeg(

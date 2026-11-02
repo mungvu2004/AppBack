@@ -21,12 +21,12 @@ import shapely
 from numpy.typing import NDArray
 from shapely import LineString, STRtree
 
+from apps.worker.pipeline_build.clusters import Box, box_area, grow_region, neighbours, wall_clusters
 from apps.worker.pipeline_build.constants import (
     CORNER_OVERSHOOT_MM,
     DEFAULT_WALL_HEIGHT_MM,
     DIAGONAL_ALIGN_DEG,
     FAR_CLUSTER_AREA_SHARE,
-    FAR_CLUSTER_GAP_MM,
     FAR_CLUSTER_LENGTH_SHARE,
     OPENING_GAP_MAX_MM,
     OPENING_MIN_WIDTH_MM,
@@ -235,16 +235,6 @@ def _linestrings(segs: Sequence[_Seg]) -> Geoms:
     return np.asarray(shapely.linestrings(coords), dtype=object)
 
 
-def _neighbours(tree: STRtree, geoms: Geoms, distance: float) -> list[set[int]]:
-    """Một truy vấn `dwithin` theo lô: các hình khác cách mỗi hình ≤ `distance`."""
-    result: list[set[int]] = [set() for _ in range(len(geoms))]
-    sources, targets = tree.query(geoms, predicate="dwithin", distance=distance)
-    for source, target in zip(sources.tolist(), targets.tolist(), strict=True):
-        if source != target:
-            result[source].add(target)
-    return result
-
-
 def _degenerate_final(p0: Point, p1: Point, thickness_mm: int, scaling: Scaling) -> bool:
     """`project_default`: tường sẽ suy biến sau `rescale_unreviewed(s_dựng → s)` (bước 3).
 
@@ -278,7 +268,7 @@ def _drop_isolated(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     if not segs:
         return segs
     geoms = _linestrings(segs)
-    near = _neighbours(STRtree(geoms), geoms, float(WALL_JOIN_MM))
+    near = neighbours(STRtree(geoms), geoms, float(WALL_JOIN_MM))
     kept = [seg for index, seg in enumerate(segs) if _length(seg) > seg.measured_mm or near[index]]
     dropped["isolatedBlock"] += len(segs) - len(kept)
     return kept
@@ -320,57 +310,16 @@ def _drop_inside_body(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     if not segs:
         return segs
     geoms = _linestrings(segs)
-    near = _neighbours(STRtree(geoms), geoms, max(seg.thickness_mm for seg in segs) / 2)
+    near = neighbours(STRtree(geoms), geoms, max(seg.thickness_mm for seg in segs) / 2)
     kept = [seg for index, seg in enumerate(segs) if not any(_inside(seg, segs[other]) for other in near[index])]
     dropped["isolatedBlock"] += len(segs) - len(kept)
     return kept
-
-
-def _clusters(segs: Sequence[_Seg]) -> list[list[int]]:
-    """Cụm tường liên thông: hai tường chạm nhau khi tim cách ≤ nửa tổng bề dày + `WALL_JOIN_MM`."""
-    geoms = _linestrings(segs)
-    thickest = max(seg.measured_mm for seg in segs)
-    near = _neighbours(STRtree(geoms), geoms, thickest + float(WALL_JOIN_MM))
-    seen = [False] * len(segs)
-    groups: list[list[int]] = []
-    for root in range(len(segs)):
-        if seen[root]:
-            continue
-        seen[root] = True
-        group: list[int] = []
-        queue = deque([root])
-        while queue:
-            index = queue.popleft()
-            group.append(index)
-            for other in near[index]:
-                gap = (segs[index].measured_mm + segs[other].measured_mm) / 2 + WALL_JOIN_MM
-                if not seen[other] and shapely.distance(geoms[index], geoms[other]) <= gap:
-                    seen[other] = True
-                    queue.append(other)
-        groups.append(group)
-    return groups
-
-
-Box = tuple[float, float, float, float]
 
 
 def _bbox(segs: Sequence[_Seg], group: Sequence[int]) -> Box:
     xs = [p.x for i in group for p in (segs[i].start, segs[i].end)]
     ys = [p.y for i in group for p in (segs[i].start, segs[i].end)]
     return (float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys)))
-
-
-def _box_gap(a: Box, b: Box) -> float:
-    """Khe ngắn nhất giữa hai hộp thẳng trục (0 khi chồng nhau)."""
-    return math.hypot(max(b[0] - a[2], a[0] - b[2], 0.0), max(b[1] - a[3], a[1] - b[3], 0.0))
-
-
-def _box_union(a: Box, b: Box) -> Box:
-    return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
-
-
-def _box_area(box: Box) -> float:
-    return (box[2] - box[0]) * (box[3] - box[1])
 
 
 def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
@@ -383,27 +332,17 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     """
     if len(segs) < 2:
         return segs
-    groups = _clusters(segs)
+    groups = wall_clusters(_linestrings(segs), [seg.measured_mm for seg in segs])
     if len(groups) < 2:
         return segs
     lengths = [sum(_length(segs[i]) for i in group) for group in groups]
     boxes = [_bbox(segs, group) for group in groups]
     total = sum(lengths)
-    # Vùng chính lớn dần: cụm dài nhất, rồi nuốt mọi cụm có hộp cách vùng ≤ khe (tường bị cửa cắt rời).
-    region = boxes[max(range(len(groups)), key=lengths.__getitem__)]
-    far = set(range(len(groups)))
-    grown = True
-    while grown:
-        grown = False
-        for index in sorted(far):
-            if _box_gap(boxes[index], region) <= FAR_CLUSTER_GAP_MM:
-                far.discard(index)
-                region = _box_union(region, boxes[index])
-                grown = True
-    region_area = max(_box_area(region), 1.0)
+    region, far = grow_region(boxes, range(len(groups)), max(range(len(groups)), key=lengths.__getitem__))
+    region_area = max(box_area(region), 1.0)
     drop: set[int] = set()
     for index in far:
-        small = _box_area(boxes[index]) < FAR_CLUSTER_AREA_SHARE * region_area
+        small = box_area(boxes[index]) < FAR_CLUSTER_AREA_SHARE * region_area
         if small and lengths[index] < FAR_CLUSTER_LENGTH_SHARE * total:
             drop.update(groups[index])
     if drop:
@@ -781,13 +720,13 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
     geoms = _linestrings(segs)
     tree = STRtree(geoms)
     lines = _Centrelines(tree, {seg.inputs[0]: slot for slot, seg in enumerate(segs)})
-    neighbours = _neighbours(tree, geoms, float(OPENING_GAP_MAX_MM))
-    _merge_aligned(segs, neighbours, boxes, lines, dropped)
-    _extend_all(segs, neighbours, boxes, dropped)
-    _reach_dangling(segs, neighbours, boxes, dropped)
-    _drop_hugging_stubs(segs, neighbours, boxes, dropped)
-    _drop_dangling_nibs(segs, neighbours, boxes, dropped)
-    return _bridge_segments(segs, neighbours)
+    near = neighbours(tree, geoms, float(OPENING_GAP_MAX_MM))
+    _merge_aligned(segs, near, boxes, lines, dropped)
+    _extend_all(segs, near, boxes, dropped)
+    _reach_dangling(segs, near, boxes, dropped)
+    _drop_hugging_stubs(segs, near, boxes, dropped)
+    _drop_dangling_nibs(segs, near, boxes, dropped)
+    return _bridge_segments(segs, near)
 
 
 def _attach_walls(
