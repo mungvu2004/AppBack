@@ -21,7 +21,7 @@ from shapely import STRtree
 
 from apps.worker.pipeline_build.arcs import explode_arcs, join_arcs
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
-from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
+from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster, residual_ink_boxes
 from apps.worker.pipeline_build.rooms import build_furniture, build_rooms
@@ -628,7 +628,15 @@ def _assembled(
         room_walls, wall_set.bridges, context.texts, detections=context.detections, scale_trusted=trusted, **shared
     )
     joined, rooms = join_arcs(wall_set, rooms, context.arc_of)
-    wall_set = replace(joined, leaves=wall_set.leaves)
+    # C5: khe thẳng hàng trên mặt ngoài (cửa bộ dò bỏ sót) thành tường mang cửa thay vì để vỏ hở.
+    wall_set = close_envelope_gaps(
+        replace(joined, leaves=wall_set.leaves),
+        rooms,
+        level_id=context.level_id,
+        scaling=scaling,
+        clock=clock,
+        page=context.page,
+    )
     furniture: tuple[Furniture, ...] = ()
     if context.furniture:
         detected = build_furniture(context.detections, rooms, scale_trusted=trusted, **shared)

@@ -19,6 +19,7 @@ from packages.vision.walls.vectorize import (
     _arc_chords,
     _finalise,
     _Graph,
+    _groups,
     _join_arcs,
     _merge_line_pieces,
     _off_node,
@@ -107,6 +108,26 @@ def test_cross_gives_two_segments() -> None:
     """Chữ thập → hai đoạn xuyên nút (gộp thẳng hàng qua giao điểm)."""
     walls = vectorize(_bars(((40, 150), (360, 150)), ((200, 40), (200, 260))))
     assert len(walls) == 2
+
+
+def test_vectorize__collinear_walls_of_different_thickness_through_a_tee_stay_apart() -> None:
+    """C1: tường 12 px và vách 6 px cùng trục gặp nhau ở chữ T → hai tường giữ bề dày riêng, không trung bình."""
+    canvas = _canvas()
+    cv2.rectangle(canvas, (40, 114), (200, 125), 1, cv2.FILLED)
+    cv2.rectangle(canvas, (200, 117), (360, 122), 1, cv2.FILLED)
+    cv2.rectangle(canvas, (197, 120), (202, 260), 1, cv2.FILLED)
+    walls = vectorize(np.asarray(canvas > 0))
+    flat = sorted((w for w in walls if abs(w.start[1] - w.end[1]) <= 1.0), key=lambda w: w.start[0])
+    assert len(flat) == 2
+    assert abs(flat[0].thickness_px - 12) <= 1.5
+    assert abs(flat[1].thickness_px - 6) <= 1.5
+
+
+def test_groups__collinear_pieces_join_only_within_the_thickness_ratio() -> None:
+    """C1: qua cùng nút, 12/11 gộp một nhóm; 12/6 (tỉ lệ > `_PIECE_THICKNESS_RATIO`) để riêng."""
+    close = _groups([_piece(0, 0, 50, 0, 12, (1, 2), "h"), _piece(50, 0, 90, 0, 11, (2, 3), "h")])
+    apart = _groups([_piece(0, 0, 50, 0, 12, (1, 2), "h"), _piece(50, 0, 90, 0, 6, (2, 3), "h")])
+    assert (len(close), len(apart)) == (1, 2)
 
 
 def test_rectangle_frame_gives_four_segments_and_four_corners() -> None:

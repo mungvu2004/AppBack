@@ -109,3 +109,18 @@ def test_build_layer__real_seed100_pipeline_scale_within_2_percent(fake_clock: F
     )
     assert deviation <= 0.02, f"lệch mm_per_px {deviation:.2%} > 2%"
     logger.info("seed=100 dropped=%s", dict(built.dropped))
+
+
+@pytest.mark.parametrize("seed", _FIRST_TEN_SEEDS)
+def test_build_layer_vectorized__missed_entrance_door_closes_envelope(seed: int, fake_clock: FakeClock) -> None:
+    """C5: bỏ mọi hộp cửa đi → khe cửa chính trên tường ngoài thành tường mang cửa đoán, số phòng không đổi."""
+    plan = render_plan(seed)
+    walls = tuple(_to_wall_px(segment) for segment in vectorize(plan.walls_mask))
+    boxes = [det for det in plan.detections if det.label not in _DOOR_LABELS]
+    full = build_from_plan(plan, FakeClock(start=fake_clock.now()), walls=walls).layer
+    blind = build_from_plan(plan, FakeClock(start=fake_clock.now()), walls=walls, detections=boxes).layer
+    guessed = [opening for opening in blind.openings if opening.kind == "door"]
+    assert len(guessed) == 1
+    assert 850 <= guessed[0].width_mm <= 950
+    assert len(blind.rooms) == len(full.rooms)
+    assert not has_critical(check_integrity(blind, level_id=_LEVEL_ID))
