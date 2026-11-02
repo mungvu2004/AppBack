@@ -10,9 +10,12 @@ version: 2
 # thẳng vào `main` không qua cổng gây NO-148 (mypy đỏ 6 lỗi). Ràng buộc phiên bản của gói riêng
 # (vd `packages/messaging/pyproject.toml` cho `redis`) là lớp phòng thủ thứ hai, không thay cho lớp
 # này — `ignore` áp dụng cho mọi gói của hệ, kể cả gói chưa kịp ràng buộc version.
+# `open-pull-requests-limit: 2`: mỗi PR Dependabot chạy cả cổng CI (~10 job); hàng đợi Actions của tài
+# khoản bị PR cũ chiếm chỗ (02/11/2026). Mỗi hệ đã gộp nhóm nên 2 là đủ (nhóm + một bản major/bảo mật).
 updates:
   - package-ecosystem: "uv"
     directory: "/"
+    open-pull-requests-limit: 2
     schedule:
       interval: "weekly"
     groups:
@@ -33,6 +36,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    open-pull-requests-limit: 2
     schedule:
       interval: "weekly"
     groups:
@@ -48,6 +52,7 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/deploy/docker"
+    open-pull-requests-limit: 2
     schedule:
       interval: "weekly"
     groups:

@@ -27,7 +27,8 @@ GITLEAKS_TOML = REPO_ROOT / ".gitleaks.toml"
 JOB_SH = REPO_ROOT / "tools" / "ci" / "job.sh"
 COMMIT_MSG_HOOK = REPO_ROOT / ".githooks" / "commit-msg"
 
-EXPECTED_JOBS = ["lint", "typecheck", "unit", "integration", "ml", "contract", "build", "coverage"]
+GATE_JOBS = ["lint", "typecheck", "unit", "integration", "ml", "contract", "build"]
+EXPECTED_JOBS = ["changes", *GATE_JOBS, "coverage"]
 # Workflow của B0-09 chạy mã repo trên push/PR: luật chung (ghim SHA, quyền, không nội suy sự kiện…) áp cho cả hai.
 REPO_WORKFLOWS = [CI_YML, COMMITS_YML]
 
@@ -76,7 +77,7 @@ def _walk_key(node: Any, key: str) -> list[str]:
 
 
 def test_ci_yml_has_eight_jobs() -> None:
-    """`ci.yml` đúng tám job của bảng [2] hop-dong.md; thêm hay bớt job phải sửa `job.sh` và required check cùng lúc."""
+    """`ci.yml` đúng tám job của bảng [2] hop-dong.md + `changes`; thêm hay bớt job phải sửa `job.sh` và required check cùng lúc."""
     doc = _load_yaml(CI_YML)
     assert set(doc["jobs"]) == set(EXPECTED_JOBS)
 
@@ -87,14 +88,24 @@ def test_commits_yml_has_only_commits_job() -> None:
     assert list(doc["jobs"]) == ["commits"]
 
 
-def test_ci_yml_only_coverage_has_needs() -> None:
-    """Chỉ `coverage` chờ job khác (cần `.coverage.*` của ba job test); nối chuỗi biến lỗi hạ tầng thành "skipped"."""
+def test_ci_yml_only_coverage_waits_on_gate_jobs() -> None:
+    """Job cổng chỉ chờ `changes`; chỉ `coverage` chờ job cổng (cần `.coverage.*` của ba job test)."""
     doc = _load_yaml(CI_YML)
-    for name, job in doc["jobs"].items():
-        if name == "coverage":
-            assert job.get("needs") == ["unit", "integration", "ml"]
-        else:
-            assert "needs" not in job, name
+    assert "needs" not in doc["jobs"]["changes"]
+    assert doc["jobs"]["coverage"]["needs"] == ["unit", "integration", "ml"]
+    for name in GATE_JOBS:
+        assert doc["jobs"][name]["needs"] == "changes", name
+
+
+def test_ci_yml_gate_jobs_skip_only_when_changes_passed_docs_only() -> None:
+    """Fail-closed: job "skipped" được check bắt buộc tính là đạt, nên `changes` hỏng phải chạy đủ cổng, không bỏ."""
+    doc = _load_yaml(CI_YML)
+    expected = "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}"
+    for name in GATE_JOBS:
+        assert doc["jobs"][name]["if"] == expected, name
+    coverage_if = doc["jobs"]["coverage"]["if"]
+    for job in ("unit", "integration", "ml"):
+        assert f"needs.{job}.result == 'success'" in coverage_if
 
 
 @pytest.mark.parametrize("path", REPO_WORKFLOWS, ids=lambda p: p.name)
@@ -737,3 +748,52 @@ def test_gitleaks_toml_exempts_only_env_example_by_path() -> None:
     assert pattern.match("deploy/compose/env.example")
     assert not pattern.match("deploy/compose/env.example.bak")
     assert not pattern.match("secrets/deploy/compose/env.example")
+
+
+@pytest.mark.parametrize(
+    ("event", "files", "expected"),
+    [
+        ("pull_request", ["docs/reviews/x.md", "DEBT.md", ".claude/skills/a/SKILL.md"], "false"),
+        ("pull_request", ["docs/reviews/x.md", "apps/api/main.py"], "true"),
+        ("pull_request", ["docs/charter/BE-BIND.md"], "true"),
+        ("pull_request", ["docs/contracts/openapi.json"], "true"),
+        ("pull_request", ["README.md"], "true"),
+        ("push", ["docs/reviews/x.md"], "true"),
+    ],
+)
+def test_job_changes_docs_only_decision(tmp_path: Path, event: str, files: list[str], expected: str) -> None:
+    """`job.sh changes` chỉ báo `code=false` khi là PR và MỌI đường đổi là tài liệu ngoài charter/contracts."""
+    bin_dir = tmp_path / "bin"
+    _fake_command(bin_dir, "git", "printf '%s\\n' " + " ".join(files))
+    out = tmp_path / "out.txt"
+    env = dict(os.environ, GITHUB_EVENT_NAME=event, GITHUB_OUTPUT=str(out))
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    result = subprocess.run(  # noqa: S603 — gọi script cục bộ của chính repo
+        ["bash", str(JOB_SH), "changes"],  # noqa: S607 — `bash` có sẵn trên PATH của runner
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert out.read_text(encoding="utf-8").splitlines() == [f"code={expected}"]
+
+
+def test_job_changes_git_failure_fails_job(tmp_path: Path) -> None:
+    """`git diff` hỏng → job hỏng (ci.yml khi đó chạy đủ cổng), không báo `code=false`."""
+    bin_dir = tmp_path / "bin"
+    _fake_command(bin_dir, "git", "exit 128")
+    out = tmp_path / "out.txt"
+    env = dict(os.environ, GITHUB_EVENT_NAME="pull_request", GITHUB_OUTPUT=str(out))
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    result = subprocess.run(  # noqa: S603 — gọi script cục bộ của chính repo
+        ["bash", str(JOB_SH), "changes"],  # noqa: S607 — `bash` có sẵn trên PATH của runner
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert not out.exists()

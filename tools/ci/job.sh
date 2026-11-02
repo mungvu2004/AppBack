@@ -267,6 +267,34 @@ job_contract() {
 }
 
 # ---------------------------------------------------------------------------
+# changes — PR chỉ đổi tài liệu thì tám job cổng bỏ qua (ci.yml, fail-closed)
+# ---------------------------------------------------------------------------
+
+# Đường KHÔNG là đầu vào của cổng. Trừ `docs/charter/` (case_gate, contract đọc BE-BIND.md, BE-00.md)
+# và `docs/contracts*` (bước 7, 8). Một đường ngoài danh sách → chạy đủ cổng.
+_is_docs_only_path() {
+  case "$1" in
+    docs/charter/* | docs/contracts*) return 1 ;;
+    docs/* | .claude/* | DEBT.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Ghi `code=true|false` vào $GITHUB_OUTPUT. push/workflow_dispatch luôn `true`; PR: checkout là commit
+# gộp thử, cha 1 là đầu nhánh đích. `git diff` hỏng → set -e làm job hỏng → ci.yml vẫn chạy đủ cổng.
+job_changes() {
+  local code=true files path
+  if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+    files="$(git diff --name-only HEAD^1 HEAD)"
+    code=false
+    while IFS= read -r path; do
+      [ -z "$path" ] || _is_docs_only_path "$path" || code=true
+    done <<<"$files"
+  fi
+  echo "code=$code" | tee -a "${GITHUB_OUTPUT:-/dev/null}"
+}
+
+# ---------------------------------------------------------------------------
 # commits — Conventional Commits, tên nhánh, trailer Prompt:
 # ---------------------------------------------------------------------------
 
@@ -485,9 +513,10 @@ main() {
     contract) job_contract ;;
     build) job_build ;;
     commits) job_commits ;;
+    changes) job_changes ;;
     coverage) job_coverage ;;
     *)
-      echo "usage: tools/ci/job.sh <lint|typecheck|unit|integration|ml|contract|build|commits|coverage> [--no-scan]" >&2
+      echo "usage: tools/ci/job.sh <lint|typecheck|unit|integration|ml|contract|build|commits|coverage|changes> [--no-scan]" >&2
       exit 2
       ;;
   esac
