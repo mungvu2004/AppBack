@@ -139,18 +139,18 @@ def save_jpg(im: Image.Image, path: Path) -> int:
         im = im.resize((im.width * 4 // 5, im.height * 4 // 5))
 
 
-def main(argv: list[str]) -> int:
-    """Điểm vào: argv = [gốc AppFront, font .ttf tuỳ chọn]."""
+def main(argv: list[str], out: Path = OUT) -> int:
+    """Điểm vào: argv = [gốc AppFront, font .ttf tuỳ chọn]; `out` = thư mục ghi (test trỏ tạm)."""
     fe = Path(argv[0])
     font_path = argv[1] if len(argv) > 1 else None
     cards, looks = materials(fe)
     sets = split_sets(cards)
     by_id = {c["id"]: c for c in cards}
-    OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "materials.json").write_text(json.dumps(cards, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    (OUT / "sheets.json").write_text(json.dumps(sets, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "materials.json").write_text(json.dumps(cards, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    (out / "sheets.json").write_text(json.dumps(sets, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     for name, ids in sets.items():
-        size = save_jpg(sheet([by_id[i] for i in ids], looks, font_path), OUT / f"sheet-{name}.jpg")
+        size = save_jpg(sheet([by_id[i] for i in ids], looks, font_path), out / f"sheet-{name}.jpg")
         sys.stdout.write(f"{name}: {len(ids)} ô, {size} B\n")
     sys.stdout.write(f"{len(cards)} vật liệu\n")
     return 0

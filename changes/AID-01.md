@@ -30,6 +30,5 @@
   `PROMPT_VERSION` và `MATERIALS_VERSION` luôn có; bỏ nhánh, nhập thẳng.
 - NO-AID-5 (OPS): ảnh worker không có phông DejaVu → sơ đồ R*/E* gửi Gemini dùng phông mặc định nhỏ của Pillow. Hướng:
   thêm `fonts-dejavu-core` khi dựng lại ảnh worker.
-- NO-AID-6 (TEST): `tools/design_director/build_materials.py` (công cụ chạy tay sinh dữ liệu) chưa có test.
 - NO-AID-7 (DOC): BE-00 §13.1 chưa liệt kê `packages/genai` và `google-auth`; R-27: phiên sửa `.importlinter` và
   `apps/worker/pipeline_quality` (ngoài thư mục của mình) — chủ các tệp đó soát lại.
