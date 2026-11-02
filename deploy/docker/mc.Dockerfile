@@ -6,7 +6,7 @@
 # Workflow `minio-images.yml` dựng và đẩy lên GHCR; nhãn `org.opencontainers.image.source` nối gói vào repo public.
 FROM golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS build
 ARG MC_TAG=RELEASE.2025-08-13T08-35-41Z
-ARG MC_COMMIT=d6541ea280b73a834b64d4097e21f2be77676104
+ARG MC_COMMIT=7394ce0dd2a80935aded936b09fa12cbb3cb8096
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 RUN git clone --depth 1 --branch "${MC_TAG}" https://github.com/minio/mc /src \
     && test "$(git -C /src rev-parse HEAD)" = "${MC_COMMIT}"
