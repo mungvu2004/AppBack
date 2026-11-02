@@ -32,7 +32,7 @@ class NotificationOut(WireModel):
 
 
 class NotificationMarkReadBody(WireRequest):
-    """#20: `{ids}`, 1-`NOTIFICATIONS_MARK_MAX` id, mỗi id 1-64 ký tự; sai bất kỳ điểm nào → `field:"ids"`."""
+    """#20: `{ids}`, 1-`NOTIFICATIONS_MARK_MAX` id, mỗi id 1-64 ký tự không NUL; sai bất kỳ điểm nào → `field:"ids"`."""
 
     # Ràng buộc chỉ để `openapi.json` phơi `minItems`/`maxItems`/`maxLength` (số theo mặc định của settings);
     # lỗi vẫn do validator `before` ném trước nên `field` luôn là `ids`.
@@ -48,8 +48,9 @@ class NotificationMarkReadBody(WireRequest):
         limit = get_notifications_settings().notifications_mark_max
         if not isinstance(value, list) or not 1 <= len(value) <= limit:
             raise ValueError(f"ids phải là mảng 1-{limit} phần tử")
-        if not all(isinstance(item, str) and 1 <= len(item) <= ID_MAX_LEN for item in value):
-            raise ValueError(f"mỗi id phải là chuỗi 1-{ID_MAX_LEN} ký tự")
+        # NUL: Postgres từ chối byte 0x00 trong text → 500 thay vì 422 (H2 bắt được, 02/11/2026).
+        if not all(isinstance(item, str) and 1 <= len(item) <= ID_MAX_LEN and "\x00" not in item for item in value):
+            raise ValueError(f"mỗi id phải là chuỗi 1-{ID_MAX_LEN} ký tự, không chứa NUL")
         return value
 
 
