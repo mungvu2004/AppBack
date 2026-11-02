@@ -7,11 +7,16 @@ ra mong đợi; tường đặt ở `y = 1000` để mọi toạ độ không â
 import math
 from collections import Counter
 from datetime import UTC, datetime
+from typing import Any
 
+import cv2
+import numpy as np
 import pytest
 
-from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls
+from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import PageRaster
+from apps.worker.pipeline_build.rooms import build_rooms
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
 from packages.domain.spatial import Point
@@ -756,3 +761,187 @@ def test_build_layer__rooms_ignore_gap_walls() -> None:
     assert gap.centreline.start.y == 1300
     assert all(gap.id not in room.wall_ids for room in built.layer.rooms)
     assert sorted(room.area_m2 for room in built.layer.rooms) == [6.0, 6.0]
+
+
+@pytest.mark.parametrize("thickness_px", [pytest.param(20.0, id="hairline"), pytest.param(60.0, id="inside-body")])
+def test_build_walls__glazing_stroke_inside_thick_wall_dropped(thickness_px: float, fake_clock: FakeClock) -> None:
+    """C2 (syn-can-ho-150): nét kính 1,3 m nằm trong thân tường 220 mang hộp cửa sổ → bỏ, cửa sổ về tường chủ."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000, thickness_px=220), wall_px(1500, 1040, 2800, 1040, thickness_px=thickness_px)],
+        [det("window", 1500, 900, 2800, 1100)],
+        fake_clock,
+        dropped,
+    )
+    (wall,) = result.walls
+    (opening,) = result.openings
+    assert (wall.thickness_mm, opening.wall_id, result.input_to_wall) == (220, wall.id, {0: 0})
+    assert dropped["isolatedBlock"] == 1
+
+
+def test_build_walls__thinner_wall_beside_thick_wall_body_kept(fake_clock: FakeClock) -> None:
+    """C2: vách 100 song song ngoài thân tường 220 (tim cách 200 > 110), hay nối tiếp quá đầu tường → giữ."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [
+            wall_px(0, 1000, 4000, 1000, thickness_px=220),
+            wall_px(1500, 1200, 2800, 1200),
+            wall_px(4000, 1000, 6000, 1000),
+        ],
+        [],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 3
+
+
+def test_build_walls__window_split_20mm_apart_merges_into_one(fake_clock: FakeClock) -> None:
+    """C4 (cn-10/cn-11): cửa sổ 1400 + 600 cùng tường cách 20 mm là một cửa sổ bị cắt đôi → một khoảng 2020."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000)],
+        [det("window", 1000, 950, 2400, 1050, 0.6), det("window", 2420, 950, 3020, 1050, 0.9)],
+        fake_clock,
+        dropped,
+    )
+    (opening,) = result.openings
+    assert (opening.kind, opening.offset_mm, opening.width_mm, opening.confidence) == ("window", 1000, 2020, 0.9)
+    assert dropped["openingOverlap"] == 1
+
+
+def _door_page(width_px: int, *, arc: bool) -> PageRaster:
+    """Trang 10 mm/px: tường ngang y=100 dày 10 px có khe [130, 130 + rộng], cánh vuông tường + cung 1/4 (nếu `arc`)."""
+    gray = np.full((300, 400), 255, np.uint8)
+    walls = np.zeros((300, 400), np.uint8)
+    cv2.line(walls, (0, 100), (130, 100), 1, 10)
+    cv2.line(walls, (130 + width_px, 100), (399, 100), 1, 10)
+    gray[walls > 0] = 60
+    cv2.line(gray, (130, 105), (130, 105 + width_px), 0, 2)
+    if arc:
+        pts = [(130 + width_px * math.cos(q), 105 + width_px * math.sin(q)) for q in np.linspace(0, math.pi / 2, 60)]
+        cv2.polylines(gray, [np.rint(pts).astype(np.int32)], False, 0, 1)
+    return PageRaster(gray=gray, walls=walls.astype(bool))
+
+
+@pytest.mark.parametrize(
+    ("width_px", "arc", "swing"),
+    [
+        pytest.param(160, False, "sliding", id="wide-no-arc"),
+        pytest.param(140, True, "double", id="1.4m-with-arc"),
+        pytest.param(140, False, "left", id="1.4m-no-arc"),
+        pytest.param(90, True, "left", id="single-leaf"),
+    ],
+)
+def test_build_walls__door_swing_from_width_and_arc(
+    width_px: int, arc: bool, swing: str, fake_clock: FakeClock
+) -> None:
+    """C3: cửa đi không cung mà rộng ≥ 1,5 m → lùa; có cung mà rộng > 1,2 m → hai cánh; còn lại cánh đơn."""
+    result = build_walls(
+        [wall_px(0, 100, 400, 100, thickness_px=10)],
+        [det("door", 130, 90, 130 + width_px, 110)],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(10.0, 10.0),
+        clock=fake_clock,
+        dropped=Counter(),
+        page=_door_page(width_px, arc=arc),
+    )
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.swing, opening.door_style) == (width_px * 10, swing, None)
+
+
+def test_build_walls__wide_door_without_page_is_sliding(fake_clock: FakeClock) -> None:
+    """C3: không có trang để đọc cung, cửa đi 1,6 m vẫn thành cửa lùa."""
+    result = run([wall_px(0, 1000, 4000, 1000)], [det("door", 1000, 950, 2600, 1050)], fake_clock, Counter())
+    assert result.openings[0].swing == "sliding"
+
+
+def _closed(walls: list[WallPx], clock: FakeClock, scaling: Scaling, page: PageRaster | None = None) -> WallSet:
+    """`build_walls` → phòng (qua `bridges`) → `close_envelope_gaps`, như `build._assembled`."""
+    shared: dict[str, Any] = {"level_id": new_spatial_id("level", clock), "scaling": scaling, "clock": clock}
+    wall_set = build_walls(walls, [], dropped=Counter(), page=page, **shared)
+    rooms = build_rooms(wall_set.walls, wall_set.bridges, (), dropped=Counter(), **shared)
+    return close_envelope_gaps(wall_set, rooms, page=page, **shared)
+
+
+def _box_with_top_gap(gap_from: int, gap_to: int, *, scale: float = 1.0) -> list[WallPx]:
+    """Phòng 6 x 4 m (đơn vị px = mm / `scale`), tường trên đứt khe `[gap_from, gap_to]`."""
+    k = 1 / scale
+    return [
+        wall_px(0, 0, gap_from * k, 0),
+        wall_px(gap_to * k, 0, 6000 * k, 0),
+        wall_px(6000 * k, 0, 6000 * k, 4000 * k),
+        wall_px(6000 * k, 4000 * k, 0, 4000 * k),
+        wall_px(0, 4000 * k, 0, 0),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("gap_to", "swing", "confidence"),
+    [pytest.param(2900, "left", 0.3, id="900-guessed"), pytest.param(3600, "sliding", 0.5, id="1600-sliding")],
+)
+def test_close_envelope_gaps__exterior_gap_becomes_wall_with_door(
+    gap_to: int, swing: str, confidence: float, fake_clock: FakeClock
+) -> None:
+    """C5: khe 900/1600 trên tường ngoài, không hộp cửa → tường qua khe mang cửa đi phủ cả khe."""
+    result = _closed(_box_with_top_gap(2000, gap_to), fake_clock, Scaling(1.0, 1.0))
+    gap = result.walls[-1]
+    (opening,) = result.openings
+    assert (gap.centreline.start, gap.centreline.end) == (Point(x=2000, y=0), Point(x=gap_to, y=0))
+    assert gap.opening_ids == (opening.id,)
+    assert (opening.offset_mm, opening.width_mm, opening.swing, opening.confidence) == (
+        0,
+        gap_to - 2000,
+        swing,
+        confidence,
+    )
+    assert len(result.walls) == 6
+
+
+def test_close_envelope_gaps__narrow_exterior_gap_extends_a_host(fake_clock: FakeClock) -> None:
+    """C5: khe 500 < 600 trên tường ngoài → tường có cuối ở khe kéo tới đầu kia, không thêm tường, không ô mở."""
+    result = _closed(_box_with_top_gap(2000, 2500), fake_clock, Scaling(1.0, 1.0))
+    assert len(result.walls) == 5
+    assert (result.walls[0].centreline.start, result.walls[0].centreline.end) == (Point(x=0, y=0), Point(x=2500, y=0))
+    assert result.openings == ()
+
+
+def test_close_envelope_gaps__narrow_gap_moves_start_and_shifts_openings(fake_clock: FakeClock) -> None:
+    """C5: hai tường đều có **đầu** ở khe 500 → dời đầu tường thứ nhất, cửa sổ trên nó lùi theo 500 mm."""
+    walls = [wall_px(2000, 0, 0, 0), wall_px(2500, 0, 6000, 0), *_box_with_top_gap(2000, 2500)[2:]]
+    shared: dict[str, Any] = {
+        "level_id": new_spatial_id("level", fake_clock),
+        "scaling": Scaling(1.0, 1.0),
+        "clock": fake_clock,
+    }
+    wall_set = build_walls(walls, [det("window", 500, 0, 1500, 50)], dropped=Counter(), **shared)
+    rooms = build_rooms(wall_set.walls, wall_set.bridges, (), dropped=Counter(), **shared)
+    result = close_envelope_gaps(wall_set, rooms, **shared)
+    (opening,) = result.openings
+    assert result.walls[0].centreline.start == Point(x=2500, y=0)
+    assert (opening.wall_id, opening.offset_mm) == (result.walls[0].id, 1000)
+
+
+def test_close_envelope_gaps__interior_gap_stays_open(fake_clock: FakeClock) -> None:
+    """C5: khe 900 trên vách giữa hai phòng (cả hai bên là phòng) → giữ hở như cũ, chỉ còn đoạn nối."""
+    walls = [
+        *_box_with_top_gap(2000, 2000)[2:],
+        wall_px(0, 0, 6000, 0),
+        wall_px(3000, 0, 3000, 1500),
+        wall_px(3000, 2400, 3000, 4000),
+    ]
+    result = _closed(walls, fake_clock, Scaling(1.0, 1.0))
+    assert len(result.walls) == 6
+    assert result.openings == ()
+    assert result.bridges
+
+
+def test_close_envelope_gaps__door_leaf_read_from_page(fake_clock: FakeClock) -> None:
+    """C5: khe 900 có cánh + cung trên trang → cửa bản lề đọc được, tin 0,5, hướng cánh vào `leaves`."""
+    page = _door_page(90, arc=True)
+    walls = [wall_px(0, 100, 130, 100, 10), wall_px(220, 100, 399, 100, 10)]
+    walls += [wall_px(399, 100, 399, 290, 10), wall_px(399, 290, 0, 290, 10), wall_px(0, 290, 0, 100, 10)]
+    result = _closed(walls, fake_clock, Scaling(10.0, 10.0), page)
+    (opening,) = result.openings
+    assert (opening.width_mm, opening.confidence) == (900, 0.5)
+    assert opening.swing in ("left", "right")
+    assert opening.id in result.leaves
