@@ -238,6 +238,9 @@ job_test_group() {
     env "CASE_TRACE_FILE=${trace}" "COVERAGE_FILE=.coverage.${group}" \
     pytest -n "$(_ci_pytest_workers "$group")" --dist loadfile --cov --cov-report= \
     "--ci-split=${group}" "--junitxml=junit-${group}.xml"
+  # upload-artifact bỏ tệp rỗng, nên nhóm không có test case nào (unit) mất `trace-<nhóm>.jsonl` và
+  # `merge_artifacts` báo thiếu (02/11/2026). Một dòng trống: `_trace_lines` bỏ dòng trống cuối, gộp vẫn rỗng.
+  [ -s "$trace" ] || echo >"$trace"
 }
 
 # ---------------------------------------------------------------------------
