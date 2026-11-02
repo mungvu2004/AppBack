@@ -70,6 +70,10 @@ _DANGLE_DOOR_REACH_MM: Final = 1200
 _HUG_STUB_MAX_MM: Final = 600
 _HUG_FACE_MAX_MM: Final = 150
 _HUG_COS_MIN: Final = math.cos(math.radians(10))
+_HAIRLINE_MM: Final = 40
+"""Bề dày đo dưới ngần này là nét mảnh (kính cửa lùa, nét ký hiệu), không phải tường; bậc chuẩn từng nâng lên 100."""
+_NIB_MAX_MM: Final = 200
+"""Mẩu ngắn hơn ngần này có đầu lơ lửng, không mang ô mở là vụn nét, không phải tường (C2)."""
 # Đầu mút "chạm" tường khác khi cách tim ≤ ½ tổng bề dày + 10 mm (cùng thước của bộ đo F:/runs/r4-bd/tidy.py).
 _TOUCH_SLACK_MM: Final = 10
 # Luật WALL-OVERLAP của FE (AppFront rules/geometry): song song <= 5 độ chạm thân và chồng > 10 mm, hoặc tim cắt
@@ -187,7 +191,7 @@ class _Centrelines:
         return any(index not in skip for index in _hits(self.tree, gap))
 
 
-def _hits(tree: STRtree, geom: LineString) -> list[int]:
+def _hits(tree: STRtree, geom: shapely.Geometry) -> list[int]:
     """Chỉ số các hình trong cây giao với `geom` (một truy vấn, không quét tuyến tính)."""
     return [int(index) for index in tree.query(geom, predicate="intersects")]
 
@@ -263,6 +267,48 @@ def _drop_isolated(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     geoms = _linestrings(segs)
     near = _neighbours(STRtree(geoms), geoms, float(WALL_JOIN_MM))
     kept = [seg for index, seg in enumerate(segs) if _length(seg) > seg.measured_mm or near[index]]
+    dropped["isolatedBlock"] += len(segs) - len(kept)
+    return kept
+
+
+def _drop_hairlines(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
+    """Bước 3: bỏ tường đo mỏng hơn `_HAIRLINE_MM` (đếm `isolatedBlock`).
+
+    Chỉ khi bản vẽ có tường dày ≥ `_HAIRLINE_MM`: cả bản toàn nét mảnh là tỉ lệ sai, bỏ hết thì mất nhà.
+    """
+    kept = [seg for seg in segs if seg.measured_mm >= _HAIRLINE_MM]
+    if not kept:
+        return segs
+    dropped["isolatedBlock"] += len(segs) - len(kept)
+    return kept
+
+
+def _inside(dup: _Seg, host: _Seg) -> bool:
+    """`dup` song song (≤ 10°), đo mỏng hơn `host`, hai đầu cách tim `host` ≤ ½ dày, chiếu trong `host` ± ½ dày."""
+    if host is dup or host.measured_mm <= dup.measured_mm:
+        return False
+    (ax, ay), (bx, by) = _unit(dup), _unit(host)
+    if abs(ax * bx + ay * by) < _HUG_COS_MIN:
+        return False
+    half, span = host.thickness_mm / 2, _length(host)
+    for tip in (dup.start, dup.end):
+        along = (tip.x - host.start.x) * bx + (tip.y - host.start.y) * by
+        side = abs((tip.x - host.start.x) * by - (tip.y - host.start.y) * bx)
+        if not -half <= along <= span + half or side > half:
+            return False
+    return True
+
+
+def _drop_inside_body(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
+    """Bước 3: tường nằm trong thân một tường dày hơn (nét kính cửa lùa giữa tường 220) là nét trùng → bỏ.
+
+    Không giới hạn dài, không tha khi chạm hộp ô mở: ô mở về tường chủ ở bước 4 (C2).
+    """
+    if not segs:
+        return segs
+    geoms = _linestrings(segs)
+    near = _neighbours(STRtree(geoms), geoms, max(seg.thickness_mm for seg in segs) / 2)
+    kept = [seg for index, seg in enumerate(segs) if not any(_inside(seg, segs[other]) for other in near[index])]
     dropped["isolatedBlock"] += len(segs) - len(kept)
     return kept
 
@@ -691,6 +737,20 @@ def _drop_hugging_stubs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes:
             dropped["isolatedBlock"] += 1
 
 
+def _drop_dangling_nibs(segs: list[_Seg], neighbours: Sequence[set[int]], boxes: _Boxes, dropped: Counter[str]) -> None:
+    """3b (f): mẩu < `_NIB_MAX_MM` có đầu lơ lửng sau khi đã kéo (b, d), thân không chạm hộp ô mở → bỏ (C2).
+
+    Thân nới thêm một bề dày khi dò hộp: mẩu cạnh khe cửa (má cửa) chạm mép hộp vẫn được giữ.
+    """
+    for index, nib in enumerate(segs):
+        if not nib.alive or _length(nib) >= _NIB_MAX_MM or _hits(boxes.tree, _line(nib).buffer(nib.thickness_mm)):
+            continue
+        near = [segs[item] for item in sorted(neighbours[index])]
+        if _dangling(nib, nib.start, near) or _dangling(nib, nib.end, near):
+            nib.alive = False
+            dropped["isolatedBlock"] += 1
+
+
 def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tuple[tuple[Point, Point], ...]:
     """3b (c): cặp thẳng hàng còn khe mà không gộp → đoạn nối hai đầu gần, chỉ để khép phòng."""
     pairs = [
@@ -713,6 +773,7 @@ def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[
     _extend_all(segs, neighbours, boxes, dropped)
     _reach_dangling(segs, neighbours, boxes, dropped)
     _drop_hugging_stubs(segs, neighbours, boxes, dropped)
+    _drop_dangling_nibs(segs, neighbours, boxes, dropped)
     return _bridge_segments(segs, neighbours)
 
 
@@ -1030,7 +1091,8 @@ def build_walls(
     `arcs.explode_arcs`) cho biết đầu vào nào là dây của cùng một cung để ô mở đo trên cả cung. `page` bật đọc
     chiều mở cửa từ nét vẽ (QT-SWING, `swing.py`).
     """
-    segs = _drop_far_clusters(_drop_isolated(_measure_walls(walls, scaling, dropped), dropped), dropped)
+    segs = _drop_hairlines(_measure_walls(walls, scaling, dropped), dropped)
+    segs = _drop_inside_body(_drop_far_clusters(_drop_isolated(segs, dropped), dropped), dropped)
     boxes = _opening_boxes(detections, scaling)
     bridges = _join_gaps(segs, boxes, dropped) if segs else ()
     live = [seg for seg in segs if seg.alive]

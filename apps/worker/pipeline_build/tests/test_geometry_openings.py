@@ -756,3 +756,35 @@ def test_build_layer__rooms_ignore_gap_walls() -> None:
     assert gap.centreline.start.y == 1300
     assert all(gap.id not in room.wall_ids for room in built.layer.rooms)
     assert sorted(room.area_m2 for room in built.layer.rooms) == [6.0, 6.0]
+
+
+@pytest.mark.parametrize("thickness_px", [pytest.param(20.0, id="hairline"), pytest.param(60.0, id="inside-body")])
+def test_build_walls__glazing_stroke_inside_thick_wall_dropped(thickness_px: float, fake_clock: FakeClock) -> None:
+    """C2 (syn-can-ho-150): nét kính 1,3 m nằm trong thân tường 220 mang hộp cửa sổ → bỏ, cửa sổ về tường chủ."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [wall_px(0, 1000, 4000, 1000, thickness_px=220), wall_px(1500, 1040, 2800, 1040, thickness_px=thickness_px)],
+        [det("window", 1500, 900, 2800, 1100)],
+        fake_clock,
+        dropped,
+    )
+    (wall,) = result.walls
+    (opening,) = result.openings
+    assert (wall.thickness_mm, opening.wall_id, result.input_to_wall) == (220, wall.id, {0: 0})
+    assert dropped["isolatedBlock"] == 1
+
+
+def test_build_walls__thinner_wall_beside_thick_wall_body_kept(fake_clock: FakeClock) -> None:
+    """C2: vách 100 song song ngoài thân tường 220 (tim cách 200 > 110), hay nối tiếp quá đầu tường → giữ."""
+    dropped: Counter[str] = Counter()
+    result = run(
+        [
+            wall_px(0, 1000, 4000, 1000, thickness_px=220),
+            wall_px(1500, 1200, 2800, 1200),
+            wall_px(4000, 1000, 6000, 1000),
+        ],
+        [],
+        fake_clock,
+        dropped,
+    )
+    assert len(result.walls) == 3

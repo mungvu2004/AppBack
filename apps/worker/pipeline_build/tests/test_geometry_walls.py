@@ -138,3 +138,42 @@ def test_build_walls__far_large_cluster_kept(fake_clock: FakeClock) -> None:
     )
     assert dropped["isolatedBlock"] == 0
     assert len(result.input_to_wall) == 8
+
+
+def test_build_walls__hairline_piece_dropped_unless_the_whole_plan_is_thin(fake_clock: FakeClock) -> None:
+    """C2: mẩu 50 mm đo 20 mm cạnh tường thật → bỏ (không bắt lên 100); bản toàn nét mảnh thì giữ (tỉ lệ sai)."""
+    dropped: Counter[str] = Counter()
+    level = new_spatial_id("level", fake_clock)
+    mixed = build_walls(
+        [wall_px(0, 0, 5000, 0), wall_px(2000, 500, 2050, 500, 20.0)],
+        [],
+        level_id=level,
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    thin = build_walls(
+        [wall_px(0, 0, 5000, 0, 20.0)],
+        [],
+        level_id=level,
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    assert (len(mixed.walls), mixed.input_to_wall, dropped["isolatedBlock"]) == (1, {0: 0}, 1)
+    assert [wall.thickness_mm for wall in thin.walls] == [100]
+
+
+def test_build_walls__dangling_nib_dropped_real_stub_kept(fake_clock: FakeClock) -> None:
+    """C2: mẩu 150 mm từ tường ra, đầu kia lơ lửng → bỏ; mẩu 350 mm đo 100 mm → giữ (tường thật)."""
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        [wall_px(0, 0, 5000, 0), wall_px(1000, 0, 1000, 150), wall_px(3000, 0, 3000, 350)],
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    assert result.input_to_wall == {0: 0, 2: 1}
+    assert dropped["isolatedBlock"] == 1
