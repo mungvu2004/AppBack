@@ -16,9 +16,16 @@ import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 kh�
 import pypdfium2.raw as pdfium_c  # type: ignore[import-untyped]  # ctypes sinh tự động, không stub
 from numpy.typing import NDArray
 
-from packages.vision.preprocess.pdf import PDF_LOCK, _open_document, _open_page, _page_size_pt
+from packages.vision.preprocess.pdf import (
+    PDF_LOCK,
+    POINTS_PER_INCH,
+    _open_document,
+    _open_page,
+    _page_size_pt,
+    _render_page,
+)
 
-__all__ = ["PdfPageVectors", "pdf_page_vectors"]
+__all__ = ["PdfPageVectors", "pdf_page_vectors", "pick_plan_page"]
 
 type Affine = tuple[float, float, float, float, float, float]
 """Ma trận PDF `(a, b, c, d, e, f)`, vector hàng: `(x, y) -> (ax + cy + e, bx + dy + f)`."""
@@ -29,6 +36,18 @@ _MAX_FORM_DEPTH: Final = 8
 """Form XObject lồng sâu hơn ngần này thì bỏ — chặn tệp dựng ác ý lồng vô hạn (khối [7])."""
 _MAX_SEGMENTS: Final = 200_000
 """Trần số đoạn thẳng đọc từ một trang (K13): bản CAD thật cỡ 10⁴-10⁵, vượt thì dừng đọc."""
+PLAN_MIN_SEGMENTS: Final = 100
+"""Trang có ít nhất ngần này đoạn thẳng là bản vẽ: mặt bằng CAD cỡ 10³-10⁵ nét, bìa chữ chỉ vài khung.
+Cũng là trần đọc khi dò trang: đủ ngần này nét thì dừng duyệt, không đọc hết trang."""
+PLAN_MIN_IMAGE_RATIO: Final = 0.3
+"""Ảnh nhúng phủ ≥ 30 % trang là bản quét/ảnh: chỉ khi đó mới dựng ảnh nhỏ để đếm mực."""
+PLAN_PICK_DPI: Final = 36.0
+"""Ảnh nhỏ để đếm mực: A3 ra ~600 x 420 điểm ảnh, đủ thấy nét tường, rẻ."""
+PLAN_INK_MARGIN: Final = 0.08
+"""Bỏ 8 % mỗi mép khi đếm mực: khung tên/khung giấy nằm ở mép, có cả trên trang bìa."""
+PLAN_INK_LEVEL: Final = 230
+PLAN_MIN_INK: Final = 0.02
+"""Trang ảnh có ≥ 2 % điểm ảnh lõi tối hơn `PLAN_INK_LEVEL` là bản vẽ; bìa quét gần trắng dưới 0,1 %."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +119,19 @@ def _path_segments(obj: ctypes.c_void_p, matrix: Affine, out: list[Row]) -> None
         last = point
 
 
-def _walk_objects(container: ctypes.c_void_p, *, is_page: bool, parent: Affine, depth: int, out: list[Row]) -> float:
+def _walk_objects(
+    container: ctypes.c_void_p,
+    *,
+    is_page: bool,
+    parent: Affine,
+    depth: int,
+    out: list[Row],
+    limit: int = _MAX_SEGMENTS,
+) -> float:
     """Duyệt page object (đệ quy vào Form XObject), gom đoạn thẳng; trả tổng diện tích ảnh nhúng (point²).
 
-    Ảnh PDF là hình vuông đơn vị qua ma trận của nó nên diện tích = |định thức|.
+    Ảnh PDF là hình vuông đơn vị qua ma trận của nó nên diện tích = |định thức|. Đủ `limit` đoạn thì dừng
+    (diện tích ảnh khi ấy chỉ tính tới chỗ dừng).
     """
     if is_page:
         count, get = pdfium_c.FPDFPage_CountObjects(container), pdfium_c.FPDFPage_GetObject
@@ -111,7 +139,7 @@ def _walk_objects(container: ctypes.c_void_p, *, is_page: bool, parent: Affine, 
         count, get = pdfium_c.FPDFFormObj_CountObjects(container), pdfium_c.FPDFFormObj_GetObject
     image_area = 0.0
     for index in range(count):
-        if len(out) >= _MAX_SEGMENTS:
+        if len(out) >= limit:
             break
         obj = get(container, index)
         kind = pdfium_c.FPDFPageObj_GetType(obj)
@@ -121,7 +149,7 @@ def _walk_objects(container: ctypes.c_void_p, *, is_page: bool, parent: Affine, 
         elif kind == pdfium_c.FPDF_PAGEOBJ_IMAGE:
             image_area += abs(matrix[0] * matrix[3] - matrix[1] * matrix[2])
         elif kind == pdfium_c.FPDF_PAGEOBJ_FORM and depth < _MAX_FORM_DEPTH:
-            image_area += _walk_objects(obj, is_page=False, parent=matrix, depth=depth + 1, out=out)
+            image_area += _walk_objects(obj, is_page=False, parent=matrix, depth=depth + 1, out=out, limit=limit)
     return image_area
 
 
@@ -167,3 +195,42 @@ def pdf_page_vectors(data: bytes, page_index: int) -> PdfPageVectors:
     segments = np.asarray(out, dtype=np.float64).reshape(-1, 5)
     image_ratio = min(1.0, image_area / max(width_pt * height_pt, 1e-9))
     return PdfPageVectors(float(width_pt), float(height_pt), segments, image_ratio, text)
+
+
+def _is_drawing(pdf: pdfium.PdfDocument, page_index: int) -> bool:
+    """Trang mang bản vẽ: đủ nét vector, hoặc ảnh nhúng lớn mà đủ mực; bìa/thuyết minh toàn chữ thì không.
+
+    Gọi khi đang giữ `PDF_LOCK`. Dừng duyệt ngay khi đủ `PLAN_MIN_SEGMENTS` nét, không trích chữ. Chữ không
+    phải nét nên trang chữ vector có ít đoạn; bìa quét thành ảnh thì phải dựng ảnh nhỏ mới phân biệt được với
+    mặt bằng quét.
+    """
+    out: list[Row] = []
+    with _open_page(pdf, page_index) as page:
+        display, width_pt, height_pt = _display_transform(page)
+        image_area = _walk_objects(page.raw, is_page=True, parent=display, depth=0, out=out, limit=PLAN_MIN_SEGMENTS)
+    if len(out) >= PLAN_MIN_SEGMENTS:
+        return True
+    if image_area < PLAN_MIN_IMAGE_RATIO * width_pt * height_pt:
+        return False
+    gray = _render_page(pdf, page_index, PLAN_PICK_DPI / POINTS_PER_INCH).mean(axis=2)
+    dy, dx = (int(side * PLAN_INK_MARGIN) for side in gray.shape)
+    core = gray[dy : gray.shape[0] - dy, dx : gray.shape[1] - dx]
+    return float((core < PLAN_INK_LEVEL).mean()) >= PLAN_MIN_INK
+
+
+def pick_plan_page(data: bytes, max_pages: int) -> int:
+    """Trang đầu tiên (trong `max_pages` trang đầu) mang bản vẽ; không trang nào là bản vẽ → 0.
+
+    Chỉ dùng khi client **vắng** `pageIndex` và không cắt vùng: PDF hồ sơ hay có trang bìa trước mặt bằng.
+    Đồng bộ, giữ `PDF_LOCK`, mở tài liệu **một** lần — người gọi async phải đưa ra `asyncio.to_thread`.
+    Lỗi như `pdf_page_vectors`.
+    """
+    with PDF_LOCK:
+        pdf = _open_document(data)
+        try:
+            for index in range(min(len(pdf), max_pages)):
+                if _is_drawing(pdf, index):
+                    return index
+            return 0
+        finally:
+            pdf.close()

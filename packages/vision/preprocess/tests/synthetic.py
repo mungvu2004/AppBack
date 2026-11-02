@@ -179,6 +179,10 @@ COVER_OPS: Final = b"BT /F1 24 Tf 72 700 Td (HO SO THIET KE) Tj ET\n"
 """Trang bìa toàn chữ: không nét, không ảnh."""
 PLAN_OPS: Final = b"".join(b"%d 100 m %d 700 l S\n" % (50 + 4 * i, 50 + 4 * i) for i in range(120))
 """Trang bản vẽ vector: 120 nét thẳng."""
+SCAN_OPS: Final = b"q %g 0 0 %g 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\xff\xff\x00 EI Q\n" % A4_PT
+"""Trang quét: một ảnh nhúng phủ cả trang, nửa đen nửa trắng (đủ mực)."""
+BLANK_SCAN_OPS: Final = SCAN_OPS.replace(bytes([0]), bytes([255]))
+"""Bìa quét: ảnh phủ cả trang nhưng trắng trơn (không mực)."""
 
 
 def join_pdfs(*documents: bytes) -> bytes:

@@ -17,7 +17,7 @@ CHECK ở đây là tầng phòng thủ cuối (như `floors`): nơi báo lỗi 
 from datetime import datetime
 from typing import Any, Final
 
-from sqlalchemy import BigInteger, CheckConstraint, Float, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,6 +63,8 @@ class UploadRow(Base, TimestampMixin):
     """SHA-256 hex của cả tệp gốc, ghi lúc #7 `complete` (UX41 P01); `NULL` với lượt cũ hơn."""
     crop_corners: Mapped[Any] = mapped_column(JSONB(none_as_null=True), nullable=True, default=None)
     """Vùng cắt của tầng trên tờ nhiều mặt bằng: 4 góc TL,TR,BR,BL theo tỉ lệ trang gốc; `NULL` = cả trang."""
+    page_auto: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    """#5 không nhận `pageIndex` từ client (BENCH3D-07): #7 được tự chọn trang bản vẽ; `NULL` = lượt cũ, giữ trang."""
     created_by: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (
