@@ -8,7 +8,7 @@ import math
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import AfterValidator, BeforeValidator, Field, StringConstraints
+from pydantic import AfterValidator, BeforeValidator, Field, StrictBool, StringConstraints
 
 from apps.api.core.wire import WireModel, WireRequest
 from apps.api.project_settings.read import ProjectSettingsValue
@@ -67,6 +67,7 @@ class ProjectSettingsBodyIn(WireRequest):
 
     `sceneStyle` (FE3D-B2) khác `notes`: vắng = **giữ** giá trị đang lưu (client cũ không biết trường này
     không xoá mất phong cách người khác đã chọn); `null` = xoá về mặc định của FE.
+    `detectFurniture` (QT-FURN-TOGGLE) cũng vắng = giữ; có hiệu lực từ lượt pipeline sau.
     """
 
     building_type: BuildingType
@@ -76,6 +77,7 @@ class ProjectSettingsBodyIn(WireRequest):
     confidence_threshold: Confidence
     default_scale_mm_per_px: ScaleMmPerPx
     scene_style: SceneStyle | None = None
+    detect_furniture: StrictBool | None = None
 
 
 class ProjectSettingsWriteIn(WireRequest):
@@ -99,6 +101,7 @@ class ProjectSettingsOut(WireModel):
     confidence_threshold: float
     default_scale_mm_per_px: float
     scene_style: str | None = None
+    detect_furniture: bool
 
     @classmethod
     def of(cls, value: ProjectSettingsValue) -> "ProjectSettingsOut":
@@ -112,4 +115,5 @@ class ProjectSettingsOut(WireModel):
             confidence_threshold=float(value.confidence_threshold),
             default_scale_mm_per_px=float(value.default_scale_mm_per_px),
             scene_style=value.scene_style,
+            detect_furniture=value.detect_furniture,
         )

@@ -404,9 +404,25 @@ async def test_spatial_read_layer__C01_pipeline(
     e2e_worker: None,
     e2e_client: httpx.AsyncClient,
 ) -> None:
-    """Ảnh tổng hợp seed 7 → pipeline thật tới `qualityCheck` → N16, N17, #19, `quality.json` (spec [6])."""
+    """Ảnh tổng hợp seed 7 → pipeline thật tới `qualityCheck` → N16, N17, #19, `quality.json` (spec [6]).
+
+    Bật `detectFurniture` (mặc định tắt từ QT-FURN-TOGGLE) để đường dựng đồ vẫn được kiểm đầu-cuối;
+    các giá trị khác bằng mặc định chưa ghi nên tỉ lệ dự phòng không đổi.
+    """
     start = time.monotonic()
     project_id, level_id, floor_pk, headers = await _signed_in_scene(db_url, e2e_client)
+    settings = {
+        "buildingType": "residential",
+        "lengthUnit": "mm",
+        "snapToleranceMm": 50,
+        "confidenceThreshold": 0.75,
+        "defaultScaleMmPerPx": 1,
+        "detectFurniture": True,
+    }
+    put = await e2e_client.put(
+        f"/api/projects/{project_id}/settings", json={"baseVersion": 0, "body": settings}, headers=headers
+    )
+    assert put.status_code == 200, put.text
     plan = render_plan(SEED)
     upload_id, progress = await _run_pipeline(e2e_client, headers, project_id, level_id, plan.image_png)
     assert progress["progressPercent"] == 100

@@ -110,6 +110,9 @@ _DINING_LABELS = frozenset({"table", "chair"})
 Dãy tủ đo ở tỉ lệ đoán (`project_default`) có thể ngắn hơn `_KITCHEN_RUN_MM`: H-08 ch-01 khu khách-bếp-ăn có
 tủ bếp 2,1 m (1,8 m ở tỉ lệ đoán) và một kệ dò thành tủ áo nên thành "phòng ngủ"."""
 
+_T_JUNCTION_COS = 0.1
+"""Khe dài chĩa thẳng vào tường đích vuông góc (|cos| ≤ 0,1, ~84-90°) là chữ T thiếu đoạn tường (QT-ROOMS3, NO-435)."""
+
 _CLOSER_TRIM_MM = 1.0
 """Cắt bớt mỗi đầu đoạn nối khe khi xét cắt tường: chạm đúng đầu mút (chân chữ T) không tính là cắt."""
 
@@ -134,12 +137,13 @@ def _gap_closers(
     Đầu tường tự do = không chạm tim tường khác hay `bridges` trong `ROOM_SNAP_MM`. Mỗi đầu tự do nối tới điểm gần nhất
     trên tim tường khác, lệch hướng ra của đầu tường không quá `ROOM_GAP_CLOSE_MIN_COS`; bỏ đoạn cắt tim tường/`bridges`
     khác, giữ đoạn ngắn nhất. Khe ≤ `ROOM_GAP_CLOSE_MM` luôn khép; dài hơn tới `ROOM_GAP_EVIDENCE_MM` chỉ khép khi có
-    bằng chứng (QT-ROOMS2, B9): hai tường thẳng hàng — đoạn nối dọc tường (`ROOM_GAP_ALIGNED_COS`), tường đích song
-    song, chân đoạn ở đầu tường đích và lệch ngang ≤ `ROOM_SNAP_MM` (vách so le hai bên khe cửa không tính,
-    OPEN-ATTACH); không quá nửa đoạn sát tim tường khác. Khe có hộp ô mở đã do `_door_closers` khép. Ngưỡng mm
-    cố định làm số phòng lệ thuộc tỉ lệ: ch-09 ở 14,32 mm/px khép 4 khe 1,1-1,2 m, ở tỉ lệ đúng 24,66 các khe đó
-    thành 1,9-2,1 m. Tra theo
-    lô bằng `STRtree` (không O(n²), trần B5-01 20 000 tường); đoạn chọn lố 1 mm qua tim đích để `unary_union` cắt nút.
+    bằng chứng: đoạn nối dọc tường (`ROOM_GAP_ALIGNED_COS`), lệch ngang ≤ `ROOM_SNAP_MM` (vách so le hai bên khe
+    cửa không tính, OPEN-ATTACH), và hoặc tường đích song song, chân đoạn ở đầu tường đích (thẳng hàng, QT-ROOMS2
+    B9), hoặc tường đích vuông góc `_T_JUNCTION_COS` và chân đoạn không ở đầu tự do của nó (chữ T thiếu đoạn,
+    QT-ROOMS3; góc chữ L hở hai đầu tự do không khép); không quá nửa đoạn sát tim tường khác. Khe có hộp ô mở đã do
+    `_door_closers` khép. Ngưỡng mm cố định làm số phòng lệ thuộc tỉ lệ: ch-09 ở 14,32 mm/px khép 4 khe 1,1-1,2 m, ở
+    tỉ lệ đúng 24,66 các khe đó thành 1,9-2,1 m (chữ T, NO-435). Tra theo lô bằng `STRtree` (không O(n²), trần
+    B5-01 20 000 tường); đoạn chọn lố 1 mm qua tim đích để `unary_union` cắt nút.
     """
     if len(walls) < 2:
         return []
@@ -179,10 +183,15 @@ def _gap_closers(
     blocked[seg_idx[blocker != target[seg_idx]]] = True
     direction = (ends - starts) / np.hypot(*(ends - starts).T)[:, None]
     parallel = np.abs(np.einsum("ij,ij->i", direction[owner[tip]], direction[target])) >= ROOM_GAP_ALIGNED_COS
-    foot_at_end = np.minimum(np.hypot(*(foot - starts[target]).T), np.hypot(*(foot - ends[target]).T)) <= ROOM_SNAP_MM
+    at_start = np.hypot(*(foot - starts[target]).T) <= ROOM_SNAP_MM
+    at_end = np.hypot(*(foot - ends[target]).T) <= ROOM_SNAP_MM
+    foot_at_end = at_start | at_end
+    foot_at_free = (at_start & ~touching[target]) | (at_end & ~touching[target + len(walls)])
     own = direction[owner[tip]]
     lateral = np.abs(own[:, 0] * (foot - head)[:, 1] - own[:, 1] * (foot - head)[:, 0]) <= ROOM_SNAP_MM
-    evidence = (along >= ROOM_GAP_ALIGNED_COS) & parallel & foot_at_end & lateral
+    square = np.abs(np.einsum("ij,ij->i", direction[owner[tip]], direction[target])) <= _T_JUNCTION_COS
+    square &= ~foot_at_free
+    evidence = (along >= ROOM_GAP_ALIGNED_COS) & lateral & ((parallel & foot_at_end) | square)
     long_gap = length > ROOM_GAP_CLOSE_MM
     blocked |= long_gap & ~evidence
     for k in np.flatnonzero(long_gap & ~blocked):  # khe dài chạy dọc tường khác quá nửa: mép vách, không phải khe
@@ -289,18 +298,10 @@ def _door_closers(
     return closers
 
 
-def _room_lines(
-    walls: Sequence[Wall],
-    bridges: Sequence[tuple[Point, Point]],
-    detections: Sequence[DetectionPx] = (),
-    scaling: Scaling | None = None,
-) -> list[shapely.LineString]:
-    """Mọi đường khép phòng: tường kéo dài `ROOM_SNAP_MM`, `bridges`, `_gap_closers` và `_door_closers`."""
+def _room_lines(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
+    """Tường kéo dài `ROOM_SNAP_MM` và `bridges`; `build_rooms` thêm `_gap_closers`, `_door_closers`."""
     lines: list[shapely.LineString] = [_extend(wall, ROOM_SNAP_MM) for wall in walls]
     lines.extend(shapely.LineString([(a.x, a.y), (b.x, b.y)]) for a, b in bridges)
-    lines.extend(_gap_closers(walls, bridges))
-    if scaling is not None:
-        lines.extend(_door_closers(walls, detections, scaling))
     return lines
 
 
@@ -608,17 +609,92 @@ def room_confidence(source: str, gap_share: float, *, scale_trusted: bool) -> fl
     return round(_NAME_TRUST[source] * factor * (1.0 if scale_trusted else _UNTRUSTED_SCALE_FACTOR), 2)
 
 
-def _walled_shares(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[float]:
-    """Phần chu vi mỗi `outline` nằm sát tường (≤ nửa bề dày + `ROOM_SNAP_MM` quanh tim); phần còn lại là khe đã nối.
-
-    Thân tường tra bằng `STRtree` theo từng phòng (K18: không O(n²)).
-    """
-    bodies = [
+def _wall_bodies(walls: Sequence[Wall]) -> list[shapely.Polygon]:
+    """Thân mỗi tường: tim nới nửa bề dày + `ROOM_SNAP_MM` (cạnh phòng trong thân là tường thật, ngoài: khe đã nối)."""
+    return [
         shapely.LineString(
             [(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)]
         ).buffer(w.thickness_mm / 2 + ROOM_SNAP_MM)
         for w in walls
     ]
+
+
+_FRAGMENT_M2 = 3.5
+_FRAGMENT_OPEN_MM = 300.0
+_SLIVER_WIDTH_MM = 400.0
+"""Mảnh vụn (QT-ROOMS3): phòng < 3,5 m² không chứa nhãn chữ tên phòng, gộp vào phòng kề khi chung với nó ≥ 300 mm
+cạnh không có tường (vách ảo của đoạn nối khe), hoặc khi là dải hẹp (bề rộng 2·diện tích/chu vi < 400 mm) thì gộp
+vào phòng kề có cạnh chung dài nhất."""
+
+
+def _merge_fragments(
+    kept: Sequence[tuple[list[Point], float]],
+    walls: Sequence[Wall],
+    doors: Sequence[shapely.LineString],
+    long_closers: Sequence[shapely.LineString],
+    labels: Sequence[Point],
+) -> list[tuple[list[Point], float]]:
+    """Gộp phòng không nhãn chữ vào phòng kề qua vách ảo, từ phòng nhỏ nhất (QT-ROOMS3).
+
+    Phòng có nhãn chữ (WC, kho, hộp kỹ thuật ghi tên) giữ nguyên dù nhỏ. Phòng không nhãn gộp vào phòng kề khi:
+    chung ≥ `_FRAGMENT_OPEN_MM` đoạn nối khe dài (`long_closers`, > `ROOM_GAP_CLOSE_MM`: khép để kín vùng hở, không để
+    chia phòng mở — chia theo nhãn là việc của `_split_by_labels`), mọi cỡ; hoặc nhỏ hơn `_FRAGMENT_M2` và chung
+    ≥ `_FRAGMENT_OPEN_MM` cạnh ngoài thân tường (`_wall_bodies`) và ngoài `doors` (khe ô mở: ở lớp là tường mang
+    cửa); hoặc nhỏ và là dải hẹp (`_SLIVER_WIDTH_MM`) → phòng kề có cạnh chung dài nhất. Đích là phòng kề có cạnh
+    thoả dài nhất. Phòng nhỏ không nhãn kín tường (lô gia, WC không ghi tên) giữ nguyên. Hợp không thành một đa giác
+    đặc thì bỏ qua. Phòng kề tra bằng `STRtree` trên đa giác gốc.
+    """
+    originals = [shapely.Polygon([(p.x, p.y) for p in o]) for o, _ in kept]
+    tree = shapely.STRtree(originals)
+    alive = dict(enumerate(originals))
+    bodies = shapely.union_all([*_wall_bodies(walls), *(door.buffer(ROOM_SNAP_MM) for door in doors)])
+    weak = shapely.union_all([line.buffer(1.0) for line in long_closers])
+    points = [shapely.Point(p.x, p.y) for p in labels]
+    owner = list(range(len(kept)))
+
+    def find(i: int) -> int:
+        while owner[i] != i:
+            i = owner[i]
+        return i
+
+    for i in sorted(range(len(kept)), key=lambda k: kept[k][1]):
+        polygon = alive[i]
+        small = polygon.area / 1e6 < _FRAGMENT_M2
+        sliver = small and 2 * polygon.area / polygon.length < _SLIVER_WIDTH_MM
+        if any(polygon.contains(p) for p in points) or not (small or polygon.intersects(weak)):
+            continue
+        best: tuple[float, int] | None = None
+        for j in {find(int(k)) for k in tree.query(polygon, predicate="intersects")} - {i}:
+            shared = polygon.exterior.intersection(alive[j].exterior)
+            score = shared.intersection(weak).length
+            if score < _FRAGMENT_OPEN_MM and small:
+                score = shared.length if sliver else shared.difference(bodies).length
+            if score >= (1.0 if sliver else _FRAGMENT_OPEN_MM) and (best is None or score > best[0]):
+                best = (score, j)
+        if best is None:
+            continue
+        union = shapely.union_all([polygon, alive[best[1]]])
+        if not isinstance(union, shapely.Polygon) or union.interiors:
+            continue
+        alive[best[1]], owner[i] = union, best[1]
+        del alive[i]
+    return [
+        (list(kept[i][0]), kept[i][1]) if polygon is originals[i] else _with_area(_outline_points(polygon))
+        for i, polygon in alive.items()
+    ]
+
+
+def _with_area(outline: list[Point]) -> tuple[list[Point], float]:
+    """`(outline, diện tích m²)` cho phòng vừa gộp."""
+    return outline, float(polygon_area_m2(outline))
+
+
+def _walled_shares(walls: Sequence[Wall], outlines: Sequence[Sequence[Point]]) -> list[float]:
+    """Phần chu vi mỗi `outline` nằm sát tường (≤ nửa bề dày + `ROOM_SNAP_MM` quanh tim); phần còn lại là khe đã nối.
+
+    Thân tường tra bằng `STRtree` theo từng phòng (K18: không O(n²)).
+    """
+    bodies = _wall_bodies(walls)
     tree = shapely.STRtree(bodies)
     shares: list[float] = []
     for outline in outlines:
@@ -656,7 +732,9 @@ def build_rooms(
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
-    lines = _room_lines(walls, bridges, detections, scaling)
+    closers = _gap_closers(walls, bridges)
+    doors = _door_closers(walls, detections, scaling)
+    lines = [*_room_lines(walls, bridges), *closers, *doors]
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
     rims = _rim_outlines(lines, [*closed, *seeded])
@@ -668,6 +746,13 @@ def build_rooms(
             dropped["roomTooSmall"] += 1
             continue
         kept.append((outline, area_m2))
+    kept = _merge_fragments(
+        kept,
+        walls,
+        doors,
+        [line for line in closers if line.length > ROOM_GAP_CLOSE_MM + 2 * _CLOSER_TRIM_MM],
+        [centre for label, centre in zip(parsed, centres, strict=True) if label is not None],
+    )
     kept.sort(key=lambda item: (min(p.y for p in item[0]), min(p.x for p in item[0])))
     outlines = [outline for outline, _ in kept]
     wall_ids = _wall_id_lists(walls, outlines)
