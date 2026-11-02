@@ -30,5 +30,11 @@
   `PROMPT_VERSION` và `MATERIALS_VERSION` luôn có; bỏ nhánh, nhập thẳng.
 - NO-AID-5 (OPS): ảnh worker không có phông DejaVu → sơ đồ R*/E* gửi Gemini dùng phông mặc định nhỏ của Pillow. Hướng:
   thêm `fonts-dejavu-core` khi dựng lại ảnh worker.
+- NO-AID-8 (TEST): cổng đầy đủ 8 lượt không lượt nào xanh hết; lỗi luôn ở test ngoài phần sửa, chạy riêng thì qua:
+  Redis hết giờ (`admin_ml_datasets` C07, `ml/walls` J01), `pipeline_steps`
+  `test_sweep_resends_remaining_families_when_walls_used`, `admin_ml_registry`
+  `test_requeue_pending_model_evaluations_smoke`; `pipeline_build` `test_build_layer__perf_under_30_seconds` đỏ cả trên
+  `main`. Người dùng cho merge không cần cổng xanh ("Merge luôn", 2026-11-02), dựa trên verdict lượt 2 (không chặn nào
+  trong mã nhánh). Hướng: lô DEBT riêng sửa các test chập chờn.
 - NO-AID-7 (DOC): BE-00 §13.1 chưa liệt kê `packages/genai` và `google-auth`; R-27: phiên sửa `.importlinter` và
   `apps/worker/pipeline_quality` (ngoài thư mục của mình) — chủ các tệp đó soát lại.
