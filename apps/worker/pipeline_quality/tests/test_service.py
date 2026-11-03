@@ -427,7 +427,10 @@ async def test_run_quality_records_scale_basis_from_layer_json(
     """BENCH3D-09: `scaleBasis` + khoá `scaleChecks` của `layer.json` vào tóm tắt; hỏng → vắng + log, lượt vẫn xong."""
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     built = replace(
-        sample_built(arranged.level_id), scale_basis="chain", scale_checks={"anisotropic": {"x": 10.0, "y": 11.0}}
+        sample_built(arranged.level_id),
+        scale_basis="chain",
+        scale_checks={"anisotropic": {"x": 10.0, "y": 11.0}},
+        label_orientation={"vertical": 4, "horizontal": 0},
     )
     await put_layer(local_storage, arranged, built.to_json())
 
@@ -435,6 +438,8 @@ async def test_run_quality_records_scale_basis_from_layer_json(
     summary, _ = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
     assert isinstance(summary, dict)
     assert (summary["scaleBasis"], summary["scaleChecks"]) == ("chain", ["anisotropic"])
+    assert "ROTATED_PLAN" in cast("list[str]", summary["checks"])  # BENCH3D-14: hướng nhãn của `layer.json` tới kiểm
+    assert "ROTATED_PLAN" not in cast("list[str]", summary["criticalChecks"])
 
     broken = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     await put_layer(local_storage, broken, b"{}")

@@ -132,8 +132,9 @@ _OPEN_SPACE_M2 = 18.0
 riêng căn hộ ≤ 15 m²; bench-3d r2: 17/17 "bếp" 24-52 m² là khách + bếp + ăn, "hành lang" 27 m² ch-11 là phòng khách).
 Còn chưa có phòng khách thì phòng không tên lớn nhất, rộng hơn số này, của tầng đã đọc được → phòng khách.
 
-"Hành lang" chỉ đổi khi không hẹp (cạnh ngắn hộp bao xoay > `_CORRIDOR_DEPTH_MM`): hành lang căn hộ, hành lang chung
-tầng điển hình rộng 1,2-2 m dù dài trên 18 m² vẫn là hành lang."""
+"Hành lang" và phòng không tên chỉ đổi khi không hẹp (chứa được hình tròn đường kính `_CORRIDOR_DEPTH_MM`): hành
+lang căn hộ, hành lang chung tầng điển hình rộng 1,2-2 m dù dài trên 18 m² hay gấp chữ L/T (hộp bao sâu ~6 m) vẫn là
+hành lang (BENCH3D-14)."""
 
 _CORRIDOR_DEPTH_MM = 2500.0
 
@@ -617,6 +618,12 @@ def _depth_mm(outline: Sequence[Point]) -> float:
     return float(min(math.dist(corners[0], corners[1]), math.dist(corners[1], corners[2])))
 
 
+def _roomy(outline: Sequence[Point]) -> bool:
+    """`outline` chứa được hình tròn đường kính `_CORRIDOR_DEPTH_MM` (bề rộng thật, không phải hộp bao: hành lang chữ L
+    có hộp bao sâu mà chỗ nào cũng hẹp)."""
+    return not shapely.Polygon([(p.x, p.y) for p in outline]).buffer(-_CORRIDOR_DEPTH_MM / 2).is_empty
+
+
 def _open_space_labels(
     labels: Sequence[RoomLabel | None],
     outlines: Sequence[Sequence[Point]],
@@ -626,8 +633,8 @@ def _open_space_labels(
 ) -> list[RoomLabel | None]:
     """Phòng khách cho tầng chưa có phòng khách (`_OPEN_SPACE_M2`).
 
-    "Bếp" rộng, "hành lang" rộng và không hẹp (`_CORRIDOR_DEPTH_MM`) → phòng khách; không có thì phòng không tên lớn
-    nhất khi tầng đã đọc được (`read_level`: nhãn chữ hay tên suy từ đồ đạc; lô gia rìa, hộp kỹ thuật chỉ suy từ hình
+    "Bếp" rộng, "hành lang" rộng và không hẹp (`_roomy`) → phòng khách; không có thì phòng không tên lớn nhất, không
+    hẹp, khi tầng đã đọc được (`read_level`: nhãn chữ hay tên suy từ đồ đạc; lô gia rìa, hộp kỹ thuật chỉ suy từ hình
     học nên không tính).
     """
     named = list(labels)
@@ -639,9 +646,9 @@ def _open_space_labels(
         i
         for i in wide
         if (label := named[i]) is not None
-        and (label.usage == "kitchen" or (label.usage == "corridor" and _depth_mm(outlines[i]) > _CORRIDOR_DEPTH_MM))
+        and (label.usage == "kitchen" or (label.usage == "corridor" and _roomy(outlines[i])))
     ]
-    unnamed = [i for i in wide if named[i] is None]
+    unnamed = [i for i in wide if named[i] is None and _roomy(outlines[i])]
     if not opened and unnamed and read_level:
         opened = [max(unnamed, key=lambda i: areas_m2[i])]
     for i in opened:

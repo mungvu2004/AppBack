@@ -135,7 +135,7 @@ ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "defaul
 ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
 
 _SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
-_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks"})
+_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation"})
 """Khoá gốc tuỳ chọn: `layer.json` dựng trước QT-SCALE không có `scaleBasis` vẫn đọc được."""
 
 ScaleChecks = Mapping[str, Mapping[str, float]]
@@ -164,6 +164,8 @@ class BuiltLayer:
     dropped: Mapping[str, int]
     scale_basis: ScaleBasis | None = None
     scale_checks: ScaleChecks = field(default_factory=dict)
+    label_orientation: Mapping[str, int] = field(default_factory=dict)
+    """BENCH3D-14: số nhãn chữ đọc dọc/ngang (`label_orientation`) cho kiểm `ROTATED_PLAN`; rỗng khi không nhãn nào."""
 
     def to_json(self) -> bytes:
         """`layer.json` UTF-8 gọn, khoá theo thứ tự cố định; `scaleMmPerPx` là chuỗi Decimal."""
@@ -179,6 +181,8 @@ class BuiltLayer:
             payload["scaleBasis"] = self.scale_basis
         if self.scale_checks:
             payload["scaleChecks"] = {key: dict(value) for key, value in self.scale_checks.items()}
+        if self.label_orientation:
+            payload["labelOrientation"] = dict(self.label_orientation)
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     @classmethod
@@ -206,6 +210,9 @@ class BuiltLayer:
             for key, value in checks.items()
         ):
             raise ValueError(f"layer.json scaleChecks lạ: {checks!r}")
+        orientation = payload.get("labelOrientation", {})
+        if not isinstance(orientation, dict) or (orientation and set(orientation) != _ORIENTATION_KEYS):
+            raise ValueError(f"layer.json labelOrientation lạ: {orientation!r}")
         return cls(
             layer=SpatialLayer.model_validate(payload["layer"]),
             dimensions=tuple(Dimension.model_validate(item) for item in payload["dimensions"]),
@@ -214,6 +221,7 @@ class BuiltLayer:
             dropped={key: int(dropped[key]) for key in DROPPED_KEYS},
             scale_basis=basis,
             scale_checks={key: {k: float(v) for k, v in value.items()} for key, value in checks.items()},
+            label_orientation={key: int(value) for key, value in orientation.items()},
         )
 
 
@@ -855,4 +863,27 @@ def build_layer(
         dropped={key: dropped[key] for key in DROPPED_KEYS},
         scale_basis=basis,
         scale_checks=checks,
+        label_orientation=label_orientation(texts),
     )
+
+
+_ORIENTATION_KEYS: Final = frozenset({"vertical", "horizontal"})
+_TEXT_ASPECT: Final = 1.5
+"""Hộp chữ cao/rộng ≥ 1,5 là chữ đọc dọc (cùng ngưỡng xoay vùng của OCR, `apps.ml.text.reader.ROTATE_RATIO`)."""
+_LABEL_MIN_LETTERS: Final = 3
+
+
+def label_orientation(texts: Sequence[TextPx]) -> dict[str, int]:
+    """Số nhãn chữ (≥ 3 chữ cái, không nằm trên đường kích thước) đọc dọc và đọc ngang; không nhãn nào → `{}`.
+
+    Bản vẽ đặt đúng chiều ghi tên phòng nằm ngang; phần lớn nhãn dọc là trang xoay 90° (BENCH3D-14 `ROTATED_PLAN`).
+    Số kích thước (trên đường kích thước `span_px`, hay chỉ chữ số) thường ghi dọc nên bị loại.
+    """
+    vertical = horizontal = 0
+    for text in texts:
+        if text.span_px is not None or sum(ch.isalpha() for ch in text.text) < _LABEL_MIN_LETTERS:
+            continue
+        width, height = text.box.x_max - text.box.x_min, text.box.y_max - text.box.y_min
+        vertical += height >= _TEXT_ASPECT * width
+        horizontal += width >= _TEXT_ASPECT * height
+    return {"vertical": vertical, "horizontal": horizontal} if vertical + horizontal else {}
