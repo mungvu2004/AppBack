@@ -861,6 +861,8 @@ def _closed(walls: list[WallPx], clock: FakeClock, scaling: Scaling, page: PageR
     shared: dict[str, Any] = {"level_id": new_spatial_id("level", clock), "scaling": scaling, "clock": clock}
     wall_set = build_walls(walls, [], dropped=Counter(), page=page, **shared)
     rooms = build_rooms(wall_set.walls, wall_set.bridges, (), dropped=Counter(), **shared)
+    # Phòng ở: khe ngoài vẫn đoán cửa đi (R2' chỉ bỏ cửa đoán vào lô gia/kỹ thuật/khác).
+    rooms = tuple(room.model_copy(update={"usage": "bedroom"}) for room in rooms)
     return close_envelope_gaps(wall_set, rooms, page=page, **shared)
 
 
@@ -972,6 +974,7 @@ def test_close_envelope_gaps__fanned_bridge_along_wall_skipped(fake_clock: FakeC
     }
     wall_set = build_walls(_box_with_top_gap(2000, 2900), [], dropped=Counter(), **shared)
     rooms = build_rooms(wall_set.walls, wall_set.bridges, (), dropped=Counter(), **shared)
+    rooms = tuple(room.model_copy(update={"usage": "bedroom"}) for room in rooms)
     left = next(i for i, w in enumerate(wall_set.walls) if w.centreline.end == Point(x=2000, y=0))
     right = next(i for i, w in enumerate(wall_set.walls) if w.centreline.start == Point(x=2900, y=0))
     walls = list(wall_set.walls)
