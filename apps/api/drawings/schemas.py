@@ -88,9 +88,7 @@ class CropRect(WireRequest):
 
 
 class InitUploadBody(WireRequest):
-    """Thân #5; `pageIndex` vắng = 0 (F-03), trừ PDF nhiều trang không `crop`: #7 tự chọn trang bản vẽ (BENCH3D-07).
-
-    `mimeType` rỗng được nhận (magic bytes quyết ở #7).
+    """Thân #5; `pageIndex` vắng = 0 (F-03), `mimeType` rỗng được nhận (magic bytes quyết ở #7).
 
     `crop` vắng/null = cả trang; có thì pipeline của tầng chỉ xử lý vùng đó (MULTI-FLOOR-01).
     """
@@ -100,6 +98,7 @@ class InitUploadBody(WireRequest):
     mime_type: str = Field(max_length=MIME_TYPE_MAX)
     project_id: str = Field(min_length=1)
     size_bytes: int = Field(ge=1)
+    # Vắng `pageIndex` với PDF nhiều trang không `crop`: #7 tự chọn trang bản vẽ (BENCH3D-07, cột uploads.page_auto).
     page_index: int = Field(default=0, ge=0, le=PAGE_INDEX_MAX)
     crop: CropRect | None = None
 
