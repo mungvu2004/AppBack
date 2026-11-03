@@ -418,3 +418,43 @@ def test_build_layer__raster_pdf_note_needs_door_agreement(
     note = [_note("TL 1/100")]
     built = _run(walls, note, fake_clock, detections=doors, fallback="1", px_per_paper_mm=150 / 25.4, vector_page=False)
     assert (built.scale_basis, built.scale_mm_per_px) == (basis, scale)
+
+
+@pytest.mark.parametrize(
+    ("down_ratio", "basis"),
+    [
+        pytest.param(21.4, "chain", id="axes-7pct"),
+        pytest.param(30.0, "default", id="axes-50pct"),
+    ],
+)
+def test_build_layer__tied_axis_clusters_use_geometric_mean(
+    down_ratio: float, basis: str, fake_clock: FakeClock
+) -> None:
+    """BENCH3D-21 T3 (f-23): 3 chữ ngang 20 mm/px và 3 chữ dọc 21,4 (lệch 7 %) → cụm chung hoà rỗng; hai trục lệch
+    <= 15 % → √(20 · 21,4), gốc `chain`, kèm `anisotropic`. Lệch 50 % (hai hình khác tỉ lệ) → không đoán."""
+    across = [_chain_text(str(20 * span), 200 + 300 * k, span) for k, span in enumerate((100, 150, 200))]
+    spans = (100, 150, 200)
+    down = [_vertical_chain_text(str(round(down_ratio * span)), 300 + 250 * k, span) for k, span in enumerate(spans)]
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], [*across, *down], fake_clock)
+    assert built.scale_basis == basis
+    if basis == "chain":
+        assert built.scale_mm_per_px == Decimal(repr(math.sqrt(20 * down_ratio))).quantize(_Q)
+        assert built.scale_checks["anisotropic"] == {"x": 20.0, "y": down_ratio}
+    else:
+        assert built.scale_mm_per_px == Decimal("5")
+
+
+def test_build_layer__axis_rescue_flagged_even_when_axes_agree(fake_clock: FakeClock) -> None:
+    """Codex P1: cụm 20 mm/px (ngang 20, dọc 20,4: lệch 2 % < ngưỡng `_anisotropy`) hoà với cụm 50 cùng 14 mẫu → T3
+    cứu bằng hai trục nhưng cụm 50 vẫn cạnh tranh: phải ghi `scaleChecks.anisotropic` để readiness báo."""
+
+    def texts(ratios: Sequence[float], vertical: bool) -> list[TextPx]:
+        make = _vertical_chain_text if vertical else _chain_text
+        return [make(str(round(r * 100)), 100 + 40 * k, 100) for k, r in enumerate(ratios)]
+
+    across = texts([19.41] * 2 + [20.0] * 4 + [20.59] * 2 + [50.0] * 7, vertical=False)
+    down = texts([19.81] * 2 + [20.4] * 4 + [20.99] * 2 + [50.0] * 7, vertical=True)
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], [*across, *down], fake_clock)
+    assert built.scale_basis == "chain"
+    assert 19.9 < float(built.scale_mm_per_px) < 20.5
+    assert set(built.scale_checks) == {"anisotropic"}
