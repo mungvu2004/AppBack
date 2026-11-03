@@ -1,10 +1,11 @@
 """Test thuần của `checks.geometry_checks` (BENCH3D-01): lớp dựng tay, không DB."""
 
+import math
 from decimal import Decimal
 
 import pytest
 
-from apps.worker.pipeline_quality.checks import geometry_checks
+from apps.worker.pipeline_quality.checks import axis_share, geometry_checks, not_a_floor_plan
 from apps.worker.pipeline_quality.report import build_report
 from packages.domain.spatial.model import Opening, Point, Room, Segment, SpatialLayer, Wall
 
@@ -271,3 +272,46 @@ def test_rotated_plan_is_reported_but_never_blocks(orientation: dict[str, int], 
     """BENCH3D-14 `ROTATED_PLAN`: ≥ 3 nhãn và ≥ 60 % đọc dọc → chỉ báo (mô hình vẫn dựng đúng hình)."""
     found = [c for c in geometry_checks(_layer(()), label_orientation=orientation) if c.code == "ROTATED_PLAN"]
     assert [(c.critical, dict(c.detail)) for c in found] == ([] if expected is None else [(False, expected)])
+
+
+def _ray(length: float, degrees: float, origin: XY = (0, 0)) -> tuple[XY, XY]:
+    """Đoạn dài `length` từ `origin` theo hướng `degrees`."""
+    rad = math.radians(degrees)
+    return origin, (origin[0] + length * math.cos(rad), origin[1] + length * math.sin(rad))
+
+
+def test_axis_share__plan_with_one_skewed_wing_passes() -> None:
+    """BENCH3D-19 ca âm: hộp thẳng trục + cánh xoay 30° (họ thứ hai) vẫn là mặt bằng; tường lệch 3° vẫn thuộc họ."""
+    wing = [_ray(4000, 30, (6000, 0)), _ray(3000, 120, (6000, 0))]
+    walls = _walls(*_box(0, 0, 6000, 4000), *wing, _ray(2000, 3, (0, 2000)))
+    assert axis_share(walls) == pytest.approx(1.0)
+    assert not_a_floor_plan(_layer(walls)) is None
+    assert not_a_floor_plan(_layer(())) is None  # không tường: để cổng khác (NOT_A_FLOOR_PLAN của bước tách tường)
+
+
+def test_axis_share__perspective_view_is_not_a_floor_plan() -> None:
+    """BENCH3D-19 ca dương: phối cảnh 3D chiếu tường thành nhiều hướng xiên → dưới 0,65 → `not_a_floor_plan` trả tỉ lệ.
+
+    Ba họ đều nhau (0°, 20°, 50°, ±4° ngoài nhau) → 2 họ phủ 2/3 = 0,667, vừa qua; thêm họ thứ tư → 0,5, chặn."""
+    three = _walls(*(_ray(3000, angle, (0, i * 1000)) for i, angle in enumerate((0, 20, 50))))
+    assert axis_share(three) == pytest.approx(2 / 3, abs=0.01)
+    assert not_a_floor_plan(_layer(three)) is None
+    four = _walls(*(_ray(3000, angle, (0, i * 1000)) for i, angle in enumerate((0, 20, 50, 70))))
+    share = not_a_floor_plan(_layer(four))
+    assert share == pytest.approx(0.5, abs=0.01)
+
+
+def _fan(*spokes: tuple[float, float]) -> tuple[Wall, ...]:
+    """Tường dài `w` mét theo hướng `deg`, từng cặp (deg, w), đặt lệch nhau để không chồng."""
+    return _walls(*(_ray(w * 1000, deg, (0, i * 50_000)) for i, (deg, w) in enumerate(spokes)))
+
+
+def test_axis_share__best_pair_not_grid_or_greedy() -> None:
+    """Codex P2: kết quả không đổi khi xoay cả lớp 0,1° (không lưới thô), và lấy cặp họ phủ nhiều nhất chứ không chốt
+    họ đầu theo kiểu tham lam (3,5° + 17,5° phủ 80 % trong khi tham lam chỉ được 64 %)."""
+    spokes = ((0.1, 22), (8.05, 22), (30, 24), (55, 16), (75, 16))
+    turned = tuple((deg - 0.1, w) for deg, w in spokes)
+    assert axis_share(_fan(*spokes)) == pytest.approx(axis_share(_fan(*turned)), abs=0.01)
+    greedy_trap = ((0, 16), (7, 24), (14, 24), (21, 16), (32, 5), (45, 5), (60, 5), (75, 5))
+    assert axis_share(_fan(*greedy_trap)) == pytest.approx(0.8, abs=0.01)
+    assert axis_share(_fan((89.9, 1), (0.1, 1))) == pytest.approx(1.0)  # 89,9° và 0,1° cùng một họ (vòng mod 90°)
