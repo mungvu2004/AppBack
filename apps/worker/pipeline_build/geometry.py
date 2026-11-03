@@ -1349,6 +1349,52 @@ def _opening_near(walls: Sequence[Wall], openings: Sequence[Opening], gap: tuple
     return False
 
 
+_PIECE_MIN_MM: Final = 100
+"""Phần hở tối thiểu của đoạn khép sau khi trừ tường song song đã phủ (`_uncovered`); ngắn hơn là mẩu vụn."""
+
+
+def _uncovered(
+    start: Point, end: Point, label: str | None, walls: Sequence[Wall]
+) -> list[tuple[Point, Point, str | None, list[Wall]]]:
+    """Đoạn khép trừ phần tường song song đã phủ (thường là tường qua khe 3c mang ô mở của chính hộp đó).
+
+    `build_rooms` dựng đoạn khép trên tường có đầu vào nên không thấy tường qua khe 3c: đoạn khép cả khe chồng tường đó,
+    `_clash` bỏ cả đoạn và vai tường hai bên ô mở vẫn hở. Trả phần còn hở (≥ `_PIECE_MIN_MM`, nhãn `None` vì ô mở đã có)
+    kèm tường phủ làm chủ; không chồng gì → đoạn nguyên vẹn; cắt xuyên tường → đoạn nguyên để vòng chính bỏ như cũ.
+    """
+    span = math.dist((start.x, start.y), (end.x, end.y))
+    if span == 0:
+        return []
+    probe = _Seg(start, end, 1, 1, 1.0, ())
+    ua = _unit(probe)
+    covered: list[tuple[float, float]] = []
+    near: list[Wall] = []
+    for wall in walls:
+        other = _wall_seg(wall)
+        if not _clash(_Seg(start, end, wall.thickness_mm, wall.thickness_mm, 1.0, ()), other):
+            continue
+        ub = _unit(other)
+        if abs(ua[0] * ub[1] - ua[1] * ub[0]) > _PARALLEL_SIN:
+            return [(start, end, label, [])]
+        low, high = sorted(_along(probe, (p.x, p.y)) for p in (other.start, other.end))
+        covered.append((max(0.0, low), min(span, high)))
+        near.append(wall)
+    if not covered:
+        return [(start, end, label, [])]
+
+    def at(t: float) -> Point:
+        ratio = t / span
+        return Point(x=js_round(start.x + (end.x - start.x) * ratio), y=js_round(start.y + (end.y - start.y) * ratio))
+
+    pieces: list[tuple[Point, Point, str | None, list[Wall]]] = []
+    reach = 0.0
+    for low, high in [*sorted(covered), (span, span)]:
+        if low - reach >= _PIECE_MIN_MM:
+            pieces.append((at(reach), at(low), None, near))
+        reach = max(reach, high)
+    return pieces
+
+
 def close_envelope_gaps(
     wall_set: WallSet,
     rooms: Sequence[Room],
@@ -1365,7 +1411,8 @@ def close_envelope_gaps(
     (`_inner_room`); khe trong nhà (hai bên đều là phòng) giữ hở: lối mở thật có tồn tại (lối khách - bếp), và khe
     không bên nào là phòng (sân trong, giếng trời) cũng không bịt. Đoạn cắt tim tường khác (khe đã có tường qua khe
     3c, vách chắn ngang) hay chồng song song lên tường đang có, kể cả tường vừa thêm (`_clash`: đoạn nối xoè từ một
-    đầu tới từng mảnh thẳng hàng phía bên kia), bỏ qua — chỉ phủ phần hở, không vẽ đè (W4).
+    đầu tới từng mảnh thẳng hàng phía bên kia), bỏ qua — chỉ phủ phần hở, không vẽ đè (W4). Đoạn khép chồng song
+    song một phần tường qua khe 3c (`build_rooms` không thấy tường đó) chỉ dựng phần còn hở (`_uncovered`).
 
     - Khe < `_ENVELOPE_DOOR_MIN_MM` có tường chủ thẳng hàng (`_bridge_hosts`): kéo tường chủ (`_extend_host`).
     - `bridges` dài hơn: tường mang cửa đi phủ cả khe (cánh đọc từ nét vẽ, ≥ 1,5 m không cánh → lùa, còn lại
@@ -1377,9 +1424,12 @@ def close_envelope_gaps(
     walls, openings = list(wall_set.walls), list(wall_set.openings)
     leaves = dict(wall_set.leaves)
     lines = [_centreline(wall) for wall in walls]
-    gaps: list[tuple[Point, Point, str | None]] = [(start, end, _BRIDGE) for start, end in wall_set.bridges]
-    gaps += [(closer.start, closer.end, closer.label) for closer in closers]
-    for start, end, label in gaps:
+    gaps: list[tuple[Point, Point, str | None, list[Wall]]] = [
+        (start, end, _BRIDGE, []) for start, end in wall_set.bridges
+    ]
+    for closer in closers:
+        gaps += _uncovered(closer.start, closer.end, closer.label, walls)
+    for start, end, label, near in gaps:
         span = math.dist((start.x, start.y), (end.x, end.y))
         hosts = _bridge_hosts(walls, (start, end))
         if label == _BRIDGE:
@@ -1387,7 +1437,7 @@ def close_envelope_gaps(
             inner = LineString(((start.x + ux, start.y + uy), (end.x - ux, end.y - uy)))
             if not hosts or any(inner.intersects(line) for line in lines):
                 continue
-        owners = hosts or [wall for wall in walls if start in (wall.centreline.start, wall.centreline.end)]
+        owners = hosts or [wall for wall in walls if start in (wall.centreline.start, wall.centreline.end)] or near
         if not owners or span == 0:
             continue
         thickness = max(host.thickness_mm for host in owners)
