@@ -24,7 +24,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, JsonValue
 
 from apps.api.core.wire import WireDatetime, WireModel
-from packages.domain.spatial import Axis, Dimension, SpatialLayer
+from packages.domain.spatial import Axis, Dimension, SpatialLayer, clear_area_m2
 from packages.domain.spatial.model import FurnitureVariant, RoomFinish
 
 Millimetres = int
@@ -129,6 +129,8 @@ class RoomOut(_ReviewedOut):
     ]
     outline: Annotated[list[PointOut], Field(min_length=3)]
     area_m2: SquareMetres
+    clear_area_m2: SquareMetres | None = None
+    """Thông thủy (BENCH3D-09): đường bao lùi nửa bề dày tường; vắng khi không tính được (FE dùng `areaM2`)."""
     wall_ids: list[str]
     finish: RoomFinish | None = None
     floor_material: str | None = None
@@ -273,8 +275,15 @@ class SpatialGraphDocumentOut(WireModel):
 
 ReadinessState = Literal["ready", "needsReview", "notEvaluated"]
 ReadinessReason = Literal[
-    "scaleUnresolved", "criticalIssues", "fallbackWallModel", "fallbackObjectModel", "fallbackTextModel"
+    "scaleUnresolved",
+    "criticalIssues",
+    "fallbackWallModel",
+    "fallbackObjectModel",
+    "fallbackTextModel",
+    "geometrySuspect",
 ]
+ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "default", "human"]
+"""Tỉ lệ đến từ đâu (BENCH3D-09): sáu gốc của pipeline (`layer.json` `scaleBasis`) cộng `human` (người hiệu chỉnh)."""
 
 
 class ReadinessOut(WireModel):
@@ -282,6 +291,9 @@ class ReadinessOut(WireModel):
 
     state: ReadinessState
     reasons: tuple[ReadinessReason, ...]
+    checks: tuple[str, ...] | None = None
+    """Mã kiểm hình học critical của lượt mới nhất (BENCH3D-09), chỉ có khi có `geometrySuspect`; FE gặp mã lạ
+    thì hiện câu chung, nên không khai `Literal`."""
 
 
 class FloorLayerDocumentOut(WireModel):
@@ -293,6 +305,8 @@ class FloorLayerDocumentOut(WireModel):
     revision: Annotated[int, Field(ge=0)]
     level: LevelOut
     scale_status: Literal["unresolved"] | None = None
+    scale_basis: ScaleBasis | None = None
+    """Gốc của tỉ lệ đang dùng (BENCH3D-09); vắng khi chưa có tỉ lệ hay lượt cũ không ghi gốc."""
     source_dpi: Annotated[float, Field(gt=0)] | None = None
     """DPI của trang pipeline đã dựng (PDF biết khổ giấy), `null` với ảnh raster; FE đổi `1:N` → mm/px (U01)."""
     scale_source: Literal["pipeline", "project_default"] | None = None
@@ -309,8 +323,16 @@ class FloorLayerDocumentOut(WireModel):
 
 
 def layer_out(layer: SpatialLayer) -> SpatialLayerOut:
-    """Lớp miền → lớp dây, đi qua `model_validate` để lệch trường nào là đỏ ngay chỗ này."""
-    return SpatialLayerOut.model_validate(layer.model_dump(mode="json", by_alias=True, exclude_none=True))
+    """Lớp miền → lớp dây, đi qua `model_validate` để lệch trường nào là đỏ ngay chỗ này.
+
+    `clearAreaM2` (BENCH3D-09) chỉ có ở phía đọc: miền không lưu, tính ở đây từ đường bao và tường hiện tại,
+    nên N15, N16, phản hồi PUT #35 và phiên bản đều mang nó; thân PUT không được gửi nó (`Room` cấm khoá lạ).
+    """
+    data = layer.model_dump(mode="json", by_alias=True, exclude_none=True)
+    for room, wire_room in zip(layer.rooms, data["rooms"], strict=True):
+        if (clear := clear_area_m2(room.outline, layer.walls)) is not None:
+            wire_room["clearAreaM2"] = float(clear)
+    return SpatialLayerOut.model_validate(data)
 
 
 def dimensions_out(dimensions: Sequence[Dimension]) -> list[DimensionOut]:

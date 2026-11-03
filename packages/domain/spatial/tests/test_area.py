@@ -6,6 +6,8 @@ import pytest
 
 from packages.domain.spatial import (
     Point,
+    Wall,
+    clear_area_m2,
     js_round,
     polygon_area_m2,
     sample_building,
@@ -139,3 +141,110 @@ def test_js_round_refuses_non_finite(value: float) -> None:
     """Không làm tròn được số không hữu hạn."""
     with pytest.raises(ValueError, match="không hữu hạn"):
         js_round(value)
+
+
+_WALL = sample_building().walls[0]
+
+
+def wall(x0: int, y0: int, x1: int, y1: int, thickness: int) -> Wall:
+    """Tường mẫu dời về đường tim `(x0, y0) → (x1, y1)`, bề dày `thickness` mm."""
+    centreline = {"start": {"x": x0, "y": y0}, "end": {"x": x1, "y": y1}}
+    return Wall.model_validate(
+        _WALL.model_dump(by_alias=True, exclude_none=True) | {"centreline": centreline, "thicknessMm": thickness}
+    )
+
+
+ROOM = rectangle(4000, 3000)
+BOX = (
+    wall(0, 0, 4000, 0, 200),  # đáy
+    wall(0, 3000, 0, 0, 200),  # trái, ngược chiều cạnh vẫn nhận
+    wall(4000, 3000, 0, 3000, 100),  # đỉnh
+    wall(4000, 0, 4000, 3000, 100),  # phải
+)
+
+
+def test_clear_area_offsets_each_edge_by_its_wall() -> None:
+    """BENCH3D-09: 4 x 3 m, tường 200/200/100/100 → (4000-150) x (3000-150) = 10,9725 m² → 10,97; chiều bao tuỳ ý."""
+    assert clear_area_m2(ROOM, BOX) == Decimal("10.97")
+    assert clear_area_m2(tuple(reversed(ROOM)), BOX) == Decimal("10.97")
+    assert polygon_area_m2(ROOM) == Decimal("12.00")
+
+
+def test_clear_area_falls_back_to_floor_median() -> None:
+    """Cạnh phải không có tường (chỉ tường xa, tường chéo, tường lệch ngoài cạnh) → nửa trung vị tầng."""
+    others = (
+        wall(4000 + 1000, 0, 4000 + 1000, 3000, 100),  # song song nhưng cách 1 m
+        wall(4000, 0, 3000, 3000, 100),  # chéo
+        wall(4000, 3500, 4000, 5000, 100),  # thẳng hàng nhưng ngoài cạnh
+    )
+    walls = (*BOX[:3], *others)
+    # Trung vị bề dày [200, 200, 100, 100, 100, 100] = 100 → cạnh phải lùi 50: như có tường 100.
+    assert clear_area_m2(ROOM, walls) == Decimal("10.97")
+    # Không tường nào ở tầng → không lùi.
+    assert clear_area_m2(ROOM, ()) == Decimal("12.00")
+
+
+def test_clear_area_picks_longest_overlap_and_handles_collinear_vertices() -> None:
+    """Mẩu tường ngắn dày hơn trên cùng cạnh thua tường dài; đỉnh thẳng hàng và đỉnh lặp không đổi kết quả."""
+    stub = wall(100, 0, 600, 0, 400)
+    assert clear_area_m2(ROOM, (BOX[0], stub, *BOX[1:])) == Decimal("10.97")
+    with_midpoints = outline((0, 0), (2000, 0), (2000, 0), (4000, 0), (4000, 3000), (0, 3000))
+    assert clear_area_m2(with_midpoints, BOX) == Decimal("10.97")
+
+
+def test_clear_area_degenerate_and_collapsed_rooms() -> None:
+    """Đường bao diện tích 0 → 0; phòng hẹp hơn bề dày tường (mọi cạnh lật) → `None` (FE dùng `areaM2`), không 0."""
+    assert clear_area_m2(outline((0, 0), (100, 0), (200, 0)), BOX) == Decimal("0.00")
+    tiny = rectangle(100, 100)
+    thick = (wall(0, 0, 100, 0, 400), wall(100, 0, 100, 100, 400), wall(100, 100, 0, 100, 400), wall(0, 100, 0, 0, 400))
+    assert clear_area_m2(tiny, thick) is None
+    # Tam giác nhỏ hơn phần lùi → `None`.
+    assert clear_area_m2(outline((0, 0), (300, 0), (0, 300)), thick) is None
+
+
+def test_clear_area_split_edge_loggia() -> None:
+    """Lô gia ch-08 (bench r3): cạnh trái chẻ 150 mm thẳng hàng cạnh tường 220, cạnh chéo; trước đây ra 0.
+
+    Gộp đỉnh thẳng hàng → một cạnh, một bề dày (220): 5,65 m² tim tường → 4,80 m² thông thủy.
+    """
+    loggia = outline((6976, 1762), (6976, 1912), (6976, 5472), (7126, 5472), (8896, 5472), (8896, 3300))
+    walls = (wall(6976, 1912, 6976, 5472, 220), wall(6976, 5472, 8896, 5472, 100))
+    assert polygon_area_m2(loggia) == Decimal("5.65")
+    assert clear_area_m2(loggia, walls) == Decimal("4.80")
+
+
+def test_clear_area_centreline_step_shorter_than_thickness_difference() -> None:
+    """Tim tường bậc 50 mm giữa tường 220 và 100 (mặt trong lệch 10 mm): cạnh bậc lật nhưng hai cạnh kề song song.
+
+    Giữ bậc: (1950-50) x (2950-110) + (3950-1950) x (2950-100) = 11,096 m²; trước đây ra 0.
+    """
+    stepped = outline((0, 0), (2000, 0), (2000, 50), (4000, 50), (4000, 3000), (0, 3000))
+    walls = (
+        wall(0, 0, 2000, 0, 220),
+        wall(2000, 50, 4000, 50, 100),
+        wall(4000, 50, 4000, 3000, 100),
+        wall(4000, 3000, 0, 3000, 100),
+        wall(0, 3000, 0, 0, 100),
+    )
+    assert polygon_area_m2(stepped) == Decimal("11.90")
+    assert clear_area_m2(stepped, walls) == Decimal("11.10")
+
+
+def test_clear_area_l_shaped_room() -> None:
+    """Phòng chữ L, tường 200 mọi cạnh: góc lõm lùi đúng → 3800 x 1800 + 1800 x 2000 = 10,44 m²."""
+    l_shape = outline((0, 0), (4000, 0), (4000, 2000), (2000, 2000), (2000, 4000), (0, 4000))
+    walls = tuple(wall(a.x, a.y, b.x, b.y, 200) for a, b in zip(l_shape, (*l_shape[1:], l_shape[0]), strict=True))
+    assert clear_area_m2(l_shape, walls) == Decimal("10.44")
+    assert clear_area_m2(tuple(reversed(l_shape)), walls) == Decimal("10.44")
+
+
+def test_clear_area_drops_a_collapsed_chamfer() -> None:
+    """Vát góc 100 mm giữa hai tường 200: cạnh vát lùi xong lật → bỏ, hai cạnh kề giao lại như góc vuông."""
+    chamfered = outline((0, 0), (3900, 0), (4000, 100), (4000, 3000), (0, 3000))
+    walls = (
+        wall(0, 0, 3900, 0, 200),
+        wall(4000, 100, 4000, 3000, 200),
+        wall(4000, 3000, 0, 3000, 200),
+        wall(0, 3000, 0, 0, 200),
+    )
+    assert clear_area_m2(chamfered, walls) == Decimal("10.64")

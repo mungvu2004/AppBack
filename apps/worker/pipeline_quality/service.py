@@ -27,9 +27,11 @@ from apps.api.drawings.runs import lock_run, publish_progress_after_commit, reco
 from apps.api.project_settings.read import read_settings
 from apps.api.spatial_read.codec import DocumentCorruptError
 from apps.api.spatial_read.documents import FloorDocument, load_document
+from apps.worker.pipeline_build.build import BuiltLayer
 from apps.worker.pipeline_orchestrate.pins import load_pins, record_quality_summary
 from apps.worker.pipeline_persist.context import PersistContext, load_context
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
+from apps.worker.pipeline_persist.service import read_built
 from apps.worker.pipeline_quality.report import (
     QUALITY_ARTIFACT,
     QUALITY_REPORT_MAX_BYTES,
@@ -142,17 +144,36 @@ def _critical_count(report: RunQualityReport) -> int:
     )
 
 
-def _summary(report: RunQualityReport) -> dict[str, object]:
+def _summary(report: RunQualityReport, built: BuiltLayer | None) -> dict[str, object]:
     """Tóm tắt lưu cột `quality_summary` (FIX-P0-09): đủ để tính readiness mà không cần `quality.json`.
 
     `criticalCount` đếm cả lỗi toàn vẹn lẫn kiểm hình học `critical` (BENCH3D-01): `hasCritical` true thì nó ≥ 1.
+    BENCH3D-09: `criticalChecks` (mã kiểm hình học critical), `scaleBasis` và `scaleChecks` (khoá nghi vấn tỉ lệ)
+    của `layer.json` cho `readiness.checks`, `scaleBasis` của N16; `layer.json` không đọc được → vắng hai khoá tỉ lệ.
     """
-    return {
+    summary: dict[str, object] = {
         "hasCritical": report.has_critical,
         "criticalCount": _critical_count(report),
         "lowConfidence": dict(report.low_confidence),
         "checks": [check.code for check in report.checks],
+        "criticalChecks": [check.code for check in report.checks if check.critical],
     }
+    if built is not None and built.scale_basis is not None:
+        summary["scaleBasis"] = built.scale_basis
+        summary["scaleChecks"] = sorted(built.scale_checks)
+    return summary
+
+
+async def _built_or_none(storage: ObjectStorage, ctx: PersistContext) -> BuiltLayer | None:
+    """`layer.json` của lượt (đã qua persist nên thường còn); vắng hay hỏng → `None` + log, không làm hỏng bước quality.
+
+    Mất tệp thì N16 mất `scaleBasis` và `scaleUnresolved` quay lại: log `quality_layer_unreadable` để còn dấu vết.
+    """
+    try:
+        return await read_built(storage, ctx)
+    except PermanentError as exc:
+        _log.warning("quality_layer_unreadable", extra={"run_id": ctx.run_id, "code": exc.code})
+        return None
 
 
 async def _enqueue_design_concept(
@@ -189,6 +210,7 @@ async def run_quality(
     report = build_report(
         run_id=payload.run_id, revision=revision, layer=document.layer, level_id=ctx.level_id, threshold=threshold
     )
+    built = await _built_or_none(storage, ctx)
     key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, payload.run_id, STEP, QUALITY_ARTIFACT)
     await storage.put(key, report.to_json_bytes(), content_type="application/json", max_bytes=QUALITY_REPORT_MAX_BYTES)
 
@@ -199,7 +221,7 @@ async def run_quality(
         else:
             # Ghi trước `record_step` trong cùng giao dịch: lượt `completed` luôn có tóm tắt. Giao
             # lặp gặp cột đã có nên `record_quality_summary` trả `False` — ghi đúng một lần.
-            await record_quality_summary(db, run_id=payload.run_id, summary=_summary(report))
+            await record_quality_summary(db, run_id=payload.run_id, summary=_summary(report, built))
             step_result = await record_step(db, run_id=payload.run_id, step=STEP, status="completed", clock=clock)
             completed = step_result is not None
             # `record_step` trả `None` sau khi đã tự `_abandon(FLOOR_DELETED)` khi tầng quá cửa sổ:

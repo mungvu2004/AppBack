@@ -28,6 +28,7 @@ from apps.api.spatial_write.tests._route_helpers import (
     write_body,
 )
 from packages.db.models.floors import FloorRow
+from packages.domain.spatial import clear_area_m2
 from packages.domain.spatial.samples import PASCAL_FIELDS, with_pascal_fields
 from packages.testing.factories.auth import make_user
 from packages.testing.factories.spatial import sample_floor_layer
@@ -86,6 +87,29 @@ async def test_spatial_write_layer__C01(api_client: httpx.AsyncClient, db_sessio
     assert read.status_code == 200
     assert read.json()["revision"] == 1
     assert read.json()["layer"] == body["layer"]
+
+
+async def test_spatial_write_layer__C01_clear_area(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
+    """BENCH3D-09: `clearAreaM2` chỉ ở phía đọc — PUT không mang nó → 200 và phản hồi tính lại cho mọi phòng
+    (FE thay kho bằng phản hồi); PUT mang nó → 422, vì `Room` vào là `extra="forbid"` (FE bỏ trường trước khi gửi).
+    """
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    layer = sample_floor_layer(0, level_id=floor.level_id)
+
+    response = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, write_body(0, layer=layer))
+
+    assert response.status_code == 200
+    rooms = response.json()["layer"]["rooms"]
+    assert rooms
+    for room, source in zip(rooms, layer.rooms, strict=True):
+        assert room["clearAreaM2"] == float(clear_area_m2(source.outline, layer.walls) or -1)
+        assert room["clearAreaM2"] <= room["areaM2"]
+
+    echoed = write_body(1, layer=layer)
+    echoed["body"]["layer"]["rooms"][0]["clearAreaM2"] = rooms[0]["clearAreaM2"]
+    rejected = await put_layer(api_client, scene.project.id, floor.level_id, scene.owner, echoed)
+    assert rejected.status_code == 422
 
 
 async def test_spatial_write_layer__C01_pascal_fields(api_client: httpx.AsyncClient, db_session: AsyncSession) -> None:
