@@ -257,10 +257,10 @@ def test_build_layer__rejects_degenerate_wall(overrides: dict[str, Any], match: 
         )
 
 
-def _chain_text(value: str, cx: float, span_px: float) -> TextPx:
+def _chain_text(value: str, cx: float, span_px: float, y: float = 1100) -> TextPx:
     """Chữ kích thước ngoài căn (xa mọi tường) mà bước đọc chữ đã đo `span_px`."""
     return TextPx(
-        text=value, box=BoxPx(x_min=cx - 15, y_min=1100, x_max=cx + 15, y_max=1114), confidence=0.9, span_px=span_px
+        text=value, box=BoxPx(x_min=cx - 15, y_min=y, x_max=cx + 15, y_max=y + 14), confidence=0.9, span_px=span_px
     )
 
 
@@ -342,18 +342,19 @@ def test_build_layer__scale_note_without_walls(fake_clock: FakeClock) -> None:
     assert (built.scale_source, built.scale_mm_per_px) == ("pipeline", Decimal("20.000000"))
 
 
-def _vertical_chain_text(value: str, cy: float, span_px: float) -> TextPx:
+def _vertical_chain_text(value: str, cy: float, span_px: float, x: float = 20) -> TextPx:
     """Chữ kích thước dọc (hộp cao hơn 1,3 lần rộng) ở mép trái, xa mọi tường."""
     return TextPx(
-        text=value, box=BoxPx(x_min=20, y_min=cy - 15, x_max=34, y_max=cy + 15), confidence=0.9, span_px=span_px
+        text=value, box=BoxPx(x_min=x, y_min=cy - 15, x_max=x + 14, y_max=cy + 15), confidence=0.9, span_px=span_px
     )
 
 
 def test_build_layer__axes_13_percent_apart_use_geometric_mean(fake_clock: FakeClock) -> None:
-    """Chữ ngang 20 mm/px, chữ dọc 22,6 mm/px (lệch 13 %) → `scaleChecks.anisotropic` và tỉ lệ √(20 · 22,6)."""
-    across = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _chain_text("4000", 800, 200)]
+    """ch-13: chuỗi ngang trên-dưới 20 mm/px, chuỗi dọc trái-phải 22,6 mm/px (lệch 13 %) bao cùng một căn →
+    `scaleChecks.anisotropic` và tỉ lệ √(20 · 22,6)."""
+    across = [_chain_text("3000", 200, 150, 40), _chain_text("2000", 500, 100, 40), _chain_text("4000", 800, 200)]
     across.append(_chain_text("2500", 1000, 125))  # trục ngang đông hơn: cụm chung vẫn là 20 mm/px
-    down = [_vertical_chain_text("2260", 300, 100), _vertical_chain_text("4520", 500, 200)]
+    down = [_vertical_chain_text("2260", 300, 100), _vertical_chain_text("4520", 500, 200, 1500)]
     down.append(_vertical_chain_text("3390", 800, 150))
     built = _run([_wall(100, 100, 1100, 100)], [*across, *down], fake_clock)
     alone = _run([_wall(100, 100, 1100, 100)], across, fake_clock)
@@ -376,6 +377,16 @@ def test_build_layer__door_and_wall_estimates_combine_or_are_recorded(fake_clock
     built = _run(walls, (), fake_clock, detections=doors, fallback="1")
     expected = Decimal(repr(math.sqrt(14.9 * 150 / 10.5))).quantize(Decimal("0.000001"))
     assert (built.scale_mm_per_px, built.scale_basis, built.scale_checks) == (expected, "door", {})
+
+
+def test_build_layer__detail_at_other_scale_keeps_main_plan_scale(fake_clock: FakeClock) -> None:
+    """Mặt bằng 1:100 (6 chữ ngang 10 mm/px, hai phía) + chi tiết 1:50 bên phải (3 chữ dọc 5 mm/px): hai cụm trục
+    không bao cùng một căn → giữ 10 mm/px, chỉ ghi `scaleChecks.anisotropic`."""
+    across = [_chain_text(str(1000 * k), 200 * k, 100 * k, y) for k in (1, 2, 3) for y in (40, 1100)]
+    detail = [_vertical_chain_text(str(500 * k), 300 + 60 * k, 100 * k, 1500) for k in (1, 2, 3)]
+    built = _run([_wall(100, 100, 1100, 100)], [*across, *detail], fake_clock)
+    assert (built.scale_mm_per_px, built.scale_basis) == (Decimal("10.000000"), "chain")
+    assert built.scale_checks == {"anisotropic": {"x": 10.0, "y": 5.0}}
 
 
 @pytest.mark.parametrize(
