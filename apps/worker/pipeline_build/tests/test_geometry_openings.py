@@ -6,6 +6,7 @@ ra mong đợi; tường đặt ở `y = 1000` để mọi toạ độ không â
 
 import math
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,7 +20,7 @@ from apps.worker.pipeline_build.residual import PageRaster
 from apps.worker.pipeline_build.rooms import build_rooms
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
 from apps.worker.pipeline_build.tests.test_geometry_walls import wall_px
-from packages.domain.spatial import Point
+from packages.domain.spatial import Point, Segment
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
 from packages.ml_contracts.labels import DetectionLabel
 from packages.testing.fixtures.clock import FakeClock
@@ -960,3 +961,50 @@ def test_close_envelope_gaps__door_leaf_read_from_page(fake_clock: FakeClock) ->
     assert (opening.width_mm, opening.confidence) == (900, 0.5)
     assert opening.swing in ("left", "right")
     assert opening.id in result.leaves
+
+
+def test_close_envelope_gaps__fanned_bridge_along_wall_skipped(fake_clock: FakeClock) -> None:
+    """W4: tường trái đứt thành hai mảnh → đoạn nối xoè từ mảnh xa chạy dọc mảnh gần; chỉ khe thật thành tường cửa."""
+    shared: dict[str, Any] = {
+        "level_id": new_spatial_id("level", fake_clock),
+        "scaling": Scaling(1.0, 1.0),
+        "clock": fake_clock,
+    }
+    wall_set = build_walls(_box_with_top_gap(2000, 2900), [], dropped=Counter(), **shared)
+    rooms = build_rooms(wall_set.walls, wall_set.bridges, (), dropped=Counter(), **shared)
+    left = next(i for i, w in enumerate(wall_set.walls) if w.centreline.end == Point(x=2000, y=0))
+    right = next(i for i, w in enumerate(wall_set.walls) if w.centreline.start == Point(x=2900, y=0))
+    walls = list(wall_set.walls)
+    far, near = Point(x=1000, y=0), Point(x=2900, y=20)
+    walls[left] = walls[left].model_copy(update={"centreline": Segment(start=Point(x=0, y=0), end=far)})
+    walls[right] = walls[right].model_copy(update={"centreline": Segment(start=near, end=Point(x=6000, y=0))})
+    piece = walls[left].model_copy(update={"id": new_spatial_id("wall", fake_clock)})
+    walls.append(piece.model_copy(update={"centreline": Segment(start=far, end=Point(x=2000, y=0))}))
+    fanned = replace(wall_set, walls=tuple(walls), bridges=((far, near), (Point(x=2000, y=0), near)))
+    result = close_envelope_gaps(fanned, rooms, **shared)
+    (opening,) = result.openings
+    gap = result.walls[-1]
+    assert (gap.centreline.start, gap.centreline.end) == (Point(x=2000, y=0), near)
+    assert gap.opening_ids == (opening.id,)
+    assert len(result.walls) == len(walls) + 1
+
+
+def test_close_envelope_gaps__extended_host_not_reread_from_input(fake_clock: FakeClock) -> None:
+    """Khe hẹp thứ hai chung đầu (2000, 0) với khe đã khép: tường chủ đọc từ danh sách đang sửa, không kéo lùi tường."""
+    shared: dict[str, Any] = {
+        "level_id": new_spatial_id("level", fake_clock),
+        "scaling": Scaling(1.0, 1.0),
+        "clock": fake_clock,
+    }
+    wall_set = build_walls(_box_with_top_gap(2000, 2400), [], dropped=Counter(), **shared)
+    rooms = build_rooms(wall_set.walls, wall_set.bridges, (), dropped=Counter(), **shared)
+    left = next(i for i, w in enumerate(wall_set.walls) if w.centreline.end == Point(x=2000, y=0))
+    tip, far = Point(x=2495, y=-70), Point(x=3485, y=-209)
+    slanted = wall_set.walls[left].model_copy(
+        update={"id": new_spatial_id("wall", fake_clock), "centreline": Segment(start=tip, end=far)}
+    )
+    gap = (Point(x=2000, y=0), Point(x=2400, y=0))
+    fanned = replace(wall_set, walls=(*wall_set.walls, slanted), bridges=(gap, (Point(x=2000, y=0), tip)))
+    result = close_envelope_gaps(fanned, rooms, **shared)
+    assert result.walls[left].centreline.end == Point(x=2400, y=0)
+    assert result.walls[-1].centreline == Segment(start=Point(x=2000, y=0), end=far)
