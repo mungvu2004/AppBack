@@ -436,7 +436,7 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
             stray_out = all(_on_extension(segs[i], main_segs) for i in groups[index])
         if far_small or stray_out:
             drop.update(groups[index])
-    labels = region_labels(boxes)
+    labels = region_labels(boxes, lengths)
     for label in set(labels) - {labels[main]}:
         indices = [i for group, own in zip(groups, labels, strict=True) if own == label for i in group if i not in drop]
         if indices and axis_share(_region_vectors(segs, indices)) < _FAR_REGION_AXIS_SHARE:
@@ -829,8 +829,9 @@ def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tu
 def _region_labels(segs: Sequence[_Seg], geoms: Geoms) -> list[int]:
     """Số vùng (`region_labels`) của từng tường, tính trên tường **trước** nối khe."""
     groups = wall_clusters(geoms, [seg.measured_mm for seg in segs])
+    lengths = [sum(_length(segs[i]) for i in group) for group in groups]
     labels = [0] * len(segs)
-    for group, label in zip(groups, region_labels([_bbox(segs, group) for group in groups]), strict=True):
+    for group, label in zip(groups, region_labels([_bbox(segs, group) for group in groups], lengths), strict=True):
         for i in group:
             labels[i] = label
     return labels

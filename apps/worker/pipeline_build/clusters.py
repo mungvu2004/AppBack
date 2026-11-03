@@ -82,40 +82,36 @@ def grow_region(boxes: Sequence[Box], candidates: Collection[int], seed: int) ->
     return region, far
 
 
-def region_labels(boxes: Sequence[Box]) -> list[int]:
-    """Số vùng của từng hộp: gộp các hộp cách nhau ≤ `FAR_CLUSTER_GAP_MM`, thay bằng hộp bao của nhóm, lặp tới khi
-    không nhóm nào còn sát nhau. Mỗi vùng của `grow_region` nằm trọn trong một vùng ở đây (hộp nuốt vào luôn cách
-    hộp đang lớn ≤ khe); khác chuỗi `grow_region` ở chỗ hai vùng lớn dần tới sát nhau thì gộp (không phụ thuộc thứ tự).
+def region_labels(boxes: Sequence[Box], lengths: Sequence[float]) -> list[int]:
+    """Số vùng của từng hộp, đúng chuỗi vùng của `_multiple_plans`: `grow_region` từ cụm dài nhất còn lại (hoà lấy chỉ
+    số nhỏ), lặp lại trên các cụm chưa thuộc vùng nào. Vùng 0 là vùng chính.
 
-    Mỗi vòng một truy vấn `dwithin` trên `STRtree` — tờ 5 000 cụm tách rời không thành O(n²) như chuỗi `grow_region`.
+    Mỗi bước lớn dần nuốt cùng lúc mọi hộp chưa gán cách hộp vùng ≤ `FAR_CLUSTER_GAP_MM` (cùng điểm dừng với
+    `grow_region` nuốt từng hộp), tra bằng một truy vấn `dwithin` trên `STRtree`: tờ 5 000 cụm tách rời không thành
+    O(n²) như vòng `grow_region`, và không giữ mảng mọi cặp hộp chồng nhau.
     """
-    labels = list(range(len(boxes)))
-    current: list[Box] = list(boxes)
-    while len(current) > 1:
-        coords = np.asarray(current, dtype=float)
-        diagonals = shapely.linestrings(np.stack([coords[:, :2], coords[:, 2:]], axis=1))
-        geoms = np.asarray(shapely.envelope(diagonals), dtype=object)
-        sources, targets = STRtree(geoms).query(geoms, predicate="dwithin", distance=float(FAR_CLUSTER_GAP_MM))
-        parent = list(range(len(current)))
-
-        def root(item: int, parent: list[int] = parent) -> int:
-            while parent[item] != item:
-                parent[item] = parent[parent[item]]
-                item = parent[item]
-            return item
-
-        for source, target in zip(sources.tolist(), targets.tolist(), strict=True):
-            parent[root(source)] = root(target)
-        roots = [root(item) for item in range(len(current))]
-        merged = {r: i for i, r in enumerate(dict.fromkeys(roots))}
-        if len(merged) == len(current):
-            break
-        grouped: dict[int, Box] = {}
-        for item, r in enumerate(roots):
-            box = current[item]
-            grouped[merged[r]] = box if merged[r] not in grouped else box_union(grouped[merged[r]], box)
-        labels = [merged[roots[label]] for label in labels]
-        current = [grouped[i] for i in range(len(merged))]
+    if not boxes:
+        return []
+    coords = np.asarray(boxes, dtype=float)
+    diagonals = shapely.linestrings(np.stack([coords[:, :2], coords[:, 2:]], axis=1))
+    tree = STRtree(np.asarray(shapely.envelope(diagonals), dtype=object))
+    labels = [-1] * len(boxes)
+    label = 0
+    for seed in sorted(range(len(boxes)), key=lambda index: (-lengths[index], index)):
+        if labels[seed] >= 0:
+            continue
+        labels[seed] = label
+        region = boxes[seed]
+        while True:
+            reach = shapely.envelope(shapely.LineString([region[:2], region[2:]]))
+            hits = tree.query(reach, predicate="dwithin", distance=float(FAR_CLUSTER_GAP_MM)).tolist()
+            fresh = [index for index in hits if labels[index] < 0]
+            if not fresh:
+                break
+            for index in fresh:
+                labels[index] = label
+                region = box_union(region, boxes[index])
+        label += 1
     return labels
 
 

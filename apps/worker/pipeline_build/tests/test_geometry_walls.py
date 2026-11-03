@@ -9,7 +9,7 @@ from collections import Counter
 import numpy as np
 import pytest
 
-from apps.worker.pipeline_build.clusters import axis_share
+from apps.worker.pipeline_build.clusters import axis_share, region_labels
 from apps.worker.pipeline_build.geometry import Scaling, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.ml_contracts.artifacts import PointPx, WallPx
@@ -289,3 +289,11 @@ def test_axis_share__mod_90_window(degrees: tuple[float, ...], share: float) -> 
     """Cửa sổ ±4° quanh hướng trội, góc mod 90: 89° và 2° cùng họ (vòng qua 0); bản xoay 30° thẳng trục với chính nó."""
     vectors = np.asarray([(math.cos(math.radians(a)), math.sin(math.radians(a))) for a in degrees])
     assert axis_share(vectors) == pytest.approx(share)
+
+
+def test_region_labels__same_chain_as_multiple_plans() -> None:
+    """Chuỗi `grow_region` từ cụm dài nhất: hộp 2 cách hộp 0 2 m (không nuốt) nhưng cách hộp 1 1,4 m → vùng của hộp 1;
+    hộp 0 và 1 cách 2 m vẫn là hai vùng (không gộp vì vùng sau lớn tới gần vùng trước)."""
+    boxes = [(0.0, 0.0, 6000.0, 5000.0), (8000.0, -1000.0, 14000.0, 5000.0), (3000.0, -4000.0, 7000.0, -2000.0)]
+    assert region_labels(boxes, [3.0, 2.0, 1.0]) == [0, 1, 1]
+    assert region_labels([*boxes, (6500.0, 0.0, 7500.0, 100.0)], [3.0, 2.0, 1.0, 1.0]) == [0, 0, 0, 0]
