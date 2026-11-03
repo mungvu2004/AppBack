@@ -590,8 +590,7 @@ def _envelope_outlines(
     """
     if not lines:
         return []
-    # Nới cả khung một lần: hợp các hình nới từng đường nhanh hơn ~2 s ở trần K18 nhưng lệch phòng trên bench-3d.
-    grown = shapely.buffer(shapely.union_all(list(bare)), _ENVELOPE_CLOSE_MM, cap_style="square", join_style="mitre")
+    grown = _grown(bare)
     # Lấp lỗ: các mảnh rời nhau nên vòng ngoài chỉ lồng nhau hoặc rời; bỏ vòng nằm trong vòng khác thay cho union, co
     # từng mảnh (co tập rời = hợp các phần co).
     shells: Geoms = np.asarray(shapely.polygons(shapely.get_exterior_ring(shapely.get_parts(grown))), dtype=object)
@@ -646,6 +645,35 @@ def _envelope_outlines(
                 edges = [e for e in getattr(exposed, "geoms", [exposed]) if e.length > ROOM_SNAP_MM]
             found.append((outline, loggia, edges))
     return found
+
+
+def _grown(bare: Sequence[shapely.LineString]) -> BaseGeometry:
+    """`bare` nới `_ENVELOPE_CLOSE_MM` (đầu vuông, góc vát): một lần nới cho mỗi cụm đường có hình nới chạm nhau.
+
+    Cụm rời nhau cho hình nới rời nhau, nên kết quả như nới cả khung một lần (hợp hình nới từng đường thì lệch phòng
+    trên bench-3d) mà không nút cả 20 000 tường một lượt (trần K18).
+    """
+    pieces: Geoms = np.asarray(shapely.get_parts(shapely.union_all(list(bare))), dtype=object)
+    reach = shapely.buffer(pieces, _ENVELOPE_CLOSE_MM, cap_style="square", join_style="mitre")
+    left, right = shapely.STRtree(reach).query(reach, predicate="intersects")
+    cluster = np.arange(len(pieces))
+    while True:  # nhãn cụm = chỉ số nhỏ nhất trong thành phần liên thông (lan nhãn + nhảy con trỏ)
+        lowered = cluster.copy()
+        np.minimum.at(lowered, left, cluster[right])
+        lowered = lowered[lowered]
+        if np.array_equal(lowered, cluster):
+            break
+        cluster = lowered
+    order = np.argsort(cluster, kind="stable")
+    groups = np.split(order, np.flatnonzero(np.diff(cluster[order])) + 1)
+    grown = [
+        shapely.buffer(
+            shapely.MultiLineString(list(pieces[group])), _ENVELOPE_CLOSE_MM, cap_style="square", join_style="mitre"
+        )
+        for group in groups
+        if group.size
+    ]
+    return shapely.GeometryCollection(grown)
 
 
 def _band(geoms: Sequence[BaseGeometry], tree: shapely.STRtree, around: BaseGeometry) -> BaseGeometry:
@@ -787,8 +815,8 @@ def _facade_lengths(lines: Sequence[shapely.LineString], outlines: Sequence[Sequ
     return [float(shapely.LinearRing([(p.x, p.y) for p in o]).intersection(rim).length) for o in outlines]
 
 
-def _exposed_lengths(outlines: Sequence[Sequence[Point]]) -> list[float]:
-    """Độ dài (mm) biên mỗi `outline` không giáp phòng khác (xa biên phòng khác > 2·`ROOM_SNAP_MM`).
+def _exposed_lengths(outlines: Sequence[Sequence[Point]], wanted: Sequence[bool]) -> list[float]:
+    """Độ dài (mm) biên mỗi `outline` `wanted` không giáp phòng khác (xa biên phòng khác > 2·`ROOM_SNAP_MM`), còn lại 0.
 
     Phòng kề tra bằng `STRtree` (K18: không O(n²)).
     """
@@ -796,6 +824,9 @@ def _exposed_lengths(outlines: Sequence[Sequence[Point]]) -> list[float]:
     tree = shapely.STRtree(polygons)
     exposed: list[float] = []
     for i, polygon in enumerate(polygons):
+        if not wanted[i]:
+            exposed.append(0.0)
+            continue
         near = [polygons[int(j)] for j in tree.query(polygon, predicate="dwithin", distance=2 * ROOM_SNAP_MM) if j != i]
         ring = polygon.exterior
         free = ring.difference(shapely.union_all(near).buffer(2 * ROOM_SNAP_MM)) if near else ring
@@ -1126,18 +1157,25 @@ def build_rooms(
     from_porch = [loggia if tuple(outline) in porch_keys else None for outline in outlines]
     labelled_level = any(from_text)
     read_level = labelled_level or any(from_fixtures)
+    # Lô gia đọc từ đồ đạc/nhãn: cỡ lô gia, không đồ "không lô gia", nông; độ dài hở chỉ đo cho phòng này còn thiếu
+    # mặt ngoài (không đo cho cả 10 000 phòng ở trần K18).
+    shallow = [
+        read_level
+        and _FACADE_LOGGIA_M2[0] <= area_m2 <= _FACADE_LOGGIA_M2[1]
+        and not found & _NOT_LOGGIA
+        and _depth_mm(outline) <= _LOGGIA_DEPTH_MM
+        for outline, area_m2, found in zip(outlines, areas, found_in, strict=True)
+    ]
+    exposed = _exposed_lengths(
+        outlines, [ok and facade_mm < _FACADE_MM for ok, facade_mm in zip(shallow, facades, strict=True)]
+    )
     from_facade = [
         loggia
         if _FACADE_LOGGIA_M2[0] <= area_m2 <= _FACADE_LOGGIA_M2[1]
         and not found & _NOT_LOGGIA
-        and (
-            (labelled_level and facade_mm >= _FACADE_MM)
-            or (read_level and max(facade_mm, exposed_mm) >= _FACADE_MM and _depth_mm(outline) <= _LOGGIA_DEPTH_MM)
-        )
+        and ((labelled_level and facade_mm >= _FACADE_MM) or (ok and max(facade_mm, exposed_mm) >= _FACADE_MM))
         else None
-        for outline, area_m2, facade_mm, exposed_mm, found in zip(
-            outlines, areas, facades, _exposed_lengths(outlines), found_in, strict=True
-        )
+        for area_m2, facade_mm, exposed_mm, found, ok in zip(areas, facades, exposed, found_in, shallow, strict=True)
     ]
     shaft = RoomLabel("utility", "hộp kỹ thuật")
     doored = _door_flags(outlines, detections, scaling)
