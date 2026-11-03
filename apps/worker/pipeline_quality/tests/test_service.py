@@ -394,6 +394,7 @@ async def test_run_quality_records_summary_clean(
 
     BENCH3D-01: lớp mẫu là các mẩu tường rời, phòng không được vỏ bao → kiểm hình học `critical`
     bật `hasCritical` dù toàn vẹn sạch; `criticalCount` đếm chúng, tóm tắt liệt kê mã kiểm như `quality.json`.
+    BENCH3D-08: 48 tường mẫu nối đuôi dài 48 m, quá `PLAN_MAX_SPAN_MM` → thêm `MULTIPLE_PLANS`.
     """
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
 
@@ -407,7 +408,7 @@ async def test_run_quality_records_summary_clean(
         "hasCritical": True,
         "criticalCount": sum(1 for check in cast("list[dict[str, object]]", artifact["checks"]) if check["critical"]),
         "lowConfidence": artifact["lowConfidence"],
-        "checks": ["OPEN_ENVELOPE", "ROOMS_WITHOUT_DOOR"],
+        "checks": ["OPEN_ENVELOPE", "MULTIPLE_PLANS", "ROOMS_WITHOUT_DOOR"],
         "criticalChecks": [
             check["code"] for check in cast("list[dict[str, object]]", artifact["checks"]) if check["critical"]
         ],
