@@ -231,17 +231,28 @@ def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
 
 def _area_text_mismatch(layer: SpatialLayer, area_notes: Sequence[float]) -> GeometryCheck | None:
     """Tổng diện tích phòng lệch mọi số "N m²" ghi trên bản vẽ quá `AREA_TEXT_TOLERANCE` → chặn (kiểm lại tỉ lệ hay
-    phòng thiếu). `ratio` = Σ tim tường / số ghi gần nhất (theo log)."""
-    if not layer.rooms or not area_notes:
+    phòng thiếu). `ratio` = Σ tim tường / số ghi gần nhất (theo log).
+
+    Tầng ≥ 2 phòng: số khớp diện tích **một** phòng (trong dung sai) là nhãn phòng lớn ("P.KHÁCH 35 m²"), không phải
+    diện tích căn → bỏ trước khi so. Biên làm tròn 0,01 m² như `areaM2` (số ghi đúng biên không bị báo vì sai số float).
+    """
+    rooms = [float(room.area_m2) for room in layer.rooms]
+    if len(rooms) >= 2:
+        area_notes = [note for note in area_notes if not any(_within(note, area, area) for area in rooms)]
+    gross = sum(rooms)
+    if not area_notes or gross <= 0:
         return None
-    gross = sum(float(room.area_m2) for room in layer.rooms)
     clear = sum(float(clear_area_m2(room.outline, layer.walls) or room.area_m2) for room in layer.rooms)
-    low, high = clear * (1 - AREA_TEXT_TOLERANCE), gross * (1 + AREA_TEXT_TOLERANCE)
-    if gross <= 0 or any(low <= note <= high for note in area_notes):
+    if any(_within(note, clear, gross) for note in area_notes):
         return None
     near = min(area_notes, key=lambda note: abs(math.log(gross / note)))
     detail = {"roomsM2": round(gross, 1), "textM2": near, "ratio": round(gross / near, 3)}
     return GeometryCheck("AREA_TEXT_MISMATCH", True, detail)
+
+
+def _within(note: float, low: float, high: float) -> bool:
+    """`note` nằm trong [low·(1 - dung sai); high·(1 + dung sai)], biên làm tròn 0,01 m²."""
+    return round(low * (1 - AREA_TEXT_TOLERANCE), 2) <= note <= round(high * (1 + AREA_TEXT_TOLERANCE), 2)
 
 
 def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:

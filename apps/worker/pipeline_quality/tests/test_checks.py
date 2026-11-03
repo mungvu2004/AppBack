@@ -344,3 +344,12 @@ def test_axis_share__best_pair_not_grid_or_greedy() -> None:
     greedy_trap = ((0, 16), (7, 24), (14, 24), (21, 16), (32, 5), (45, 5), (60, 5), (75, 5))
     assert axis_share(_fan(*greedy_trap)) == pytest.approx(0.8, abs=0.01)
     assert axis_share(_fan((89.9, 1), (0.1, 1))) == pytest.approx(1.0)  # 89,9° và 0,1° cùng một họ (vòng mod 90°)
+
+
+def test_area_text_mismatch__room_label_is_not_a_unit_total_and_bound_is_inclusive() -> None:
+    """Số khớp một phòng (nhãn phòng lớn) bị bỏ; số đúng biên trên (Σ·1,15) không bật vì sai số float."""
+    walls = _walls(*_box(0, 0, 10000, 5000), ((5000, 0), (5000, 5000)))
+    rooms = tuple(_room(i, 5000 * i, 0, 5000 * i + 5000, 5000, wall_ids=(walls[0].id,)) for i in range(2))
+    layer = _layer(walls, rooms, (_door(walls[0].id),))
+    codes = [[c.code for c in geometry_checks(layer, area_notes=notes)] for notes in ((26.0,), (57.5,), (70.0,))]
+    assert codes == [[], [], ["AREA_TEXT_MISMATCH"]]
