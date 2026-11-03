@@ -330,6 +330,23 @@ Mẩu vạch kích thước, la bàn cạnh căn (ch-13: 255 mm cách căn 880 m
 `FAR_CLUSTER_GAP_MM` nên vùng chính nuốt nó. Bench r3: không tường nào trong khung căn đáp án bị bỏ ở ngưỡng này;
 1500 mm bỏ 20 tường thật ở tờ nhiều căn."""
 
+_STRAY_SHELL_BAND_MM: Final = 1000.0
+"""Mẩu lạc cách hộp cụm dài nhất ≤ 1 m (trụ ban công, má cửa kính nhô) chỉ bị bỏ khi nằm trên đường gióng của một
+tường cụm chính (`_on_extension`, ch-13: vạch gióng ở chuỗi kích thước); xa hơn thì bỏ không cần chứng cứ thêm."""
+
+
+def _on_extension(seg: _Seg, main: Sequence[_Seg]) -> bool:
+    """Mẩu song song và thẳng hàng với một tường cụm chính (lệch tim ≤ nửa tổng bề dày): nét gióng kích thước."""
+    unit, mid = _unit(seg), ((seg.start.x + seg.end.x) / 2, (seg.start.y + seg.end.y) / 2)
+    for other in main:
+        ux, uy = _unit(other)
+        if abs(unit[0] * uy - unit[1] * ux) > _PARALLEL_SIN:
+            continue
+        offset = abs((mid[0] - other.start.x) * uy - (mid[1] - other.start.y) * ux)
+        if offset <= (seg.thickness_mm + other.thickness_mm) / 2:
+            return True
+    return False
+
 
 def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     """U57: bỏ cụm tường nhỏ nằm tách xa cụm chính (sơ đồ vị trí căn, logo ở góc brochure) và mẩu lạc sát căn.
@@ -338,7 +355,8 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     (tường bị khe cửa cắt rời, ban công, cột sát căn). Cụm còn lại bị bỏ khi tổng dài <
     `FAR_CLUSTER_LENGTH_SHARE` tổng tường và hộp bao < `FAR_CLUSTER_AREA_SHARE` hộp vùng chính.
     Cụm nào (kể cả trong vùng) ngắn hơn `_STRAY_CLUSTER_MM`/`_STRAY_CLUSTER_SHARE` mà lòi khỏi hộp cụm dài
-    nhất quá bề dày lớn nhất cũng bị bỏ: cụm thật ngoài hộp đó (ban công, căn kế) dài hơn nhiều.
+    nhất quá bề dày lớn nhất cũng bị bỏ khi cách hộp đó > `_STRAY_SHELL_BAND_MM`, hoặc khi mọi tường của nó nằm
+    trên đường gióng của cụm chính; trụ/má tường song song vỏ trong dải 1 m được giữ.
     Đếm vào `isolatedBlock`.
     """
     if len(segs) < 2:
@@ -355,12 +373,16 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     reach = max(seg.thickness_mm for seg in segs)
     x0, y0, x1, y1 = boxes[main][0] - reach, boxes[main][1] - reach, boxes[main][2] + reach, boxes[main][3] + reach
     stray = min(_STRAY_CLUSTER_MM, _STRAY_CLUSTER_SHARE * total)
+    mx0, my0, mx1, my1 = boxes[main]
+    main_segs = [segs[i] for i in groups[main]]
     drop: set[int] = set()
     for index, (bx0, by0, bx1, by1) in enumerate(boxes):
         small = box_area(boxes[index]) < FAR_CLUSTER_AREA_SHARE * region_area
         far_small = index in far and small and lengths[index] < FAR_CLUSTER_LENGTH_SHARE * total
-        sticks_out = bx0 < x0 or by0 < y0 or bx1 > x1 or by1 > y1
-        if far_small or (lengths[index] < stray and sticks_out):
+        stray_out = lengths[index] < stray and (bx0 < x0 or by0 < y0 or bx1 > x1 or by1 > y1)
+        if stray_out and max(mx0 - bx1, bx0 - mx1, my0 - by1, by0 - my1) <= _STRAY_SHELL_BAND_MM:
+            stray_out = all(_on_extension(segs[i], main_segs) for i in groups[index])
+        if far_small or stray_out:
             drop.update(groups[index])
     if drop:
         dropped["isolatedBlock"] += len(drop)
