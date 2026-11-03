@@ -117,7 +117,7 @@ def test_two_far_rectangles__multiple_plans() -> None:
     assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [("MULTIPLE_PLANS", True)]
 
 
-def _plans(layer: SpatialLayer, scale_basis: str | None = None) -> tuple[bool, dict[str, float]] | None:
+def _plans(layer: SpatialLayer, scale_basis: str | None = None) -> tuple[bool, dict[str, object]] | None:
     """(critical, detail) của `MULTIPLE_PLANS`, vắng → `None`."""
     found = [c for c in geometry_checks(layer, scale_basis=scale_basis) if c.code == "MULTIPLE_PLANS"]
     return (found[0].critical, dict(found[0].detail)) if found else None
@@ -233,8 +233,37 @@ def test_room_without_door_on_its_walls__info_only() -> None:
     )
     checks = geometry_checks(_layer(walls, rooms, (_door(walls[0].id),)))
     assert [(c.code, c.critical, dict(c.detail)) for c in checks] == [
-        ("ROOMS_WITHOUT_DOOR", False, {"doorlessRooms": 1, "share": 0.5})
+        ("ROOMS_WITHOUT_DOOR", False, {"doorlessRooms": 1, "share": 0.5, "roomIds": (rooms[1].id,)})
     ]
+
+
+def test_half_the_rooms_without_door__critical() -> None:
+    """BENCH3D-24: ≥ 2 phòng và ≥ 50 % phòng không cửa đi → chặn (dò cửa đi hỏng hàng loạt), kèm id phòng thiếu."""
+    walls = _walls(*_box(0, 0, 6000, 4000), ((2000, 0), (2000, 4000)), ((4000, 0), (4000, 4000)))
+    rooms = tuple(_room(i, 2000 * i, 0, 2000 * i + 2000, 4000, wall_ids=(walls[i].id,)) for i in range(3))
+    checks = geometry_checks(_layer(walls, rooms, (_door(walls[0].id),)))
+    assert [(c.code, c.critical, dict(c.detail)) for c in checks] == [
+        ("ROOMS_WITHOUT_DOOR", True, {"doorlessRooms": 2, "share": 0.667, "roomIds": (rooms[1].id, rooms[2].id)})
+    ]
+
+
+@pytest.mark.parametrize(
+    ("notes", "expected"),
+    [
+        ((), None),  # bản vẽ không ghi diện tích
+        ((21.0,), None),  # khớp Σ tim tường 20 m² (+5 %)
+        ((18.5,), None),  # khớp phần thông thủy (Σ tim tường trừ nửa bề dày)
+        ((40.0, 22.0), None),  # một số khớp là đủ (số kia có thể là cả nhà)
+        ((30.0,), {"roomsM2": 20.0, "textM2": 30.0, "ratio": 0.667}),  # phòng thiếu 1/3 diện tích
+        ((12.0, 60.0), {"roomsM2": 20.0, "textM2": 12.0, "ratio": 1.667}),  # tỉ lệ quá lớn: số gần nhất theo log
+    ],
+)
+def test_area_text_mismatch_blocks_when_no_note_matches(notes: tuple[float, ...], expected: object) -> None:
+    """BENCH3D-24 `AREA_TEXT_MISMATCH`: Σ diện tích phòng lệch mọi số "N m²" quá 15 % → chặn."""
+    walls = _walls(*_box(0, 0, 5000, 4000))
+    layer = _layer(walls, (_room(1, 0, 0, 5000, 4000, wall_ids=(walls[0].id,)),), (_door(walls[0].id),))
+    found = [c for c in geometry_checks(layer, area_notes=notes) if c.code == "AREA_TEXT_MISMATCH"]
+    assert [(c.critical, dict(c.detail)) for c in found] == ([] if expected is None else [(True, expected)])
 
 
 def test_usage_unknown__critical_from_three_rooms() -> None:

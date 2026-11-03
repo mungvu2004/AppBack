@@ -216,6 +216,7 @@ async def run_quality(
         threshold=threshold,
         scale_basis=None if built is None else built.scale_basis,
         label_orientation=None if built is None else built.label_orientation,
+        area_notes=() if built is None else built.area_notes,
     )
     key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, payload.run_id, STEP, QUALITY_ARTIFACT)
     await storage.put(key, report.to_json_bytes(), content_type="application/json", max_bytes=QUALITY_REPORT_MAX_BYTES)

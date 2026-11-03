@@ -16,6 +16,7 @@ from shapely import LineString, Point, Polygon, STRtree
 
 from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
 from apps.worker.pipeline_build.constants import FAR_CLUSTER_LENGTH_SHARE
+from packages.domain.spatial.area import clear_area_m2
 from packages.domain.spatial.model import Room, SpatialLayer, Wall
 
 ENVELOPE_MIN_WIDTH_MM: Final = 100
@@ -66,6 +67,15 @@ tường nằm trong ±4° của 2 họ hướng vuông góc trội (mỗi họ 
 0,45-0,60; mặt bằng thấp nhất 0,69 (tháp có cánh xiên + vườn cong), mọi ca A/B/C/D ≥ 0,97."""
 
 DOORLESS_USAGES_EXEMPT: Final = frozenset({"loggia", "corridor"})
+DOORLESS_CRITICAL_SHARE: Final = 0.5
+DOORLESS_CRITICAL_ROOMS: Final = 2
+"""BENCH3D-24: ≥ 2 phòng và ≥ 50 % phòng (trừ miễn) không tường nào mang cửa đi → chặn. Một phòng thiếu cửa là cửa
+dò sót lẻ; nửa căn không lối vào là bước dò cửa đi hỏng (căn ở thật mọi phòng đều có lối vào). Đo bench-3d r5c: bắt
+f-04/f-16/f-17 (tập F), không ca ĐẠT nào bị kêu mới."""
+AREA_TEXT_TOLERANCE: Final = 0.15
+"""BENCH3D-24 `AREA_TEXT_MISMATCH`: bản vẽ ghi diện tích căn (tim tường hoặc thông thủy, `BuiltLayer.area_notes`).
+Chặn khi **không** số nào nằm trong [Σ thông thủy·(1 - 0,15); Σ tim tường·(1 + 0,15)] của các phòng: 15 % trùm phần
+tường ngoài, lô gia/hộp kỹ thuật ghi gộp; lệch hơn là thiếu phòng hay tỉ lệ sai."""
 UNKNOWN_USAGE_SHARE: Final = 0.8
 UNKNOWN_USAGE_CRITICAL_ROOMS: Final = 3
 """`ROOM_USAGE_UNKNOWN` chỉ chặn khi tầng có ít nhất 3 phòng (1-2 phòng "khác" là bản vẽ lạ, không phải lỗi)."""
@@ -77,7 +87,7 @@ class GeometryCheck:
 
     code: str
     critical: bool
-    detail: Mapping[str, float]
+    detail: Mapping[str, float | tuple[str, ...]]
 
     def to_wire(self) -> dict[str, object]:
         """Phần tử của khoá `checks` trong `quality.json`."""
@@ -206,12 +216,32 @@ def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
     if not layer.openings:
         return GeometryCheck("ROOMS_WITHOUT_DOOR", True, {"rooms": len(rooms), "openings": 0})
     door_walls = {opening.wall_id for opening in layer.openings if opening.kind == "door"}
-    doorless = sum(1 for room in rooms if door_walls.isdisjoint(room.wall_ids))
+    doorless = tuple(room.id for room in rooms if door_walls.isdisjoint(room.wall_ids))
     if not doorless:
         return None
-    return GeometryCheck(
-        "ROOMS_WITHOUT_DOOR", False, {"doorlessRooms": doorless, "share": round(doorless / len(rooms), 3)}
-    )
+    share = len(doorless) / len(rooms)
+    critical = len(doorless) >= DOORLESS_CRITICAL_ROOMS and share >= DOORLESS_CRITICAL_SHARE
+    detail: dict[str, float | tuple[str, ...]] = {
+        "doorlessRooms": len(doorless),
+        "share": round(share, 3),
+        "roomIds": doorless,
+    }
+    return GeometryCheck("ROOMS_WITHOUT_DOOR", critical, detail)
+
+
+def _area_text_mismatch(layer: SpatialLayer, area_notes: Sequence[float]) -> GeometryCheck | None:
+    """Tổng diện tích phòng lệch mọi số "N m²" ghi trên bản vẽ quá `AREA_TEXT_TOLERANCE` → chặn (kiểm lại tỉ lệ hay
+    phòng thiếu). `ratio` = Σ tim tường / số ghi gần nhất (theo log)."""
+    if not layer.rooms or not area_notes:
+        return None
+    gross = sum(float(room.area_m2) for room in layer.rooms)
+    clear = sum(float(clear_area_m2(room.outline, layer.walls) or room.area_m2) for room in layer.rooms)
+    low, high = clear * (1 - AREA_TEXT_TOLERANCE), gross * (1 + AREA_TEXT_TOLERANCE)
+    if gross <= 0 or any(low <= note <= high for note in area_notes):
+        return None
+    near = min(area_notes, key=lambda note: abs(math.log(gross / note)))
+    detail = {"roomsM2": round(gross, 1), "textM2": near, "ratio": round(gross / near, 3)}
+    return GeometryCheck("AREA_TEXT_MISMATCH", True, detail)
 
 
 def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
@@ -278,10 +308,15 @@ def not_a_floor_plan(layer: SpatialLayer) -> float | None:
 
 
 def geometry_checks(
-    layer: SpatialLayer, *, scale_basis: str | None = None, label_orientation: Mapping[str, int] | None = None
+    layer: SpatialLayer,
+    *,
+    scale_basis: str | None = None,
+    label_orientation: Mapping[str, int] | None = None,
+    area_notes: Sequence[float] = (),
 ) -> tuple[GeometryCheck, ...]:
     """Mọi kiểm hình học đã bật, thứ tự cố định; `scale_basis` (của `layer.json`, vắng = không rõ) đặt dải sai số
-    tỉ lệ cho `MULTIPLE_PLANS`, `label_orientation` (cũng của `layer.json`) cho `ROTATED_PLAN`."""
+    tỉ lệ cho `MULTIPLE_PLANS`, `label_orientation` (cũng của `layer.json`) cho `ROTATED_PLAN`, `area_notes` (cũng
+    của `layer.json`) cho `AREA_TEXT_MISMATCH`."""
     walls = layer.walls
     lines = [_line(wall) for wall in walls]
     found = (
@@ -291,5 +326,6 @@ def geometry_checks(
         _rooms_without_door(layer),
         _room_usage_unknown(layer.rooms),
         _rotated_plan(label_orientation or {}),
+        _area_text_mismatch(layer, area_notes),
     )
     return tuple(check for check in found if check is not None)

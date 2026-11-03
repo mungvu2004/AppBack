@@ -5,7 +5,7 @@ Không chạm DB hay kho: `service` đọc lớp dưới session rồi gọi `bu
 """
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
@@ -81,11 +81,12 @@ def build_report(
     threshold: Decimal,
     scale_basis: str | None = None,
     label_orientation: Mapping[str, int] | None = None,
+    area_notes: Sequence[float] = (),
 ) -> RunQualityReport:
     """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học
-    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14)."""
+    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14; `area_notes`, BENCH3D-24)."""
     issues = tuple(check_integrity(layer, level_id=level_id))
-    checks = geometry_checks(layer, scale_basis=scale_basis, label_orientation=label_orientation)
+    checks = geometry_checks(layer, scale_basis=scale_basis, label_orientation=label_orientation, area_notes=area_notes)
     threshold_f = float(threshold)
     low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(
