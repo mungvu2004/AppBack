@@ -24,6 +24,16 @@ SLIDING_DOOR_MIN_WIDTH_MM: Final = 1400
 Bench r3: vách kính lùa ra lô gia bị dò thành cửa sổ rộng 1476 tới 3117 mm; cửa sổ thật phòng → lô gia 1027 tới 1200 mm.
 """
 
+SLIDING_LOGGIA_MIN_DEPTH_MM: Final = 800
+"""Lô gia phải còn là lô gia ở điểm cách tim tường chủ chừng này, ngay trước tâm ô kính, thì cửa sổ mới thành cửa lùa
+(BENCH3D-23): người không bước ra dải hẹp hơn (lối đi tối thiểu ~0,8 m). Dải ảo giữa tường ngoài và nét khung bản vẽ
+(tập F f-06: "lô gia" sâu 500 mm dọc 10,6 m) đổi nhầm 2 cửa sổ phòng ngủ thành cửa đi; lô gia thật trên bench A/C/E,
+F sâu ≥ 830 mm (hộp bao xoay của đường bao, đo từ tim tường).
+
+Đo ở tỉ lệ dựng như `SLIDING_DOOR_MIN_WIDTH_MM` (`apply_post_rules` chạy trước khi đổi về tỉ lệ ghi ra lớp): khi
+`project_default` (tỉ lệ chưa tin, màn Đặt tỷ lệ đã báo) hai số này lệch theo `final / build`."""
+# ponytail: ngưỡng mm luật 2 đo ở tỉ lệ dựng; truyền `final / build` vào `apply_post_rules` nếu project_default sai
+
 SLIDING_DOOR_HEIGHT_MM: Final = 2200
 """Cao cửa lùa đổi từ cửa sổ (bệ 0): như cửa đi mặc định `LABEL_TARGETS["door"]` (`ml_contracts/labels.py`)."""
 
