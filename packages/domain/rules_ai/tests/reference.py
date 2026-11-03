@@ -63,19 +63,21 @@ def ref_fixture(item: Furniture, walls: tuple[Wall, ...]) -> Furniture:
     )
 
 
-def _ref_beside(op: Opening, host: Wall, rooms: tuple[Room, ...]) -> list[Room | None]:
-    """Phòng đầu tiên chứa mỗi điểm dò hai bên tâm ô mở (nửa bề dày + 150 mm), quét mọi phòng."""
+def _ref_beside(op: Opening, host: Wall, rooms: tuple[Room, ...], reach: float | None = None) -> list[Room | None]:
+    """Phòng đầu tiên chứa mỗi điểm dò hai bên tâm ô mở (nửa bề dày + 150 mm, hay `reach` từ tim), quét mọi phòng."""
     s, e = host.centreline.start, host.centreline.end
     length = math.dist((s.x, s.y), (e.x, e.y))
     ux, uy = (e.x - s.x) / length, (e.y - s.y) / length
-    t, reach = op.offset_mm + op.width_mm / 2, host.thickness_mm / 2 + 150
+    t = op.offset_mm + op.width_mm / 2
+    reach = host.thickness_mm / 2 + 150 if reach is None else reach
     cx, cy = s.x + ux * t, s.y + uy * t
     points = ((cx - uy * reach, cy + ux * reach), (cx + uy * reach, cy - ux * reach))
     return [next((r for r in rooms if outline_contains(r.outline, x, y)), None) for x, y in points]
 
 
 def _ref_sliding(op: Opening, host: Wall, layer: SpatialLayer) -> bool:
-    """Cửa sổ ≥ 1400 trên tường thẳng giữa một phòng và lô gia chưa có cửa đi nối sang phòng khác."""
+    """Cửa sổ ≥ 1400 trên tường thẳng giữa một phòng và lô gia chưa có cửa đi nối sang phòng khác, lô gia còn ở điểm
+    cách tim tường 800 mm (hay xa hơn nếu tường dày)."""
     if op.width_mm < 1400 or host.curve_offset_mm:
         return False
     sides = _ref_beside(op, host, layer.rooms)
@@ -88,7 +90,11 @@ def _ref_sliding(op: Opening, host: Wall, layer: SpatialLayer) -> bool:
             around = _ref_beside(door, wall, layer.rooms)
             if None not in around:
                 entered |= {r.id for r in around if r is not None}
-    return any(r is not None and r.usage == "loggia" and r.id not in entered for r in sides)
+    deep = _ref_beside(op, host, layer.rooms, max(800, host.thickness_mm / 2 + 150))
+    return any(
+        r is not None and r.usage == "loggia" and r.id not in entered and d is r
+        for r, d in zip(sides, deep, strict=True)
+    )
 
 
 def ref_apply_post_rules(layer: SpatialLayer) -> SpatialLayer:

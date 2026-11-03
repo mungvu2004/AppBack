@@ -102,3 +102,13 @@ def test_door_on_curved_wall__does_not_count_as_entry() -> None:
     curved_under = UNDER.model_copy(update={"curve_offset_mm": 150})
     source = _plan((GLASS, curved_under), (WIDE, _sized(opening(2, 3, kind="door"), 800)), ROOMS)
     assert _apply(source).openings[0].kind == "door"
+
+
+@pytest.mark.parametrize(("depth", "kind"), [(500, "window"), (790, "window"), (900, "door")])
+def test_thin_loggia_strip__keeps_window(depth: int, kind: str) -> None:
+    """Dải "lô gia" sâu < 800 mm từ tim tường (giữa tường ngoài và nét khung bản vẽ, BENCH3D-23 f-06): không ai bước
+    ra, cửa sổ giữ nguyên; lô gia sâu 900 mm vẫn đổi thành cửa lùa."""
+    loggia = box_room(2, (4000, 0), (4000 + depth, 4000)).model_copy(update={"usage": "loggia"})
+    rail = wall(2, (4000 + depth, 0), (4000 + depth, 4000))
+    result = _apply(_plan((GLASS, rail), (WIDE,), (LIVING, loggia, BEDROOM)))
+    assert result.openings[0].kind == kind
