@@ -33,7 +33,7 @@ from packages.ml_contracts.artifacts import (
     text_from_json,
     walls_from_json,
 )
-from packages.ml_contracts.payloads import StepResultPayload
+from packages.ml_contracts.payloads import PAGE_VECTORS_NAME, PAGE_VECTORS_STEP, StepResultPayload
 from packages.storage.port import ObjectStorage, read_all_capped
 
 _log: Final = logging.getLogger(__name__)
@@ -124,11 +124,23 @@ async def _read_page(storage: ObjectStorage, payload: BuildStepPayload, max_byte
         return None
 
 
+async def _vector_page(storage: ObjectStorage, payload: BuildStepPayload) -> bool:
+    """Trang là PDF vector của lượt này: `vectors.json` của tiền xử lý có mặt (chỉ ghi cho PDF có nét, UX41 B1).
+
+    Không có `px_per_paper_mm` thì ghi chú `TL 1:N` không được đọc, khỏi `stat`. Lượt dùng lại trang (i) không ghi
+    `vectors.json` nên bị coi như PDF ảnh: ghi chú khi đó phải khớp ước cửa đi.
+    """
+    if payload.px_per_paper_mm is None:
+        return True
+    return await storage.stat(f"{payload.run_prefix}{PAGE_VECTORS_STEP}/{PAGE_VECTORS_NAME}") is not None
+
+
 async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, key: str) -> None:
     """Dựng `BuiltLayer` (bước C) rồi ghi `layer.json`; đầu vào xấu (`ValueError`) → `PIPELINE_BUILD_INVALID`."""
     max_bytes = get_pipeline_build_settings().PIPELINE_ARTIFACT_MAX_BYTES
     walls, objects, text = await _read_inputs(storage, payload, max_bytes)
     page = await _read_page(storage, payload, max_bytes)
+    vector_page = await _vector_page(storage, payload)
     try:
         built = await asyncio.to_thread(
             build_layer,
@@ -142,6 +154,7 @@ async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, ke
             clock=SystemClock(),
             page=page,
             px_per_paper_mm=payload.px_per_paper_mm,
+            vector_page=vector_page,
             furniture=payload.detect_furniture,
         )
     except ValueError as exc:

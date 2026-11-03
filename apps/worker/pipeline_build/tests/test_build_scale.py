@@ -29,6 +29,7 @@ from packages.testing.fixtures.clock import FakeClock
 
 LEVEL_ID = "L-0000000000000000000000001"
 SIZE: dict[str, Any] = {"width_px": 1600, "height_px": 1200}
+_Q = Decimal("0.000001")
 
 
 def _wall(x0: float, y0: float, x1: float, y1: float, thickness_px: float = 20.0) -> WallPx:
@@ -44,6 +45,7 @@ def _run(
     detections: Sequence[DetectionPx] = (),
     fallback: str = "5",
     px_per_paper_mm: float | None = None,
+    vector_page: bool = True,
 ) -> BuiltLayer:
     """Gọi `build_layer` trên khổ 1600x1200 mặc định; tham số còn lại giữ nguyên giữa các ca."""
     return build_wrapped(
@@ -54,6 +56,7 @@ def _run(
         clock=clock,
         level_id=LEVEL_ID,
         px_per_paper_mm=px_per_paper_mm,
+        vector_page=vector_page,
         **SIZE,
     )
 
@@ -346,15 +349,16 @@ def _vertical_chain_text(value: str, cy: float, span_px: float) -> TextPx:
     )
 
 
-def test_build_layer__axes_13_percent_apart_are_recorded(fake_clock: FakeClock) -> None:
-    """ch-13: chữ ngang 20 mm/px, chữ dọc 22,6 mm/px (lệch 13 %) → `scaleChecks.anisotropic`; tỉ lệ không đổi."""
+def test_build_layer__axes_13_percent_apart_use_geometric_mean(fake_clock: FakeClock) -> None:
+    """Chữ ngang 20 mm/px, chữ dọc 22,6 mm/px (lệch 13 %) → `scaleChecks.anisotropic` và tỉ lệ √(20 · 22,6)."""
     across = [_chain_text("3000", 200, 150), _chain_text("2000", 500, 100), _chain_text("4000", 800, 200)]
     across.append(_chain_text("2500", 1000, 125))  # trục ngang đông hơn: cụm chung vẫn là 20 mm/px
     down = [_vertical_chain_text("2260", 300, 100), _vertical_chain_text("4520", 500, 200)]
     down.append(_vertical_chain_text("3390", 800, 150))
     built = _run([_wall(100, 100, 1100, 100)], [*across, *down], fake_clock)
     alone = _run([_wall(100, 100, 1100, 100)], across, fake_clock)
-    assert (built.scale_mm_per_px, built.scale_basis) == (alone.scale_mm_per_px, alone.scale_basis)
+    assert (alone.scale_mm_per_px, alone.scale_basis) == (Decimal("20.000000"), "chain")
+    assert (built.scale_mm_per_px, built.scale_basis) == (Decimal(repr(math.sqrt(20 * 22.6))).quantize(_Q), "chain")
     assert built.scale_checks == {"anisotropic": {"x": 20.0, "y": 22.6}}
     assert json.loads(built.to_json())["scaleChecks"] == {"anisotropic": {"x": 20.0, "y": 22.6}}
     assert alone.scale_checks == {}
@@ -372,3 +376,22 @@ def test_build_layer__door_and_wall_estimates_combine_or_are_recorded(fake_clock
     built = _run(walls, (), fake_clock, detections=doors, fallback="1")
     expected = Decimal(repr(math.sqrt(14.9 * 150 / 10.5))).quantize(Decimal("0.000001"))
     assert (built.scale_mm_per_px, built.scale_basis, built.scale_checks) == (expected, "door", {})
+
+
+@pytest.mark.parametrize(
+    ("door_px", "basis", "scale"),
+    [
+        pytest.param(45, "note", Decimal(repr(100 / (150 / 25.4))).quantize(_Q), id="door-agrees-2pct"),
+        pytest.param(50, "door", Decimal("14.900000"), id="door-off-14pct"),
+        pytest.param(None, "wallThickness", Decimal("12.500000"), id="no-door"),
+    ],
+)
+def test_build_layer__raster_pdf_note_needs_door_agreement(
+    door_px: int | None, basis: str, scale: Decimal, fake_clock: FakeClock
+) -> None:
+    """PDF chỉ chứa ảnh: `TL 1/100` ở 150 DPI (16,93 mm/px) chỉ nhận khi ước cửa lệch ≤ 10 %, không thì về ước lượng."""
+    walls = [_wall(100, 100, 1100, 100, 12.0), _wall(100, 100, 100, 900, 12.0)]
+    doors = [] if door_px is None else [_door(300 + 40 * k, door_px) for k in range(3)]
+    note = [_note("TL 1/100")]
+    built = _run(walls, note, fake_clock, detections=doors, fallback="1", px_per_paper_mm=150 / 25.4, vector_page=False)
+    assert (built.scale_basis, built.scale_mm_per_px) == (basis, scale)

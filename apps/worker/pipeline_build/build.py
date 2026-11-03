@@ -89,8 +89,8 @@ _ESTIMATE_AGREEMENT: Final = 0.10
 cửa lệch trung vị 8-10 %, bề dày tường tới 42 %) và ghi `scaleChecks.estimateSpread`."""
 
 _ANISOTROPY_LIMIT: Final = 0.03
-"""Tỉ lệ suy riêng từ chữ ngang và chữ dọc lệch > 3 % → ghi `scaleChecks.anisotropic` (ảnh giãn không đều, ch-13);
-tỉ lệ đã chọn giữ nguyên."""
+"""Tỉ lệ suy riêng từ chữ ngang và chữ dọc lệch > 3 % → ghi `scaleChecks.anisotropic` (ảnh giãn không đều); tỉ lệ
+chuỗi đổi thành trung bình nhân hai trục thay cụm đông nhất (cụm đó chỉ là một trục, lệch cả phần chênh)."""
 
 _VERTICAL_TEXT_RATIO: Final = 1.3
 """Chữ dọc (đường kích thước đứng): hộp cao > 1,3 lần rộng, như `_VERTICAL_RATIO` của `chains.py`."""
@@ -117,6 +117,10 @@ _NOTE_WALL_MM: Final = (50.0, 500.0)
 
 Ngoài dải là ghi chú đọc hỏng (1:10 thay 1:100) hay PDF in co trang (fit to page): bỏ ghi chú."""
 
+_RASTER_NOTE_AGREEMENT: Final = 0.10
+"""PDF chỉ chứa ảnh (không nét vector): khổ trang do người xuất PDF đặt tuỳ ý, không phải khổ in `TL 1:N`. Ghi chú chỉ
+được nhận khi lệch ước cửa đi ≤ 10 % (ước cửa lệch trung vị 8-10 %); không có ước cửa hay lệch hơn → bỏ ghi chú."""
+
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
 
@@ -130,7 +134,8 @@ _OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks"})
 
 ScaleChecks = Mapping[str, Mapping[str, float]]
 """Nghi vấn về tỉ lệ cho bước kiểm chất lượng (chưa lên API): `anisotropic` {x, y} mm/px của hai trục chữ,
-`estimateSpread` {door, wallThickness} mm/px của hai ước. Chỉ ghi khi có; tỉ lệ đã chọn không đổi."""
+`estimateSpread` {door, wallThickness} mm/px của hai ước. Chỉ ghi khi có; `anisotropic` đổi tỉ lệ chuỗi thành
+trung bình nhân hai trục, `estimateSpread` không đổi tỉ lệ."""
 _SCALE_CHECK_KEYS: Final = {
     "anisotropic": frozenset({"x", "y"}),
     "estimateSpread": frozenset({"door", "wallThickness"}),
@@ -327,6 +332,23 @@ def _note_scale(walls: Sequence[WallPx], texts: Sequence[TextPx], px_per_paper_m
             return None
     value = Decimal(repr(mm_per_px)).quantize(_QUANTUM)
     return value if value != 0 else None
+
+
+def _trusted_note(
+    noted: Decimal | None, *, vector_page: bool, detections: Sequence[DetectionPx], walls: Sequence[WallPx]
+) -> Decimal | None:
+    """Ghi chú `TL 1:N` còn tin được: PDF vector giữ nguyên; PDF chỉ chứa ảnh cần ước cửa đi đồng thuận.
+
+    Khổ trang PDF ảnh nhúng là tuỳ ý (two-page-ch04: ảnh 150 dpi, ghi chú cho +16 %), nên `N / px_per_paper_mm`
+    chỉ đúng khi trang được xuất đúng khổ in; ước cửa (`_door_scale`) là phép thử độc lập duy nhất có sẵn.
+    """
+    if noted is None or vector_page:
+        return noted
+    door = _door_scale(detections, walls) if walls else None
+    if door is not None and abs(float(noted) / door - 1) <= _RASTER_NOTE_AGREEMENT:
+        return noted
+    _log.info("pipeline_build_scale_note_rejected", extra={"reason": "rasterPdf", "note": float(noted), "door": door})
+    return None
 
 
 def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
@@ -711,6 +733,7 @@ def build_layer(
     clock: Clock,
     page: PageRaster | None = None,
     px_per_paper_mm: float | None = None,
+    vector_page: bool = True,
     furniture: bool = True,
 ) -> BuiltLayer:
     """Ba artifact ML (px) → lớp không gian (mm) theo B5-05 [6]; không sửa đối số, không I/O.
@@ -720,7 +743,9 @@ def build_layer(
     Dựng ở `s_dựng` rồi đổi về `s`; `RescaleError` → dựng lại thẳng ở `s`, không ném. `page` (trang + mặt nạ
     tường) bật nguồn gợi ý mực dư: hộp `other` với `suggested=True`, không bao giờ trùng hộp phát hiện.
     `px_per_paper_mm` (PDF) cho phép đọc ghi chú `TL 1:N` khi chuỗi kích thước không ra tỉ lệ (U01):
-    thắng tỉ lệ dự án và ước lượng từ bề dày tường. `furniture=False` (cài đặt dự án `detectFurniture` tắt):
+    thắng tỉ lệ dự án và ước lượng từ bề dày tường; `vector_page=False` (PDF chỉ chứa ảnh) thì ghi chú phải khớp ước
+    cửa đi (`_trusted_note`). Ảnh giãn không đều (`scaleChecks.anisotropic`) → tỉ lệ chuỗi là trung bình nhân hai
+    trục. `furniture=False` (cài đặt dự án `detectFurniture` tắt):
     không dựng đồ, không gợi ý mực dư; hộp phát hiện vẫn cho ô mở, tỉ lệ theo cửa và nhãn phòng.
     """
     if width_px < 1 or height_px < 1:
@@ -735,13 +760,16 @@ def build_layer(
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
     scale, basis, samples, rejected = _resolved_scale(whole, texts, fallback_mm_per_px, base)
-    noted = _note_scale(walls_px, texts, px_per_paper_mm) if basis == "default" else None
-    if noted is not None:
-        scale, basis = noted, "note"
-    estimated = basis == "default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
     checks: dict[str, dict[str, float]] = {}
     if anisotropic := _anisotropy(texts):
         checks["anisotropic"] = anisotropic
+        if basis == "chain":  # cụm đông nhất chỉ là một trục; trung bình nhân chia đều phần giãn cho hai trục
+            scale = Decimal(repr(math.sqrt(anisotropic["x"] * anisotropic["y"]))).quantize(_QUANTUM)
+    noted = _note_scale(walls_px, texts, px_per_paper_mm) if basis == "default" else None
+    noted = _trusted_note(noted, vector_page=vector_page, detections=detections, walls=walls_px)
+    if noted is not None:
+        scale, basis = noted, "note"
+    estimated = basis == "default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
     if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi và bề dày tường; không phải 1 mm/px
         guess, basis, spread = _estimate(_door_scale(detections, walls_px), _build_scale(walls_px, float(scale)))
         scale = Decimal(repr(guess)).quantize(_QUANTUM)

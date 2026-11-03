@@ -125,6 +125,23 @@ def test_build_walls__far_small_cluster_dropped_near_parts_kept(fake_clock: Fake
     assert set(result.input_to_wall) == set(range(6))
 
 
+def test_build_walls__short_stray_outside_main_box_dropped(fake_clock: FakeClock) -> None:
+    """Mẩu 400 mm cách căn < 1,5 m nhưng lòi khỏi hộp căn (vạch kích thước) bị bỏ; mẩu 400 mm trong hộp căn giữ."""
+    stray = [wall_px(700, 11000, 1100, 11000)]
+    inner = [wall_px(5000, 5000, 5400, 5000)]
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        _room(2000, 2000, 12000, 10000) + stray + inner,
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    assert dropped["isolatedBlock"] == 1
+    assert set(result.input_to_wall) == {0, 1, 2, 3, 5}
+
+
 def test_build_walls__far_large_cluster_kept(fake_clock: FakeClock) -> None:
     """Cụm xa nhưng không nhỏ (căn thứ hai cùng cỡ) không phải sơ đồ vị trí: giữ cả hai."""
     dropped: Counter[str] = Counter()
