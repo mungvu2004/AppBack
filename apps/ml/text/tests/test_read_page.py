@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from apps.ml.text.tasks import REREAD_MAX_SIDE_PX, REREAD_ZOOM, _stretch, read_page
+from apps.ml.text.tasks import REREAD_MAX_SIDE_PX, REREAD_ZOOM, _chain_scale_found, _stretch, read_page
 from packages.ml_contracts.artifacts import BoxPx, TextPx
 
 _ROWS = (100, 200, 300)
@@ -84,3 +84,18 @@ def test_stretch_maps_background_to_white_and_ink_to_black() -> None:
     assert int(stretched[0, 0, 0]) == 0
     flat = np.full((20, 20, 3), 200, dtype=np.uint8)
     assert _stretch(flat) is flat
+
+
+def _spanned(text: str, span: float, *, vertical: bool, at: int) -> TextPx:
+    """Chữ đã có `span_px`; hộp đứng (cao gấp 3 rộng) khi `vertical`."""
+    width, height = (10, 30) if vertical else (30, 10)
+    box = BoxPx(x_min=at, y_min=0, x_max=at + width, y_max=height)
+    return TextPx(text=text, box=box, confidence=0.9, span_px=span)
+
+
+def test_chain_scale_found_when_each_axis_resolves() -> None:
+    """Ảnh giãn không đều: 3 chữ ngang 10 mm/px, 3 chữ dọc 12 mm/px: cụm hoà, mỗi trục suy được → không đọc lại."""
+    across = [_spanned(str(mm), mm / 10, vertical=False, at=40 * i) for i, mm in enumerate((1000, 2000, 3000))]
+    down = [_spanned(str(mm), mm / 12, vertical=True, at=200 + 40 * i) for i, mm in enumerate((1200, 2400, 3600))]
+    assert _chain_scale_found((*across, *down))
+    assert not _chain_scale_found((across[0], down[0]))

@@ -41,6 +41,9 @@ REREAD_MAX_SIDE_PX: Final = 2000
 
 REREAD_ZOOM: Final = 2
 
+VERTICAL_TEXT_RATIO: Final = 1.3
+"""Hộp cao hơn chừng này lần bề rộng là chữ dọc — bằng `_VERTICAL_TEXT_RATIO` của bước dựng (`pipeline_build`)."""
+
 STRETCH_MIN_RANGE: Final = 10
 """Khoảng mức xám nền-mực tối thiểu để giãn; hẹp hơn là ảnh gần trống, giãn chỉ khuếch nhiễu."""
 
@@ -115,14 +118,23 @@ def read_page(image: NDArray[np.uint8], reader: TextReader) -> tuple[TextPx, ...
 
 
 def _chain_scale_found(items: tuple[TextPx, ...]) -> bool:
-    """Chữ có `span_px` đọc ra độ dài, tỉ số trong dải, cụm đông nhất suy được tỉ lệ — cùng phép của bước dựng
-    (`pipeline_build.build._chain_samples` + `densest_cluster` + `infer_scale`; bước ML không nhập được apps.worker)."""
+    """Chữ có `span_px` đọc ra độ dài, tỉ số trong dải, và cụm đông nhất suy được tỉ lệ — cùng phép của bước dựng
+    (`pipeline_build.build._chain_samples` + `densest_cluster` + `infer_scale`; bước ML không nhập được apps.worker) —
+    **hoặc** riêng chữ ngang và riêng chữ dọc mỗi bên suy được: ảnh giãn không đều tách hai cụm, trang đã đủ chữ và
+    bước dựng xử lý theo trục; lượt phóng chỉ đổi hộp chữ, không chữa được (bench f-23)."""
     samples: list[ScaleSample] = []
+    across: list[ScaleSample] = []
+    down: list[ScaleSample] = []
     for index, item in enumerate(items):
         value = None if not item.span_px else parse_length_mm(item.text)
         if value is not None and item.span_px and classify_scale_range(value / item.span_px) == "inRange":
-            samples.append(ScaleSample(f"t{index}-chain", item.span_px, float(value)))
-    return infer_scale(densest_cluster(samples)).mm_per_px is not None
+            sample = ScaleSample(f"t{index}-chain", item.span_px, float(value))
+            box = item.box
+            samples.append(sample)
+            (down if box.y_max - box.y_min > VERTICAL_TEXT_RATIO * (box.x_max - box.x_min) else across).append(sample)
+    if infer_scale(densest_cluster(samples)).mm_per_px is not None:
+        return True
+    return all(infer_scale(densest_cluster(axis)).mm_per_px is not None for axis in (across, down))
 
 
 def _stretch(image: NDArray[np.uint8]) -> NDArray[np.uint8]:
