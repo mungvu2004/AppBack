@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import shapely
+from shapely.errors import GEOSException
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import split
 
@@ -589,20 +590,37 @@ def _envelope_outlines(
     """
     if not lines:
         return []
-    skeleton = shapely.union_all(list(bare))
-    grown = shapely.buffer(skeleton, _ENVELOPE_CLOSE_MM, cap_style="square", join_style="mitre")
-    filled = shapely.union_all([shapely.Polygon(part.exterior) for part in getattr(grown, "geoms", [grown])])
-    footprint = shapely.buffer(filled, -_ENVELOPE_CLOSE_MM, join_style="mitre")
-    rings = [part.exterior for part in getattr(footprint, "geoms", [footprint]) if isinstance(part, shapely.Polygon)]
+    # Nới cả khung một lần: hợp các hình nới từng đường nhanh hơn ~2 s ở trần K18 nhưng lệch phòng trên bench-3d.
+    grown = shapely.buffer(shapely.union_all(list(bare)), _ENVELOPE_CLOSE_MM, cap_style="square", join_style="mitre")
+    # Lấp lỗ: các mảnh rời nhau nên vòng ngoài chỉ lồng nhau hoặc rời; bỏ vòng nằm trong vòng khác thay cho union, co
+    # từng mảnh (co tập rời = hợp các phần co).
+    shells: Geoms = np.asarray(shapely.polygons(shapely.get_exterior_ring(shapely.get_parts(grown))), dtype=object)
+    inner, outer = shapely.STRtree(shells).query(shells, predicate="within")
+    nested = set(inner[inner != outer].tolist())
+    filled = [shell for i, shell in enumerate(shells) if i not in nested]
+    shrunk = shapely.get_parts(shapely.buffer(filled, -_ENVELOPE_CLOSE_MM, join_style="mitre"))
+    blocks = [part for part in shrunk if isinstance(part, shapely.Polygon) and not part.is_empty]
+    footprint = shapely.MultiPolygon(blocks)
+    taken = [shapely.Polygon([(p.x, p.y) for p in o]) for o in rooms if len(o) >= 3]
+    # Khối bao đã kín phòng (phần hở chỉ là dải ≤ 2·`_ENVELOPE_TOL_MM`) không cho ô mới: bỏ vòng của nó trước khi
+    # nút với `lines` — vòng trùng tim tường làm phép hợp chậm (trần 20 000 tường: 8 s cho 3 333 vòng).
+    try:
+        uncovered = shapely.difference(footprint, shapely.union_all(taken))
+    except GEOSException:  # phòng tự cắt (fuzz): xét mọi khối như không có phòng
+        uncovered = footprint
+    gaps = [g for g in getattr(uncovered, "geoms", [uncovered]) if g.area > _ENVELOPE_TOL_MM * g.length]
+    gap_tree = shapely.STRtree(gaps)
+    rings = [block.exterior for block in blocks if gap_tree.query(block, predicate="intersects").size]
+    if not rings:
+        return []
     # Lưới 1 mm: đường bao trùng tim tường mặt ngoài phải nút chung, không để dải mảnh nối phòng hở với vòng bao.
     merged = shapely.set_precision(shapely.unary_union([*lines, *rings]), 1.0)
     faces = shapely.polygonize(list(getattr(merged, "geoms", [merged])))
     line_tree = shapely.STRtree(list(lines))
-    taken = [shapely.Polygon([(p.x, p.y) for p in o]) for o in rooms if len(o) >= 3]
     room_tree = shapely.STRtree(taken)
     seeds = shapely.STRtree([shapely.Point(c.x, c.y) for label, c in zip(labels, centres, strict=True) if label])
-    ring_band = shapely.union_all(rings).buffer(_ENVELOPE_TOL_MM)
-    walled_band = skeleton.buffer(_ENVELOPE_TOL_MM)
+    all_rings = [block.exterior for block in blocks]
+    bands = (all_rings, shapely.STRtree(all_rings)), (list(bare), shapely.STRtree(list(bare)))
     found: list[tuple[list[Point], bool, list[shapely.LineString]]] = []
     for hollow in faces.geoms:
         shell = shapely.Polygon(hollow.exterior)
@@ -623,10 +641,20 @@ def _envelope_outlines(
             edges: list[shapely.LineString] = []
             if not loggia:
                 ring = shapely.LinearRing([(p.x, p.y) for p in outline])
-                exposed = shapely.line_merge(ring.intersection(ring_band).difference(walled_band))
+                on_ring, walled = (_band(geoms, tree, ring) for geoms, tree in bands)
+                exposed = shapely.line_merge(ring.intersection(on_ring).difference(walled))
                 edges = [e for e in getattr(exposed, "geoms", [exposed]) if e.length > ROOM_SNAP_MM]
             found.append((outline, loggia, edges))
     return found
+
+
+def _band(geoms: Sequence[BaseGeometry], tree: shapely.STRtree, around: BaseGeometry) -> BaseGeometry:
+    """Dải `_ENVELOPE_TOL_MM` quanh các `geoms` (tra `tree`) trong tầm `_ENVELOPE_TOL_MM` của `around`.
+
+    Chỉ hình gần `around` ảnh hưởng tới `around ∩ dải`, nên không nới cả 20 000 tường (trần K18).
+    """
+    near = tree.query(around, predicate="dwithin", distance=_ENVELOPE_TOL_MM)
+    return shapely.union_all([geoms[int(i)] for i in near]).buffer(_ENVELOPE_TOL_MM)
 
 
 def _simple_parts(face: shapely.Polygon) -> list[shapely.Polygon]:
@@ -1060,7 +1088,9 @@ def build_rooms(
     lines = [*_room_lines(walls, bridges), *closers, *doors]
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
-    bare = [*(_extend(wall, 0.0) for wall in walls), *lines[len(walls) :]]
+    tips = [(w.centreline.start.x, w.centreline.start.y, w.centreline.end.x, w.centreline.end.y) for w in walls]
+    centrelines: Geoms = np.asarray(shapely.linestrings(np.array(tips, dtype=float).reshape(-1, 2, 2)), dtype=object)
+    bare = [*centrelines, *lines[len(walls) :]]
     envelope = _envelope_outlines(lines, bare, [*closed, *seeded], parsed, centres)
     opened = [outline for outline, _, _ in envelope]
     if closers_out is not None:
