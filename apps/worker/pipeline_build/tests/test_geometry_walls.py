@@ -3,10 +3,13 @@
 Đầu vào dựng tay bằng `WallPx` nên mỗi ca chỉ đo đúng một luật; `Scaling(1.0, 1.0)` cho px = mm.
 """
 
+import math
 from collections import Counter
 
+import numpy as np
 import pytest
 
+from apps.worker.pipeline_build.clusters import axis_share
 from apps.worker.pipeline_build.geometry import Scaling, build_walls
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.ml_contracts.artifacts import PointPx, WallPx
@@ -229,3 +232,60 @@ def test_build_walls__nib_buried_in_one_wall_dropped(
         dropped=Counter(),
     )
     assert result.input_to_wall == kept
+
+
+def _spoke(x: float, y: float, degrees: float, length: float) -> WallPx:
+    angle = math.radians(degrees)
+    return wall_px(x, y, x + length * math.cos(angle), y + length * math.sin(angle))
+
+
+@pytest.mark.parametrize(
+    ("second", "kept"),
+    [
+        # phối cảnh 3D: một cụm cạnh tản 0/20/35/60/75° (mod 90), mỗi hướng 1/5 chiều dài → axis_share 0,2
+        pytest.param([_spoke(20000, 0, a, 5000) for a in (0, 20, 35, 60, 75)], False, id="perspective"),
+        # căn thứ hai xoay 30°: mọi tường theo một cặp hướng vuông góc → giữ
+        pytest.param([_spoke(20000, 0, 30, 6000), _spoke(20000, 0, 120, 5000)], True, id="rotated-plan"),
+        pytest.param(_room(20000, 0, 26000, 5000), True, id="second-unit"),
+    ],
+)
+def test_build_walls__far_region_off_axis_dropped(second: list[WallPx], kept: bool, fake_clock: FakeClock) -> None:
+    """B3: vùng phụ lớn (~ cỡ căn chính) mà phần lớn chiều dài không theo một cặp hướng vuông góc → bỏ cả vùng."""
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        _room(0, 0, 8000, 6000) + second,
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    assert dropped["isolatedBlock"] == (0 if kept else len(second))
+    assert set(result.input_to_wall) >= set(range(4))
+    assert (len(result.input_to_wall) == 4 + len(second)) is kept
+
+
+@pytest.mark.parametrize(("gap", "joined"), [(2000, False), (1200, True)])
+def test_build_walls__no_join_across_paper_between_units(gap: int, joined: bool, fake_clock: FakeClock) -> None:
+    """B4: hai căn thẳng hàng cách khe giấy > `FAR_CLUSTER_GAP_MM` là hai vùng → 3b không nối tường qua khe (dù khe
+    ≤ `OPENING_GAP_MAX_MM`); khe ≤ 1,5 m (ô cửa) vẫn nối như cũ."""
+    result = build_walls(
+        _room(0, 0, 6000, 5000) + _room(6000 + gap, 0, 12000 + gap, 5000),
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    spans = [abs(wall.centreline.end.x - wall.centreline.start.x) for wall in result.walls]
+    assert (bool(result.bridges) or max(spans) > 6000) is joined
+
+
+@pytest.mark.parametrize(
+    ("degrees", "share"),
+    [((89.0, 2.0), 1.0), ((30.0, 120.0), 1.0), ((0.0, 90.0, 30.0, 120.0), 0.5), ((0.0, 20.0, 35.0, 60.0, 75.0), 0.2)],
+)
+def test_axis_share__mod_90_window(degrees: tuple[float, ...], share: float) -> None:
+    """Cửa sổ ±4° quanh hướng trội, góc mod 90: 89° và 2° cùng họ (vòng qua 0); bản xoay 30° thẳng trục với chính nó."""
+    vectors = np.asarray([(math.cos(math.radians(a)), math.sin(math.radians(a))) for a in degrees])
+    assert axis_share(vectors) == pytest.approx(share)

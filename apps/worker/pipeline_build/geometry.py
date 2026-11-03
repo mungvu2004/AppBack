@@ -11,7 +11,7 @@ import itertools
 import logging
 import math
 from collections import Counter, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Final, Literal
@@ -21,7 +21,15 @@ import shapely
 from numpy.typing import NDArray
 from shapely import LineString, STRtree
 
-from apps.worker.pipeline_build.clusters import Box, box_area, grow_region, neighbours, wall_clusters
+from apps.worker.pipeline_build.clusters import (
+    Box,
+    axis_share,
+    box_area,
+    grow_region,
+    neighbours,
+    region_labels,
+    wall_clusters,
+)
 from apps.worker.pipeline_build.constants import (
     CORNER_OVERSHOOT_MM,
     DEFAULT_WALL_HEIGHT_MM,
@@ -378,6 +386,18 @@ def _on_extension(seg: _Seg, main: Sequence[_Seg]) -> bool:
     return False
 
 
+_FAR_REGION_AXIS_SHARE: Final = 0.6
+"""Vùng phụ có `axis_share` dưới số này là phối cảnh 3D / sơ đồ nghiêng, không phải mặt bằng (BENCH3D-20 B3).
+
+Mặt bằng 2D thẳng trục ≥ 0,92 (bench A đến F, kể cả bản xoay); phối cảnh, sơ đồ tháp vẽ nghiêng 0,24 đến 0,57; cánh
+tháp xiên của tờ nhiều căn 0,60 đến 0,82. Dưới 0,6: phần lớn chiều dài vùng không theo một cặp hướng vuông góc nào."""
+
+
+def _region_vectors(segs: Sequence[_Seg], indices: Collection[int]) -> NDArray[np.float64]:
+    """Vectơ tim `(dx, dy)` mm của các tường `indices`."""
+    return np.asarray([(segs[i].end.x - segs[i].start.x, segs[i].end.y - segs[i].start.y) for i in indices], float)
+
+
 def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     """U57: bỏ cụm tường nhỏ nằm tách xa cụm chính (sơ đồ vị trí căn, logo ở góc brochure) và mẩu lạc sát căn.
 
@@ -387,6 +407,8 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     Cụm nào (kể cả trong vùng) ngắn hơn `_STRAY_CLUSTER_MM`/`_STRAY_CLUSTER_SHARE` mà lòi khỏi hộp cụm dài
     nhất quá bề dày lớn nhất cũng bị bỏ khi cách hộp đó > `_STRAY_SHELL_BAND_MM`, hoặc khi mọi tường của nó nằm
     trên đường gióng của cụm chính; trụ/má tường song song vỏ trong dải 1 m được giữ.
+    Vùng phụ (`region_labels`, không bao giờ vùng chứa cụm dài nhất) có `axis_share` < `_FAR_REGION_AXIS_SHARE` bị bỏ cả
+    vùng dù lớn: phối cảnh 3D, sơ đồ tháp vẽ nghiêng (BENCH3D-20 B3); căn thứ hai thẳng trục vẫn giữ.
     Đếm vào `isolatedBlock`.
     """
     if len(segs) < 2:
@@ -414,6 +436,11 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
             stray_out = all(_on_extension(segs[i], main_segs) for i in groups[index])
         if far_small or stray_out:
             drop.update(groups[index])
+    labels = region_labels(boxes)
+    for label in set(labels) - {labels[main]}:
+        indices = [i for group, own in zip(groups, labels, strict=True) if own == label for i in group if i not in drop]
+        if indices and axis_share(_region_vectors(segs, indices)) < _FAR_REGION_AXIS_SHARE:
+            drop.update(indices)
     if drop:
         dropped["isolatedBlock"] += len(drop)
         _log.info("pipeline_build_far_cluster_dropped", extra={"walls": len(drop)})
@@ -799,12 +826,29 @@ def _bridge_segments(segs: Sequence[_Seg], neighbours: Sequence[set[int]]) -> tu
     return tuple(ends for ends in found if ends is not None)
 
 
+def _region_labels(segs: Sequence[_Seg], geoms: Geoms) -> list[int]:
+    """Số vùng (`region_labels`) của từng tường, tính trên tường **trước** nối khe."""
+    groups = wall_clusters(geoms, [seg.measured_mm for seg in segs])
+    labels = [0] * len(segs)
+    for group, label in zip(groups, region_labels([_bbox(segs, group) for group in groups]), strict=True):
+        for i in group:
+            labels[i] = label
+    return labels
+
+
 def _join_gaps(segs: list[_Seg], boxes: _Boxes, dropped: Counter[str]) -> tuple[tuple[Point, Point], ...]:
-    """Bước 3b: gộp cặp thẳng hàng (a), kéo đầu mút tới vách (b), đầu lơ lửng (d), đoạn nối cặp còn lại (c)."""
+    """Bước 3b: gộp cặp thẳng hàng (a), kéo đầu mút tới vách (b), đầu lơ lửng (d), đoạn nối cặp còn lại (c).
+
+    Chỉ xét cặp cùng vùng (`_region_labels`): hai căn cách nhau khe giấy trắng > `FAR_CLUSTER_GAP_MM` không bị nối
+    qua khe như qua ô cửa (≤ `OPENING_GAP_MAX_MM`), nên `MULTIPLE_PLANS` còn thấy hai vùng (BENCH3D-20 B4). Khe
+    ≤ `FAR_CLUSTER_GAP_MM` luôn cùng vùng (hộp cách ≤ khe), nên chỉ cặp cách > 1,5 m và lòi khỏi hộp vùng bị ảnh hưởng.
+    """
     geoms = _linestrings(segs)
     tree = STRtree(geoms)
     lines = _Centrelines(tree, {seg.inputs[0]: slot for slot, seg in enumerate(segs)})
+    labels = _region_labels(segs, geoms)
     near = neighbours(tree, geoms, float(OPENING_GAP_MAX_MM))
+    near = [{j for j in found if labels[j] == labels[i]} for i, found in enumerate(near)]
     _merge_aligned(segs, near, boxes, lines, dropped)
     _extend_all(segs, near, boxes, dropped)
     _reach_dangling(segs, near, boxes, dropped)

@@ -4,6 +4,7 @@ kiểm chất lượng (nhiều mặt bằng trên một trang)."""
 import math
 from collections import deque
 from collections.abc import Collection, Sequence
+from typing import Final
 
 import numpy as np
 import shapely
@@ -79,3 +80,63 @@ def grow_region(boxes: Sequence[Box], candidates: Collection[int], seed: int) ->
                 region = box_union(region, boxes[index])
                 grown = True
     return region, far
+
+
+def region_labels(boxes: Sequence[Box]) -> list[int]:
+    """Số vùng của từng hộp: gộp các hộp cách nhau ≤ `FAR_CLUSTER_GAP_MM`, thay bằng hộp bao của nhóm, lặp tới khi
+    không nhóm nào còn sát nhau. Mỗi vùng của `grow_region` nằm trọn trong một vùng ở đây (hộp nuốt vào luôn cách
+    hộp đang lớn ≤ khe); khác chuỗi `grow_region` ở chỗ hai vùng lớn dần tới sát nhau thì gộp (không phụ thuộc thứ tự).
+
+    Mỗi vòng một truy vấn `dwithin` trên `STRtree` — tờ 5 000 cụm tách rời không thành O(n²) như chuỗi `grow_region`.
+    """
+    labels = list(range(len(boxes)))
+    current: list[Box] = list(boxes)
+    while len(current) > 1:
+        coords = np.asarray(current, dtype=float)
+        diagonals = shapely.linestrings(np.stack([coords[:, :2], coords[:, 2:]], axis=1))
+        geoms = np.asarray(shapely.envelope(diagonals), dtype=object)
+        sources, targets = STRtree(geoms).query(geoms, predicate="dwithin", distance=float(FAR_CLUSTER_GAP_MM))
+        parent = list(range(len(current)))
+
+        def root(item: int, parent: list[int] = parent) -> int:
+            while parent[item] != item:
+                parent[item] = parent[parent[item]]
+                item = parent[item]
+            return item
+
+        for source, target in zip(sources.tolist(), targets.tolist(), strict=True):
+            parent[root(source)] = root(target)
+        roots = [root(item) for item in range(len(current))]
+        merged = {r: i for i, r in enumerate(dict.fromkeys(roots))}
+        if len(merged) == len(current):
+            break
+        grouped: dict[int, Box] = {}
+        for item, r in enumerate(roots):
+            box = current[item]
+            grouped[merged[r]] = box if merged[r] not in grouped else box_union(grouped[merged[r]], box)
+        labels = [merged[roots[label]] for label in labels]
+        current = [grouped[i] for i in range(len(merged))]
+    return labels
+
+
+AXIS_TOLERANCE_DEG: Final = 4.0
+"""Nửa bề rộng họ hướng của `axis_share`: tường thẳng trục vẽ/dò lệch vài độ (bench A đến F: ≥ 0,92 chiều dài nằm
+trong ±4° quanh hướng trội), cạnh phối cảnh 3D tản khắp các góc (0,23 đến 0,46)."""
+
+
+def axis_share(vectors: NDArray[np.float64]) -> float:
+    """Tỉ lệ chiều dài (trọng số) của các vectơ tim tường `(dx, dy)` nằm trong ±`AXIS_TOLERANCE_DEG` quanh hướng
+    trội, góc lấy mod 90 (hai họ vuông góc của bản vẽ là một). Hướng trội tự tìm nên bản xoay vẫn ≈ 1.
+
+    Cửa sổ rộng 2 x dung sai đặt mép dưới tại góc từng tường (góc đã sắp, nối thêm bản +90° cho vòng mod 90): bằng
+    đúng cực đại trên mọi vị trí cửa sổ; O(n log n), không cấp phát n x n."""
+    lengths = np.hypot(vectors[:, 0], vectors[:, 1])
+    total = float(lengths.sum())
+    if total <= 0:
+        return 1.0
+    angles = np.degrees(np.arctan2(vectors[:, 1], vectors[:, 0])) % 90
+    order = np.argsort(angles)
+    ring = np.concatenate([angles[order], angles[order] + 90])
+    summed = np.concatenate([[0.0], np.cumsum(np.concatenate([lengths[order], lengths[order]]))])
+    ends = np.searchsorted(ring, ring[: len(order)] + 2 * AXIS_TOLERANCE_DEG, side="right")
+    return float((summed[ends] - summed[: len(order)]).max() / total)
