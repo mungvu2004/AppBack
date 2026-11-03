@@ -11,7 +11,7 @@ import itertools
 import logging
 import math
 from collections import Counter, deque
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Final, Literal
@@ -1478,6 +1478,17 @@ def _uncovered(
     return pieces
 
 
+def _point_regions(walls: Sequence[Wall]) -> Callable[[Point], int]:
+    """Số vùng (`region_labels`) của tường có tim gần điểm nhất; tính một lần trên tường trước khi khép vỏ."""
+    if not walls:
+        return lambda _point: 0
+    segs = [_wall_seg(wall) for wall in walls]
+    geoms = _linestrings(segs)
+    labels = _region_labels(segs, geoms)
+    tree = STRtree(geoms)
+    return lambda point: labels[int(tree.nearest(shapely.Point(point.x, point.y)))]
+
+
 def close_envelope_gaps(
     wall_set: WallSet,
     rooms: Sequence[Room],
@@ -1500,6 +1511,8 @@ def close_envelope_gaps(
     - Khe < `_ENVELOPE_DOOR_MIN_MM` có tường chủ thẳng hàng (`_bridge_hosts`): kéo tường chủ (`_extend_host`).
     - `bridges` dài hơn: tường mang cửa đi phủ cả khe (cánh đọc từ nét vẽ, ≥ 1,5 m không cánh → lùa, còn lại
       cánh trái tin thấp), trừ phòng phía trong thuộc `_NO_GUESSED_DOOR` → tường đặc (R2').
+    - Khe nối hai vùng tách rời (`_point_regions`, như `_join_gaps`: hai căn cạnh nhau trên một tờ) không thành
+      tường: đoạn khép phòng của `build_rooms` qua giấy trắng giữa hai căn không được nối chúng (BENCH3D-20 B4).
     - `closers` còn lại: tường mới. Khe ≥ `_ENVELOPE_DOOR_MIN_MM` do hộp ô mở khép → mang ô mở đó (bỏ đoạn nếu
       hộp đã thành ô mở trên tường khác, `_opening_near`); không hộp mà có nét kính (`_glazed`) → cửa sổ tin thấp;
       còn lại tường đặc — không đoán cửa đi.
@@ -1512,7 +1525,10 @@ def close_envelope_gaps(
     ]
     for closer in closers:
         gaps += _uncovered(closer.start, closer.end, closer.label, walls)
+    region_of = _point_regions(walls)
     for start, end, label, near in gaps:
+        if region_of(start) != region_of(end):
+            continue
         span = math.dist((start.x, start.y), (end.x, end.y))
         hosts = _bridge_hosts(walls, (start, end))
         if label == _BRIDGE:

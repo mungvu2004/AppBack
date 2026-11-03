@@ -326,3 +326,28 @@ def test_close_envelope_gaps__closer_crossing_a_wall_still_skipped(fake_clock: F
     wall_set = WallSet(walls=(*walls, across), openings=(), input_to_wall={}, bridges=())
     result = close_envelope_gaps(wall_set, rooms, closers=closers, **shared)
     assert result.walls == (*walls, across)
+
+
+def test_close_envelope_gaps__no_wall_across_paper_between_units(fake_clock: FakeClock) -> None:
+    """B4 (BENCH3D-20): hai căn thẳng hàng cách khe giấy 2 m (> `FAR_CLUSTER_GAP_MM`) là hai vùng: đoạn khép phòng
+    qua khe không thành tường, nên lớp tường vẫn là hai vùng tách rời (`MULTIPLE_PLANS` thấy được)."""
+    # tường trên/dưới thò 500 mm qua vách đầu hồi: đầu tự do thẳng hàng với tường căn kia, build_rooms khép qua khe
+    unit_a = [
+        _wall(fake_clock, (0, 0), (6000, 0)),
+        _wall(fake_clock, (5500, 0), (5500, 5000)),
+        _wall(fake_clock, (6000, 5000), (0, 5000)),
+        _wall(fake_clock, (0, 5000), (0, 0)),
+    ]
+    unit_b = [
+        _wall(fake_clock, (8000, 0), (14000, 0)),
+        _wall(fake_clock, (14000, 0), (14000, 5000)),
+        _wall(fake_clock, (14000, 5000), (8000, 5000)),
+        _wall(fake_clock, (8500, 5000), (8500, 0)),
+    ]
+    result, _rooms, closers = _envelope(unit_a + unit_b, fake_clock)
+
+    def spans_gap(start: Point, end: Point) -> bool:
+        return min(start.x, end.x) < 6500 and max(start.x, end.x) > 7500
+
+    assert any(spans_gap(closer.start, closer.end) for closer in closers)  # build_rooms khép qua khe
+    assert not any(spans_gap(wall.centreline.start, wall.centreline.end) for wall in result.walls)
