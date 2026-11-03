@@ -6,3 +6,5 @@
 - Test `test_service`: lớp mẫu 48 tường nối đuôi dài 48 m nay có thêm `MULTIPLE_PLANS`.
 - Không đổi API, DB, migration, hợp đồng FE–BE.
 - Cổng áp dụng: lint/type, test apps/worker/pipeline_quality.
+- Nợ mở (review 2026-11-03, P2): luật span 35 m dùng tỉ lệ có thể chỉ là ước lượng (cửa/bề dày tường) → hạ thành chỉ báo khi `scaleBasis` không phải chuỗi kích thước hoặc có `estimateSpread`.
+- Nợ mở (review 2026-11-03, P2): span lấy hộp bao mọi tường, kể cả tường rào/ranh lô → nhà đất lô lớn có thể báo nhầm; đo trên hộp bao phòng hoặc đòi tín hiệu thứ hai, thêm test ranh lô 40 m.
