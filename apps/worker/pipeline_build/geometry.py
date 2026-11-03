@@ -105,7 +105,7 @@ _GLAZING_HIT: Final = 0.8
 _GLAZING_SOLID: Final = 0.6
 """Quá 60 % dải bề dày là mực liền: khối đặc (tường bộ dò bỏ sót, gạch chéo), không phải nét kính."""
 _OPENING_NEAR_MM: Final = 300
-"""Ô mở có tâm cách trung điểm khe ≤ nửa khe + ngần này: hộp sinh đoạn khép đã thành ô mở trên tường cạnh khe."""
+"""Ô mở cùng loại trên tường song song cách đường khe ≤ ngần này, khoảng chiếu giao khe: hộp đã thành ô mở."""
 _BOX_TARGETS: Final[Mapping[str, LabelTarget]] = MappingProxyType(
     {"door": LABEL_TARGETS["door"], "double_door": LABEL_TARGETS["double_door"], "window": LABEL_TARGETS["window"]}
 )
@@ -1361,21 +1361,77 @@ def _gap_wall(wall_id: str, ends: tuple[Point, Point], thickness: int, confidenc
     )
 
 
-def _opening_near(walls: Sequence[Wall], openings: Sequence[Opening], start: Point, end: Point) -> bool:
-    """Có ô mở mà tâm cách trung điểm khe ≤ nửa khe + `_OPENING_NEAR_MM`: hộp sinh đoạn khép đã gắn tường khác."""
+def _opening_near(walls: Sequence[Wall], openings: Sequence[Opening], gap: tuple[Point, Point], kind: str) -> bool:
+    """Hộp sinh đoạn khép `gap` đã thành ô mở `kind` trên tường cạnh khe: ô mở cùng loại, tường chủ song song và cách
+    đường khe ≤ `_OPENING_NEAR_MM`, khoảng chiếu lên khe giao (chạm) khe — cửa sổ trên tường vuông góc gần góc không
+    chặn cửa đi qua khe (Codex r3 #4)."""
     by_id = {wall.id: wall.centreline for wall in walls}
-    mid = ((start.x + end.x) / 2, (start.y + end.y) / 2)
-    reach = math.dist((start.x, start.y), (end.x, end.y)) / 2 + _OPENING_NEAR_MM
+    start, end = gap
+    span = math.dist((start.x, start.y), (end.x, end.y))
+    ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
     for opening in openings:
         line = by_id.get(opening.wall_id)
-        if line is None:
+        if opening.kind != kind or line is None:
             continue
-        length = math.hypot(line.end.x - line.start.x, line.end.y - line.start.y)
-        t = (opening.offset_mm + opening.width_mm / 2) / max(1.0, length)
-        centre = (line.start.x + (line.end.x - line.start.x) * t, line.start.y + (line.end.y - line.start.y) * t)
-        if math.dist(centre, mid) <= reach:
+        dx, dy = line.end.x - line.start.x, line.end.y - line.start.y
+        length = math.hypot(dx, dy)
+        if length == 0 or abs(dx * uy - dy * ux) > length * _PARALLEL_SIN:
+            continue
+        ends = [
+            (line.start.x + dx * t - start.x, line.start.y + dy * t - start.y)
+            for t in (opening.offset_mm / length, (opening.offset_mm + opening.width_mm) / length)
+        ]
+        along = sorted(ex * ux + ey * uy for ex, ey in ends)
+        across = abs(ends[0][0] * uy - ends[0][1] * ux)
+        if across <= _OPENING_NEAR_MM and along[1] >= 0 and along[0] <= span:
             return True
     return False
+
+
+_PIECE_MIN_MM: Final = 100
+"""Phần hở tối thiểu của đoạn khép sau khi trừ tường song song đã phủ (`_uncovered`); ngắn hơn là mẩu vụn."""
+
+
+def _uncovered(
+    start: Point, end: Point, label: str | None, walls: Sequence[Wall]
+) -> list[tuple[Point, Point, str | None, list[Wall]]]:
+    """Đoạn khép trừ phần tường song song đã phủ (thường là tường qua khe 3c mang ô mở của chính hộp đó).
+
+    `build_rooms` dựng đoạn khép trên tường có đầu vào nên không thấy tường qua khe 3c: đoạn khép cả khe chồng tường đó,
+    `_clash` bỏ cả đoạn và vai tường hai bên ô mở vẫn hở. Trả phần còn hở (≥ `_PIECE_MIN_MM`, nhãn `None` vì ô mở đã có)
+    kèm tường phủ làm chủ; không chồng gì → đoạn nguyên vẹn; cắt xuyên tường → đoạn nguyên để vòng chính bỏ như cũ.
+    """
+    span = math.dist((start.x, start.y), (end.x, end.y))
+    if span == 0:
+        return []
+    probe = _Seg(start, end, 1, 1, 1.0, ())
+    ua = _unit(probe)
+    covered: list[tuple[float, float]] = []
+    near: list[Wall] = []
+    for wall in walls:
+        other = _wall_seg(wall)
+        if not _clash(_Seg(start, end, wall.thickness_mm, wall.thickness_mm, 1.0, ()), other):
+            continue
+        ub = _unit(other)
+        if abs(ua[0] * ub[1] - ua[1] * ub[0]) > _PARALLEL_SIN:
+            return [(start, end, label, [])]
+        low, high = sorted(_along(probe, (p.x, p.y)) for p in (other.start, other.end))
+        covered.append((max(0.0, low), min(span, high)))
+        near.append(wall)
+    if not covered:
+        return [(start, end, label, [])]
+
+    def at(t: float) -> Point:
+        ratio = t / span
+        return Point(x=js_round(start.x + (end.x - start.x) * ratio), y=js_round(start.y + (end.y - start.y) * ratio))
+
+    pieces: list[tuple[Point, Point, str | None, list[Wall]]] = []
+    reach = 0.0
+    for low, high in [*sorted(covered), (span, span)]:
+        if low - reach >= _PIECE_MIN_MM:
+            pieces.append((at(reach), at(low), None, near))
+        reach = max(reach, high)
+    return pieces
 
 
 def close_envelope_gaps(
@@ -1394,7 +1450,8 @@ def close_envelope_gaps(
     (`_inner_room`); khe trong nhà (hai bên đều là phòng) giữ hở: lối mở thật có tồn tại (lối khách - bếp), và khe
     không bên nào là phòng (sân trong, giếng trời) cũng không bịt. Đoạn cắt tim tường khác (khe đã có tường qua khe
     3c, vách chắn ngang) hay chồng song song lên tường đang có, kể cả tường vừa thêm (`_clash`: đoạn nối xoè từ một
-    đầu tới từng mảnh thẳng hàng phía bên kia), bỏ qua — chỉ phủ phần hở, không vẽ đè (W4).
+    đầu tới từng mảnh thẳng hàng phía bên kia), bỏ qua — chỉ phủ phần hở, không vẽ đè (W4). Đoạn khép chồng song
+    song một phần tường qua khe 3c (`build_rooms` không thấy tường đó) chỉ dựng phần còn hở (`_uncovered`).
 
     - Khe < `_ENVELOPE_DOOR_MIN_MM` có tường chủ thẳng hàng (`_bridge_hosts`): kéo tường chủ (`_extend_host`).
     - `bridges` dài hơn: tường mang cửa đi phủ cả khe (cánh đọc từ nét vẽ, ≥ 1,5 m không cánh → lùa, còn lại
@@ -1406,9 +1463,12 @@ def close_envelope_gaps(
     walls, openings = list(wall_set.walls), list(wall_set.openings)
     leaves = dict(wall_set.leaves)
     lines = [_centreline(wall) for wall in walls]
-    gaps: list[tuple[Point, Point, str | None]] = [(start, end, _BRIDGE) for start, end in wall_set.bridges]
-    gaps += [(closer.start, closer.end, closer.label) for closer in closers]
-    for start, end, label in gaps:
+    gaps: list[tuple[Point, Point, str | None, list[Wall]]] = [
+        (start, end, _BRIDGE, []) for start, end in wall_set.bridges
+    ]
+    for closer in closers:
+        gaps += _uncovered(closer.start, closer.end, closer.label, walls)
+    for start, end, label, near in gaps:
         span = math.dist((start.x, start.y), (end.x, end.y))
         hosts = _bridge_hosts(walls, (start, end))
         if label == _BRIDGE:
@@ -1416,7 +1476,7 @@ def close_envelope_gaps(
             inner = LineString(((start.x + ux, start.y + uy), (end.x - ux, end.y - uy)))
             if not hosts or any(inner.intersects(line) for line in lines):
                 continue
-        owners = hosts or [wall for wall in walls if start in (wall.centreline.start, wall.centreline.end)]
+        owners = hosts or [wall for wall in walls if start in (wall.centreline.start, wall.centreline.end)] or near
         if not owners or span == 0:
             continue
         thickness = max(host.thickness_mm for host in owners)
@@ -1429,7 +1489,7 @@ def close_envelope_gaps(
         if span < _ENVELOPE_DOOR_MIN_MM and hosts:
             _extend_host(walls, openings, lines, hosts, (start, end))
             continue
-        if label in _BOX_TARGETS and _opening_near(walls, openings, start, end):
+        if (box := _BOX_TARGETS.get(label or "")) and _opening_near(walls, openings, (start, end), box.domain_kind):
             continue
         target, confidence = None, 0.0
         if span >= _ENVELOPE_DOOR_MIN_MM:
