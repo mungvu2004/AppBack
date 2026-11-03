@@ -74,7 +74,7 @@ def _ignored(run_id: str, reason: str) -> None:
     _log.info("pipeline_result_ignored", extra={"run_id": run_id, "task": "persist", "reason": reason})
 
 
-async def _read_built(storage: ObjectStorage, ctx: PersistContext) -> BuiltLayer:
+async def read_built(storage: ObjectStorage, ctx: PersistContext) -> BuiltLayer:
     """Gom `layer.json` của lượt tới trần rồi giải; chạy **ngoài** mọi session (K36).
 
     Khoá vắng → `PIPELINE_ARTIFACT_MISSING`; vượt trần hay JSON sai hợp đồng B5-05 →
@@ -273,7 +273,7 @@ async def run_persist(
     if ctx is None:
         _ignored(payload.run_id, "run_missing")
         return "skipped"
-    built = await _read_built(storage, ctx)
+    built = await read_built(storage, ctx)
     async with session_scope(sessionmaker) as db:
         outcome = await _run_transaction(db, payload.run_id, built, clock)
         if outcome == "deferred":

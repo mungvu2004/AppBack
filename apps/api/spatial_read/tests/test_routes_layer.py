@@ -39,13 +39,19 @@ CRITICAL_SUMMARY: dict[str, object] = {
 
 
 async def _completed_classic_run(
-    db: AsyncSession, storage: LocalDiskStorage, clock: FakeClock, *, scene: Scene, floor: FloorRow
+    db: AsyncSession,
+    storage: LocalDiskStorage,
+    clock: FakeClock,
+    *,
+    scene: Scene,
+    floor: FloorRow,
+    summary: dict[str, object] = CRITICAL_SUMMARY,
 ) -> None:
     """Một lượt `completed` của tầng, ghim ba họ cổ điển, quality có lỗi nghiêm trọng (FIX-P0-10)."""
     upload = await make_complete_upload(db, storage, project=scene.project, floor=floor, data=png_bytes(10, 10))
     run = await start_run(db, upload_id=upload.id, clock=clock)
     await db.execute(update(PipelineRunRow).where(PipelineRunRow.id == run.id).values(status="completed"))
-    await make_run_pins(db, run_id=run.id, quality_summary=CRITICAL_SUMMARY)
+    await make_run_pins(db, run_id=run.id, quality_summary=summary)
 
 
 async def test_spatial_read_layer__C01(
@@ -218,6 +224,35 @@ async def test_spatial_read_layer__C01_readiness_ready(
     body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
     assert body["readiness"] == {"state": "ready", "reasons": []}
     assert body["level"]["reviewed"] is True
+    assert body["scaleBasis"] == "human"
+
+
+async def test_spatial_read_layer__C01_readiness_geometry_and_scale_basis(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, local_storage: LocalDiskStorage, fake_clock: FakeClock
+) -> None:
+    """BENCH3D-09: kiểm critical → `geometrySuspect` + `checks`; tỉ lệ chuỗi đồng thuận → bỏ `scaleUnresolved`."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await make_floor_document(
+        db_session,
+        floor_pk=floor.pk,
+        layer=sample_floor_layer(0, level_id=floor.level_id),
+        scale=SCALE,
+        scale_source="pipeline",
+        clock=fake_clock,
+    )
+    summary = {**CRITICAL_SUMMARY, "criticalChecks": ["MULTIPLE_PLANS"], "scaleBasis": "chain", "scaleChecks": []}
+    await _completed_classic_run(db_session, local_storage, fake_clock, scene=scene, floor=floor, summary=summary)
+    await db_session.commit()
+    body = (await api_client.get(layer_path(scene.project.id, floor.level_id), headers=headers_of(scene.owner))).json()
+    assert body["scaleStatus"] == "unresolved"
+    assert body["scaleBasis"] == "chain"
+    assert body["readiness"] == {
+        "state": "needsReview",
+        "reasons": ["geometrySuspect", "fallbackWallModel", "fallbackObjectModel", "fallbackTextModel"],
+        "checks": ["MULTIPLE_PLANS"],
+    }
+    assert all("clearAreaM2" in room for room in body["layer"]["rooms"])
 
 
 async def test_spatial_read_layer__C01_readiness_not_evaluated(

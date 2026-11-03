@@ -21,6 +21,7 @@ from apps.api.spatial_read.wire import (
     dimensions_out,
     layer_out,
 )
+from packages.domain.spatial import Room, clear_area_m2
 from packages.domain.spatial.samples import PASCAL_FIELDS, sample_roof, with_pascal_fields
 from packages.testing.factories.spatial import sample_floor_dimensions, sample_floor_layer
 
@@ -54,6 +55,17 @@ def test_room_area_is_json_number() -> None:
     """`areaM2` là **số** JSON, không phải chuỗi: `Decimal` in ra chuỗi thì zod của FE ném."""
     room = layer_out(sample_floor_layer(0, level_id=LEVEL_ID)).model_dump(mode="json", by_alias=True)["rooms"][0]
     assert isinstance(room["areaM2"], float | int)
+
+
+def test_layer_out_computes_clear_area() -> None:
+    """BENCH3D-09: `clearAreaM2` có ở mọi phòng, là số, không lớn hơn `areaM2`; miền không có trường này (chỉ đọc)."""
+    layer = sample_floor_layer(0, level_id=LEVEL_ID)
+    assert "clear_area_m2" not in Room.model_fields
+    rooms = layer_out(layer).model_dump(mode="json", by_alias=True)["rooms"]
+    assert rooms
+    for room, source in zip(rooms, layer.rooms, strict=True):
+        assert room["clearAreaM2"] == float(clear_area_m2(source.outline, layer.walls))
+        assert 0 <= room["clearAreaM2"] <= room["areaM2"]
 
 
 def test_dimensions_out_maps_every_dimension() -> None:
@@ -211,6 +223,8 @@ def test_layer_out_round_trips_suggested_flag() -> None:
     body = layer_out(layer.model_copy(update={"furniture": (flagged, *layer.furniture[1:])})).model_dump(by_alias=True)
     assert body["furniture"][0]["suggested"] is True
     assert all("suggested" not in item for item in body["furniture"][1:])
+    # `clearAreaM2` chỉ ở phía đọc (BENCH3D-09): FE bỏ trước khi gửi lại, ở đây cũng vậy.
+    body["rooms"] = [{k: v for k, v in room.items() if k != "clearAreaM2"} for room in body["rooms"]]
     assert type(layer).model_validate(body).furniture[0].suggested is True
 
 
