@@ -44,7 +44,8 @@ GEOMETRY_CHECK_ORDER: Final = (
 
 _MEASURED_BASES: Final = frozenset({"chain", "paired"})
 """Tỉ lệ đo từ nhiều số đo đồng thuận trên bản vẽ (chuỗi kích thước, cặp chữ-tường): không có nghi vấn thì không
-báo `scaleUnresolved`. `note` (một chữ OCR `TL 1:N` chia khổ giấy, in co trang là lệch x2), `door`/`wallThickness`
+báo `scaleUnresolved`. `note` (một chữ OCR `TL 1:N` chia khổ giấy, in co trang là lệch x2), `areaNote` (chữ diện tích
+căn chia Σ phòng dựng được: lệch theo độ phủ phòng, chưa đủ đáp án độc lập — BENCH3D-21), `door`/`wallThickness`
 /`default` (ước lượng) vẫn báo."""
 
 _PIPELINE_BASES: Final = frozenset(get_args(ScaleBasis)) - {"human"}

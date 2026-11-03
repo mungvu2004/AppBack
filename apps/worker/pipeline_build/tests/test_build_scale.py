@@ -418,3 +418,91 @@ def test_build_layer__raster_pdf_note_needs_door_agreement(
     note = [_note("TL 1/100")]
     built = _run(walls, note, fake_clock, detections=doors, fallback="1", px_per_paper_mm=150 / 25.4, vector_page=False)
     assert (built.scale_basis, built.scale_mm_per_px) == (basis, scale)
+
+
+def _bed(x: float, length: float) -> DetectionPx:
+    """Hộp giường cạnh dài `length` px (dọc), giữa căn."""
+    box = BoxPx(x_min=x, y_min=400, x_max=x + 0.7 * length, y_max=400 + length)
+    return DetectionPx(label="bed", box=box, confidence=0.9)
+
+
+@pytest.mark.parametrize(
+    ("bed_px", "scale", "checks"),
+    [
+        pytest.param(140, Decimal(repr(math.sqrt(14.9 * 2066 / 140))).quantize(_Q), {}, id="bed-agrees"),
+        pytest.param(80, Decimal("14.900000"), {"estimateSpread": {"door": 14.9, "wallThickness": 10.0}}, id="bed-off"),
+    ],
+)
+def test_build_layer__bed_estimate_combines_with_door(
+    bed_px: float, scale: Decimal, checks: dict[str, Any], fake_clock: FakeClock
+) -> None:
+    """BENCH3D-21: giường 2066 mm / 140 px = 14,76 lệch cửa 14,9 ≤ 25 % → trung bình nhân; giường 80 px (25,8, lệch
+    73 %: sofa) → luật cũ (cửa, ghi `estimateSpread` với tường 10)."""
+    walls = [_wall(100, 100, 1100, 100, 15.0), _wall(100, 100, 100, 900, 15.0)]
+    doors = [_door(300, 40), _door(340, 50), _door(380, 60), _bed(500, bed_px)]
+    built = _run(walls, (), fake_clock, detections=doors, fallback="1")
+    assert (built.scale_mm_per_px, built.scale_basis, built.scale_checks) == (scale, "door", checks)
+
+
+def _area_text(value: str, x: float, y: float) -> TextPx:
+    """Chữ diện tích (không trên đường kích thước) với góc trên trái ở `(x, y)`."""
+    return TextPx(text=value, box=BoxPx(x_min=x, y_min=y, x_max=x + 120, y_max=y + 20), confidence=0.9)
+
+
+_SHELL_DOORS: Final = tuple(_door(300 + 40 * k, 50) for k in range(3))
+"""Ba cửa 50 px sát cạnh trên của `_SHELL` → ước cửa 745 / 50 = 14,9 mm/px."""
+
+
+def test_build_layer__apartment_area_note_sets_scale(fake_clock: FakeClock) -> None:
+    """BENCH3D-21 T1: `DT 256 m2` ngoài căn, phòng 1000 x 1000 px tim tường → √(256·10⁶ / 10⁶) = 16 mm/px (1,07x ước
+    cửa 14,9): gốc `areaNote`, lớp đổi theo tỉ lệ mới, vẫn là ước lượng (`pipeline`, không `Dimension`)."""
+    built = _run(_SHELL, [_area_text("DT 256 m2", 1250, 1150)], fake_clock, detections=_SHELL_DOORS, fallback="1")
+    assert built.scale_basis == "areaNote"
+    assert abs(float(built.scale_mm_per_px) - 16) < 0.5  # phòng tim tường hơi lớn hơn 1000 x 1000 px
+    assert built.scale_source == "pipeline"
+    assert built.dimensions == ()
+    assert abs(float(sum(room.area_m2 for room in built.layer.rooms)) - 256) < 10
+
+
+@pytest.mark.parametrize(
+    "texts",
+    [
+        pytest.param([_area_text("DT 900 m2", 1250, 1150)], id="off-band-30mm"),
+        pytest.param([_area_text("256 m2", 1250, 1150), _area_text("180 m2", 1250, 1180)], id="two-plans"),
+        pytest.param([_area_text("256 m2", 1250, 1150), _area_text("200 m2", 550, 550)], id="room-text-too-big"),
+        pytest.param([_area_text("PHONG 15 m2", 1250, 1150)], id="below-20"),
+        pytest.param([_area_text("240-256M2", 1250, 1150)], id="range"),
+    ],
+)
+def test_build_layer__area_note_rejected_keeps_door(texts: list[TextPx], fake_clock: FakeClock) -> None:
+    """Diện tích ngoài dải 0,8-1,35x ước cửa (OCR rác), tờ hai căn (180 = 0,7x 256), chữ trong phòng 200 m² (căn phải
+    ≥ 1,3x phòng), < 20 m² hay dải `240-256M2` (nhiều loại căn) → giữ ước cửa 14,9, gốc `door`."""
+    built = _run(_SHELL, texts, fake_clock, detections=_SHELL_DOORS, fallback="1")
+    assert (built.scale_mm_per_px, built.scale_basis) == (Decimal("14.900000"), "door")
+
+
+def test_build_layer__area_note_ignored_when_project_scale_set(fake_clock: FakeClock) -> None:
+    """Dự án đã đặt tỉ lệ (5 mm/px) → không nhánh ước lượng, chữ diện tích không đổi gì."""
+    built = _run(_SHELL, [_area_text("DT 256 m2", 1250, 1150)], fake_clock, detections=_SHELL_DOORS)
+    assert (built.scale_source, built.scale_mm_per_px) == ("project_default", Decimal("5"))
+
+
+@pytest.mark.parametrize(
+    ("down_ratio", "basis"),
+    [pytest.param(21.4, "chain", id="axes-7pct"), pytest.param(30.0, "default", id="axes-50pct")],
+)
+def test_build_layer__tied_axis_clusters_use_geometric_mean(
+    down_ratio: float, basis: str, fake_clock: FakeClock
+) -> None:
+    """BENCH3D-21 T3 (f-23): 3 chữ ngang 20 mm/px và 3 chữ dọc 21,4 (lệch 7 %) → cụm chung hoà rỗng; hai trục lệch
+    ≤ 15 % → √(20 · 21,4), gốc `chain`, kèm `anisotropic`. Lệch 50 % (hai hình khác tỉ lệ) → không đoán."""
+    across = [_chain_text(str(20 * span), 200 + 300 * k, span) for k, span in enumerate((100, 150, 200))]
+    spans = (100, 150, 200)
+    down = [_vertical_chain_text(str(round(down_ratio * span)), 300 + 250 * k, span) for k, span in enumerate(spans)]
+    built = _run([_wall(100, 100, 1100, 100, 10.0)], [*across, *down], fake_clock)
+    assert built.scale_basis == basis
+    if basis == "chain":
+        assert built.scale_mm_per_px == Decimal(repr(math.sqrt(20 * 21.4))).quantize(_Q)
+        assert built.scale_checks["anisotropic"] == {"x": 20.0, "y": 21.4}
+    else:
+        assert built.scale_mm_per_px == Decimal("5")

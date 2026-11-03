@@ -282,8 +282,9 @@ ReadinessReason = Literal[
     "fallbackTextModel",
     "geometrySuspect",
 ]
-ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "default", "human"]
-"""Tỉ lệ đến từ đâu (BENCH3D-09): sáu gốc của pipeline (`layer.json` `scaleBasis`) cộng `human` (người hiệu chỉnh)."""
+ScaleBasis = Literal["chain", "paired", "note", "areaNote", "door", "wallThickness", "default", "human"]
+"""Tỉ lệ đến từ đâu (BENCH3D-09, `areaNote` BENCH3D-21): bảy gốc của pipeline (`layer.json` `scaleBasis`) cộng
+`human` (người hiệu chỉnh)."""
 
 
 class ReadinessOut(WireModel):

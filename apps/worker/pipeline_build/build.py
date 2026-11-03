@@ -107,6 +107,30 @@ _DOOR_WIDTH_MM: Final = 745.0
 """Cạnh dài trung vị của hộp YOLO cửa đi đơn (hộp hẹp hơn cánh thật ~850 mm), đo trên bench căn hộ (DOOR-SCALE)."""
 _DOOR_MIN_COUNT: Final = 3
 _DOUBLE_DOOR_RATIO: Final = 1.6
+_BED_LENGTH_MM: Final = 2066.0
+"""Cạnh dài trung vị của hộp YOLO `bed` (giường đơn/đôi đều dài ~2 m), đo trên 11 bản A có đáp án (1933-2207 mm)."""
+_BED_AGREEMENT: Final = 0.25
+"""Ước cửa đi và ước giường lệch ≤ 25 % → trung bình nhân (BENCH3D-21). Cửa lệch một chiều theo kiểu vẽ (render khe
+rộng -15...-20 %, CAD nét mảnh +8...+13 %), giường độc lập với kiểu vẽ cửa; lệch hơn là hộp `bed` lẫn sofa → bỏ."""
+_AREA_NOTE: Final = re.compile(r"(\d{1,3}(?:[.,]\d{1,2})?)\s*[mM]\s*[2²]")
+"""Chữ diện tích `59M2`, `DT tim tường 101,4m2`, `68.13 m²` (BENCH3D-21)."""
+_AREA_RANGE: Final = re.compile(r"\d\s*(?:[mM]\s*[2²])?\s*[-~]\s*\d")
+"""Dải diện tích `65-73M2`, `65,60m2 - 73,00m2`: nhiều loại căn (tờ quảng cáo), không phải của căn này → bỏ chữ."""
+_AREA_NOTE_MIN_M2: Final = 20.0
+"""Diện tích căn ghi trên tờ: ≥ 20 m² (căn hộ nhỏ nhất); nhỏ hơn là chữ diện tích phòng."""
+_AREA_NOTE_OTHER_PLAN: Final = (0.6, 0.85)
+"""Có giá trị khác ngoài phòng trong (0,6; 0,85)x giá trị lớn nhất → tờ nhiều căn, không biết chữ nào của căn này.
+≥ 0,85x là cặp tim tường/thông thủy của cùng căn (chênh 5-8 %)."""
+_AREA_NOTE_ROOM_RATIO: Final = 1.3
+"""Diện tích căn phải ≥ 1,3x chữ diện tích phòng lớn nhất (căn có ít nhất hai phòng đáng kể)."""
+_AREA_NOTE_COVERAGE: Final = 0.75
+"""Tổng phòng dựng được phải phủ ≥ 75 % bao lồi tường: phủ thiếu thì Σ phòng nhỏ và tỉ lệ từ diện tích phình."""
+_AREA_NOTE_BAND: Final = (0.8, 1.35)
+"""Tỉ lệ từ diện tích chỉ nhận khi nằm trong 0,8-1,35x ước cửa/giường (cửa render lệch tới -20 %, OCR rác lệch xa
+hơn) — kiểm chéo độc lập duy nhất có sẵn."""
+_AXIS_AGREEMENT: Final = 0.15
+"""Cụm chuỗi chung hoà nhưng cụm chữ ngang và chữ dọc đều suy được, lệch ≤ 15 % → ảnh giãn không đều (scan/in
+lệch trục vài %, f-23 7 %, ch-13 13 %), lấy trung bình nhân hai trục; lệch hơn (1:100 vs 1:50 là 2x) → không đoán."""
 _ROOT_KEYS: Final = frozenset({"schemaVersion", "layer", "dimensions", "scaleMmPerPx", "scaleSource", "dropped"})
 _SUGGESTION_CONFIDENCE: Final = 0.5
 """Gợi ý mực dư chưa có điểm của mô hình: lấy đúng trần "kém tin" `LOW_CONFIDENCE_CAP` nên luật 2 không hạ nữa."""
@@ -130,9 +154,9 @@ _RASTER_NOTE_AGREEMENT: Final = 0.10
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
 
-ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "default"]
-"""Tỉ lệ đến từ đâu (QT-SCALE): chuỗi kích thước ≥ 3 mẫu, 2 mẫu đồng thuận, ghi chú `TL 1:N`, ước từ cửa đi,
-ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
+ScaleBasis = Literal["chain", "paired", "note", "areaNote", "door", "wallThickness", "default"]
+"""Tỉ lệ đến từ đâu (QT-SCALE): chuỗi kích thước ≥ 3 mẫu, 2 mẫu đồng thuận, ghi chú `TL 1:N`, chữ diện tích căn
+(BENCH3D-21, vẫn là ước lượng), ước từ cửa đi (có thể kèm giường), ước từ bề dày tường, hay tỉ lệ dự án."""
 
 _SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
 _OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation"})
@@ -312,6 +336,13 @@ def _resolved_scale(
     if result.mm_per_px is None:
         result = infer_scale(paired)
     samples = (*paired, *chained)
+    if result.mm_per_px is None and not chained:
+        across, down = _axis_clusters(texts)
+        scales = axis_scales(across, down)
+        if scales is not None and max(scales) <= (1 + _AXIS_AGREEMENT) * min(scales):
+            # T3 (f-23): hai trục giãn khác nhau làm cụm chung hoà; `_anisotropy` vẫn ghi `scaleChecks.anisotropic`
+            result = replace(result, mm_per_px=math.sqrt(scales[0] * scales[1]), paired=False)
+            samples = (*paired, *across, *down)
     if result.mm_per_px is not None:
         if classify_scale_range(result.mm_per_px) == "inRange":
             value = Decimal(repr(result.mm_per_px)).quantize(_QUANTUM)
@@ -378,17 +409,25 @@ def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
     return tuple(samples)
 
 
+def _axis_clusters(texts: Sequence[TextPx]) -> tuple[tuple[ScaleSample, ...], tuple[ScaleSample, ...]]:
+    """Cụm đông nhất của mẫu chuỗi chữ ngang và của mẫu chuỗi chữ dọc (hộp cao > `_VERTICAL_TEXT_RATIO` lần rộng)."""
+    vertical = {
+        f"t{index}-chain"
+        for index, text in enumerate(texts)
+        if text.box.y_max - text.box.y_min > _VERTICAL_TEXT_RATIO * (text.box.x_max - text.box.x_min)
+    }
+    samples = _chain_samples(texts)
+    across = densest_cluster([sample for sample in samples if sample.id not in vertical])
+    down = densest_cluster([sample for sample in samples if sample.id in vertical])
+    return across, down
+
+
 def _anisotropy(texts: Sequence[TextPx], frame: Box | None) -> tuple[dict[str, float], bool]:
     """`{x, y}` khi tỉ lệ suy riêng từ chữ chuỗi ngang và dọc (cụm đông nhất mỗi trục) lệch > `_ANISOTROPY_LIMIT`,
     kèm `True` khi hộp chữ của cả hai cụm nằm trong `frame` (khung tường chính, px) nới `_FRAME_MARGIN`: chuỗi bao
     quanh một căn, dù chuỗi ngang chỉ ở một cạnh còn chuỗi dọc ở cạnh khác. Không có khung → `False`."""
     boxes = {f"t{index}-chain": text.box for index, text in enumerate(texts)}
-    vertical = {
-        key for key, box in boxes.items() if box.y_max - box.y_min > _VERTICAL_TEXT_RATIO * (box.x_max - box.x_min)
-    }
-    samples = _chain_samples(texts)
-    across = densest_cluster([sample for sample in samples if sample.id not in vertical])
-    down = densest_cluster([sample for sample in samples if sample.id in vertical])
+    across, down = _axis_clusters(texts)
     scales = axis_scales(across, down)
     if scales is None or max(scales) <= (1 + _ANISOTROPY_LIMIT) * min(scales):
         return {}, False
@@ -419,14 +458,17 @@ def _plan_frame(walls: Sequence[WallPx], mm_per_px: float) -> Box | None:
     return (x0 / mm_per_px, y0 / mm_per_px, x1 / mm_per_px, y1 / mm_per_px)
 
 
-def _estimate(door: float | None, wall: float) -> tuple[float, ScaleBasis, dict[str, float]]:
-    """Tỉ lệ tạm (U01) từ ước cửa đi và ước bề dày tường: (tỉ lệ, gốc, nghi vấn `estimateSpread`).
+def _estimate(door: float | None, wall: float, bed: float | None = None) -> tuple[float, ScaleBasis, dict[str, float]]:
+    """Tỉ lệ tạm (U01) từ ước cửa đi, ước giường và ước bề dày tường: (tỉ lệ, gốc, nghi vấn `estimateSpread`).
 
-    Không có ước cửa → bề dày tường. Hai ước lệch ≤ `_ESTIMATE_AGREEMENT` → trung bình nhân, gốc `door`; lệch hơn →
+    Không có ước cửa → bề dày tường. Cửa và giường lệch ≤ `_BED_AGREEMENT` → trung bình nhân hai ước, gốc `door`
+    (BENCH3D-21). Không thì cửa và tường lệch ≤ `_ESTIMATE_AGREEMENT` → trung bình nhân, gốc `door`; lệch hơn →
     ước cửa, kèm hai giá trị để bước kiểm chất lượng báo.
     """
     if door is None:
         return wall, "wallThickness", {}
+    if bed is not None and max(door, bed) <= (1 + _BED_AGREEMENT) * min(door, bed):
+        return math.sqrt(door * bed), "door", {}
     if max(door, wall) <= (1 + _ESTIMATE_AGREEMENT) * min(door, wall):
         return math.sqrt(door * wall), "door", {}
     return door, "door", {"door": round(door, 6), "wallThickness": round(wall, 6)}
@@ -461,6 +503,56 @@ def _door_scale(detections: Sequence[DetectionPx], walls: Sequence[WallPx]) -> f
         return None
     single = sides[sides <= _DOUBLE_DOOR_RATIO * float(np.median(sides))]
     return min(max(_DOOR_WIDTH_MM / float(np.median(single)), _BUILD_SCALE_MIN), _BUILD_SCALE_MAX)
+
+
+def _bed_scale(detections: Sequence[DetectionPx]) -> float | None:
+    """Tỉ lệ tạm từ giường: cạnh dài trung vị của hộp `bed` = `_BED_LENGTH_MM`; không có giường → `None`."""
+    sides = [max(d.box.x_max - d.box.x_min, d.box.y_max - d.box.y_min) for d in detections if d.label == "bed"]
+    if not sides:
+        return None
+    return min(max(_BED_LENGTH_MM / float(np.median(sides)), _BUILD_SCALE_MIN), _BUILD_SCALE_MAX)
+
+
+def _area_note_scale(
+    layer: SpatialLayer, walls: Sequence[WallPx], texts: Sequence[TextPx], mm_per_px: float
+) -> float | None:
+    """Tỉ lệ từ chữ diện tích căn ghi trên tờ (BENCH3D-21): `√(A·10⁶ / Σ phòng px²)`, hay `None`.
+
+    `A` = giá trị `xx m²` lớn nhất ≥ `_AREA_NOTE_MIN_M2` mà tâm chữ không nằm trong phòng nào. Bỏ khi tờ nhiều căn
+    (`_AREA_NOTE_OTHER_PLAN`), khi `A` < `_AREA_NOTE_ROOM_RATIO`x chữ trong phòng, hay khi phòng dựng được phủ
+    < `_AREA_NOTE_COVERAGE` bao lồi tường. Hình phòng không phụ thuộc tỉ lệ nên đo ở tỉ lệ tạm `mm_per_px` rồi đổi px.
+    """
+    if not layer.rooms or not walls:
+        return None
+    rooms = [shapely.Polygon([(p.x / mm_per_px, p.y / mm_per_px) for p in room.outline]) for room in layer.rooms]
+    room_px = float(sum(polygon.area for polygon in rooms))
+    ends = shapely.multipoints([(w.start.x, w.start.y) for w in walls] + [(w.end.x, w.end.y) for w in walls])
+    hull_px = float(shapely.convex_hull(ends).area)
+    if room_px <= 0 or room_px < _AREA_NOTE_COVERAGE * hull_px:
+        return None
+    tree = STRtree(rooms)
+    outside: set[float] = set()
+    inside: list[float] = []
+    for text in texts:
+        centre = shapely.Point((text.box.x_min + text.box.x_max) / 2, (text.box.y_min + text.box.y_max) / 2)
+        in_room = len(tree.query(centre, predicate="within")) > 0
+        if _AREA_RANGE.search(text.text):
+            continue
+        for match in _AREA_NOTE.finditer(text.text):
+            value = float(match.group(1).replace(",", "."))
+            if in_room:
+                inside.append(value)
+            elif value >= _AREA_NOTE_MIN_M2:
+                outside.add(value)
+    if not outside:
+        return None
+    total = max(outside)
+    low, high = _AREA_NOTE_OTHER_PLAN
+    if any(low * total < value < high * total for value in outside):
+        return None
+    if inside and total < _AREA_NOTE_ROOM_RATIO * max(inside):
+        return None
+    return math.sqrt(total * 1e6 / room_px)
 
 
 def _ratio(sample: ScaleSample) -> float:
@@ -818,8 +910,9 @@ def build_layer(
     if noted is not None:
         scale, basis = noted, "note"
     estimated = basis == "default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
-    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi và bề dày tường; không phải 1 mm/px
-        guess, basis, spread = _estimate(_door_scale(detections, walls_px), _build_scale(walls_px, float(scale)))
+    door = _door_scale(detections, walls_px) if estimated else None
+    if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi, giường và bề dày tường; không phải 1 mm/px
+        guess, basis, spread = _estimate(door, _build_scale(walls_px, float(scale)), _bed_scale(detections))
         scale = Decimal(repr(guess)).quantize(_QUANTUM)
         if spread:
             checks["estimateSpread"] = spread
@@ -855,6 +948,16 @@ def build_layer(
             _log.warning("pipeline_build_rescale_fallback", extra={"entity_id": exc.entity_id})
             dropped = base.copy()
             layer, dimensions = _attempt(context, scaling=Scaling(final, final), clock=clock, dropped=dropped)
+    if estimated and door is not None:  # T1: diện tích căn ghi trên tờ, kiểm chéo với ước cửa/giường
+        area = _area_note_scale(layer, walls_px, texts, final)
+        if area is not None and _AREA_NOTE_BAND[0] <= area / final <= _AREA_NOTE_BAND[1]:
+            noted_area = Decimal(repr(area)).quantize(_QUANTUM)
+            try:
+                layer = rescale_unreviewed(layer, final, float(noted_area))
+            except RescaleError as exc:
+                _log.warning("pipeline_build_area_note_rescale_failed", extra={"entity_id": exc.entity_id})
+            else:
+                scale, basis = noted_area, "areaNote"
     return BuiltLayer(
         layer=layer,
         dimensions=dimensions,

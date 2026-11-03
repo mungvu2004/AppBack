@@ -2184,6 +2184,7 @@
                   "chain",
                   "paired",
                   "note",
+                  "areaNote",
                   "door",
                   "wallThickness",
                   "default",
