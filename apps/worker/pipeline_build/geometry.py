@@ -34,14 +34,15 @@ from apps.worker.pipeline_build.constants import (
     WALL_JOIN_MM,
 )
 from apps.worker.pipeline_build.ids import new_spatial_id
-from apps.worker.pipeline_build.residual import PageRaster
+from apps.worker.pipeline_build.residual import INK_GRAY, PageRaster
 from apps.worker.pipeline_build.swing import read_leaf
 from packages.core.clock import Clock
-from packages.domain.rules_ai import wall_side
+from packages.domain.rules_ai import outline_contains
+from packages.domain.rules_ai.geometry import wall_side_by
 from packages.domain.spatial import Opening, Point, Room, Segment, Wall, js_round
 from packages.domain.spatial.thickness import snap_thickness
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, WallPx
-from packages.ml_contracts.labels import LABEL_TARGETS, SwingDirection
+from packages.ml_contracts.labels import LABEL_TARGETS, LabelTarget, SwingDirection
 
 Geoms = NDArray[np.object_]
 _log = logging.getLogger(__name__)
@@ -96,6 +97,21 @@ _OVERLAP_MIN_MM: Final = 10
 _JOINT_MM: Final = 50
 _OPENING_LABELS: Final[frozenset[str]] = frozenset({"door", "double_door", "window"})
 """Chỉ ba nhãn này thành ô mở; nhãn đồ đạc là việc của `rooms.build_furniture`, không đếm ở đây."""
+_NO_GUESSED_DOOR: Final = frozenset({"loggia", "utility", "other"})
+"""Phòng phía trong khe tường ngoài là lô gia/ban công, kỹ thuật, khác: khe là lan can hay khung kính, không phải cửa
+đi bộ dò bỏ sót (bench r3: không cửa đoán kiểu này nào khớp đáp án) → khép bằng tường đặc (R2')."""
+_GLAZING_HIT: Final = 0.8
+"""Một nét kính: ≥ 80 % điểm mẫu dọc khe (giữa 70 % khe) rơi vào mực ngoài mặt nạ tường."""
+_GLAZING_SOLID: Final = 0.6
+"""Quá 60 % dải bề dày là mực liền: khối đặc (tường bộ dò bỏ sót, gạch chéo), không phải nét kính."""
+_OPENING_NEAR_MM: Final = 300
+"""Ô mở có tâm cách trung điểm khe ≤ nửa khe + ngần này: hộp sinh đoạn khép đã thành ô mở trên tường cạnh khe."""
+_BOX_TARGETS: Final[Mapping[str, LabelTarget]] = MappingProxyType(
+    {"door": LABEL_TARGETS["door"], "double_door": LABEL_TARGETS["double_door"], "window": LABEL_TARGETS["window"]}
+)
+"""Nhãn hộp sinh đoạn khép phòng → ô mở dựng trên tường qua khe đó (C5)."""
+_BRIDGE: Final = "bridge"
+"""Nguồn khe là đoạn nối 3b (`WallSet.bridges`), khác nhãn hộp/`None` của `RoomCloser`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +149,20 @@ class WallSet:
     bridges: tuple[tuple[Point, Point], ...]
     leaves: Mapping[str, tuple[float, float]] = MappingProxyType({})
     """Id ô mở → hướng cánh đọc từ nét vẽ, cho `swing.settle_reversed` sau khi có phòng (QT-SWING)."""
+
+
+@dataclass(frozen=True, slots=True)
+class RoomCloser:
+    """Đoạn `rooms.build_rooms` dùng khép phòng mà không có tường (`_gap_closers`, `_door_closers`), mm.
+
+    `start` = đầu tường mà đoạn xuất phát, `end` = chân trên tim tường đích; `label` = nhãn hộp ô mở sinh ra đoạn
+    (`door`, `double_door`, `window`), `None` = khe góc/chữ T không hộp. `close_envelope_gaps` dựng tường cho đoạn
+    nằm ở mặt ngoài (C5).
+    """
+
+    start: Point
+    end: Point
+    label: str | None = None
 
 
 @dataclass(slots=True)
@@ -1190,6 +1220,125 @@ def _extend_host(
     lines[index] = _centreline(walls[index])
 
 
+def _inner_room(wall: Wall, rooms: Sequence[Room]) -> Room | None:
+    """Phòng phía trong khi `wall` ở mặt ngoài (một bên là phòng, cùng phép dò `wall_side_by`), không thì `None`."""
+    found: list[Room] = []
+
+    def contains(x: float, y: float) -> bool:
+        """Có phòng nào chứa điểm không; nhớ phòng chứa nó."""
+        room = next((room for room in rooms if outline_contains(room.outline, x, y)), None)
+        if room is not None:
+            found.append(room)
+        return room is not None
+
+    return found[0] if wall_side_by(wall, contains) == "exterior" else None
+
+
+def _glazed(ends: tuple[Point, Point], thickness_mm: int, page: PageRaster | None, scaling: Scaling) -> bool:
+    """Khe có vách kính/khung cửa sổ vẽ nét mảnh: trong dải bề dày tường có ≥ 2 nét liền chạy dọc khe.
+
+    Mẫu từng hàng px song song khe (giữa 70 % khe, bỏ đầu tường) trên mực ngoài mặt nạ tường; hàng đạt `_GLAZING_HIT`
+    là nét. Dải mực liền quá `_GLAZING_SOLID` bề dày là khối đặc, không phải kính. Không có trang → `False`.
+    """
+    if page is None or page.gray.shape != page.walls.shape:
+        return False
+    a = np.array((ends[0].x, ends[0].y), dtype=float) / scaling.build
+    b = np.array((ends[1].x, ends[1].y), dtype=float) / scaling.build
+    run = float(np.hypot(*(b - a)))
+    unit = (b - a) / run
+    normal = np.array((-unit[1], unit[0]))
+    along = a + np.outer(np.linspace(0.15, 0.85, max(8, round(run))), b - a)
+    half = math.ceil(thickness_mm / 2 / scaling.build) + 1
+    height, width = page.gray.shape
+    lined = np.zeros(2 * half + 1, dtype=np.bool_)
+    for row, offset in enumerate(range(-half, half + 1)):
+        cols, rows = np.rint(along + normal * offset).astype(int).T
+        if cols.min() < 0 or rows.min() < 0 or cols.max() >= width or rows.max() >= height:
+            continue
+        ink = (page.gray[rows, cols] < INK_GRAY) & ~page.walls[rows, cols]
+        lined[row] = ink.mean() >= _GLAZING_HIT
+    strokes = int(lined[0]) + int(np.count_nonzero(lined[1:] & ~lined[:-1]))
+    # ponytail: tường vẽ hai nét viền mà mặt nạ bỏ sót cũng ra 2 nét → cửa sổ; tách được nếu đo khoảng cách các nét.
+    return strokes >= 2 and float(lined.mean()) <= _GLAZING_SOLID
+
+
+def _gap_target(
+    label: str | None,
+    room: Room,
+    ends: tuple[Point, Point],
+    thickness_mm: int,
+    page: PageRaster | None,
+    scaling: Scaling,
+) -> tuple[LabelTarget | None, float]:
+    """Ô mở cho tường qua khe ≥ `_ENVELOPE_DOOR_MIN_MM` (xem `close_envelope_gaps`) + tin cậy; `None` = tường đặc."""
+    if label == _BRIDGE:
+        return (None if room.usage in _NO_GUESSED_DOOR else LABEL_TARGETS["door"]), _INFERRED_DOOR_CONFIDENCE
+    if label is not None and label in _BOX_TARGETS:
+        return _BOX_TARGETS[label], _INFERRED_DOOR_CONFIDENCE
+    if _glazed(ends, thickness_mm, page, scaling):
+        return LABEL_TARGETS["window"], _GUESSED_DOOR_CONFIDENCE
+    return None, 0.0
+
+
+def _gap_opening(
+    wall: Wall, target: LabelTarget, confidence: float, page: PageRaster | None, scaling: Scaling, clock: Clock
+) -> tuple[Opening, tuple[float, float] | None]:
+    """Ô mở phủ cả tường qua khe `wall`: cửa đi lấy chiều mở/tin/cánh từ `_gap_door`, cửa sổ lấy `confidence`."""
+    start, end = wall.centreline.start, wall.centreline.end
+    swing: SwingDirection = target.swing or "sliding"
+    leaf = None
+    if target.domain_kind == "door":
+        swing, confidence, leaf = _gap_door(start, end, wall.thickness_mm, page, scaling)
+    opening = Opening(
+        id=new_spatial_id("opening", clock),
+        wall_id=wall.id,
+        kind="door" if target.domain_kind == "door" else "window",
+        offset_mm=0,
+        width_mm=math.floor(math.dist((start.x, start.y), (end.x, end.y))),
+        height_mm=target.height_mm or 2200,
+        sill_height_mm=target.sill_mm or 0,
+        swing=swing,
+        confidence=confidence,
+        source="ai",
+        reviewed=False,
+    )
+    return opening, leaf
+
+
+def _gap_wall(wall_id: str, ends: tuple[Point, Point], thickness: int, confidence: float, level_id: str) -> Wall:
+    """Tường qua khe (không đầu vào, chưa ô mở) `ends`; id tạm, nơi gọi cấp id mới khi giữ tường."""
+    return Wall(
+        id=wall_id,
+        level_id=level_id,
+        centreline=Segment(start=ends[0], end=ends[1]),
+        thickness_mm=thickness,
+        detected_thickness_mm=thickness,
+        height_mm=DEFAULT_WALL_HEIGHT_MM,
+        kind="partition",
+        opening_ids=(),
+        confidence=confidence,
+        source="ai",
+        reviewed=False,
+    )
+
+
+def _opening_near(walls: Sequence[Wall], openings: Sequence[Opening], start: Point, end: Point) -> bool:
+    """Có ô mở mà tâm cách trung điểm khe ≤ nửa khe + `_OPENING_NEAR_MM`: hộp sinh đoạn khép đã gắn tường khác."""
+    by_id = {wall.id: wall.centreline for wall in walls}
+    mid = ((start.x + end.x) / 2, (start.y + end.y) / 2)
+    reach = math.dist((start.x, start.y), (end.x, end.y)) / 2 + _OPENING_NEAR_MM
+    for opening in openings:
+        line = by_id.get(opening.wall_id)
+        if line is None:
+            continue
+        length = math.hypot(line.end.x - line.start.x, line.end.y - line.start.y)
+        t = (opening.offset_mm + opening.width_mm / 2) / max(1.0, length)
+        centre = (line.start.x + (line.end.x - line.start.x) * t, line.start.y + (line.end.y - line.start.y) * t)
+        if math.dist(centre, mid) <= reach:
+            return True
+    return False
+
+
 def close_envelope_gaps(
     wall_set: WallSet,
     rooms: Sequence[Room],
@@ -1198,70 +1347,61 @@ def close_envelope_gaps(
     scaling: Scaling,
     clock: Clock,
     page: PageRaster | None = None,
+    closers: Sequence[RoomCloser] = (),
 ) -> WallSet:
-    """C5: đoạn nối khe thẳng hàng nằm trên **mặt ngoài** các phòng → tường qua khe (không đầu vào) thay vì bỏ hở.
+    """C5: khe trên **mặt ngoài** các phòng (đoạn nối 3b `bridges`, đoạn khép phòng `closers`) → tường, không bỏ hở.
 
-    Phòng đã khép qua đoạn nối nên lớp tường hở đúng chỗ bộ dò bỏ sót cửa. Khe ≥ `_ENVELOPE_DOOR_MIN_MM` thành
-    tường mang một cửa đi phủ cả khe (cánh đọc từ nét vẽ, rộng ≥ 1,5 m không cánh → lùa, còn lại cánh trái tin
-    thấp); khe hẹp hơn: kéo một tường chủ khép khe (`_extend_host`).
-    Khe trong nhà (hai bên đều là phòng) giữ hở: lối mở thật có tồn tại.
-    Đoạn nối cắt tim tường khác (khe đã có tường qua khe 3c, hay vách chắn ngang) hay chồng song song lên tường
-    đang có (`_clash`: đoạn nối xoè từ một đầu tới từng mảnh thẳng hàng phía bên kia) bỏ qua.
+    Phòng đã khép qua các đoạn này nên lớp tường hở đúng chỗ đó (vỏ 3D hở, W1). Chỉ đoạn có đúng một bên là phòng
+    (`_inner_room`); khe trong nhà (hai bên đều là phòng) giữ hở: lối mở thật có tồn tại (lối khách - bếp), và khe
+    không bên nào là phòng (sân trong, giếng trời) cũng không bịt. Đoạn cắt tim tường khác (khe đã có tường qua khe
+    3c, vách chắn ngang) hay chồng song song lên tường đang có, kể cả tường vừa thêm (`_clash`: đoạn nối xoè từ một
+    đầu tới từng mảnh thẳng hàng phía bên kia), bỏ qua — chỉ phủ phần hở, không vẽ đè (W4).
+
+    - Khe < `_ENVELOPE_DOOR_MIN_MM` có tường chủ thẳng hàng (`_bridge_hosts`): kéo tường chủ (`_extend_host`).
+    - `bridges` dài hơn: tường mang cửa đi phủ cả khe (cánh đọc từ nét vẽ, ≥ 1,5 m không cánh → lùa, còn lại
+      cánh trái tin thấp), trừ phòng phía trong thuộc `_NO_GUESSED_DOOR` → tường đặc (R2').
+    - `closers` còn lại: tường mới. Khe ≥ `_ENVELOPE_DOOR_MIN_MM` do hộp ô mở khép → mang ô mở đó (bỏ đoạn nếu
+      hộp đã thành ô mở trên tường khác, `_opening_near`); không hộp mà có nét kính (`_glazed`) → cửa sổ tin thấp;
+      còn lại tường đặc — không đoán cửa đi.
     """
     walls, openings = list(wall_set.walls), list(wall_set.openings)
     leaves = dict(wall_set.leaves)
     lines = [_centreline(wall) for wall in walls]
-    door = LABEL_TARGETS["door"]
-    for start, end in wall_set.bridges:
+    gaps: list[tuple[Point, Point, str | None]] = [(start, end, _BRIDGE) for start, end in wall_set.bridges]
+    gaps += [(closer.start, closer.end, closer.label) for closer in closers]
+    for start, end, label in gaps:
         span = math.dist((start.x, start.y), (end.x, end.y))
         hosts = _bridge_hosts(walls, (start, end))
-        ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
-        inner = LineString(((start.x + ux, start.y + uy), (end.x - ux, end.y - uy)))
-        if not hosts or any(inner.intersects(line) for line in lines):
+        if label == _BRIDGE:
+            ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
+            inner = LineString(((start.x + ux, start.y + uy), (end.x - ux, end.y - uy)))
+            if not hosts or any(inner.intersects(line) for line in lines):
+                continue
+        owners = hosts or [wall for wall in walls if start in (wall.centreline.start, wall.centreline.end)]
+        if not owners or span == 0:
             continue
-        thickness = max(host.thickness_mm for host in hosts)
-        # Đoạn nối xoè từ cùng một đầu (mỗi tường thẳng hàng một đoạn) chạy dọc tường đã có: không phải khe (W4).
-        seg = _Seg(start, end, thickness, thickness, 1.0, ())
-        if any(_clash(seg, _wall_seg(other)) for other in walls):
+        thickness = max(host.thickness_mm for host in owners)
+        if any(_clash(_Seg(start, end, thickness, thickness, 1.0, ()), _wall_seg(other)) for other in walls):
             continue
-        wall = Wall(
-            id=hosts[0].id,
-            level_id=level_id,
-            centreline=Segment(start=start, end=end),
-            thickness_mm=thickness,
-            detected_thickness_mm=thickness,
-            height_mm=DEFAULT_WALL_HEIGHT_MM,
-            kind="partition",
-            opening_ids=(),
-            confidence=min(host.confidence for host in hosts),
-            source="ai",
-            reviewed=False,
-        )
-        if wall_side(wall, rooms) != "exterior":
+        wall = _gap_wall(owners[0].id, (start, end), thickness, min(host.confidence for host in owners), level_id)
+        room = _inner_room(wall, rooms)
+        if room is None:
             continue
-        if span < _ENVELOPE_DOOR_MIN_MM:
+        if span < _ENVELOPE_DOOR_MIN_MM and hosts:
             _extend_host(walls, openings, lines, hosts, (start, end))
             continue
-        wall_id = new_spatial_id("wall", clock)
-        wall = wall.model_copy(update={"id": wall_id})
-        swing, confidence, leaf = _gap_door(start, end, thickness, page, scaling)
-        opening = Opening(
-            id=new_spatial_id("opening", clock),
-            wall_id=wall_id,
-            kind="door",
-            offset_mm=0,
-            width_mm=math.floor(span),
-            height_mm=door.height_mm or 2200,
-            sill_height_mm=door.sill_mm or 0,
-            swing=swing,
-            confidence=confidence,
-            source="ai",
-            reviewed=False,
-        )
-        wall = wall.model_copy(update={"opening_ids": (opening.id,)})
-        openings.append(opening)
-        if leaf is not None:
-            leaves[opening.id] = leaf
+        if label in _BOX_TARGETS and _opening_near(walls, openings, start, end):
+            continue
+        target, confidence = None, 0.0
+        if span >= _ENVELOPE_DOOR_MIN_MM:
+            target, confidence = _gap_target(label, room, (start, end), thickness, page, scaling)
+        wall = wall.model_copy(update={"id": new_spatial_id("wall", clock)})
+        if target is not None:
+            opening, leaf = _gap_opening(wall, target, confidence, page, scaling, clock)
+            wall = wall.model_copy(update={"opening_ids": (opening.id,)})
+            openings.append(opening)
+            if leaf is not None:
+                leaves[opening.id] = leaf
         walls.append(wall)
         lines.append(_centreline(wall))
     return replace(wall_set, walls=tuple(walls), openings=tuple(openings), leaves=MappingProxyType(leaves))

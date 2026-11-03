@@ -21,7 +21,7 @@ from shapely import STRtree
 
 from apps.worker.pipeline_build.arcs import explode_arcs, join_arcs
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
-from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls, close_envelope_gaps
+from apps.worker.pipeline_build.geometry import RoomCloser, Scaling, WallSet, build_walls, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster, residual_ink_boxes
 from apps.worker.pipeline_build.rooms import build_furniture, build_rooms
@@ -624,11 +624,18 @@ def _assembled(
     from_inputs = set(wall_set.input_to_wall.values())
     room_walls = [wall for index, wall in enumerate(wall_set.walls) if index in from_inputs]
     trusted = context.source == "pipeline"
+    closers: list[RoomCloser] = []
     rooms = build_rooms(
-        room_walls, wall_set.bridges, context.texts, detections=context.detections, scale_trusted=trusted, **shared
+        room_walls,
+        wall_set.bridges,
+        context.texts,
+        detections=context.detections,
+        scale_trusted=trusted,
+        closers_out=closers,
+        **shared,
     )
     joined, rooms = join_arcs(wall_set, rooms, context.arc_of)
-    # C5: khe thẳng hàng trên mặt ngoài (cửa bộ dò bỏ sót) thành tường mang cửa thay vì để vỏ hở.
+    # C5: khe trên mặt ngoài (đoạn nối 3b, đoạn khép phòng) thành tường/tường mang ô mở thay vì để vỏ hở.
     wall_set = close_envelope_gaps(
         replace(joined, leaves=wall_set.leaves),
         rooms,
@@ -636,6 +643,7 @@ def _assembled(
         scaling=scaling,
         clock=clock,
         page=context.page,
+        closers=closers,
     )
     furniture: tuple[Furniture, ...] = ()
     if context.furniture:
