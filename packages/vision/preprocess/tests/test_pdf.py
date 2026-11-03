@@ -1,5 +1,6 @@
 """Đếm trang, khổ trang, dựng trang PDF (U04, U06, U07) và an toàn luồng của pdfium."""
 
+import ctypes
 import math
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -7,8 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
 import pytest
+from numpy.typing import NDArray
 from PIL import Image
 
+from packages.vision.preprocess import pdf as pdf_module
+from packages.vision.preprocess import pdf_vector
 from packages.vision.preprocess.errors import VisionError
 from packages.vision.preprocess.pdf import (
     effective_dpi,
@@ -17,6 +21,7 @@ from packages.vision.preprocess.pdf import (
     render_pdf_page,
     render_pdf_thumbnails,
 )
+from packages.vision.preprocess.pdf_vector import pick_plan_page
 from packages.vision.preprocess.tests import synthetic
 
 _RED = (1.0, 0.0, 0.0)
@@ -238,3 +243,80 @@ def test_render_pdf_thumbnails_file_type_mismatch() -> None:
     with pytest.raises(VisionError) as excinfo:
         render_pdf_thumbnails(b"not a pdf at all", max_pixels=80_000, max_pages=20)
     assert str(excinfo.value) == "FILE_TYPE_MISMATCH"
+
+
+def test_pick_plan_page_skips_text_cover() -> None:
+    """Bìa chữ rồi mặt bằng vector → trang 1."""
+    data = synthetic.join_pdfs(
+        synthetic.make_pdf(1, ops=synthetic.COVER_OPS), synthetic.make_pdf(1, ops=synthetic.PLAN_OPS)
+    )
+    assert pick_plan_page(data, 2) == 1
+
+
+def test_pick_plan_page_scanned_page_counts_as_drawing() -> None:
+    """Bìa chữ rồi trang quét (ảnh phủ trang, đủ mực) → trang 1."""
+    data = synthetic.join_pdfs(
+        synthetic.make_pdf(1, ops=synthetic.COVER_OPS), synthetic.make_pdf(1, ops=synthetic.SCAN_OPS)
+    )
+    assert pick_plan_page(data, 2) == 1
+
+
+def test_pick_plan_page_skips_blank_scanned_cover() -> None:
+    """Hai trang đều là ảnh: bìa quét gần trắng bị bỏ qua nhờ đếm mực."""
+    cover = synthetic.make_pdf(1, ops=synthetic.BLANK_SCAN_OPS)
+    data = synthetic.join_pdfs(cover, synthetic.make_pdf(1, ops=synthetic.SCAN_OPS))
+    assert pick_plan_page(data, 2) == 1
+
+
+def test_pick_plan_page_keeps_first_drawing_and_falls_back_to_zero() -> None:
+    """Trang 0 đã là bản vẽ → 0; không trang nào là bản vẽ → 0; trang bản vẽ ngoài `max_pages` không được xét."""
+    plan, cover = synthetic.make_pdf(1, ops=synthetic.PLAN_OPS), synthetic.make_pdf(1, ops=synthetic.COVER_OPS)
+    assert pick_plan_page(synthetic.join_pdfs(plan, cover), 2) == 0
+    assert pick_plan_page(synthetic.make_pdf(3, ops=synthetic.COVER_OPS), 3) == 0
+    assert pick_plan_page(synthetic.join_pdfs(cover, plan), 1) == 0
+
+
+def test_pick_plan_page_stops_reading_at_plan_min_segments(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dò trang dừng duyệt khi đủ `PLAN_MIN_SEGMENTS` nét (120 path một nét → đọc đúng 100), không trích chữ."""
+    calls: list[int] = []
+    real = pdf_vector._path_segments
+
+    def counting(obj: ctypes.c_void_p, matrix: pdf_vector.Affine, out: list[pdf_vector.Row]) -> None:
+        calls.append(1)
+        real(obj, matrix, out)
+
+    def no_text(self: object) -> None:
+        raise AssertionError("pick_plan_page không được trích chữ")
+
+    monkeypatch.setattr(pdf_vector, "_path_segments", counting)
+    monkeypatch.setattr(pdfium.PdfPage, "get_textpage", no_text)
+    assert pick_plan_page(synthetic.make_pdf(2, ops=synthetic.PLAN_OPS), 2) == 0
+    assert len(calls) == pdf_vector.PLAN_MIN_SEGMENTS
+
+
+def test_pick_plan_page_errors_like_pdf_page_vectors() -> None:
+    """Không phải PDF → `FILE_TYPE_MISMATCH`, cùng mã đường dựng ảnh."""
+    with pytest.raises(VisionError) as excinfo:
+        pick_plan_page(b"not a pdf at all", 2)
+    assert str(excinfo.value) == "FILE_TYPE_MISMATCH"
+
+
+def test_pick_plan_page_huge_scanned_page_stays_under_pixel_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trang quét khổ 30 000 pt (bom PDF, U06): ảnh dò mực bị hạ DPI, không vượt `PLAN_PICK_MAX_PIXELS`."""
+    side = 30_000.0
+    shapes: list[tuple[int, ...]] = []
+    real = pdf_module._render_page
+
+    def spy(pdf: pdfium.PdfDocument, page_index: int, scale: float) -> NDArray[np.uint8]:
+        pixels = real(pdf, page_index, scale)
+        shapes.append(pixels.shape)
+        return pixels
+
+    monkeypatch.setattr(pdf_vector, "_render_page", spy)
+    huge = synthetic.make_pdf(1, size=(side, side), ops=synthetic.scan_ops((side, side)))
+    data = synthetic.join_pdfs(synthetic.make_pdf(1, ops=synthetic.BLANK_SCAN_OPS), huge)
+
+    assert pick_plan_page(data, 2) == 1
+    assert len(shapes) == 2
+    height, width, _ = shapes[1]
+    assert height * width <= pdf_vector.PLAN_PICK_MAX_PIXELS * 1.01

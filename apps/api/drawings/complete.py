@@ -11,6 +11,7 @@ Tệp hỏng ở chặng 2 → hàm **trả** `Response` 422 chứ không ném: 
 handler ném, mà dòng `rejected` phải được giữ lại (BE-00 §7, [6] #7 bước 6).
 """
 
+import asyncio
 import hashlib
 import logging
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -45,6 +46,7 @@ from packages.core.errors import AppError
 from packages.db.models.drawings import UploadChunkRow, UploadRow
 from packages.storage.port import ObjectStorage
 from packages.vision.preprocess import VisionError, pdf_page_count, sniff_kind
+from packages.vision.preprocess.pdf_vector import pick_plan_page
 
 _log: Final = logging.getLogger(__name__)
 
@@ -176,19 +178,31 @@ async def _concat(
             yield part
 
 
-def _check_pages(data: bytes, facts: UploadFacts) -> None:
-    """Số trang PDF ([6] #7 bước 5): quá trần → `VALIDATION`, `pageIndex` ngoài → có `field`.
+def _check_pages(data: bytes, facts: UploadFacts) -> int:
+    """Số trang PDF ([6] #7 bước 5): quá trần → `VALIDATION`, `pageIndex` ngoài → có `field`; trả trang sẽ dựng.
 
-    `pdf_page_count` chạy trên `asyncio.to_thread` ở người gọi; ở đây chỉ còn luật số.
-    `VisionError` của nó đi tiếp nguyên mã (`PDF_UNREADABLE`, `FILE_CORRUPT`, …); riêng
+    Đồng bộ (PDFium dưới `PDF_LOCK`): người gọi chạy nó trên `asyncio.to_thread`.
+    `VisionError` đi tiếp nguyên mã (`PDF_UNREADABLE`, `FILE_CORRUPT`, …); riêng
     `FILE_CORRUPT` do `PdfiumError` thì nguyên nhân gốc chỉ có ở `__cause__` (NO-124) nên
     phải vào nhật ký trước khi thân W7 nuốt mất nó.
+
+    BENCH3D-07: client vắng `pageIndex` và không cắt vùng (`facts.auto_page`) → trang bản vẽ đầu tiên
+    (`pick_plan_page`, bỏ trang bìa). Trang client gửi, kể cả 0, luôn giữ nguyên.
     """
     pages = _page_count(data)
     if pages > PDF_PAGE_MAX:
         raise VALIDATION.error()
     if facts.page_index >= pages:
         raise VALIDATION.error(field="pageIndex")
+    if not facts.auto_page or pages == 1:
+        return facts.page_index
+    try:
+        picked = pick_plan_page(data, pages)
+    except VisionError as exc:
+        raise exc.to_app_error() from exc
+    if picked != facts.page_index:
+        _log.info("upload_page_auto_picked", extra={"upload_id": facts.id, "pages": pages, "picked": picked})
+    return picked
 
 
 def _page_count(data: bytes) -> int:
@@ -201,8 +215,8 @@ def _page_count(data: bytes) -> int:
         raise exc.to_app_error() from exc
 
 
-async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Sequence[_Chunk]) -> tuple[str, str]:
-    """Bước 3-5: nhận diện, ghi `original.*`, đếm trang; trả `(loại đã nhận diện, sha256 hex)`.
+async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Sequence[_Chunk]) -> tuple[str, str, int]:
+    """Bước 3-5: nhận diện, ghi `original.*`, đếm trang; trả `(loại đã nhận diện, sha256 hex, trang sẽ dựng)`.
 
     SHA-256 của cả tệp gốc (UX41 P01) băm ngay trên luồng ghi, không đọc lại tệp: FE so
     nó với tệp người dùng vừa chọn để báo "giống hệt bản vẽ đang dùng".
@@ -225,9 +239,8 @@ async def _build_original(storage: ObjectStorage, facts: UploadFacts, chunks: Se
     )
     if not marker.complete:
         raise FILE_CORRUPT.error()
-    if buffer is not None:
-        _check_pages(bytes(buffer), facts)
-    return sniffed, digest.hexdigest()
+    page_index = facts.page_index if buffer is None else await asyncio.to_thread(_check_pages, bytes(buffer), facts)
+    return sniffed, digest.hexdigest(), page_index
 
 
 async def _lock_upload(db: AsyncSession, upload_id: str) -> UploadRow | None:
@@ -258,6 +271,7 @@ async def _finish(
     chunks: Sequence[_Chunk],
     sniffed: str,
     content_sha256: str,
+    page_index: int,
     principal: Principal,
     clock: Clock,
 ) -> dict[str, object]:
@@ -283,6 +297,7 @@ async def _finish(
     row.sniffed_kind = sniffed
     row.content_sha256 = content_sha256
     row.original_key = facts.original_key
+    row.page_index = page_index
     await db.flush()
     await start_run(db, upload_id=facts.id, clock=clock)
     await record_activity(
@@ -321,7 +336,7 @@ async def complete_upload(
 
     await db.rollback()
     try:
-        sniffed, content_sha256 = await _build_original(storage, facts, chunks)
+        sniffed, content_sha256, page_index = await _build_original(storage, facts, chunks)
     except AppError as exc:
         if exc.code.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
             raise  # kho/phụ thuộc hỏng tạm thời: giữ `receiving` để #7 gửi lại được (NO-419)
@@ -332,6 +347,7 @@ async def complete_upload(
         chunks=chunks,
         sniffed=sniffed,
         content_sha256=content_sha256,
+        page_index=page_index,
         principal=principal,
         clock=clock,
     )

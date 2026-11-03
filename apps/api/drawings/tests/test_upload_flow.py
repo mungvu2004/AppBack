@@ -9,6 +9,7 @@ MinIO thật phải xong dưới 15 s (K28: quá 15 s thì route phải thành j
 import asyncio
 import hashlib
 import logging
+import threading
 import time
 from collections.abc import Iterator
 from typing import Final
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from apps.api.core.app import create_app
 from apps.api.core.auth import FakeTokenVerifier
+from apps.api.drawings import complete
 from apps.api.drawings.tests._helpers import sync_bus_reset as sync_bus_reset
 from apps.api.drawings.tests._upload_helpers import (
     GatedStorage,
@@ -46,6 +48,7 @@ from packages.storage.port import ObjectStorage
 from packages.testing.factories.drawings import make_upload
 from packages.testing.fixtures.api import make_api_client
 from packages.testing.fixtures.clock import FakeClock
+from packages.vision.preprocess import pdf_vector
 from packages.vision.preprocess.tests.synthetic import COVER_OPS, PLAN_OPS, join_pdfs, make_pdf
 
 _log: Final = logging.getLogger(__name__)
@@ -130,6 +133,96 @@ async def test_full_flow_pdf_explicit_page_zero_on_cover_is_kept(
 
     assert response.status_code == 200, response.text
     assert (await _upload_row(db_sessionmaker, upload_id)).page_index == 0
+
+
+def _cover_then_plan() -> bytes:
+    """PDF hồ sơ: bìa chữ rồi một trang mặt bằng vector (bench two-page-ch04)."""
+    return join_pdfs(make_pdf(1, ops=COVER_OPS), make_pdf(1, ops=PLAN_OPS))
+
+
+async def test_full_flow_pdf_without_page_index_skips_cover(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    sync_bus_reset: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """BENCH3D-07: client vắng `pageIndex`, trang 0 là bìa chữ → #5 ghi `page_auto`, #7 dựng trang bản vẽ (1)."""
+    stage = await make_stage(db_session)
+    caplog.set_level(logging.INFO, logger="apps.api.drawings.complete")
+
+    upload_id, response = await upload_through(
+        api_client, stage, _cover_then_plan(), file_name="ho-so.pdf", mime_type="application/pdf"
+    )
+
+    assert response.status_code == 200, response.text
+    row = await _upload_row(db_sessionmaker, upload_id)
+    assert (row.page_auto, row.page_index) == (True, 1)
+    picked = [record.__dict__ for record in caplog.records if record.msg == "upload_page_auto_picked"]
+    assert [(r["upload_id"], r["pages"], r["picked"]) for r in picked] == [(upload_id, 2, 1)]
+
+
+async def test_full_flow_pdf_without_page_index_but_crop_keeps_page_zero(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    sync_bus_reset: None,
+) -> None:
+    """Vắng `pageIndex` nhưng có `crop` (tỉ lệ của trang 0) → không tự đổi trang, vùng cắt không lệch trang."""
+    stage = await make_stage(db_session)
+    crop = {"xRatio": 0.0, "yRatio": 0.0, "widthRatio": 0.5, "heightRatio": 0.5}
+
+    upload_id, response = await upload_through(
+        api_client, stage, _cover_then_plan(), file_name="ho-so.pdf", mime_type="application/pdf", crop=crop
+    )
+
+    assert response.status_code == 200, response.text
+    row = await _upload_row(db_sessionmaker, upload_id)
+    assert (row.page_auto, row.page_index) == (True, 0)
+
+
+async def test_full_flow_pdf_explicit_page_zero_is_not_auto(
+    api_client: httpx.AsyncClient, db_session: AsyncSession, db_sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    """`pageIndex: 0` tường minh ở #5 → `page_auto` false (đường #7 giữ 0 đã có test riêng)."""
+    stage = await make_stage(db_session)
+    body = init_body(
+        stage.project_id, stage.level_id, size_bytes=10, file_name="ho-so.pdf", mimeType="application/pdf", pageIndex=0
+    )
+
+    response = await api_client.post(init_path(stage.project_id, stage.level_id), json=body, headers=stage.headers)
+
+    assert response.status_code == 200, response.text
+    assert (await _upload_row(db_sessionmaker, response.json()["id"])).page_auto is False
+
+
+async def test_complete_picks_plan_page_off_the_event_loop(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    sync_bus_reset: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dò trang (PDFium dưới `PDF_LOCK`) chạy trên luồng khác, không chặn vòng sự kiện của API."""
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    real = pdf_vector.pick_plan_page
+
+    def spy(data: bytes, max_pages: int) -> int:
+        seen.append(threading.get_ident())
+        return real(data, max_pages)
+
+    monkeypatch.setattr(complete, "pick_plan_page", spy)
+    stage = await make_stage(db_session)
+
+    upload_id, response = await upload_through(
+        api_client, stage, _cover_then_plan(), file_name="ho-so.pdf", mime_type="application/pdf"
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(seen) == 1
+    assert seen[0] != loop_thread
+    assert (await _upload_row(db_sessionmaker, upload_id)).page_index == 1
 
 
 async def test_full_flow_accepts_blank_mime_and_jpeg(

@@ -162,6 +162,7 @@ async def upload_through(
     mime_type: str = "image/png",
     page_index: int | None = None,
     chunk_bytes: int | None = None,
+    crop: dict[str, float] | None = None,
 ) -> tuple[str, httpx.Response]:
     """#5 → #6 (mọi khúc) → #7; trả `(upload_id, response của #7)`.
 
@@ -169,6 +170,8 @@ async def upload_through(
     của #5 hay #6 thì gọi thẳng từng route, hàm này chỉ cho đường đi suôn sẻ tới #7.
     """
     extra: dict[str, Any] = {} if page_index is None else {"pageIndex": page_index}
+    if crop is not None:
+        extra["crop"] = crop
     body = init_body(
         stage.project_id, stage.level_id, size_bytes=len(data), file_name=file_name, mimeType=mime_type, **extra
     )

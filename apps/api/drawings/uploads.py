@@ -78,6 +78,8 @@ class UploadFacts:
     page_index: int
     chunk_count: int
     status: str
+    auto_page: bool
+    """Client vắng `pageIndex` **và** không cắt vùng (BENCH3D-07): #7 được tự chọn trang bản vẽ của PDF."""
 
     @property
     def expected_kind(self) -> str:
@@ -132,6 +134,7 @@ async def load_upload(db: AsyncSession, *, project_id: str, upload_id: str) -> U
             UploadRow.page_index,
             UploadRow.chunk_count,
             UploadRow.status,
+            (UploadRow.page_auto.is_(True) & UploadRow.crop_corners.is_(None)).label("auto_page"),
         )
         .join(FloorRow, FloorRow.pk == UploadRow.floor_pk)
         .where(UploadRow.id == upload_id, UploadRow.project_id == project_id, FloorRow.deleted_at.is_(None))
@@ -142,10 +145,15 @@ async def load_upload(db: AsyncSession, *, project_id: str, upload_id: str) -> U
     return UploadFacts(*row)
 
 
+def _page_auto(body: InitUploadBody) -> bool:
+    """Client không gửi `pageIndex` (BENCH3D-07); `pageIndex: 0` tường minh là lựa chọn của người dùng."""
+    return "page_index" not in body.model_fields_set
+
+
 async def _twin_upload(db: AsyncSession, *, floor_pk: int, created_by: str, body: InitUploadBody) -> str | None:
     """Lượt init trước đó **giống hệt** và còn trong cửa sổ khử trùng ([6] #5 bước 5).
 
-    "Giống hệt" = cùng tầng, người tạo, tên tệp, kích thước, MIME khai và `pageIndex`, còn
+    "Giống hệt" = cùng tầng, người tạo, tên tệp, kích thước, MIME khai và `pageIndex` (kể cả vắng hay có), còn
     `receiving` và **chưa nhận khúc nào**: đã có khúc nghĩa là lượt cũ đang chạy thật, lượt
     mới là một tệp khác của cùng người. So thời gian bằng `now()` của Postgres vì
     `created_at` cũng do Postgres đặt — trộn hai đồng hồ là một cửa sổ sai.
@@ -161,6 +169,7 @@ async def _twin_upload(db: AsyncSession, *, floor_pk: int, created_by: str, body
             UploadRow.declared_size_bytes == body.size_bytes,
             UploadRow.declared_type == body.mime_type,
             UploadRow.page_index == body.page_index,
+            UploadRow.page_auto.is_(_page_auto(body)),
             UploadRow.crop_corners == (body.crop.corners() if body.crop else None),
             UploadRow.status == "receiving",
             UploadRow.created_at >= func.now() - window,
@@ -210,6 +219,7 @@ async def init_upload(
         declared_size_bytes=body.size_bytes,
         declared_type=body.mime_type,
         page_index=body.page_index,
+        page_auto=_page_auto(body),
         crop_corners=body.crop.corners() if body.crop else None,
         chunk_count=-(-body.size_bytes // settings.upload_chunk_bytes),
         status="receiving",

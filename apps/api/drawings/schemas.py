@@ -98,6 +98,7 @@ class InitUploadBody(WireRequest):
     mime_type: str = Field(max_length=MIME_TYPE_MAX)
     project_id: str = Field(min_length=1)
     size_bytes: int = Field(ge=1)
+    # Vắng `pageIndex` với PDF nhiều trang không `crop`: #7 tự chọn trang bản vẽ (BENCH3D-07, cột uploads.page_auto).
     page_index: int = Field(default=0, ge=0, le=PAGE_INDEX_MAX)
     crop: CropRect | None = None
 

@@ -181,6 +181,17 @@ PLAN_OPS: Final = b"".join(b"%d 100 m %d 700 l S\n" % (50 + 4 * i, 50 + 4 * i) f
 """Trang bản vẽ vector: 120 nét thẳng."""
 
 
+def scan_ops(size: tuple[float, float] = A4_PT) -> bytes:
+    """Trang quét khổ `size`: một ảnh nhúng 2x2 phủ cả trang, nửa đen nửa trắng (đủ mực)."""
+    return b"q %g 0 0 %g 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\xff\xff\x00 EI Q\n" % size
+
+
+SCAN_OPS: Final = scan_ops()
+"""Trang quét A4."""
+BLANK_SCAN_OPS: Final = SCAN_OPS.replace(bytes([0]), bytes([255]))
+"""Bìa quét: ảnh phủ cả trang nhưng trắng trơn (không mực)."""
+
+
 def join_pdfs(*documents: bytes) -> bytes:
     """Ghép các PDF một trang thành một tài liệu nhiều trang **khác** nội dung (`make_pdf` chỉ lặp một trang)."""
     with PDF_LOCK:

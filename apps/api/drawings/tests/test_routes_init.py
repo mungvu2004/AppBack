@@ -319,6 +319,23 @@ async def test_init_crop_retry_dedupes_only_same_crop(api_client: httpx.AsyncCli
     assert other.json()["id"] != first.json()["id"]
 
 
+async def test_init_retry_dedupes_omitted_and_explicit_page_index_apart(
+    api_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """BENCH3D-07: vắng `pageIndex` và `pageIndex: 0` là hai lượt khác nhau (`page_auto`); gửi lại vắng → cùng lượt."""
+    stage = await make_stage(db_session)
+    path = init_path(stage.project_id, stage.level_id)
+    omitted = init_body(stage.project_id, stage.level_id, size_bytes=1000)
+    explicit = init_body(stage.project_id, stage.level_id, size_bytes=1000, pageIndex=0)
+
+    first = await api_client.post(path, json=omitted, headers=stage.headers)
+    zero = await api_client.post(path, json=explicit, headers=stage.headers)
+    again = await api_client.post(path, json=omitted, headers=stage.headers)
+
+    assert zero.json()["id"] != first.json()["id"]
+    assert again.json()["id"] == first.json()["id"]
+
+
 @pytest.mark.parametrize(
     "crop",
     [
