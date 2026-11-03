@@ -1,6 +1,10 @@
 """Test `furniture_dedup.dedupe_furniture` (BENCH3D-26): mỗi luật một ca, và các ca không được xoá nhầm."""
 
+import itertools
+import logging
 from typing import Any
+
+import pytest
 
 from apps.worker.pipeline_build.furniture_dedup import dedupe_furniture
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
@@ -34,7 +38,12 @@ def _item(index: int, kind: str, box: Box, confidence: float = 0.8, room: str | 
 
 
 def _kept(*items: Furniture) -> list[int]:
-    """Số thứ tự các món còn lại sau lọc (phòng đủ ba công năng của `_ROOMS`)."""
+    """Số thứ tự các món còn lại sau lọc."""
+    return [int(item.id[-10:]) for item in _layer(*items).furniture]
+
+
+def _layer(*items: Furniture) -> SpatialLayer:
+    """Lớp sau lọc (phòng đủ ba công năng của `_ROOMS`)."""
     outline = (Point(x=0, y=0), Point(x=9000, y=0), Point(x=9000, y=9000))
     rooms = tuple(
         Room(
@@ -51,8 +60,7 @@ def _kept(*items: Furniture) -> list[int]:
         )
         for usage, room_id in _ROOMS.items()
     )
-    layer = SpatialLayer(walls=(), openings=(), rooms=rooms, furniture=items)
-    return [int(item.id[-10:]) for item in dedupe_furniture(layer).furniture]
+    return dedupe_furniture(SpatialLayer(walls=(), openings=(), rooms=rooms, furniture=items))
 
 
 def test_same_kind_high_iou_keeps_higher_confidence() -> None:
@@ -91,10 +99,88 @@ def test_vanity_in_bathroom_keeps_the_fixture_inside() -> None:
     assert _kept(vanity, _item(1, "sanitaryFixture", (150, 10, 660, 450), 0.66, "bathroom")) == [1]
 
 
-def test_sink_in_kitchen_run_keeps_the_run() -> None:
-    """Luật 4: chậu trong dãy tủ ở bếp: tủ đúng công năng → giữ tủ, kể cả khi chậu độ tin cao hơn."""
+def test_sink_in_kitchen_run_becomes_thin_sink() -> None:
+    """Luật 5: chậu trong dãy tủ không dính phòng tắm: giữ cả hai, chậu thành dạng mỏng; tủ không đổi."""
+    for usage in ("kitchen", None):
+        run = _item(0, "kitchenCabinet", (0, 0, 3000, 600), 0.6, usage)
+        sink = _item(1, "sanitaryFixture", (500, 50, 1000, 550), 0.9, usage)
+        kept_run, kept_sink = _layer(run, sink).furniture
+        assert kept_run is run
+        assert (kept_sink.kind, kept_sink.variant, kept_sink.height_mm) == ("sanitaryFixture", "sink", 20)
+        assert kept_sink.bounding_box == sink.bounding_box
+
+
+def test_thin_sink_is_idempotent() -> None:
+    """Chạy lại lớp đã lọc: chậu mỏng không còn là cặp trùng, kết quả y nguyên và trả đúng đối tượng cũ."""
     run = _item(0, "kitchenCabinet", (0, 0, 3000, 600), 0.6, "kitchen")
-    assert _kept(run, _item(1, "sanitaryFixture", (500, 50, 1000, 550), 0.9, "kitchen")) == [0]
+    bed = _item(2, "bed", (5000, 0, 7800, 2000), 0.6, "bedroom")
+    pillow = _item(3, "sanitaryFixture", (7500, 300, 7790, 820), 0.3, "bedroom")
+    once = _layer(run, _item(1, "sanitaryFixture", (500, 50, 1000, 550), 0.9, "kitchen"), bed, pillow)
+    assert len(once.furniture) == 3
+    assert dedupe_furniture(once) is once
+
+
+def test_duplicate_of_a_sink_is_removed_before_it_turns_thin() -> None:
+    """Hai hộp cùng một chậu trong dãy tủ: bỏ một, món còn lại mới thành chậu mỏng (không để hai chậu mỏng chồng)."""
+    run = _item(0, "kitchenCabinet", (0, 0, 3000, 600), 0.6, "kitchen")
+    first = _item(1, "sanitaryFixture", (500, 50, 1000, 550), 0.9, "kitchen")
+    second = _item(2, "sanitaryFixture", (500, 50, 1000, 540), 0.5, "kitchen")
+    assert [item.id for item in _layer(run, first, second).furniture] == [run.id, first.id]
+
+
+def test_suggested_fixture_in_run_is_dropped_not_converted() -> None:
+    """Gợi ý từ mực dư trong dãy tủ thật: luật gợi ý thua đồ thật đứng trước luật chậu."""
+    run = _item(0, "kitchenCabinet", (0, 0, 3000, 600), 0.6, "kitchen")
+    assert _kept(run, _item(1, "sanitaryFixture", (500, 50, 1000, 550), 0.9, "kitchen", suggested=True)) == [0]
+
+
+def test_shower_in_run_follows_the_room() -> None:
+    """Buồng tắm lồng trong dãy tủ không phải chậu: ở bếp bỏ buồng tắm, ở phòng tắm bỏ hộp tủ."""
+    box, inner = (0, 0, 3000, 1200), (100, 100, 1000, 1000)
+    assert _kept(_item(0, "kitchenCabinet", box, 0.6, "kitchen"), _item(1, "shower", inner, 0.9, "kitchen")) == [0]
+    assert _kept(_item(0, "kitchenCabinet", box, 0.9, "bathroom"), _item(1, "shower", inner, 0.5, "bathroom")) == [1]
+
+
+def test_washing_machine_in_run_is_kept() -> None:
+    """Không xoá nhầm: máy giặt âm tủ là hai món thật, kể cả ở phòng không phải phòng tắm."""
+    run = _item(0, "kitchenCabinet", (0, 0, 3000, 600), 0.9, "kitchen")
+    assert _kept(run, _item(1, "washingMachine", (2300, 0, 2900, 600), 0.7, "kitchen")) == [0, 1]
+
+
+def test_chairs_nested_in_a_long_seat_box_are_kept() -> None:
+    """Không xoá nhầm (ch-10, cn-17): ghế thật trong hộp "ghế dài" cùng loại bao cả hàng: giữ cả, không đoán."""
+    bench = _item(0, "chair", (0, 0, 325, 1608), 0.3, variant="bench")
+    assert _kept(bench, _item(1, "chair", (0, 100, 324, 586), 0.81), _item(2, "chair", (0, 700, 324, 1186), 0.85)) == [
+        0,
+        1,
+        2,
+    ]
+
+
+def test_same_chair_detected_twice_is_still_merged() -> None:
+    """`chair` chỉ miễn luật lồng nhau; hai hộp cùng một ghế (IoU cao) vẫn gộp."""
+    assert _kept(_item(0, "chair", (0, 0, 500, 500), 0.4), _item(1, "chair", (0, 0, 500, 480), 0.8)) == [1]
+
+
+def test_result_does_not_depend_on_list_order() -> None:
+    """Hoà độ tin và IoU: mọi hoán vị cho cùng nội dung (cn-15 từng đổi theo thứ tự danh sách)."""
+    box = (0, 0, 1000, 500)
+    items = [_item(0, "chair", box, 0.5), _item(1, "table", box, 0.5), _item(2, "other", box, 0.5)]
+    contents = {
+        tuple(sorted(item.kind for item in _layer(*order).furniture)) for order in itertools.permutations(items)
+    }
+    assert len(contents) == 1
+
+
+def test_log_counts_changes(caplog: pytest.LogCaptureFixture) -> None:
+    """Món bỏ và chậu đổi được đếm ở log của module."""
+    run = _item(0, "kitchenCabinet", (0, 0, 3000, 600), 0.6, "kitchen")
+    sink = _item(1, "sanitaryFixture", (500, 50, 1000, 550), 0.9, "kitchen")
+    bed = _item(2, "bed", (5000, 0, 7000, 1600), 0.9)
+    with caplog.at_level(logging.INFO, logger="apps.worker.pipeline_build.furniture_dedup"):
+        _layer(run, sink, bed, _item(3, "bed", (5000, 0, 7000, 1600), 0.5))
+    record = next(r for r in caplog.records if r.message == "pipeline_build_furniture_deduped")
+    assert (record.__dict__["dropped"], record.__dict__["sinks"]) == (1, 1)
 
 
 def test_suggested_loses_to_real_item() -> None:
