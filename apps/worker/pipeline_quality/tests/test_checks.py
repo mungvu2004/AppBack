@@ -53,12 +53,12 @@ def _room(
     )
 
 
-def _door(wall_id: str) -> Opening:
+def _door(wall_id: str, offset: int = 100) -> Opening:
     return Opening(
-        id="D-OPEN000000000001",
+        id=f"D-OPEN{offset:012d}",
         wall_id=wall_id,
         kind="door",
-        offset_mm=100,
+        offset_mm=offset,
         width_mm=800,
         height_mm=2100,
         sill_height_mm=0,
@@ -99,22 +99,28 @@ def test_rectangle_with_one_metre_gap__open_envelope() -> None:
 
 
 def test_lone_small_room_outside_envelope__info_only() -> None:
-    """Một hộp kỹ thuật 1 m² lòi ra ngoài vỏ kín (cn-03): vẫn báo nhưng không chặn cả tầng."""
+    """Một hộp kỹ thuật 1 m² lòi ra ngoài vỏ kín (cn-03): vẫn báo nhưng không chặn cả tầng.
+
+    Cửa ở tường của phòng lớn, cách hộp 5,5 m: hộp không có cửa (chỉ báo), dù khai chung tường.
+    """
     walls = _walls(*_box(0, 0, 5000, 4000))
     rooms = (
         _room(1, 0, 0, 5000, 4000, wall_ids=(walls[0].id,)),
         _room(2, 6000, 0, 7000, 1000, usage="utility", wall_ids=(walls[0].id,)),
     )
-    assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [("OPEN_ENVELOPE", False)]
+    assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [
+        ("OPEN_ENVELOPE", False),
+        ("ROOMS_WITHOUT_DOOR", False),
+    ]
 
 
 def test_two_far_rectangles__multiple_plans() -> None:
     walls = _walls(*_box(0, 0, 5000, 4000), *_box(20000, 0, 25000, 4000))
     rooms = (
         _room(1, 0, 0, 5000, 4000, wall_ids=(walls[0].id,)),
-        _room(2, 20000, 0, 25000, 4000, wall_ids=(walls[0].id,)),
+        _room(2, 20000, 0, 25000, 4000, wall_ids=(walls[4].id,)),
     )
-    assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [("MULTIPLE_PLANS", True)]
+    assert _codes(_layer(walls, rooms, (_door(walls[0].id), _door(walls[4].id, 200)))) == [("MULTIPLE_PLANS", True)]
 
 
 def _plans(layer: SpatialLayer, scale_basis: str | None = None) -> tuple[bool, dict[str, object]] | None:
@@ -237,6 +243,14 @@ def test_room_without_door_on_its_walls__info_only() -> None:
     ]
 
 
+def test_door_on_a_long_wall_counts_only_for_the_room_it_opens() -> None:
+    """WALL-RUN: một tường dài chạy dọc hai phòng, cửa ở đoạn phòng 1 → phòng 2 vẫn "không cửa" dù chung `wallIds`."""
+    walls = _walls(*_box(0, 0, 6000, 4000), ((3000, 0), (3000, 4000)))
+    rooms = tuple(_room(i, 3000 * i, 0, 3000 * i + 3000, 4000, wall_ids=(walls[0].id,)) for i in range(2))
+    checks = geometry_checks(_layer(walls, rooms, (_door(walls[0].id),)))
+    assert [(c.code, dict(c.detail)["roomIds"]) for c in checks] == [("ROOMS_WITHOUT_DOOR", (rooms[1].id,))]
+
+
 def test_half_the_rooms_without_door__critical() -> None:
     """BENCH3D-24: ≥ 2 phòng và ≥ 50 % phòng không cửa đi → chặn (dò cửa đi hỏng hàng loạt), kèm id phòng thiếu."""
     walls = _walls(*_box(0, 0, 6000, 4000), ((2000, 0), (2000, 4000)), ((4000, 0), (4000, 4000)))
@@ -268,7 +282,7 @@ def test_area_text_mismatch_blocks_when_no_note_matches(notes: tuple[float, ...]
 
 def test_usage_unknown__critical_from_three_rooms() -> None:
     walls = _walls(*_box(0, 0, 6000, 4000))
-    door = (_door(walls[0].id),)
+    door = tuple(_door(walls[0].id, 2000 * i + 100) for i in range(3))
     three = tuple(
         _room(i, 2000 * i, 0, 2000 * i + 2000, 4000, usage="other", wall_ids=(walls[0].id,)) for i in range(3)
     )
@@ -350,6 +364,6 @@ def test_area_text_mismatch__room_label_is_not_a_unit_total_and_bound_is_inclusi
     """Số khớp một phòng (nhãn phòng lớn) bị bỏ; số đúng biên trên (Σ·1,15) không bật vì sai số float."""
     walls = _walls(*_box(0, 0, 10000, 5000), ((5000, 0), (5000, 5000)))
     rooms = tuple(_room(i, 5000 * i, 0, 5000 * i + 5000, 5000, wall_ids=(walls[0].id,)) for i in range(2))
-    layer = _layer(walls, rooms, (_door(walls[0].id),))
+    layer = _layer(walls, rooms, (_door(walls[0].id), _door(walls[0].id, 5100)))
     codes = [[c.code for c in geometry_checks(layer, area_notes=notes)] for notes in ((26.0,), (57.5,), (70.0,))]
     assert codes == [[], [], ["AREA_TEXT_MISMATCH"]]

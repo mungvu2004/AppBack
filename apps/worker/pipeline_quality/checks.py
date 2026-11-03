@@ -205,6 +205,33 @@ def _multiple_plans(
     return GeometryCheck("MULTIPLE_PLANS", critical, detail)
 
 
+def _door_centres(layer: SpatialLayer) -> dict[str, list[tuple[Point, float]]]:
+    """Id tường → tâm các cửa đi trên nó kèm tầm chạm phòng (bề dày tường, mm)."""
+    walls = {wall.id: wall for wall in layer.walls}
+    found: dict[str, list[tuple[Point, float]]] = {}
+    for opening in layer.openings:
+        wall = walls.get(opening.wall_id)
+        if opening.kind != "door" or wall is None:
+            continue
+        line = LineString((p.x, p.y) for p in (wall.centreline.start, wall.centreline.end))
+        centre = line.interpolate(opening.offset_mm + opening.width_mm / 2)
+        found.setdefault(wall.id, []).append((centre, float(wall.thickness_mm)))
+    return found
+
+
+def _has_door(room: Room, doors: Mapping[str, list[tuple[Point, float]]]) -> bool:
+    """Phòng có cửa đi trên một tường của nó **và** tâm cửa sát biên phòng (≤ bề dày tường).
+
+    Một tường dài chạy qua nhiều phòng (khúc thẳng hàng đã gộp, WALL-RUN) mang cửa của phòng khác: chỉ so `wallIds`
+    thì mọi phòng dọc tường đó đều "có cửa".
+    """
+    near = [item for wall_id in room.wall_ids for item in doors.get(wall_id, ())]
+    if not near:
+        return False
+    rim = Polygon([(p.x, p.y) for p in room.outline]).exterior
+    return any(rim.distance(centre) <= reach for centre, reach in near)
+
+
 def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
     """Có phòng mà không ô mở nào → chặn; còn lại chỉ báo tỉ lệ phòng không tường nào mang cửa đi.
 
@@ -215,8 +242,8 @@ def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
         return None
     if not layer.openings:
         return GeometryCheck("ROOMS_WITHOUT_DOOR", True, {"rooms": len(rooms), "openings": 0})
-    door_walls = {opening.wall_id for opening in layer.openings if opening.kind == "door"}
-    doorless = tuple(room.id for room in rooms if door_walls.isdisjoint(room.wall_ids))
+    doors = _door_centres(layer)
+    doorless = tuple(room.id for room in rooms if not _has_door(room, doors))
     if not doorless:
         return None
     share = len(doorless) / len(rooms)
