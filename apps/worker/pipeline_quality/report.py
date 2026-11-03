@@ -80,11 +80,12 @@ def build_report(
     level_id: str,
     threshold: Decimal,
     scale_basis: str | None = None,
+    label_orientation: Mapping[str, int] | None = None,
 ) -> RunQualityReport:
     """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học
-    (`scale_basis` của `layer.json` cho dải sai số tỉ lệ, BENCH3D-14)."""
+    (`scale_basis`, `label_orientation` của `layer.json`, BENCH3D-14)."""
     issues = tuple(check_integrity(layer, level_id=level_id))
-    checks = geometry_checks(layer, scale_basis=scale_basis)
+    checks = geometry_checks(layer, scale_basis=scale_basis, label_orientation=label_orientation)
     threshold_f = float(threshold)
     low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(

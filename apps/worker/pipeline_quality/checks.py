@@ -51,6 +51,10 @@ SCALE_FREE_ROOM_SPAN: Final = 6.0
 span phòng / √(trung vị) ≥ 6 → nhiều căn. Bench-3d r3: căn đơn cao nhất 8,1 (span tường); vế phòng chặn nhà nhỏ trên
 lô rộng (tường rào dài, phòng chỉ phủ một góc)."""
 
+ROTATED_LABEL_SHARE: Final = 0.6
+ROTATED_MIN_LABELS: Final = 3
+"""`ROTATED_PLAN` (chỉ báo): ≥ 3 nhãn chữ có hướng và ≥ 60 % đọc dọc. Bench-can-ho 14 bản vẽ thường: cao nhất 12 %."""
+
 DOORLESS_USAGES_EXEMPT: Final = frozenset({"loggia", "corridor"})
 UNKNOWN_USAGE_SHARE: Final = 0.8
 UNKNOWN_USAGE_CRITICAL_ROOMS: Final = 3
@@ -211,9 +215,21 @@ def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
     return GeometryCheck("ROOM_USAGE_UNKNOWN", critical, {"share": round(share, 3)})
 
 
-def geometry_checks(layer: SpatialLayer, *, scale_basis: str | None = None) -> tuple[GeometryCheck, ...]:
+def _rotated_plan(label_orientation: Mapping[str, int]) -> GeometryCheck | None:
+    """Phần lớn nhãn chữ đọc dọc → trang xoay 90°; chỉ báo, không chặn (mô hình dựng vẫn đúng hình)."""
+    vertical, horizontal = label_orientation.get("vertical", 0), label_orientation.get("horizontal", 0)
+    labels = vertical + horizontal
+    if labels < ROTATED_MIN_LABELS or vertical < ROTATED_LABEL_SHARE * labels:
+        return None
+    detail = {"verticalLabels": vertical, "horizontalLabels": horizontal, "share": round(vertical / labels, 3)}
+    return GeometryCheck("ROTATED_PLAN", False, detail)
+
+
+def geometry_checks(
+    layer: SpatialLayer, *, scale_basis: str | None = None, label_orientation: Mapping[str, int] | None = None
+) -> tuple[GeometryCheck, ...]:
     """Mọi kiểm hình học đã bật, thứ tự cố định; `scale_basis` (của `layer.json`, vắng = không rõ) đặt dải sai số
-    tỉ lệ cho `MULTIPLE_PLANS`."""
+    tỉ lệ cho `MULTIPLE_PLANS`, `label_orientation` (cũng của `layer.json`) cho `ROTATED_PLAN`."""
     walls = layer.walls
     lines = [_line(wall) for wall in walls]
     found = (
@@ -222,5 +238,6 @@ def geometry_checks(layer: SpatialLayer, *, scale_basis: str | None = None) -> t
         _multiple_plans(walls, lines, layer.rooms, scale_basis),
         _rooms_without_door(layer),
         _room_usage_unknown(layer.rooms),
+        _rotated_plan(label_orientation or {}),
     )
     return tuple(check for check in found if check is not None)

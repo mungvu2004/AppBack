@@ -255,3 +255,19 @@ def test_build_report__critical_check_sets_has_critical_and_wire() -> None:
     assert b'"checks":[{"code":"ROOMS_WITHOUT_DOOR","critical":true,"detail":{"openings":0,"rooms":1}}]' in (
         report.to_json_bytes()
     )
+
+
+@pytest.mark.parametrize(
+    ("orientation", "expected"),
+    [
+        ({"vertical": 9, "horizontal": 1}, {"verticalLabels": 9, "horizontalLabels": 1, "share": 0.9}),
+        ({"vertical": 3, "horizontal": 2}, {"verticalLabels": 3, "horizontalLabels": 2, "share": 0.6}),
+        ({"vertical": 2, "horizontal": 0}, None),  # < 3 nhãn: không đủ bằng chứng
+        ({"vertical": 1, "horizontal": 7}, None),  # bản vẽ thường (cao nhất 12 % dọc)
+        ({}, None),
+    ],
+)
+def test_rotated_plan_is_reported_but_never_blocks(orientation: dict[str, int], expected: object) -> None:
+    """BENCH3D-14 `ROTATED_PLAN`: ≥ 3 nhãn và ≥ 60 % đọc dọc → chỉ báo (mô hình vẫn dựng đúng hình)."""
+    found = [c for c in geometry_checks(_layer(()), label_orientation=orientation) if c.code == "ROTATED_PLAN"]
+    assert [(c.critical, dict(c.detail)) for c in found] == ([] if expected is None else [(False, expected)])
