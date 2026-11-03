@@ -38,8 +38,18 @@ OVERLAP_SHARE: Final = 0.5
 WALL_FRAGMENTS_MIN: Final = 3
 
 PLAN_MAX_SPAN_MM: Final = 35_000
-"""Một căn hộ hay nhà ở hiếm khi dài quá 30 m; hộp bao tường dài hơn 35 m (chừa sai số tỉ lệ ước lượng) là tờ
-mặt bằng cả tầng nhiều căn, kể cả khi các căn dính liền nhau thành một cụm tường (BENCH3D-08)."""
+"""Một căn hộ hay nhà ở hiếm khi dài quá 30 m; hộp bao tường dài hơn 35 m là tờ mặt bằng cả tầng nhiều căn, kể cả khi
+các căn dính liền nhau thành một cụm tường (BENCH3D-08). Đo bằng mm nên phụ thuộc tỉ lệ: xem `SCALE_ERROR`."""
+SCALE_ERROR: Final[Mapping[str, float]] = {"chain": 0.0, "paired": 0.0, "note": 0.0, "door": 0.17}
+"""Sai số tương đối của tỉ lệ theo `scaleBasis` (BENCH3D-14, đo bench-3d r3): span chặn khi `span·(1-e)` vẫn quá
+`PLAN_MAX_SPAN_MM`, chỉ báo khi `span·(1+e)` quá. Nguồn khác (`wallThickness`, `default`, không rõ) lấy
+`UNKNOWN_SCALE_ERROR`: ước bề dày tường lệch tới 42 %, trên tờ cả tầng còn đánh giá thấp 2-3 lần."""
+UNKNOWN_SCALE_ERROR: Final = 0.42
+SCALE_FREE_WALL_SPAN: Final = 10.0
+SCALE_FREE_ROOM_SPAN: Final = 6.0
+"""Chỉ báo không phụ thuộc tỉ lệ (tử và mẫu cùng nhân tỉ lệ): span tường / √(trung vị diện tích phòng) ≥ 10 **và**
+span phòng / √(trung vị) ≥ 6 → nhiều căn. Bench-3d r3: căn đơn cao nhất 8,1 (span tường); vế phòng chặn nhà nhỏ trên
+lô rộng (tường rào dài, phòng chỉ phủ một góc)."""
 
 DOORLESS_USAGES_EXEMPT: Final = frozenset({"loggia", "corridor"})
 UNKNOWN_USAGE_SHARE: Final = 0.8
@@ -129,9 +139,22 @@ def _wall_fragments(lines: Sequence[LineString]) -> GeometryCheck | None:
     return GeometryCheck("WALL_FRAGMENTS", True, {"stubs": stubs, "overlaps": overlaps})
 
 
-def _multiple_plans(walls: Sequence[Wall], lines: Sequence[LineString]) -> GeometryCheck | None:
-    """≥ 2 vùng tường tách xa nhau, mỗi vùng giữ ≥ `FAR_CLUSTER_LENGTH_SHARE` tổng dài (bước dựng giữ cả hai),
-    hoặc hộp bao mọi tường dài quá `PLAN_MAX_SPAN_MM` (các căn liền nhau của một tầng toà nhà)."""
+def _scale_free_spans(span_mm: float, rooms: Sequence[Room]) -> tuple[float, float] | None:
+    """(span tường, span phòng) chia cạnh phòng trung vị √(trung vị diện tích); không phòng có diện tích → `None`."""
+    areas = sorted(room.area_m2 for room in rooms if room.area_m2 > 0)
+    if not areas:
+        return None
+    side_mm = math.sqrt(float(np.median(areas))) * 1000
+    x0, y0, x1, y1 = shapely.MultiPoint([(p.x, p.y) for room in rooms for p in room.outline]).bounds
+    return span_mm / side_mm, max(x1 - x0, y1 - y0) / side_mm
+
+
+def _multiple_plans(
+    walls: Sequence[Wall], lines: Sequence[LineString], rooms: Sequence[Room], scale_basis: str | None
+) -> GeometryCheck | None:
+    """Tờ nhiều mặt bằng: ≥ 2 vùng tường tách xa nhau, mỗi vùng giữ ≥ `FAR_CLUSTER_LENGTH_SHARE` tổng dài (bước dựng
+    giữ cả hai); hoặc span lớn so với phòng trung vị (`SCALE_FREE_*`, không phụ thuộc tỉ lệ); hoặc hộp bao mọi tường
+    dài quá `PLAN_MAX_SPAN_MM` trong dải sai số của nguồn tỉ lệ (`SCALE_ERROR`) — các căn liền nhau của một tầng."""
     if len(walls) < 2:
         return None
     groups = wall_clusters(np.asarray(lines, dtype=object), [float(wall.thickness_mm) for wall in walls])
@@ -146,9 +169,16 @@ def _multiple_plans(walls: Sequence[Wall], lines: Sequence[LineString]) -> Geome
         remaining = rest
     x0, y0, x1, y1 = shapely.MultiLineString(list(lines)).bounds
     span = max(x1 - x0, y1 - y0)
-    if big < 2 and span <= PLAN_MAX_SPAN_MM:
+    error = SCALE_ERROR.get(scale_basis or "", UNKNOWN_SCALE_ERROR)
+    detail: dict[str, float] = {"plans": big, "spanMm": round(span)}
+    ratios = _scale_free_spans(span, rooms)
+    if ratios is not None:
+        detail |= {"wallSpanRatio": round(ratios[0], 1), "roomSpanRatio": round(ratios[1], 1)}
+    scale_free = ratios is not None and ratios[0] >= SCALE_FREE_WALL_SPAN and ratios[1] >= SCALE_FREE_ROOM_SPAN
+    critical = big >= 2 or scale_free or span * (1 - error) > PLAN_MAX_SPAN_MM
+    if not critical and span * (1 + error) <= PLAN_MAX_SPAN_MM:
         return None
-    return GeometryCheck("MULTIPLE_PLANS", True, {"plans": big, "spanMm": round(span)})
+    return GeometryCheck("MULTIPLE_PLANS", critical, detail)
 
 
 def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:
@@ -181,14 +211,15 @@ def _room_usage_unknown(rooms: Sequence[Room]) -> GeometryCheck | None:
     return GeometryCheck("ROOM_USAGE_UNKNOWN", critical, {"share": round(share, 3)})
 
 
-def geometry_checks(layer: SpatialLayer) -> tuple[GeometryCheck, ...]:
-    """Mọi kiểm hình học đã bật, thứ tự cố định."""
+def geometry_checks(layer: SpatialLayer, *, scale_basis: str | None = None) -> tuple[GeometryCheck, ...]:
+    """Mọi kiểm hình học đã bật, thứ tự cố định; `scale_basis` (của `layer.json`, vắng = không rõ) đặt dải sai số
+    tỉ lệ cho `MULTIPLE_PLANS`."""
     walls = layer.walls
     lines = [_line(wall) for wall in walls]
     found = (
         _open_envelope(walls, lines, layer.rooms),
         _wall_fragments(lines),
-        _multiple_plans(walls, lines),
+        _multiple_plans(walls, lines, layer.rooms, scale_basis),
         _rooms_without_door(layer),
         _room_usage_unknown(layer.rooms),
     )

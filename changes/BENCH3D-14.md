@@ -1,0 +1,7 @@
+# BENCH3D-14 — cổng tờ: MULTIPLE_PLANS không phụ thuộc tỉ lệ, NOT_A_FLOOR_PLAN theo hộp bao tường, hành lang chữ L
+
+- `pipeline_quality/checks.py` `MULTIPLE_PLANS`: thêm chỉ báo không phụ thuộc tỉ lệ — span tường / √(trung vị diện tích phòng) ≥ 10 **và** span phòng / √(trung vị) ≥ 6 → critical (detail thêm `wallSpanRatio`, `roomSpanRatio`).
+- Luật span 35 m theo dải sai số của `scaleBasis` (`SCALE_ERROR`: chain/paired/note 0, door 0,17, còn lại 0,42): critical khi `span·(1-e) > 35 m`, chỉ báo (không critical) khi `span·(1+e) > 35 m`. `scaleBasis` đọc từ `layer.json` trước khi dựng báo cáo (`build_report(scale_basis=…)`).
+- Mô phỏng 66 `layer.json` r3: e-aka-3 thêm critical (16,2/7,1); nhóm A/B/C + nt-01/04/05/06 + e-hin 0 báo; e-imp-2 thêm báo không critical.
+- `apps/ml/walls/step.py` `NOT_A_FLOOR_PLAN`: tổng tim tường < 1,0 cạnh trang nhưng ≥ 0,3 (`SUSPECT_WALL_LENGTH_RATIO`) vẫn nhận khi ≥ 2 lần cạnh dài hộp bao chính các tường (`DRAWING_WALL_LENGTH_RATIO`, căn nhỏ giữa trang trắng); từ chối thì log `walls_not_a_floor_plan` (`page_ratio`, `drawing_ratio`) để hiệu chỉnh lại.
+- `pipeline_build/rooms.py` `_open_space_labels`: "hành lang" rộng và phòng không tên lớn nhất chỉ thành phòng khách khi chứa được hình tròn đường kính 2,5 m (`_roomy`, `buffer(-1250)`), thay cạnh ngắn hộp bao xoay (hành lang chữ L/T).

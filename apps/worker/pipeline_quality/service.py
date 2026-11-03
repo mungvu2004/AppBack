@@ -207,10 +207,15 @@ async def run_quality(
         return "skipped"
 
     ctx, document, revision, threshold = read
-    report = build_report(
-        run_id=payload.run_id, revision=revision, layer=document.layer, level_id=ctx.level_id, threshold=threshold
-    )
     built = await _built_or_none(storage, ctx)
+    report = build_report(
+        run_id=payload.run_id,
+        revision=revision,
+        layer=document.layer,
+        level_id=ctx.level_id,
+        threshold=threshold,
+        scale_basis=None if built is None else built.scale_basis,
+    )
     key = run_artifact(ctx.project_id, ctx.level_id, ctx.upload_id, payload.run_id, STEP, QUALITY_ARTIFACT)
     await storage.put(key, report.to_json_bytes(), content_type="application/json", max_bytes=QUALITY_REPORT_MAX_BYTES)
 

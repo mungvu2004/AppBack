@@ -73,11 +73,18 @@ def _low_confidence_count(entities: Iterable[Reviewed], threshold: float) -> int
 
 
 def build_report(
-    *, run_id: str, revision: int, layer: SpatialLayer, level_id: str, threshold: Decimal
+    *,
+    run_id: str,
+    revision: int,
+    layer: SpatialLayer,
+    level_id: str,
+    threshold: Decimal,
+    scale_basis: str | None = None,
 ) -> RunQualityReport:
-    """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học."""
+    """Dựng báo cáo theo B5-07 [6]: toàn vẹn (`check_integrity`) + đếm tin cậy thấp bốn danh sách + kiểm hình học
+    (`scale_basis` của `layer.json` cho dải sai số tỉ lệ, BENCH3D-14)."""
     issues = tuple(check_integrity(layer, level_id=level_id))
-    checks = geometry_checks(layer)
+    checks = geometry_checks(layer, scale_basis=scale_basis)
     threshold_f = float(threshold)
     low_confidence = {name: _low_confidence_count(getattr(layer, name), threshold_f) for name in _LOW_CONFIDENCE_LISTS}
     return RunQualityReport(

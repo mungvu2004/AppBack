@@ -10,6 +10,7 @@ from apps.worker.pipeline_build.geometry import Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.rooms import (
     _gap_closers,
+    _open_space_labels,
     _outline_points,
     build_furniture,
     build_rooms,
@@ -19,6 +20,7 @@ from packages.domain.rules_ai import LOW_CONFIDENCE_CAP
 from packages.domain.spatial import Point, Room, Segment, Wall, js_round, polygon_area_m2
 from packages.ml_contracts.artifacts import BoxPx, DetectionPx, TextPx
 from packages.testing.fixtures.clock import FakeClock
+from packages.vision.dimensions.rooms import RoomLabel
 
 _IDENTITY = Scaling(build=1.0, final=1.0)
 LEVEL_ID = "L-0000000000000000000000000"
@@ -951,6 +953,23 @@ def test_long_narrow_hall_stays_a_hall(fake_clock: FakeClock) -> None:
     rooms = _rooms_with_texts(walls, (_text("HANH LANG", 7000, 750),), (), fake_clock)
     assert [(room.usage, room.name) for room in rooms] == [("corridor", "hành lang")]
     assert rooms[0].confidence == 1.0
+
+
+def _outline(*corners: tuple[int, int]) -> list[Point]:
+    """Biên phòng từ các góc (mm)."""
+    return [Point(x=x, y=y) for x, y in corners]
+
+
+def test_l_shaped_hall_stays_a_hall_but_an_l_shaped_living_room_is_kept() -> None:
+    """Hành lang chữ L 8 x 1,5 m + 6 x 1,5 m (21 m², hộp bao 8 x 7,5 m) có chữ hay không chữ: hẹp nên không thành
+    phòng khách; phòng không tên chữ L rộng 3 m thì vẫn là phòng khách (BENCH3D-14)."""
+    hall_l = _outline((0, 0), (8000, 0), (8000, 1500), (1500, 1500), (1500, 7500), (0, 7500))
+    living_l = _outline((0, 0), (9000, 0), (9000, 3000), (3000, 3000), (3000, 7000), (0, 7000))
+    hall = RoomLabel("corridor", "hành lang")
+    assert _open_space_labels([hall], [hall_l], [21.0], read_level=True) == [hall]
+    assert _open_space_labels([None], [hall_l], [21.0], read_level=True) == [None]
+    living = _open_space_labels([None, None], [hall_l, living_l], [21.0, 39.0], read_level=True)
+    assert [label and label.usage for label in living] == [None, "livingRoom"]
 
 
 def test_level_named_only_by_geometry_gets_no_living_room_guess(fake_clock: FakeClock) -> None:

@@ -276,3 +276,40 @@ def test_prepare_ignores_unusable_vectors(
     (record,) = [item for item in caplog.records if item.message == "walls_vectors_unusable"]
     assert record.__dict__["run_id"] == payload.run_id
     assert payload.vectors_key not in record.getMessage()
+
+
+def _segments(*ends: tuple[tuple[float, float], tuple[float, float]]) -> tuple[WallSegment, ...]:
+    return tuple(WallSegment(start, end, 4.0, 0.9) for start, end in ends)
+
+
+def _rect(x0: float, y0: float, x1: float, y1: float) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    return [((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))]
+
+
+AD_PAGE = (435, 800)
+"""Trang quảng cáo 800 x 435 px (kiểu e-mpp-1): mặt bằng chỉ chiếm ~1/5 bề ngang."""
+
+
+@pytest.mark.parametrize(
+    ("walls", "expected"),
+    [
+        # Căn 160 x 110 px giữa trang trắng, một vách: 650 px = 0,81 cạnh trang nhưng 4,1 lần hộp bao → nhận.
+        pytest.param(_segments(*_rect(300, 160, 460, 270), ((380, 160), (380, 270))), True, id="small-plan"),
+        # Tám nét 50 px rải khắp ảnh (ảnh chụp/phối cảnh): 0,5 cạnh trang, hộp bao ~ trang → từ chối.
+        pytest.param(
+            _segments(*[((90 * i, 40 * i), (90 * i + 50, 40 * i)) for i in range(8)]), False, id="scattered-lines"
+        ),
+        # Bản vẽ gọn nhưng quá nhỏ (0,28 cạnh trang, dưới sàn 0,3) → từ chối như bộ hiệu chỉnh.
+        pytest.param(_segments(*_rect(10, 10, 60, 50), ((35, 10), (35, 50))), False, id="below-floor"),
+        # Mặt bằng lấp trang: ≥ 1 cạnh trang → nhận như cũ.
+        pytest.param(_segments(*_rect(20, 20, 780, 415)), True, id="full-page-plan"),
+    ],
+)
+def test_wall_evidence_gate_accepts_compact_drawings_on_a_large_page(
+    walls: tuple[WallSegment, ...], expected: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BENCH3D-14: dưới 1 cạnh trang chỉ nhận khi tường gom thành bản vẽ gọn; từ chối thì log hai tỉ số."""
+    with caplog.at_level(logging.INFO, logger=step_module.__name__):
+        assert step_module._looks_like_plan(walls, AD_PAGE, "run_01") is expected
+    rejected = [r for r in caplog.records if r.getMessage() == "walls_not_a_floor_plan"]
+    assert len(rejected) == (0 if expected else 1)
