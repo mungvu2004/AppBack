@@ -2177,6 +2177,26 @@
             "title": "Revision",
             "type": "integer"
           },
+          "scaleBasis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "chain",
+                  "paired",
+                  "note",
+                  "door",
+                  "wallThickness",
+                  "default",
+                  "human"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scalebasis"
+          },
           "scaleSource": {
             "anyOf": [
               {
@@ -5695,6 +5715,20 @@
         "additionalProperties": false,
         "description": "Tầng dùng được chưa (FIX-P0-10, thiết kế H5 §2.2): trạng thái kèm lý do, thứ tự cố định.",
         "properties": {
+          "checks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checks"
+          },
           "reasons": {
             "items": {
               "enum": [
@@ -5702,7 +5736,8 @@
                 "criticalIssues",
                 "fallbackWallModel",
                 "fallbackObjectModel",
-                "fallbackTextModel"
+                "fallbackTextModel",
+                "geometrySuspect"
               ],
               "type": "string"
             },
@@ -6220,6 +6255,18 @@
               }
             ],
             "title": "Ceilingmaterial"
+          },
+          "clearAreaM2": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clearaream2"
           },
           "confidence": {
             "maximum": 1.0,
