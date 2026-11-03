@@ -180,14 +180,22 @@ def test_close_envelope_gaps__shared_edge_between_rooms_stays_open(usage: str, f
 
 
 def test_close_envelope_gaps__courtyard_between_rooms_not_sealed(fake_clock: FakeClock) -> None:
-    """Sân trong/giếng trời giữa hai phòng: đoạn qua miệng sân không bên nào là phòng → không bịt."""
+    """Sân trong/giếng trời giữa hai phòng: đoạn qua miệng sân không bên nào là phòng → không bịt.
+
+    Sân rộng 5 m — hơn khe tối đa mà đường bao căn tự khép (4 m), nên dải giữa không thành phòng.
+    """
     left = [((0, 0), (3000, 0)), ((3000, 0), (3000, 4000)), ((3000, 4000), (0, 4000)), ((0, 4000), (0, 0))]
-    right = [((5000, 0), (8000, 0)), ((8000, 0), (8000, 4000)), ((8000, 4000), (5000, 4000)), ((5000, 4000), (5000, 0))]
+    right = [
+        ((8000, 0), (11000, 0)),
+        ((11000, 0), (11000, 4000)),
+        ((11000, 4000), (8000, 4000)),
+        ((8000, 4000), (8000, 0)),
+    ]
     walls = [_wall(fake_clock, start, end) for start, end in [*left, *right]]
     shared: dict[str, Any] = {"level_id": LEVEL_ID, "scaling": Scaling(1.0, 1.0), "clock": fake_clock}
     rooms = build_rooms(walls, (), (), dropped=Counter(), **shared)
     assert len(rooms) == 2
-    mouth = RoomCloser(Point(x=3000, y=4000), Point(x=5000, y=4000), "door")
+    mouth = RoomCloser(Point(x=3000, y=4000), Point(x=8000, y=4000), "door")
     wall_set = WallSet(walls=tuple(walls), openings=(), input_to_wall={}, bridges=())
     result = close_envelope_gaps(wall_set, rooms, closers=[mouth], **shared)
     assert (result.walls, result.openings) == (tuple(walls), ())
