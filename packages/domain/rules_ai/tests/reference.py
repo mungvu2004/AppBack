@@ -63,8 +63,36 @@ def ref_fixture(item: Furniture, walls: tuple[Wall, ...]) -> Furniture:
     )
 
 
+def _ref_beside(op: Opening, host: Wall, rooms: tuple[Room, ...]) -> list[Room | None]:
+    """Phòng đầu tiên chứa mỗi điểm dò hai bên tâm ô mở (nửa bề dày + 150 mm), quét mọi phòng."""
+    s, e = host.centreline.start, host.centreline.end
+    length = math.dist((s.x, s.y), (e.x, e.y))
+    ux, uy = (e.x - s.x) / length, (e.y - s.y) / length
+    t, reach = op.offset_mm + op.width_mm / 2, host.thickness_mm / 2 + 150
+    cx, cy = s.x + ux * t, s.y + uy * t
+    points = ((cx - uy * reach, cy + ux * reach), (cx + uy * reach, cy - ux * reach))
+    return [next((r for r in rooms if outline_contains(r.outline, x, y)), None) for x, y in points]
+
+
+def _ref_sliding(op: Opening, host: Wall, layer: SpatialLayer) -> bool:
+    """Cửa sổ ≥ 1400 trên tường thẳng giữa một phòng và lô gia chưa có cửa đi nối sang phòng khác."""
+    if op.width_mm < 1400 or host.curve_offset_mm:
+        return False
+    sides = _ref_beside(op, host, layer.rooms)
+    if None in sides:
+        return False
+    entered = set()
+    for door in layer.openings:
+        wall = next((w for w in layer.walls if w.id == door.wall_id), None)
+        if door.kind == "door" and wall is not None and not wall.curve_offset_mm:
+            around = _ref_beside(door, wall, layer.rooms)
+            if None not in around:
+                entered |= {r.id for r in around if r is not None}
+    return any(r is not None and r.usage == "loggia" and r.id not in entered for r in sides)
+
+
 def ref_apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
-    """Luật 1 rồi luật 2, quét mọi tường và mọi phòng (không chỉ mục)."""
+    """Luật 1 rồi luật 2 (cửa lùa ra lô gia trước), quét mọi tường và mọi phòng (không chỉ mục)."""
     furniture = tuple(
         ref_fixture(item, layer.walls)
         if _can_edit(item) and item.kind in ("sanitaryFixture", "kitchenCabinet")
@@ -77,6 +105,10 @@ def ref_apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
         host = next((w for w in layer.walls if w.id == op.wall_id), None)
         if op.kind != "window" or not _can_edit(op) or host is None or host.kind == "envelope":
             openings.append(op)
+            continue
+        if _ref_sliding(op, host, layer):
+            door = {"kind": "door", "swing": "sliding", "height_mm": 2200, "sill_height_mm": 0}
+            openings.append(op.model_copy(update={**door, **_cap(op)}))
             continue
         side = wall_side(host, layer.rooms)
         if side == "exterior" and _can_edit(host):
