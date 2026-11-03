@@ -18,6 +18,15 @@ FIXTURE_SNAP_REACH_MM: Final = 300
 EXTERIOR_PROBE_MM: Final = 150
 """Điểm dò ngoài mặt tường khi phân biệt tường ngoài/trong; vượt bề dày tường một khoảng đủ ra khỏi lớp trát."""
 
+SLIDING_DOOR_MIN_WIDTH_MM: Final = 1400
+"""Cửa sổ AI giữa một phòng và lô gia chưa có lối vào, rộng từ chừng này → cửa đi lùa (BENCH3D-12).
+
+Bench r3: vách kính lùa ra lô gia bị dò thành cửa sổ rộng 1476 tới 3117 mm; cửa sổ thật phòng → lô gia 1027 tới 1200 mm.
+"""
+
+SLIDING_DOOR_HEIGHT_MM: Final = 2200
+"""Cao cửa lùa đổi từ cửa sổ (bệ 0): như cửa đi mặc định `LABEL_TARGETS["door"]` (`ml_contracts/labels.py`)."""
+
 LOW_CONFIDENCE_CAP: Final = 0.5
 """Trần tin cậy của mục đã bị luật đụng vào; dưới 0,7 và 0,75 của màn QC nên rơi vào hàng "tin cậy thấp"."""
 
