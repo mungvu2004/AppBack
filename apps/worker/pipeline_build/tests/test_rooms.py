@@ -919,7 +919,9 @@ def test_wide_kitchen_or_hall_is_the_living_room_unless_the_level_has_one(fake_c
     rooms = _rooms_with_texts(_two_20_m2_rooms(fake_clock), (), run, fake_clock)
     assert [(room.usage, room.name) for room in rooms] == [("livingRoom", "phòng khách"), ("other", "phòng khác")]
     hall = (_text("SANH", 7500, 2000),)
-    assert _usages(_two_20_m2_rooms(fake_clock), hall, (), fake_clock) == ["other", "livingRoom"]
+    lobby = _rooms_with_texts(_two_20_m2_rooms(fake_clock), hall, (), fake_clock)
+    assert [room.usage for room in lobby] == ["other", "livingRoom"]
+    assert lobby[1].confidence < 1.0  # tên trái chữ trên bản vẽ là suy đoán, không mang tin cậy của chữ
     living = (_text("PHONG KHACH", 7500, 2000),)
     assert _usages(_two_20_m2_rooms(fake_clock), living, run, fake_clock) == ["kitchen", "livingRoom"]
 
@@ -941,3 +943,35 @@ def test_largest_unnamed_room_of_a_read_level_is_the_living_room(fake_clock: Fak
     rooms = _rooms_with_texts(walls, (), bed, fake_clock)
     assert [room.usage for room in rooms] == ["bedroom", "livingRoom"]
     assert rooms[1].confidence < 1.0
+
+
+def test_long_narrow_hall_stays_a_hall(fake_clock: FakeClock) -> None:
+    """Hành lang 14 x 1,5 m = 21 m² có chữ, tầng không phòng khách: hẹp nên vẫn là hành lang, tin cậy của chữ."""
+    walls = _box_walls(fake_clock, 14000, 1500)
+    rooms = _rooms_with_texts(walls, (_text("HANH LANG", 7000, 750),), (), fake_clock)
+    assert [(room.usage, room.name) for room in rooms] == [("corridor", "hành lang")]
+    assert rooms[0].confidence == 1.0
+
+
+def test_level_named_only_by_geometry_gets_no_living_room_guess(fake_clock: FakeClock) -> None:
+    """Không chữ, không đồ: hộp kỹ thuật 2 m² (chỉ suy từ hình học) không làm tầng "đã đọc được", phòng 20 m² vẫn
+    là "phòng khác"."""
+    walls = _walls_of(
+        fake_clock,
+        [
+            ((0, 0), (6000, 0)),
+            ((0, 4000), (5000, 4000)),
+            ((0, 0), (0, 4000)),
+            ((5000, 0), (5000, 4000)),
+            ((6000, 0), (6000, 2000)),
+            ((5000, 2000), (6000, 2000)),
+        ],
+    )
+    rooms = _rooms_with_texts(walls, (), (), fake_clock)
+    assert [(room.usage, room.name) for room in rooms] == [("other", "phòng khác"), ("utility", "hộp kỹ thuật")]
+
+
+def _box_walls(clock: FakeClock, width: int, depth: int) -> list[Wall]:
+    """Phòng hộp `width` x `depth` mm."""
+    corners = [(0, 0), (width, 0), (width, depth), (0, depth)]
+    return [_wall(clock, a, b) for a, b in zip(corners, corners[1:] + corners[:1], strict=True)]

@@ -115,13 +115,14 @@ _NOT_LOGGIA = frozenset({"bed", "sanitary_fixture", "shower"})
 nên biên bao cách tim tường mặt ngoài đúng `ROOM_SNAP_MM`).
 
 Phòng chưa có tên (chữ, rìa, đồ đạc) 2-15 m², ≥ 3 m cạnh trên mặt ngoài, không giường/thiết bị vệ sinh → lô gia
-(bench-3d r1: 18/21 phòng "khác" như thế là lô gia/ban công/giặt phơi), khi tầng có nhãn chữ. Tầng chỉ có tên suy từ
-đồ đạc (bản vẽ căn hộ VN hay không ghi tên phòng; bench-3d
-r2: 17 lô gia thành "phòng khác") thì phòng còn phải hẹp (cạnh ngắn hộp bao xoay ≤ `_LOGGIA_DEPTH_MM`), và mặt ngoài
-là phần lớn hơn của cạnh trên biên bao lồi hay cạnh không giáp phòng nào (`_exposed_lengths`: lô gia lõm vào mặt nhà
-nằm xa biên bao lồi, bench-3d r2 cn-07, cn-16). Tầng không đọc được gì (ảnh âm bản, OCR và dò đồ hỏng) thì mọi phòng
-đều "khác", đoán lô gia là đoán mù. Máy giặt + ≥ 3 m mặt ngoài (không buồng tắm đứng) → lô gia trước luật thiết bị
-vệ sinh: chậu giặt dò thành `sanitary_fixture`."""
+(bench-3d r1: 18/21 phòng "khác" như thế là lô gia/ban công/giặt phơi), khi tầng có nhãn chữ. Nhánh thứ hai cho mọi
+tầng đã đọc được (nhãn chữ hay tên suy từ đồ đạc; bản vẽ căn hộ VN hay không ghi tên phòng, bench-3d r2: 17 lô gia
+thành "phòng khác"): phòng còn phải hẹp (cạnh ngắn hộp bao xoay ≤ `_LOGGIA_DEPTH_MM`), và mặt ngoài là phần lớn hơn
+của cạnh trên biên bao lồi hay cạnh không giáp phòng nào (`_exposed_lengths`: lô gia lõm vào mặt nhà nằm xa biên bao
+lồi, bench-3d r2 cn-07, cn-16). Rủi ro biết trước: cạnh không giáp phòng tính so với phòng đã khép, nên phòng hẹp
+không tên giáp ô thang/giếng trời không khép thành phòng cũng thành lô gia. Tầng không đọc được gì (ảnh âm bản, OCR
+và dò đồ hỏng) thì mọi phòng đều "khác", đoán lô gia là đoán mù. Máy giặt + ≥ 3 m mặt ngoài (không buồng tắm
+đứng) → lô gia trước luật thiết bị vệ sinh: chậu giặt dò thành `sanitary_fixture`."""
 
 _LOGGIA_DEPTH_MM = 2000.0
 """Lô gia/ban công sâu ≤ 2 m (bench-3d r2: 0,99-1,91 m); phòng không tên rộng hơn ở mặt ngoài là kho, phòng phụ."""
@@ -129,7 +130,12 @@ _LOGGIA_DEPTH_MM = 2000.0
 _OPEN_SPACE_M2 = 18.0
 """Không gian mở khách-bếp-ăn: tầng chưa có phòng khách thì "bếp"/"hành lang" rộng hơn số này → phòng khách (bếp
 riêng căn hộ ≤ 15 m²; bench-3d r2: 17/17 "bếp" 24-52 m² là khách + bếp + ăn, "hành lang" 27 m² ch-11 là phòng khách).
-Còn chưa có phòng khách thì phòng không tên lớn nhất, rộng hơn số này, của tầng đã đọc được → phòng khách."""
+Còn chưa có phòng khách thì phòng không tên lớn nhất, rộng hơn số này, của tầng đã đọc được → phòng khách.
+
+"Hành lang" chỉ đổi khi không hẹp (cạnh ngắn hộp bao xoay > `_CORRIDOR_DEPTH_MM`): hành lang căn hộ, hành lang chung
+tầng điển hình rộng 1,2-2 m dù dài trên 18 m² vẫn là hành lang."""
+
+_CORRIDOR_DEPTH_MM = 2500.0
 
 _SHAFT_M2 = 2.5
 _DOOR_LABELS = frozenset({"door", "double_door"})
@@ -605,17 +611,32 @@ def _depth_mm(outline: Sequence[Point]) -> float:
     return float(min(math.dist(corners[0], corners[1]), math.dist(corners[1], corners[2])))
 
 
-def _open_space_labels(labels: Sequence[RoomLabel | None], areas_m2: Sequence[float]) -> list[RoomLabel | None]:
-    """Phòng khách cho tầng chưa có phòng khách (`_OPEN_SPACE_M2`): "bếp"/"hành lang" rộng → phòng khách; không có
-    thì phòng không tên lớn nhất khi tầng đã có ít nhất một phòng có tên."""
+def _open_space_labels(
+    labels: Sequence[RoomLabel | None],
+    outlines: Sequence[Sequence[Point]],
+    areas_m2: Sequence[float],
+    *,
+    read_level: bool,
+) -> list[RoomLabel | None]:
+    """Phòng khách cho tầng chưa có phòng khách (`_OPEN_SPACE_M2`).
+
+    "Bếp" rộng, "hành lang" rộng và không hẹp (`_CORRIDOR_DEPTH_MM`) → phòng khách; không có thì phòng không tên lớn
+    nhất khi tầng đã đọc được (`read_level`: nhãn chữ hay tên suy từ đồ đạc; lô gia rìa, hộp kỹ thuật chỉ suy từ hình
+    học nên không tính).
+    """
     named = list(labels)
     if any(label is not None and label.usage == "livingRoom" for label in named):
         return named
     living = RoomLabel("livingRoom", ROOM_USAGE_NAMES["livingRoom"])
     wide = [i for i, area in enumerate(areas_m2) if area > _OPEN_SPACE_M2]
-    opened = [i for i in wide if (label := named[i]) is not None and label.usage in ("kitchen", "corridor")]
+    opened = [
+        i
+        for i in wide
+        if (label := named[i]) is not None
+        and (label.usage == "kitchen" or (label.usage == "corridor" and _depth_mm(outlines[i]) > _CORRIDOR_DEPTH_MM))
+    ]
     unnamed = [i for i in wide if named[i] is None]
-    if not opened and unnamed and any(named):
+    if not opened and unnamed and read_level:
         opened = [max(unnamed, key=lambda i: areas_m2[i])]
     for i in opened:
         named[i] = living
@@ -903,10 +924,14 @@ def build_rooms(
         rim or fix or facade or box
         for rim, fix, facade, box in zip(from_rim, from_fixtures, from_facade, from_shaft, strict=True)
     ]
-    merged = _open_space_labels([text or guess for text, guess in zip(from_text, guesses, strict=True)], areas)
+    merged = _open_space_labels(
+        [text or guess for text, guess in zip(from_text, guesses, strict=True)], outlines, areas, read_level=read_level
+    )
     labels = name_rooms(merged)
+    # Tên đổi khác nhãn chữ (bếp/sảnh rộng → phòng khách) là suy đoán, không mang tin cậy của chữ trên bản vẽ (B12).
     sources = [
-        "text" if text else "inferred" if label else "none" for text, label in zip(from_text, merged, strict=True)
+        "text" if text is not None and text == label else "inferred" if label else "none"
+        for text, label in zip(from_text, merged, strict=True)
     ]
     trusted = scaling.build == scaling.final if scale_trusted is None else scale_trusted
     walled = _walled_shares(bodies, outlines)
