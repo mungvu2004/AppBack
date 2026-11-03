@@ -10,6 +10,7 @@ Cùng `kind` giữ tách tường bao 220 với vách 100 nối thẳng qua ch�
 một bên `partition`.
 """
 
+import itertools
 import math
 from collections.abc import Mapping, Sequence
 from typing import Final
@@ -75,30 +76,42 @@ def _joins(a: Wall, b: Wall) -> bool:
 def _groups(walls: Sequence[Wall]) -> list[list[int]]:
     """Nhóm chỉ số tường gộp được (union-find trên cặp `_joins`, tra cặp qua `STRtree` đầu mút)."""
     candidates = [index for index, wall in enumerate(walls) if _mergeable(wall)]
-    parent = {index: index for index in candidates}
+    if len(candidates) < 2:
+        return []
+    parent: dict[int, int] = {}
 
     def root(item: int) -> int:
-        """Đại diện nhóm (nén đường đi)."""
+        """Đại diện nhóm (nén đường đi); chỉ tường đã thành cặp mới vào `parent`."""
+        parent.setdefault(item, item)
         while parent[item] != item:
             parent[item] = parent[parent[item]]
             item = parent[item]
         return item
 
-    if len(candidates) < 2:
-        return []
     lines = [walls[index].centreline for index in candidates]
     coords = np.array([[(s.start.x, s.start.y), (s.end.x, s.end.y)] for s in lines], dtype=float)
     tree = shapely.STRtree(np.asarray(shapely.linestrings(coords), dtype=object))
-    tips = shapely.points(coords.reshape(-1, 2))
-    # Tầm tra = khe chạm + nửa bề dày lớn nhất: khúc lệch tim (≤ ½ bề dày, `_joins`) vẫn thành cặp ứng viên.
+    # Hộp quanh mỗi đầu, cạnh = khe chạm + nửa bề dày lớn nhất: khúc lệch tim (≤ ½ bề dày) vẫn thành cặp ứng viên.
+    # Chỉ so hộp bao (không đo khoảng cách thật): `_joins` soát lại từng cặp còn sau bộ lọc.
     reach = _TOUCH_MM + max(walls[index].thickness_mm for index in candidates) / 2
-    tip_idx, near = tree.query(tips, predicate="dwithin", distance=reach)
-    for slot_a, slot_b in zip((tip_idx // 2).tolist(), near.tolist(), strict=True):
+    ends = coords.reshape(-1, 2)
+    tip_idx, near = tree.query(
+        shapely.box(ends[:, 0] - reach, ends[:, 1] - reach, ends[:, 0] + reach, ends[:, 1] + reach)
+    )
+    # Lọc theo lô trước vòng Python (trần 20 000 tường: mỗi đầu chạm cả tường của nó và mọi vách ở nút): khác tường,
+    # cùng `kind`, cùng hướng — `_joins` chỉ còn soát lệch tim và khe của vài cặp thẳng hàng.
+    slot = tip_idx // 2
+    unit = coords[:, 1] - coords[:, 0]
+    unit /= np.hypot(unit[:, 0], unit[:, 1])[:, None]
+    kinds = np.array([walls[index].kind for index in candidates])
+    cross = unit[slot, 0] * unit[near, 1] - unit[slot, 1] * unit[near, 0]
+    keep = (slot != near) & (kinds[slot] == kinds[near]) & (np.abs(cross) <= _ALIGN_SIN)
+    for slot_a, slot_b in zip(slot[keep].tolist(), near[keep].tolist(), strict=True):
         a, b = candidates[slot_a], candidates[slot_b]
-        if a != b and root(a) != root(b) and _joins(walls[a], walls[b]):
+        if root(a) != root(b) and _joins(walls[a], walls[b]):
             parent[root(a)] = root(b)
     groups: dict[int, list[int]] = {}
-    for index in candidates:
+    for index in sorted(parent):
         groups.setdefault(root(index), []).append(index)
     return [members for members in groups.values() if len(members) > 1]
 
@@ -114,10 +127,18 @@ def _weighted_median(values: Sequence[float], weights: Sequence[float]) -> float
     return pairs[-1][0]
 
 
-def _merged(members: Sequence[Wall], openings: Mapping[str, Opening]) -> tuple[Wall, list[Opening]]:
-    """Một tường thay cả nhóm (id, tim, `kind` của khúc dài nhất) và các ô mở của nhóm đặt lại trên tim đó."""
+def _merged(members: Sequence[Wall], openings: Mapping[str, Opening]) -> tuple[Wall, list[Opening]] | None:
+    """Một tường thay cả nhóm (id, tim, `kind` của khúc dài nhất) và các ô mở của nhóm đặt lại trên tim đó.
+
+    `None` (giữ nguyên các khúc) khi nhóm không nằm trọn trên tim khúc dài nhất (chuỗi cặp `_joins` lệch dần: cạnh gãy
+    nhẹ, không kéo thẳng) hay ô mở đặt lại chồng nhau/lố khỏi tường (hai khúc chồng nhau cùng mang một cửa).
+    """
     lead = max(members, key=_length)
     unit, origin = _unit(lead), lead.centreline.start
+    limit = max(wall.thickness_mm for wall in members) / 2
+    tips = [p for wall in members for p in (wall.centreline.start, wall.centreline.end)]
+    if any(abs((p.x - origin.x) * unit[1] - (p.y - origin.y) * unit[0]) > limit for p in tips):
+        return None
     ends = [_along(origin, unit, p) for wall in members for p in (wall.centreline.start, wall.centreline.end)]
     low, high = min(ends), max(ends)
     start = Point(x=js_round(origin.x + unit[0] * low), y=js_round(origin.y + unit[1] * low))
@@ -140,6 +161,9 @@ def _merged(members: Sequence[Wall], openings: Mapping[str, Opening]) -> tuple[W
                 (offset, opening.model_copy(update={"wall_id": lead.id, "offset_mm": offset, "swing": swing}))
             )
     placed.sort(key=lambda item: item[0])
+    edges = [(offset, offset + opening.width_mm) for offset, opening in placed]
+    if any(b[0] < a[1] for a, b in itertools.pairwise(edges)) or (edges and edges[-1][1] > high - low):
+        return None
     wall = lead.model_copy(
         update={
             "centreline": Segment(start=start, end=end),
@@ -162,22 +186,25 @@ def merge_wall_runs(
 ) -> tuple[SpatialLayer, tuple[Dimension, ...]]:
     """Gộp khúc thẳng hàng chạm nhau (xem docstring module); `wallIds` của phòng và `referenceIds` đổi theo.
 
-    Không nhóm nào thì trả nguyên đối số. Tường gộp nằm ở vị trí khúc đầu tiên của nhóm trong `layer.walls`.
+    Không nhóm nào gộp được thì lớp ra bằng lớp vào. Tường gộp nằm ở vị trí khúc đầu tiên của nhóm trong `layer.walls`.
     """
     groups = _groups(layer.walls)
-    if not groups:
-        return layer, tuple(dimensions)
     by_id = {opening.id: opening for opening in layer.openings}
     alias: dict[str, str] = {}
     replaced: dict[int, Wall | None] = {}
     moved: dict[str, Opening] = {}
     for members in groups:
-        run, placed = _merged([layer.walls[index] for index in members], by_id)
+        merged = _merged([layer.walls[index] for index in members], by_id)
+        if merged is None:
+            continue
+        run, placed = merged
         for index in members:
             alias[layer.walls[index].id] = run.id
             replaced[index] = None
         replaced[members[0]] = run
         moved.update((opening.id, opening) for opening in placed)
+    if not replaced:
+        return layer, tuple(dimensions)
     walls = tuple(
         kept for index, original in enumerate(layer.walls) if (kept := replaced.get(index, original)) is not None
     )

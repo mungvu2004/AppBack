@@ -124,3 +124,22 @@ def test_overlapping_and_thin_pieces_take_the_longer_line() -> None:
         220,
         0.5,
     )
+
+
+def test_bent_chain_and_clashing_openings_stay_apart() -> None:
+    """Chuỗi khúc lệch dần 80 mm/khúc (khúc cuối cách tim khúc dài 160 > ½ bề dày) → không kéo thẳng; hai khúc chồng
+    nhau cùng mang cửa ở cùng chỗ → ô mở đặt lại chồng nhau, không gộp."""
+    bent = (
+        _wall(0, (0, 0), (4000, 0), 200),
+        _wall(1, (4000, 80), (5000, 80), 200),
+        _wall(2, (5000, 160), (6000, 160), 200),
+    )
+    layer = SpatialLayer(walls=bent, openings=(), rooms=(), furniture=())
+    assert merge_wall_runs(layer) == (layer, ())
+    doors = (_door(1, "W-WALL0000000000", 1000), _door(2, "W-WALL0000000001", 0))
+    twins = (
+        _wall(0, (0, 0), (3000, 0), 200, opening_ids=(doors[0].id,)),
+        _wall(1, (1000, 0), (4000, 0), 200, opening_ids=(doors[1].id,)),
+    )
+    layer = SpatialLayer(walls=twins, openings=doors, rooms=(), furniture=())
+    assert merge_wall_runs(layer) == (layer, ())

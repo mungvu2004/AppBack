@@ -21,3 +21,13 @@
   lỗi dò cửa O1c có sẵn. bench-can-ho 14: phòng không đổi (riêng 78, gộp 24, thiếu 7, công năng 75), cặp 45 → 8.
 - Vector hoá (đề xuất nới `_PIECE_THICKNESS_RATIO`, `_cluster_lines`) không làm: bước ML, phải vá f14-ml và vector hoá lại
   bench; gộp ở bước dựng đã thu cặp chạm nhau, tim khúc lệch được đặt về tim khúc dài nhất.
+- Vòng sửa sau merge-review (`docs/reviews/2026-11-04-fix-wall-runs-lcorner.md`): P1 perf — tìm cặp ứng viên lọc theo lô
+  (hộp bao + cùng hướng + cùng `kind` bằng numpy) trước vòng Python: `merge_wall_runs` trên ca perf 20 000 tường 0,26 →
+  0,10 s CPU; `_corner_closers` không đo được khác nhiễu (ca perf không có góc hở) nên giữ truy vấn từng cặp. P3: nhóm lệch
+  khỏi tim khúc dài nhất (chuỗi cặp lệch dần) và nhóm có ô mở đặt lại chồng nhau/lố tường → giữ nguyên các khúc.
+- Nợ chấp nhận (P2 review): chạy lại pipeline trên tầng dựng **trước** nhánh này mà người dùng đã duyệt/xoá một khúc lẻ:
+  `rules_ai.merge._same_run` khớp theo hai đầu mút nên tường gộp không khớp khúc đã duyệt/bia mộ → tường AI dài chồng tường
+  đã duyệt, khúc đã xoá hiện lại trong tường gộp. Sửa đúng phải cắt tường AI quanh khúc giữ/bia mộ trong `merge.py`, mà
+  `merge.py` không được sinh id mới (K18) — cần prompt riêng (cắt + id tất định). Tầng dựng sau nhánh khớp bình thường
+  (tường gộp được duyệt/xoá nguyên khối). Nợ còn lại (P3): tâm cửa trên tường cong đo trên dây cung (`checks._door_centres`);
+  khi chạy lại, kích thước AI cùng trỏ một tường gộp bị coi trùng kích thước người đã giữ (`rules_ai/dimensions.py`).
