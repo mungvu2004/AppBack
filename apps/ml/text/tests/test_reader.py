@@ -307,3 +307,38 @@ def test_detect_keeps_text_crossing_the_inner_edge() -> None:
     quads = _detect(_detector(), page)
     near = [q for q in quads if 1500 < q[:, 0].mean() < 1900 and 330 < q[:, 1].mean() < 450]
     assert len(near) == 1
+
+
+class _Scripted(RapidOcrReader):
+    """Bộ đọc tiêm: chuỗi + tin cậy cho lượt thẳng và lượt xoay 180°; đếm số lượt `_run`."""
+
+    def __init__(self, upright: tuple[str, float], flipped: tuple[str, float]) -> None:
+        """Không cần phiên nào: chỉ `_run` bị thay."""
+        self.upright, self.flipped, self.calls = upright, flipped, 0
+
+    def _run(self, crop: NDArray[np.uint8]) -> tuple[str, float]:
+        """Ảnh đã xoay (điểm trên-trái tối) trả lượt 180°."""
+        self.calls += 1
+        return self.flipped if int(crop[0, 0, 0]) == 0 else self.upright
+
+
+def test_best_flips_sure_number_with_leading_zero() -> None:
+    """f-19: `6000` dọc đọc thẳng ra `0009` tin cậy 0.999 → vẫn đọc 180° và nhận `6000` dù tin cậy thấp hơn."""
+    reader = _Scripted(("0009", 0.999), ("6000", 0.95))
+    assert reader._best(_marked_crop()) == ("6000", 0.95)
+    assert reader.calls == 2
+
+
+def test_best_keeps_two_digit_label_with_leading_zero() -> None:
+    """`01` (số thứ tự căn/phòng) không bị nghi ngược: chắc thì một lượt như cũ."""
+    reader = _Scripted(("01", 0.99), ("10", 0.99))
+    assert reader._best(_marked_crop()) == ("01", 0.99)
+    assert reader.calls == 1
+
+
+def test_best_falls_back_to_confidence_when_flip_also_has_leading_zero() -> None:
+    """Lượt 180° không phải số trơn cùng độ dài (hay quá kém) → luật tin cậy cũ quyết."""
+    assert _Scripted(("0010", 0.99), ("0100", 0.95))._best(_marked_crop()) == ("0010", 0.99)
+    assert _Scripted(("0009", 0.99), ("6000", 0.3))._best(_marked_crop()) == ("0009", 0.99)
+    assert _Scripted(("0009", 0.999), ("01", 0.51))._best(_marked_crop()) == ("0009", 0.999)
+    assert _Scripted(("0009", 0.999), ("ROOM", 0.95))._best(_marked_crop()) == ("0009", 0.999)
