@@ -37,6 +37,10 @@ OVERLAP_SHARE: Final = 0.5
 """Hai tường gần song song (< 5°), cách < 30 mm, chồng > 50 % tường ngắn hơn là tường đôi (W4)."""
 WALL_FRAGMENTS_MIN: Final = 3
 
+PLAN_MAX_SPAN_MM: Final = 35_000
+"""Một căn hộ hay nhà ở hiếm khi dài quá 30 m; hộp bao tường dài hơn 35 m (chừa sai số tỉ lệ ước lượng) là tờ
+mặt bằng cả tầng nhiều căn, kể cả khi các căn dính liền nhau thành một cụm tường (BENCH3D-08)."""
+
 DOORLESS_USAGES_EXEMPT: Final = frozenset({"loggia", "corridor"})
 UNKNOWN_USAGE_SHARE: Final = 0.8
 UNKNOWN_USAGE_CRITICAL_ROOMS: Final = 3
@@ -126,7 +130,8 @@ def _wall_fragments(lines: Sequence[LineString]) -> GeometryCheck | None:
 
 
 def _multiple_plans(walls: Sequence[Wall], lines: Sequence[LineString]) -> GeometryCheck | None:
-    """≥ 2 vùng tường tách xa nhau, mỗi vùng giữ ≥ `FAR_CLUSTER_LENGTH_SHARE` tổng dài (bước dựng giữ cả hai)."""
+    """≥ 2 vùng tường tách xa nhau, mỗi vùng giữ ≥ `FAR_CLUSTER_LENGTH_SHARE` tổng dài (bước dựng giữ cả hai),
+    hoặc hộp bao mọi tường dài quá `PLAN_MAX_SPAN_MM` (các căn liền nhau của một tầng toà nhà)."""
     if len(walls) < 2:
         return None
     groups = wall_clusters(np.asarray(lines, dtype=object), [float(wall.thickness_mm) for wall in walls])
@@ -139,9 +144,11 @@ def _multiple_plans(walls: Sequence[Wall], lines: Sequence[LineString]) -> Geome
         _, rest = grow_region(boxes, remaining, max(remaining, key=lengths.__getitem__))
         big += sum(lengths[i] for i in remaining - rest) >= FAR_CLUSTER_LENGTH_SHARE * total
         remaining = rest
-    if big < 2:
+    x0, y0, x1, y1 = shapely.MultiLineString(list(lines)).bounds
+    span = max(x1 - x0, y1 - y0)
+    if big < 2 and span <= PLAN_MAX_SPAN_MM:
         return None
-    return GeometryCheck("MULTIPLE_PLANS", True, {"plans": big})
+    return GeometryCheck("MULTIPLE_PLANS", True, {"plans": big, "spanMm": round(span)})
 
 
 def _rooms_without_door(layer: SpatialLayer) -> GeometryCheck | None:

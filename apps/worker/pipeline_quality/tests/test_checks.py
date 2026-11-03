@@ -114,6 +114,19 @@ def test_two_far_rectangles__multiple_plans() -> None:
     assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [("MULTIPLE_PLANS", True)]
 
 
+def test_joined_units_spanning_whole_tower__multiple_plans() -> None:
+    """Các căn dính liền thành một cụm tường nhưng hộp bao dài 40 m: tờ cả tầng nhiều căn."""
+    partitions = [((10000 * i, 0), (10000 * i, 8000)) for i in range(1, 4)]
+    walls = _walls(*_box(0, 0, 40000, 8000), *partitions)
+    check = geometry_checks(_layer(walls))
+    assert [(c.code, dict(c.detail)) for c in check] == [("MULTIPLE_PLANS", {"plans": 1, "spanMm": 40000})]
+
+
+def test_large_single_house__single_plan() -> None:
+    walls = _walls(*_box(0, 0, 30000, 12000))
+    assert _codes(_layer(walls)) == []
+
+
 def test_small_far_cluster__single_plan() -> None:
     """Cụm xa nhưng ngắn (< 15 % tổng dài, kiểu logo góc trang) không tính là mặt bằng thứ hai."""
     walls = _walls(*_box(0, 0, 10000, 8000), *_box(30000, 0, 30800, 800))
