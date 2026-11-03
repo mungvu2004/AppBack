@@ -31,3 +31,5 @@
   `merge.py` không được sinh id mới (K18) — cần prompt riêng (cắt + id tất định). Tầng dựng sau nhánh khớp bình thường
   (tường gộp được duyệt/xoá nguyên khối). Nợ còn lại (P3): tâm cửa trên tường cong đo trên dây cung (`checks._door_centres`);
   khi chạy lại, kích thước AI cùng trỏ một tường gộp bị coi trùng kích thước người đã giữ (`rules_ai/dimensions.py`).
+- Nợ có sẵn (review lượt 1 #7): `test_build_layer__perf_under_30_seconds` dao động ngay trên `main` (CI 28,3–29,7 s, cục bộ
+  khi máy tải 30–38 s) — trần 30 s chỉ còn ~1 s dư; nhánh này không nới trần.
