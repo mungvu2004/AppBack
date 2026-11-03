@@ -975,6 +975,38 @@ def test_l_shaped_hall_stays_a_hall_but_an_l_shaped_living_room_is_kept() -> Non
     assert [label and label.usage for label in living] == [None, "livingRoom"]
 
 
+_BED = RoomLabel("bedroom", "phòng ngủ")
+_SQUARE = _outline((0, 0), (4000, 0), (4000, 4000), (0, 4000))
+
+
+@pytest.mark.parametrize(
+    ("labels", "areas", "texted", "factor", "want"),
+    [
+        ([_BED, _BED, _BED], [24.0, 11.0, 9.0], (), 1.0, ["livingRoom", "bedroom", "bedroom"]),  # khách-ăn có sofa
+        ([_BED, _BED], [16.0, 10.0], (), 1.21, ["livingRoom", "bedroom"]),  # 16 m² ở tỉ lệ dựng = 19,4 m² ghi ra lớp
+        ([_BED, _BED], [16.0, 10.0], (), 1.0, ["bedroom", "bedroom"]),  # không quá 18 m²
+        ([_BED, _BED, _BED], [24.0, 11.0, 9.0], (True, False, False), 1.0, ["bedroom", "bedroom", "bedroom"]),  # chữ
+        ([_BED, _BED], [22.0, 19.0], (), 1.0, ["bedroom", "bedroom"]),  # master 22 / 19: chưa gấp 1,3
+        ([_BED, _BED], [23.4, 18.0], (), 1.0, ["livingRoom", "bedroom"]),  # đúng 1,3 lần (1.3 * 18.0 = 23.400…02)
+        ([_BED], [24.0], (), 1.0, ["bedroom"]),  # một phòng ngủ
+        (
+            [_BED, _BED, RoomLabel("livingRoom", "phòng khách")],
+            [24.0, 11.0, 15.0],
+            (),
+            1.0,
+            ["bedroom", "bedroom", "livingRoom"],
+        ),  # đã có phòng khách
+    ],
+)
+def test_much_larger_inferred_bedroom__becomes_living_room_when_level_has_none(
+    labels: list[RoomLabel | None], areas: list[float], texted: tuple[bool, ...], factor: float, want: list[str]
+) -> None:
+    """Tầng chưa có phòng khách, ≥ 2 phòng ngủ: phòng ngủ suy từ đồ lớn nhất > 18 m² (tỉ lệ ghi ra lớp) và ≥ 1,3 lần
+    phòng ngủ thứ hai → phòng khách (BENCH3D-23); nhãn chữ, phòng ngủ ngang cỡ, tầng đã có khách: giữ."""
+    got = _open_space_labels(labels, [_SQUARE] * len(labels), areas, read_level=True, texted=texted, area_factor=factor)
+    assert [label and label.usage for label in got] == want
+
+
 def test_level_named_only_by_geometry_gets_no_living_room_guess(fake_clock: FakeClock) -> None:
     """Không chữ, không đồ: hộp kỹ thuật 2 m² (chỉ suy từ hình học) không làm tầng "đã đọc được", phòng 20 m² vẫn
     là "phòng khác"."""

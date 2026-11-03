@@ -150,6 +150,16 @@ Còn chưa có phòng khách thì phòng không tên lớn nhất, rộng hơn s
 lang căn hộ, hành lang chung tầng điển hình rộng 1,2-2 m dù dài trên 18 m² hay gấp chữ L/T (hộp bao sâu ~6 m) vẫn là
 hành lang (BENCH3D-14)."""
 
+_LIVING_OVER_BEDROOM = 1.3
+"""Còn chưa có phòng khách mà tầng có ≥ 2 phòng ngủ suy từ đồ đạc, phòng ngủ lớn nhất rộng hơn `_OPEN_SPACE_M2` và
+≥ 1,3 lần phòng ngủ thứ hai → phòng khách (BENCH3D-23): căn hộ luôn có phòng khách; "phòng ngủ" lớn gấp rưỡi phòng
+ngủ khác là vùng khách-bếp-ăn có sofa/kệ TV dò thành giường/tủ áo (tập F f-02, f-08, f-11: 18,8-23,7 m² ở tỉ lệ
+ước thấp). Phòng ngủ master thật lớn hơn phòng ngủ phụ ~1,1-1,25 lần. Nhãn chữ "phòng ngủ" không đổi. Diện tích
+so ở tỉ lệ ghi ra lớp (`Scaling.final`), không ở tỉ lệ dựng; phép so 1,3 lần không phụ thuộc tỉ lệ."""
+
+_AREA_EPS_M2 = 1e-9
+"""Dung sai số thực khi so đúng 1,3 lần (`1.3 * 18.0 == 23.400000000000002`)."""
+
 _CORRIDOR_DEPTH_MM = 2500.0
 
 _SHAFT_M2 = 2.5
@@ -852,12 +862,15 @@ def _open_space_labels(
     areas_m2: Sequence[float],
     *,
     read_level: bool,
+    texted: Sequence[bool] = (),
+    area_factor: float = 1.0,
 ) -> list[RoomLabel | None]:
     """Phòng khách cho tầng chưa có phòng khách (`_OPEN_SPACE_M2`).
 
     "Bếp" rộng, "hành lang" rộng và không hẹp (`_roomy`) → phòng khách; không có thì phòng không tên lớn nhất, không
     hẹp, khi tầng đã đọc được (`read_level`: nhãn chữ hay tên suy từ đồ đạc; lô gia rìa, hộp kỹ thuật chỉ suy từ hình
-    học nên không tính).
+    học nên không tính); không có nữa thì phòng ngủ suy từ đồ lớn hẳn (`_LIVING_OVER_BEDROOM`). `texted[i]`: tên phòng
+    `i` từ nhãn chữ (rỗng = không phòng nào); `area_factor`: `areas_m2` x số này = m² ở tỉ lệ ghi ra lớp.
     """
     named = list(labels)
     if any(label is not None and label.usage == "livingRoom" for label in named):
@@ -873,6 +886,18 @@ def _open_space_labels(
     unnamed = [i for i in wide if named[i] is None and _roomy(outlines[i])]
     if not opened and unnamed and read_level:
         opened = [max(unnamed, key=lambda i: areas_m2[i])]
+    beds = sorted(
+        (i for i, label in enumerate(named) if label is not None and label.usage == "bedroom"),
+        key=lambda i: -areas_m2[i],
+    )
+    if (
+        not opened
+        and len(beds) >= 2
+        and not (texted and texted[beds[0]])
+        and areas_m2[beds[0]] * area_factor > _OPEN_SPACE_M2
+        and areas_m2[beds[0]] >= _LIVING_OVER_BEDROOM * areas_m2[beds[1]] - _AREA_EPS_M2
+    ):
+        opened = [beds[0]]
     for i in opened:
         named[i] = living
     return named
@@ -1189,7 +1214,12 @@ def build_rooms(
         )
     ]
     merged = _open_space_labels(
-        [text or guess for text, guess in zip(from_text, guesses, strict=True)], outlines, areas, read_level=read_level
+        [text or guess for text, guess in zip(from_text, guesses, strict=True)],
+        outlines,
+        areas,
+        read_level=read_level,
+        texted=[text is not None for text in from_text],
+        area_factor=(scaling.final / scaling.build) ** 2,
     )
     labels = name_rooms(merged)
     # Tên đổi khác nhãn chữ (bếp/sảnh rộng → phòng khách) là suy đoán, không mang tin cậy của chữ trên bản vẽ (B12).

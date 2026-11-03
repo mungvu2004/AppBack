@@ -21,6 +21,7 @@ from packages.domain.rules_ai.constants import (
     LOW_CONFIDENCE_CAP,
     SLIDING_DOOR_HEIGHT_MM,
     SLIDING_DOOR_MIN_WIDTH_MM,
+    SLIDING_LOGGIA_MIN_DEPTH_MM,
     WALL_HUGGING_KINDS,
     WALL_HUGGING_TOLERANCE_MM,
 )
@@ -191,8 +192,11 @@ def _is_target(opening: Opening, host: Wall) -> bool:
     return opening.kind == "window" and _editable(opening) and host.kind != "envelope"
 
 
-def _rooms_beside(opening: Opening, host: Wall, rooms: _RoomIndex) -> tuple[int | None, int | None]:
-    """Phòng hai bên ô mở, dò tại tâm ô mở cách mặt tường `EXTERIOR_PROBE_MM` (cùng tầm với `wall_side_by`).
+def _rooms_beside(
+    opening: Opening, host: Wall, rooms: _RoomIndex, reach: float | None = None
+) -> tuple[int | None, int | None]:
+    """Phòng hai bên ô mở, dò tại tâm ô mở cách mặt tường `EXTERIOR_PROBE_MM` (cùng tầm với `wall_side_by`), hay cách
+    tim tường `reach` mm nếu có.
 
     Dò ở tâm ô mở chứ không ở giữa tường: tường dài có thể chỉ kề lô gia một đoạn.
     """
@@ -200,7 +204,7 @@ def _rooms_beside(opening: Opening, host: Wall, rooms: _RoomIndex) -> tuple[int 
     run_x, run_y = line.end.x - line.start.x, line.end.y - line.start.y
     length = math.hypot(run_x, run_y)
     along = (opening.offset_mm + opening.width_mm / 2) / length
-    reach = host.thickness_mm / 2 + EXTERIOR_PROBE_MM
+    reach = host.thickness_mm / 2 + EXTERIOR_PROBE_MM if reach is None else reach
     mid_x, mid_y = line.start.x + run_x * along, line.start.y + run_y * along
     shift_x, shift_y = -run_y / length * reach, run_x / length * reach
     return rooms.at(mid_x + shift_x, mid_y + shift_y), rooms.at(mid_x - shift_x, mid_y - shift_y)
@@ -225,12 +229,23 @@ def _sliding_door(
 
     Bộ dò gán `window` cho vách kính lùa ra lô gia (nét đôi, không cung). Lô gia phải vào được từ trong nhà:
     chưa có cửa đi nào nối nó với phòng khác thì ô kính rộng ≥ `SLIDING_DOOR_MIN_WIDTH_MM` là lối vào. Lô gia đã
-    có cửa đi thì ô kính là cửa sổ thật, giữ. Tường cong bỏ qua (`offsetMm` đo theo cung, không theo dây).
+    có cửa đi thì ô kính là cửa sổ thật, giữ. Lô gia phải sâu quá `SLIDING_LOGGIA_MIN_DEPTH_MM` trước ô kính (dải
+    hẹp là phòng ảo, không phải chỗ bước ra). Tường cong bỏ qua (`offsetMm` đo theo cung, không theo dây).
     """
     if opening.width_mm < SLIDING_DOOR_MIN_WIDTH_MM or host.curve_offset_mm != 0:
         return None
     sides = _rooms_beside(opening, host, rooms)
-    if None in sides or not any(side not in entered and usages[side] == "loggia" for side in sides if side is not None):
+    if None in sides:
+        return None
+    loggias = [
+        k for k, side in enumerate(sides) if side is not None and side not in entered and usages[side] == "loggia"
+    ]
+    if not loggias:
+        return None
+    deep = _rooms_beside(
+        opening, host, rooms, max(SLIDING_LOGGIA_MIN_DEPTH_MM, host.thickness_mm / 2 + EXTERIOR_PROBE_MM)
+    )
+    if all(deep[k] != sides[k] for k in loggias):
         return None
     update = {"kind": "door", "swing": "sliding", "height_mm": SLIDING_DOOR_HEIGHT_MM, "sill_height_mm": 0}
     return _capped(opening.model_copy(update=update))
