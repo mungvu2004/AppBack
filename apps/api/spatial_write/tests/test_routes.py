@@ -103,7 +103,7 @@ async def test_spatial_write_layer__C01_clear_area(api_client: httpx.AsyncClient
     rooms = response.json()["layer"]["rooms"]
     assert rooms
     for room, source in zip(rooms, layer.rooms, strict=True):
-        assert room["clearAreaM2"] == float(clear_area_m2(source.outline, layer.walls))
+        assert room["clearAreaM2"] == float(clear_area_m2(source.outline, layer.walls) or -1)
         assert room["clearAreaM2"] <= room["areaM2"]
 
     echoed = write_body(1, layer=layer)

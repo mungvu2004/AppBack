@@ -20,6 +20,8 @@ _AREA_ROUNDING: Final = 100
 _CENTI: Final = Decimal("0.01")
 _PARALLEL_SIN: Final = 0.09
 """Tường "nằm trên" một cạnh phòng khi lệch hướng ≤ ~5° (sin) và cách cạnh ≤ một bề dày tường."""
+_COLLINEAR_SIN: Final = 0.01
+"""Đỉnh rẽ ≤ ~0,6° coi là thẳng hàng (gộp), và hai đường lùi lệch ≤ ngần ấy coi là song song (không giao)."""
 
 
 def js_round(x: float) -> int:
@@ -95,40 +97,92 @@ def _half_thickness(start: Point, end: Point, walls: Sequence[Wall], fallback: f
     return half
 
 
-def clear_area_m2(outline: Sequence[Point], walls: Sequence[Wall]) -> Decimal:
+def _turn_sin(a: Point, b: Point, c: Point) -> float:
+    """|sin| góc rẽ tại `b` của đường `a → b → c`; đoạn dài 0 → 0 (coi như thẳng hàng)."""
+    ab, bc = math.hypot(b.x - a.x, b.y - a.y), math.hypot(c.x - b.x, c.y - b.y)
+    if ab == 0 or bc == 0:
+        return 0.0
+    return abs((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)) / (ab * bc)
+
+
+def _merged(outline: Sequence[Point]) -> list[Point]:
+    """Đường bao bỏ đỉnh lặp và đỉnh thẳng hàng (rẽ ≤ `_COLLINEAR_SIN`): một cạnh thật là một cạnh, một bề dày."""
+    points = list(outline)
+    changed = True
+    while changed and len(points) > 3:
+        changed = False
+        for index, point in enumerate(points):
+            if _turn_sin(points[index - 1], point, points[(index + 1) % len(points)]) <= _COLLINEAR_SIN:
+                del points[index]
+                changed = True
+                break
+    return points
+
+
+_Line = tuple[float, float, float, float]
+"""Đường đã lùi: một điểm `(x, y)` và hướng đơn vị `(ux, uy)`."""
+
+
+def _meet(first: _Line, second: _Line) -> tuple[float, float]:
+    """Giao của hai đường không song song (người gọi bảo đảm |sin| > `_COLLINEAR_SIN`)."""
+    px, py, ux, uy = first
+    qx, qy, vx, vy = second
+    t = ((qx - px) * vy - (qy - py) * vx) / (ux * vy - uy * vx)
+    return px + ux * t, py + uy * t
+
+
+def _ring(lines: Sequence[_Line]) -> list[tuple[float, float]]:
+    """Đỉnh của đa giác đã lùi: đỉnh `i` là giao của đường `i - 1` và đường `i`."""
+    return [_meet(before, line) for before, line in pairwise((lines[-1], *lines))]
+
+
+def _collapsed(lines: Sequence[_Line], corners: Sequence[tuple[float, float]]) -> int | None:
+    """Chỉ số cạnh đã lật chiều (lùi quá dài) bỏ được — hai cạnh kề không song song; không có → `None`.
+
+    Cạnh lật giữa hai cạnh song song là bậc tim tường ngắn hơn chênh nửa bề dày: giữ lại, vòng thắt nhỏ chỉ lệch
+    diện tích cỡ (bậc x chênh bề dày).
+    """
+    count = len(lines)
+    for index, (_, _, ux, uy) in enumerate(lines):
+        (x0, y0), (x1, y1) = corners[index], corners[(index + 1) % count]
+        if (x1 - x0) * ux + (y1 - y0) * uy >= 0:
+            continue
+        _, _, ax, ay = lines[index - 1]
+        _, _, bx, by = lines[(index + 1) % count]
+        if abs(ax * by - ay * bx) > _COLLINEAR_SIN:
+            return index
+    return None
+
+
+def clear_area_m2(outline: Sequence[Point], walls: Sequence[Wall]) -> Decimal | None:
     """Diện tích thông thủy: đường bao (tim tường) lùi vào nửa bề dày tường của từng cạnh, làm tròn như `areaM2`.
 
-    Cạnh không có tường nằm trên → nửa bề dày trung vị của `walls` (cả tầng); tầng không tường → không lùi.
-    Đỉnh mới là giao của hai cạnh kề đã lùi; cạnh kề thẳng hàng thì lấy đầu cạnh sau.
+    Đỉnh thẳng hàng gộp trước (cạnh bị chẻ không thành hai bề dày). Cạnh không có tường nằm trên → nửa bề dày
+    trung vị của `walls` (cả tầng); tầng không tường → không lùi. Cạnh lùi xong lật chiều (ngắn hơn phần lùi của
+    hai cạnh kề) bị bỏ, hai cạnh kề giao lại — như một sự kiện của khung xương thẳng.
+    Không tính được (còn < 3 cạnh, kết quả ≤ 0 hay lớn hơn tim tường) → `None`: dây vắng khoá, FE dùng `areaM2`.
+    Đường bao diện tích 0 → 0.
     """
     gross = signed_area_mm2(outline)
     if gross == 0:
         return _publish_m2(0.0)
     sign = 1.0 if gross > 0 else -1.0
     fallback = median(wall.thickness_mm for wall in walls) / 2 if walls else 0.0
-    lines: list[tuple[float, float, float, float]] = []
-    for start, end in pairwise((*outline, outline[0])):
-        if start == end:
-            continue
+    points = _merged(outline)
+    lines: list[_Line] = []
+    for start, end in pairwise((*points, points[0])):
         length = math.hypot(end.x - start.x, end.y - start.y)
         ux, uy = (end.x - start.x) / length, (end.y - start.y) / length
         half = _half_thickness(start, end, walls, fallback)
         # Pháp tuyến vào trong: bên trái chiều đi khi đường bao ngược chiều kim đồng hồ (diện tích dương).
         lines.append((start.x - sign * uy * half, start.y + sign * ux * half, ux, uy))
-    corners: list[tuple[float, float]] = []
-    for (px, py, ux, uy), (qx, qy, vx, vy) in pairwise((lines[-1], *lines)):
-        cross = ux * vy - uy * vx
-        if abs(cross) < 1e-9:
-            corners.append((qx, qy))
-            continue
-        t = ((qx - px) * vy - (qy - py) * vx) / cross
-        corners.append((px + ux * t, py + uy * t))
-    ring = list(pairwise((*corners, corners[0])))
-    # Cạnh lùi xong đổi chiều = phòng hẹp hơn bề dày tường ở đó → coi như không còn sàn thông thủy.
-    # ponytail: phòng lõm có một cạnh ngắn bị nuốt cũng về 0; cần chính xác hơn thì cắt đa giác (shapely) ở worker.
-    if any(
-        (x1 - x0) * ux + (y1 - y0) * uy < 0 for ((x0, y0), (x1, y1)), (_, _, ux, uy) in zip(ring, lines, strict=True)
-    ):
-        return _publish_m2(0.0)
-    net = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in ring) / 2 * sign
-    return _publish_m2(min(max(net, 0.0), abs(gross)))
+    corners = _ring(lines)
+    while (index := _collapsed(lines, corners)) is not None:
+        del lines[index]
+        if len(lines) < 3:
+            return None
+        corners = _ring(lines)
+    # ponytail: cạnh lật giữa hai cạnh song song ngược chiều (khe hẹp hơn tường) được giữ, diện tích lệch theo khe;
+    # cần đúng tuyệt đối thì cắt đa giác bằng dải tường (shapely) ở worker.
+    net = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in pairwise((*corners, corners[0]))) / 2 * sign
+    return _publish_m2(net) if 0 < net <= abs(gross) else None

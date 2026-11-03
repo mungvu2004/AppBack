@@ -42,9 +42,10 @@ GEOMETRY_CHECK_ORDER: Final = (
 )
 """Thứ tự `readiness.checks` trên dây (BENCH3D-09); mã lạ đứng sau, giữ thứ tự của lượt."""
 
-_MEASURED_BASES: Final = frozenset({"chain", "paired", "note"})
-"""Tỉ lệ đọc từ bản vẽ (chuỗi kích thước, cặp chữ-tường, ghi chú `TL 1:N`): không có nghi vấn thì không báo
-`scaleUnresolved`. `door`/`wallThickness`/`default` là ước lượng, vẫn báo."""
+_MEASURED_BASES: Final = frozenset({"chain", "paired"})
+"""Tỉ lệ đo từ nhiều số đo đồng thuận trên bản vẽ (chuỗi kích thước, cặp chữ-tường): không có nghi vấn thì không
+báo `scaleUnresolved`. `note` (một chữ OCR `TL 1:N` chia khổ giấy, in co trang là lệch x2), `door`/`wallThickness`
+/`default` (ước lượng) vẫn báo."""
 
 _PIPELINE_BASES: Final = frozenset(get_args(ScaleBasis)) - {"human"}
 

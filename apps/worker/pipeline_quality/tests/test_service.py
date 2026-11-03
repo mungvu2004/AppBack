@@ -7,6 +7,7 @@ checklist [8].
 
 import asyncio
 import json
+import logging
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -421,8 +422,9 @@ async def test_run_quality_records_scale_basis_from_layer_json(
     local_storage: ObjectStorage,
     fake_clock: FakeClock,
     quality_env: None,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """BENCH3D-09: `scaleBasis` + khoá `scaleChecks` của `layer.json` vào tóm tắt; tệp hỏng → vắng, lượt vẫn xong."""
+    """BENCH3D-09: `scaleBasis` + khoá `scaleChecks` của `layer.json` vào tóm tắt; hỏng → vắng + log, lượt vẫn xong."""
     arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     built = replace(
         sample_built(arranged.level_id), scale_basis="chain", scale_checks={"anisotropic": {"x": 10.0, "y": 11.0}}
@@ -436,8 +438,15 @@ async def test_run_quality_records_scale_basis_from_layer_json(
 
     broken = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
     await put_layer(local_storage, broken, b"{}")
-    outcome = await run_quality(broken.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+    with caplog.at_level(logging.WARNING, logger=service.__name__):
+        outcome = await run_quality(
+            broken.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock
+        )
     assert outcome == "completed"
+    logged = [record for record in caplog.records if record.getMessage() == "quality_layer_unreadable"]
+    assert [(record.__dict__["run_id"], record.__dict__["code"]) for record in logged] == [
+        (broken.run_id, "PIPELINE_ARTIFACT_INVALID")
+    ]
     summary, _ = await _summary_and_artifact(db_sessionmaker, local_storage, broken)
     assert isinstance(summary, dict)
     assert "scaleBasis" not in summary

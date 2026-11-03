@@ -160,7 +160,7 @@ def test_readiness_of_geometry_checks(
     ("basis", "scale_checks", "unresolved"),
     [
         pytest.param("chain", [], False, id="chain-agreed"),
-        pytest.param("note", [], False, id="note-agreed"),
+        pytest.param("note", [], True, id="note-lone-ocr-still-unresolved"),
         pytest.param("paired", ["anisotropic"], True, id="paired-anisotropic"),
         pytest.param("door", [], True, id="door-estimate"),
         pytest.param(None, [], True, id="no-basis"),

@@ -165,10 +165,14 @@ def _summary(report: RunQualityReport, built: BuiltLayer | None) -> dict[str, ob
 
 
 async def _built_or_none(storage: ObjectStorage, ctx: PersistContext) -> BuiltLayer | None:
-    """`layer.json` của lượt (đã qua persist nên thường còn); vắng hay hỏng → `None`, không làm hỏng bước quality."""
+    """`layer.json` của lượt (đã qua persist nên thường còn); vắng hay hỏng → `None` + log, không làm hỏng bước quality.
+
+    Mất tệp thì N16 mất `scaleBasis` và `scaleUnresolved` quay lại: log `quality_layer_unreadable` để còn dấu vết.
+    """
     try:
         return await read_built(storage, ctx)
-    except PermanentError:
+    except PermanentError as exc:
+        _log.warning("quality_layer_unreadable", extra={"run_id": ctx.run_id, "code": exc.code})
         return None
 
 

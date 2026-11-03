@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
+from apps.api.spatial_read import wire
 from apps.api.spatial_read.wire import (
     BuildingOut,
     DimensionOut,
@@ -64,8 +65,16 @@ def test_layer_out_computes_clear_area() -> None:
     rooms = layer_out(layer).model_dump(mode="json", by_alias=True)["rooms"]
     assert rooms
     for room, source in zip(rooms, layer.rooms, strict=True):
-        assert room["clearAreaM2"] == float(clear_area_m2(source.outline, layer.walls))
+        assert room["clearAreaM2"] == float(clear_area_m2(source.outline, layer.walls) or -1)
         assert 0 <= room["clearAreaM2"] <= room["areaM2"]
+
+
+def test_layer_out_omits_clear_area_when_not_computable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BENCH3D-09: `clear_area_m2` trả `None` → phòng **vắng khoá** `clearAreaM2` (W2), FE dùng `areaM2`, không 0."""
+    monkeypatch.setattr(wire, "clear_area_m2", lambda outline, walls: None)
+    rooms = layer_out(sample_floor_layer(0, level_id=LEVEL_ID)).model_dump(mode="json", by_alias=True)["rooms"]
+    assert rooms
+    assert all("clearAreaM2" not in room for room in rooms)
 
 
 def test_dimensions_out_maps_every_dimension() -> None:

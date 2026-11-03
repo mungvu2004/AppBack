@@ -130,7 +130,7 @@ class RoomOut(_ReviewedOut):
     outline: Annotated[list[PointOut], Field(min_length=3)]
     area_m2: SquareMetres
     clear_area_m2: SquareMetres | None = None
-    """Thông thủy (BENCH3D-09): đường bao lùi nửa bề dày tường từng cạnh; `layer_out` luôn tính."""
+    """Thông thủy (BENCH3D-09): đường bao lùi nửa bề dày tường; vắng khi không tính được (FE dùng `areaM2`)."""
     wall_ids: list[str]
     finish: RoomFinish | None = None
     floor_material: str | None = None
@@ -330,7 +330,8 @@ def layer_out(layer: SpatialLayer) -> SpatialLayerOut:
     """
     data = layer.model_dump(mode="json", by_alias=True, exclude_none=True)
     for room, wire_room in zip(layer.rooms, data["rooms"], strict=True):
-        wire_room["clearAreaM2"] = float(clear_area_m2(room.outline, layer.walls))
+        if (clear := clear_area_m2(room.outline, layer.walls)) is not None:
+            wire_room["clearAreaM2"] = float(clear)
     return SpatialLayerOut.model_validate(data)
 
 
