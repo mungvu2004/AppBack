@@ -21,7 +21,7 @@ from apps.worker.pipeline_build.constants import (
     ROOM_GAP_EVIDENCE_MM,
     ROOM_SNAP_MM,
 )
-from apps.worker.pipeline_build.geometry import Geoms, Scaling
+from apps.worker.pipeline_build.geometry import Geoms, RoomCloser, Scaling
 from apps.worker.pipeline_build.ids import new_spatial_id
 from packages.core.clock import Clock
 from packages.domain.rules_ai import LOW_CONFIDENCE_CAP
@@ -260,7 +260,7 @@ def _outline_points(polygon: shapely.Polygon) -> list[Point]:
 
 def _door_closers(
     walls: Sequence[Wall], detections: Sequence[DetectionPx], scaling: Scaling
-) -> list[shapely.LineString]:
+) -> list[tuple[shapely.LineString, str]]:
     """Đoạn khép khe cửa đi và cửa sổ theo hộp dò được, kể cả khe giữa một góc tường và tường đối diện (đầu ở góc
     không là đầu tự do nên `_gap_closers` bỏ qua). Cửa sổ tính vì vách kính, cửa lô gia vẽ nét mảnh: model tường
     một lớp bỏ sót, phòng ngủ tràn ra lô gia (bench căn hộ ch-08).
@@ -270,7 +270,7 @@ def _door_closers(
     đó. Giữ đoạn: dài `_DOOR_SPAN_RATIO` lần cạnh dài (cận dưới so với phần hộp còn phía trước đầu tường nằm trong
     hộp: hộp cửa sổ ôm cả mẩu tường đã dò); không nằm đè tường quá nửa; lệch ngang khỏi tâm hộp ≤
     min(`_DOOR_REACH_MM`, 1/4 cạnh dài) + nửa cạnh ngắn; đi qua gần tâm hộp (≤ nửa cạnh dài + `_DOOR_REACH_MM`).
-    Lấy đoạn ngắn nhất. Hộp lệch tim tường vài chục mm (cánh cửa vẽ cạnh
+    Lấy đoạn ngắn nhất, kèm nhãn hộp. Hộp lệch tim tường vài chục mm (cánh cửa vẽ cạnh
     tường) vẫn khép được, việc mà phép phủ hộp của 3b không làm được.
     """
     openings = [d for d in detections if d.label in _OPENING_LABELS]
@@ -284,7 +284,7 @@ def _door_closers(
     tips = [(w.centreline.start, w.centreline.end, i) for i, w in enumerate(walls)]
     tips += [(w.centreline.end, w.centreline.start, i) for i, w in enumerate(walls)]
     tip_points = shapely.STRtree([shapely.Point(p.x, p.y) for p, _, _ in tips])
-    closers: list[shapely.LineString] = []
+    closers: list[tuple[shapely.LineString, str]] = []
     for door in openings:
         low = scaling.point(door.box.x_min, door.box.y_min)
         high = scaling.point(door.box.x_max, door.box.y_max)
@@ -333,8 +333,14 @@ def _door_closers(
             if best is None or segment.length < best.length:
                 best = segment
         if best is not None:
-            closers.append(best)
+            closers.append((best, door.label))
     return closers
+
+
+def _room_closer(line: shapely.LineString, label: str | None) -> RoomCloser:
+    """Đoạn khép (shapely, mm) → `RoomCloser` với hai đầu `js_round`."""
+    (x0, y0), (x1, y1) = line.coords
+    return RoomCloser(Point(x=js_round(x0), y=js_round(y0)), Point(x=js_round(x1), y=js_round(y1)), label)
 
 
 def _room_lines(walls: Sequence[Wall], bridges: Sequence[tuple[Point, Point]]) -> list[shapely.LineString]:
@@ -861,6 +867,7 @@ def build_rooms(
     clock: Clock,
     dropped: Counter[str],
     scale_trusted: bool | None = None,
+    closers_out: list[RoomCloser] | None = None,
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
@@ -872,11 +879,19 @@ def build_rooms(
     Tin cậy (B12): tích nguồn tên (`_NAME_TRUST`), 1 - phần chu vi không sát tường (kẹp ≥ `_MIN_WALLED_FACTOR`),
     (1 nếu tỉ lệ đáng tin, `_UNTRUSTED_SCALE_FACTOR` nếu không). `scale_trusted=None` → tin khi `scaling.build ==
     scaling.final` (tỉ lệ đoán `project_default` dựng ở tỉ lệ khác).
+
+    `closers_out` (nếu có) nhận các đoạn khép không có tường cho `geometry.close_envelope_gaps` dựng tường vỏ (C5):
+    `_door_closers` kèm nhãn hộp trước (khe có hộp mang ô mở, đoạn góc trùng khe sau đó bị bỏ vì chồng), rồi
+    `_gap_closers`; phòng dựng ra không đổi.
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
     closers = _gap_closers(walls, bridges)
-    doors = _door_closers(walls, detections, scaling)
+    labelled = _door_closers(walls, detections, scaling)
+    doors = [line for line, _ in labelled]
+    if closers_out is not None:
+        closers_out.extend(_room_closer(line, label) for line, label in labelled)
+        closers_out.extend(_room_closer(line, None) for line in closers)
     lines = [*_room_lines(walls, bridges), *closers, *doors]
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)

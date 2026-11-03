@@ -23,6 +23,8 @@ from packages.vision.walls.vectorize import vectorize
 logger = logging.getLogger(__name__)
 
 _FIRST_TEN_SEEDS: Final = tuple(range(100, 110))
+_RAILING_ENTRANCE_SEEDS: Final = frozenset({105, 108, 109})
+"""Seed có cửa chính mở vào phòng `utility`/`loggia`: bỏ hộp cửa thì khe khép bằng tường đặc, không đoán cửa (R2')."""
 _LEVEL_ID = SPATIAL_LEVEL_ID
 _DOOR_LABELS: Final = frozenset({"door", "double_door"})
 
@@ -113,14 +115,15 @@ def test_build_layer__real_seed100_pipeline_scale_within_2_percent(fake_clock: F
 
 @pytest.mark.parametrize("seed", _FIRST_TEN_SEEDS)
 def test_build_layer_vectorized__missed_entrance_door_closes_envelope(seed: int, fake_clock: FakeClock) -> None:
-    """C5: bỏ mọi hộp cửa đi → khe cửa chính trên tường ngoài thành tường mang cửa đoán, số phòng không đổi."""
+    """C5: bỏ mọi hộp cửa đi → khe cửa chính trên tường ngoài thành tường mang cửa đoán (tường đặc khi phòng trong là
+    lô gia/kỹ thuật, R2'), số phòng không đổi."""
     plan = render_plan(seed)
     walls = tuple(_to_wall_px(segment) for segment in vectorize(plan.walls_mask))
     boxes = [det for det in plan.detections if det.label not in _DOOR_LABELS]
     full = build_from_plan(plan, FakeClock(start=fake_clock.now()), walls=walls).layer
     blind = build_from_plan(plan, FakeClock(start=fake_clock.now()), walls=walls, detections=boxes).layer
     guessed = [opening for opening in blind.openings if opening.kind == "door"]
-    assert len(guessed) == 1
-    assert 850 <= guessed[0].width_mm <= 950
+    assert len(guessed) == (0 if seed in _RAILING_ENTRANCE_SEEDS else 1)
+    assert all(850 <= opening.width_mm <= 950 for opening in guessed)
     assert len(blind.rooms) == len(full.rooms)
     assert not has_critical(check_integrity(blind, level_id=_LEVEL_ID))
