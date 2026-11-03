@@ -177,3 +177,30 @@ def test_build_walls__dangling_nib_dropped_real_stub_kept(fake_clock: FakeClock)
     )
     assert result.input_to_wall == {0: 0, 2: 1}
     assert dropped["isolatedBlock"] == 1
+
+
+@pytest.mark.parametrize(
+    ("walls", "kept"),
+    [
+        pytest.param([wall_px(0, 100, 5000, 100), wall_px(1000, 47, 1000, 100)], {0: 0}, id="53-stub-in-100-body"),
+        pytest.param([wall_px(0, 0, 0, 3000, 220), wall_px(0, 1000, 11, 1000)], {0: 0}, id="11-stub-in-220-body"),
+        pytest.param(
+            [wall_px(0, 0, 5000, 0), wall_px(0, 150, 5000, 150), wall_px(2000, 0, 2000, 150)],
+            {0: 0, 1: 1, 2: 2},
+            id="150-connector-kept",
+        ),
+    ],
+)
+def test_build_walls__nib_buried_in_one_wall_dropped(
+    walls: list[WallPx], kept: dict[int, int], fake_clock: FakeClock
+) -> None:
+    """W4: mẩu < 200 mm có cả hai đầu trong thân cùng một tường → bỏ; mẩu nối hai tường song song → giữ."""
+    result = build_walls(
+        walls,
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=Counter(),
+    )
+    assert result.input_to_wall == kept
