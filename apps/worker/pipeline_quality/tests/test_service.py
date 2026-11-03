@@ -7,6 +7,7 @@ checklist [8].
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Final, NoReturn, cast
@@ -21,7 +22,7 @@ from apps.api.spatial_read.codec import document_to_json
 from apps.api.spatial_read.documents import load_document
 from apps.worker.pipeline_orchestrate.pins import load_pins
 from apps.worker.pipeline_persist.errors import PIPELINE_RESULT_INVALID
-from apps.worker.pipeline_persist.tests.helpers import open_run_at_build
+from apps.worker.pipeline_persist.tests.helpers import open_run_at_build, put_layer, sample_built
 from apps.worker.pipeline_quality import service, tasks
 from apps.worker.pipeline_quality.report import QUALITY_ARTIFACT
 from apps.worker.pipeline_quality.service import fail_quality, run_quality
@@ -376,6 +377,7 @@ async def test_run_quality_records_summary_with_critical(
         "criticalCount": critical + sum(1 for check in checks if check["critical"]),
         "lowConfidence": artifact["lowConfidence"],
         "checks": [check["code"] for check in checks],
+        "criticalChecks": [check["code"] for check in checks if check["critical"]],
     }
     status, _, _ = await _run_row(db_sessionmaker, arranged.run_id)
     assert status == "completed"
@@ -407,7 +409,38 @@ async def test_run_quality_records_summary_clean(
         "criticalCount": sum(1 for check in cast("list[dict[str, object]]", artifact["checks"]) if check["critical"]),
         "lowConfidence": artifact["lowConfidence"],
         "checks": ["OPEN_ENVELOPE", "MULTIPLE_PLANS", "ROOMS_WITHOUT_DOOR"],
+        "criticalChecks": [
+            check["code"] for check in cast("list[dict[str, object]]", artifact["checks"]) if check["critical"]
+        ],
     }
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_run_quality_records_scale_basis_from_layer_json(
+    db_sessionmaker: async_sessionmaker[AsyncSession],
+    local_storage: ObjectStorage,
+    fake_clock: FakeClock,
+    quality_env: None,
+) -> None:
+    """BENCH3D-09: `scaleBasis` + khoá `scaleChecks` của `layer.json` vào tóm tắt; tệp hỏng → vắng, lượt vẫn xong."""
+    arranged = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+    built = replace(
+        sample_built(arranged.level_id), scale_basis="chain", scale_checks={"anisotropic": {"x": 10.0, "y": 11.0}}
+    )
+    await put_layer(local_storage, arranged, built.to_json())
+
+    assert await run_quality(arranged.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+    summary, _ = await _summary_and_artifact(db_sessionmaker, local_storage, arranged)
+    assert isinstance(summary, dict)
+    assert (summary["scaleBasis"], summary["scaleChecks"]) == ("chain", ["anisotropic"])
+
+    broken = await open_run_at_quality(db_sessionmaker, local_storage, fake_clock)
+    await put_layer(local_storage, broken, b"{}")
+    outcome = await run_quality(broken.payload, sessionmaker=db_sessionmaker, storage=local_storage, clock=fake_clock)
+    assert outcome == "completed"
+    summary, _ = await _summary_and_artifact(db_sessionmaker, local_storage, broken)
+    assert isinstance(summary, dict)
+    assert "scaleBasis" not in summary
 
 
 async def test_run_quality__completed_queues_a_design_concept(

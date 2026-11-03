@@ -5,7 +5,7 @@ trường, bộ mẫu A14. Không DB, không mạng, không tệp; lỗi là `Va
 con), prompt gọi tự đổi sang mã HTTP của mình.
 """
 
-from packages.domain.spatial.area import js_round, polygon_area_m2, signed_area_mm2, total_area_m2
+from packages.domain.spatial.area import clear_area_m2, js_round, polygon_area_m2, signed_area_mm2, total_area_m2
 from packages.domain.spatial.diff import DELETED, FieldChange, diff_layers, has_untracked_changes
 from packages.domain.spatial.document import LayerCounts, document_to_json, entity_ids, layer_counts
 from packages.domain.spatial.integrity import IntegrityIssue, check_integrity, check_level_order, has_critical
@@ -64,6 +64,7 @@ __all__ = [
     "change_entity_type",
     "check_integrity",
     "check_level_order",
+    "clear_area_m2",
     "diff_layers",
     "document_to_json",
     "entity_ids",
