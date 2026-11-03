@@ -115,9 +115,27 @@ _NOT_LOGGIA = frozenset({"bed", "sanitary_fixture", "shower"})
 nên biên bao cách tim tường mặt ngoài đúng `ROOM_SNAP_MM`).
 
 Phòng chưa có tên (chữ, rìa, đồ đạc) 2-15 m², ≥ 3 m cạnh trên mặt ngoài, không giường/thiết bị vệ sinh → lô gia
-(bench-3d r1: 18/21 phòng "khác" như thế là lô gia/ban công/giặt phơi). Chỉ khi tầng có ít nhất một nhãn chữ: tầng
-không đọc được chữ nào (ảnh âm bản, OCR hỏng) thì mọi phòng đều "khác", đoán lô gia là đoán mù. Máy giặt + ≥ 3 m mặt
-ngoài (không buồng tắm đứng) → lô gia trước luật thiết bị vệ sinh: chậu giặt dò thành `sanitary_fixture`."""
+(bench-3d r1: 18/21 phòng "khác" như thế là lô gia/ban công/giặt phơi), khi tầng có nhãn chữ. Nhánh thứ hai cho mọi
+tầng đã đọc được (nhãn chữ hay tên suy từ đồ đạc; bản vẽ căn hộ VN hay không ghi tên phòng, bench-3d r2: 17 lô gia
+thành "phòng khác"): phòng còn phải hẹp (cạnh ngắn hộp bao xoay ≤ `_LOGGIA_DEPTH_MM`), và mặt ngoài là phần lớn hơn
+của cạnh trên biên bao lồi hay cạnh không giáp phòng nào (`_exposed_lengths`: lô gia lõm vào mặt nhà nằm xa biên bao
+lồi, bench-3d r2 cn-07, cn-16). Rủi ro biết trước: cạnh không giáp phòng tính so với phòng đã khép, nên phòng hẹp
+không tên giáp ô thang/giếng trời không khép thành phòng cũng thành lô gia. Tầng không đọc được gì (ảnh âm bản, OCR
+và dò đồ hỏng) thì mọi phòng đều "khác", đoán lô gia là đoán mù. Máy giặt + ≥ 3 m mặt ngoài (không buồng tắm
+đứng) → lô gia trước luật thiết bị vệ sinh: chậu giặt dò thành `sanitary_fixture`."""
+
+_LOGGIA_DEPTH_MM = 2000.0
+"""Lô gia/ban công sâu ≤ 2 m (bench-3d r2: 0,99-1,91 m); phòng không tên rộng hơn ở mặt ngoài là kho, phòng phụ."""
+
+_OPEN_SPACE_M2 = 18.0
+"""Không gian mở khách-bếp-ăn: tầng chưa có phòng khách thì "bếp"/"hành lang" rộng hơn số này → phòng khách (bếp
+riêng căn hộ ≤ 15 m²; bench-3d r2: 17/17 "bếp" 24-52 m² là khách + bếp + ăn, "hành lang" 27 m² ch-11 là phòng khách).
+Còn chưa có phòng khách thì phòng không tên lớn nhất, rộng hơn số này, của tầng đã đọc được → phòng khách.
+
+"Hành lang" chỉ đổi khi không hẹp (cạnh ngắn hộp bao xoay > `_CORRIDOR_DEPTH_MM`): hành lang căn hộ, hành lang chung
+tầng điển hình rộng 1,2-2 m dù dài trên 18 m² vẫn là hành lang."""
+
+_CORRIDOR_DEPTH_MM = 2500.0
 
 _SHAFT_M2 = 2.5
 _DOOR_LABELS = frozenset({"door", "double_door"})
@@ -571,6 +589,60 @@ def _facade_lengths(lines: Sequence[shapely.LineString], outlines: Sequence[Sequ
     return [float(shapely.LinearRing([(p.x, p.y) for p in o]).intersection(rim).length) for o in outlines]
 
 
+def _exposed_lengths(outlines: Sequence[Sequence[Point]]) -> list[float]:
+    """Độ dài (mm) biên mỗi `outline` không giáp phòng khác (xa biên phòng khác > 2·`ROOM_SNAP_MM`).
+
+    Phòng kề tra bằng `STRtree` (K18: không O(n²)).
+    """
+    polygons = [shapely.Polygon([(p.x, p.y) for p in o]) for o in outlines]
+    tree = shapely.STRtree(polygons)
+    exposed: list[float] = []
+    for i, polygon in enumerate(polygons):
+        near = [polygons[int(j)] for j in tree.query(polygon, predicate="dwithin", distance=2 * ROOM_SNAP_MM) if j != i]
+        ring = polygon.exterior
+        free = ring.difference(shapely.union_all(near).buffer(2 * ROOM_SNAP_MM)) if near else ring
+        exposed.append(float(free.length))
+    return exposed
+
+
+def _depth_mm(outline: Sequence[Point]) -> float:
+    """Cạnh ngắn (mm) hộp bao xoay nhỏ nhất của `outline`."""
+    corners = shapely.get_coordinates(shapely.minimum_rotated_rectangle(shapely.Polygon([(p.x, p.y) for p in outline])))
+    return float(min(math.dist(corners[0], corners[1]), math.dist(corners[1], corners[2])))
+
+
+def _open_space_labels(
+    labels: Sequence[RoomLabel | None],
+    outlines: Sequence[Sequence[Point]],
+    areas_m2: Sequence[float],
+    *,
+    read_level: bool,
+) -> list[RoomLabel | None]:
+    """Phòng khách cho tầng chưa có phòng khách (`_OPEN_SPACE_M2`).
+
+    "Bếp" rộng, "hành lang" rộng và không hẹp (`_CORRIDOR_DEPTH_MM`) → phòng khách; không có thì phòng không tên lớn
+    nhất khi tầng đã đọc được (`read_level`: nhãn chữ hay tên suy từ đồ đạc; lô gia rìa, hộp kỹ thuật chỉ suy từ hình
+    học nên không tính).
+    """
+    named = list(labels)
+    if any(label is not None and label.usage == "livingRoom" for label in named):
+        return named
+    living = RoomLabel("livingRoom", ROOM_USAGE_NAMES["livingRoom"])
+    wide = [i for i, area in enumerate(areas_m2) if area > _OPEN_SPACE_M2]
+    opened = [
+        i
+        for i in wide
+        if (label := named[i]) is not None
+        and (label.usage == "kitchen" or (label.usage == "corridor" and _depth_mm(outlines[i]) > _CORRIDOR_DEPTH_MM))
+    ]
+    unnamed = [i for i in wide if named[i] is None]
+    if not opened and unnamed and read_level:
+        opened = [max(unnamed, key=lambda i: areas_m2[i])]
+    for i in opened:
+        named[i] = living
+    return named
+
+
 def _door_flags(outlines: Sequence[Sequence[Point]], detections: Sequence[DetectionPx], scaling: Scaling) -> list[bool]:
     """Mỗi `outline` có hộp cửa đi (`_DOOR_LABELS`) chạm biên nới `ROOM_SNAP_MM` không."""
     corners = [
@@ -786,7 +858,8 @@ def build_rooms(
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
     Tên: nhãn chữ trong phòng, không có thì lô gia rìa, suy từ đồ đạc (`_fixture_labels`), rồi lô gia mặt ngoài
-    (`_FACADE_MM`), hộp kỹ thuật (`_SHAFT_M2`). Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng
+    (`_FACADE_MM`), hộp kỹ thuật (`_SHAFT_M2`); cuối cùng phòng khách cho không gian mở (`_open_space_labels`).
+    Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng
     đoạn nối khe không có tường thật, nên luật FE `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
 
     Tin cậy (B12): tích nguồn tên (`_NAME_TRUST`), 1 - phần chu vi không sát tường (kẹp ≥ `_MIN_WALLED_FACTOR`),
@@ -828,14 +901,19 @@ def build_rooms(
     loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
     from_rim = [loggia if tuple(outline) in rim_keys else None for outline in outlines]
     labelled_level = any(from_text)
+    read_level = labelled_level or any(from_fixtures)
     from_facade = [
         loggia
-        if labelled_level
-        and _FACADE_LOGGIA_M2[0] <= area_m2 <= _FACADE_LOGGIA_M2[1]
-        and facade_mm >= _FACADE_MM
+        if _FACADE_LOGGIA_M2[0] <= area_m2 <= _FACADE_LOGGIA_M2[1]
         and not found & _NOT_LOGGIA
+        and (
+            (labelled_level and facade_mm >= _FACADE_MM)
+            or (read_level and max(facade_mm, exposed_mm) >= _FACADE_MM and _depth_mm(outline) <= _LOGGIA_DEPTH_MM)
+        )
         else None
-        for area_m2, facade_mm, found in zip(areas, facades, found_in, strict=True)
+        for outline, area_m2, facade_mm, exposed_mm, found in zip(
+            outlines, areas, facades, _exposed_lengths(outlines), found_in, strict=True
+        )
     ]
     shaft = RoomLabel("utility", "hộp kỹ thuật")
     doored = _door_flags(outlines, detections, scaling)
@@ -846,9 +924,14 @@ def build_rooms(
         rim or fix or facade or box
         for rim, fix, facade, box in zip(from_rim, from_fixtures, from_facade, from_shaft, strict=True)
     ]
-    labels = name_rooms([text or guess for text, guess in zip(from_text, guesses, strict=True)])
+    merged = _open_space_labels(
+        [text or guess for text, guess in zip(from_text, guesses, strict=True)], outlines, areas, read_level=read_level
+    )
+    labels = name_rooms(merged)
+    # Tên đổi khác nhãn chữ (bếp/sảnh rộng → phòng khách) là suy đoán, không mang tin cậy của chữ trên bản vẽ (B12).
     sources = [
-        "text" if text else "inferred" if guess else "none" for text, guess in zip(from_text, guesses, strict=True)
+        "text" if text is not None and text == label else "inferred" if label else "none"
+        for text, label in zip(from_text, merged, strict=True)
     ]
     trusted = scaling.build == scaling.final if scale_trusted is None else scale_trusted
     walled = _walled_shares(bodies, outlines)
