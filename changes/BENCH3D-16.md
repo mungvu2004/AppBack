@@ -6,4 +6,5 @@
 - Khe góc/chữ T vượt ngưỡng ở mặt ngoài giờ vẫn ra phòng (test cũ chuyển sang kiểm `_gap_closers`/`_door_closers`). Lô gia rìa không nhãn sát đầu tường bên (4,5 thay 4,95 m²).
 - Vòng review: ô đường bao còn lỗ (phòng kín giữa ô) chia bằng `_simple_parts` thành mảnh không lỗ, outline đã làm tròn chồng phòng có sẵn thì bỏ — không phủ lại phòng kín. Biên hở trên đường bao của phòng (trừ lô gia) xuất qua `closers_out` (`_open_edge_closers`, không nhãn, đầu chuỗi ở đầu tường) để `close_envelope_gaps` (BENCH3D-15, đã gộp) dựng tường vỏ.
 - Hiệu năng (CI perf đỏ 38 s/30 s): khối bao đã kín phòng bỏ vòng trước khi nút với đường khép (vòng trùng tim tường làm phép hợp chậm), không còn khối hở thì thoát sớm; dải biên hở chỉ nới tường/vòng gần outline; lấp lỗ/co theo từng mảnh. Kết quả `_envelope_outlines` trùng bản trước trên 646 lời gọi test + 126 lời gọi bench-3d.
+- Hiệu năng vòng 2 (CI 30,65 s): nới đường bao theo từng cụm đường có hình nới chạm nhau (`_grown`); độ dài hở (`_exposed_lengths`) chỉ đo cho phòng cỡ lô gia, nông, còn thiếu mặt ngoài. Phòng + closers trùng a0a44c72 trên 646 lời gọi test + 126 bench-3d.
 - Không migration, không đổi hợp đồng/openapi.
