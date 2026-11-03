@@ -76,6 +76,15 @@ _RIM_FILL = 0.7
 _RIM_WALLED = 0.5
 """Mảnh trống ở rìa thành lô gia khi 1,5-15 m², ≥ 70 % hộp bao, ≥ 3 cạnh hộp bao sát đường khép ≥ 50 %."""
 
+_ENVELOPE_CLOSE_MM = 2000.0
+"""Bán kính đóng hình thái của đường bao căn (`_envelope_outlines`): khép khe mặt ngoài ≤ 4 m."""
+
+_ENVELOPE_MIN_M2 = 4.0
+_ENVELOPE_WALLED = 2
+_ENVELOPE_WRAP = 0.5
+"""Ô mới của đường bao thành phòng khi ≥ 2 cạnh hộp bao sát đường khép, chứa nhãn chữ hay rộng ≥ 4 m², và bao lồi của
+nó chồng phòng có sẵn ≤ 0,5 lần diện tích ô (bench-3d r3: vành giữa căn và khung ảnh 0,70; phòng thật ≤ 0,38)."""
+
 _SEED_RAY_MM = 6000
 """Tia của phòng mọc từ nhãn dài nhất 6 m: xa hơn là chữ nằm ngoài căn hộ (tên bản vẽ, ghi chú)."""
 
@@ -522,16 +531,95 @@ def _rim_outlines(lines: Sequence[shapely.LineString], rooms: Sequence[Sequence[
         x0, y0, x1, y1 = face.bounds
         if face.area < _RIM_FILL * (x1 - x0) * (y1 - y0):
             continue
-        near = face.buffer(ROOM_SNAP_MM)
-        walls = shapely.unary_union([lines[int(i)] for i in line_tree.query(near, predicate="intersects")])
-        near_walls = walls.buffer(ROOM_SNAP_MM)
-        sides = [
-            shapely.LineString(side)
-            for side in (((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0)))
-        ]
-        if sum(side.intersection(near_walls).length >= _RIM_WALLED * side.length for side in sides) < 3:
+        if _walled_sides(face, _near_walls(face, lines, line_tree)) < 3:
             continue
         found.append(_outline_points(shapely.Polygon(face.exterior)))
+    return found
+
+
+def _near_walls(face: shapely.Polygon, lines: Sequence[shapely.LineString], line_tree: shapely.STRtree) -> BaseGeometry:
+    """Đường khép quanh `face`, nới `ROOM_SNAP_MM` (tra `line_tree` của `lines`)."""
+    near = line_tree.query(face.buffer(ROOM_SNAP_MM), predicate="intersects")
+    return shapely.unary_union([lines[int(i)] for i in near]).buffer(ROOM_SNAP_MM)
+
+
+def _walled_sides(face: shapely.Polygon, near_walls: BaseGeometry) -> int:
+    """Số cạnh hộp bao của `face` có ≥ `_RIM_WALLED` chiều dài trong `near_walls` (`_near_walls`)."""
+    x0, y0, x1, y1 = face.bounds
+    sides = [
+        shapely.LineString(side)
+        for side in (((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0)))
+    ]
+    return sum(side.intersection(near_walls).length >= _RIM_WALLED * side.length for side in sides)
+
+
+def _envelope_outlines(
+    lines: Sequence[shapely.LineString],
+    bare: Sequence[shapely.LineString],
+    rooms: Sequence[Sequence[Point]],
+    labels: Sequence[RoomLabel | None],
+    centres: Sequence[Point],
+) -> list[tuple[list[Point], bool]]:
+    """Phòng hở ra mặt ngoài: ô do đường khép `lines` và đường bao căn chia ra, kèm cờ lô gia.
+
+    `polygonize` chỉ cho phòng có vòng kín, nên một khe mặt ngoài (vách kính, cửa lùa, lan can lô gia: model tường
+    một lớp bỏ nét mảnh) làm mất cả phòng, kể cả khách-bếp lớn không có nhãn hay nhãn ở bảng bên (bench-3d r3: 19
+    nhãn ở 11 ca không thuộc phòng nào). Đường bao là đóng hình thái của `bare` (như `lines` nhưng tường không kéo
+    dài, để bao trùng tim tường mặt ngoài và đi qua đúng đầu tường ở khe): nới `_ENVELOPE_CLOSE_MM`, lấp lỗ, co lại.
+    Nên bao chỉ nằm trong vùng có tường của căn, khép khe mặt ngoài ≤ 2·`_ENVELOPE_CLOSE_MM` theo thẳng tường hai bên,
+    còn góc khuyết chữ L và sân hở rộng hơn vẫn ở ngoài bao (khác biên bao lồi của `_rim_outlines`).
+
+    Mỗi ô lấy vòng ngoài (tính cả lỗ) trừ các phòng có sẵn; còn < 50 % thì bỏ (vòng ôm các phòng có sẵn là bao cả
+    căn), không thì giữ mảnh lớn nhất. Mảnh thành phòng khi ≥ `_ENVELOPE_WALLED` cạnh hộp bao sát đường khép
+    (`_walled_sides`: chặn chẻ thừa lô gia), chứa tâm nhãn chữ hay rộng ≥ `_ENVELOPE_MIN_M2`, và không ôm quanh các
+    phòng có sẵn (`_ENVELOPE_WRAP`): vành giữa căn và mép bàn/khung ảnh dò thành tường bao lấy cả căn, không phải
+    phòng (bench-3d photo-tilted-ch05). Cờ lô gia: không nhãn, trong `_RIM_M2`, nông
+    (`_depth_mm` ≤ `_LOGGIA_DEPTH_MM`), cạnh dài ≤ 2·`_LOGGIA_DEPTH_MM` hoặc ≤ hai lần biên hở (xa đường khép): hành
+    lang dài hở một đầu không thành lô gia, lô gia hẹp hở đầu ngắn vẫn là lô gia. Phòng, đường, nhãn tra `STRtree`
+    (K18).
+    """
+    if not lines:
+        return []
+    grown = shapely.buffer(shapely.union_all(list(bare)), _ENVELOPE_CLOSE_MM, cap_style="square", join_style="mitre")
+    filled = shapely.union_all([shapely.Polygon(part.exterior) for part in getattr(grown, "geoms", [grown])])
+    footprint = shapely.buffer(filled, -_ENVELOPE_CLOSE_MM, join_style="mitre")
+    rings = [part.exterior for part in getattr(footprint, "geoms", [footprint]) if isinstance(part, shapely.Polygon)]
+    # Lưới 1 mm: đường bao trùng tim tường mặt ngoài phải nút chung, không để dải mảnh nối phòng hở với vòng bao.
+    merged = shapely.set_precision(shapely.unary_union([*lines, *rings]), 1.0)
+    faces = shapely.polygonize(list(getattr(merged, "geoms", [merged])))
+    line_tree = shapely.STRtree(list(lines))
+    taken = [shapely.Polygon([(p.x, p.y) for p in o]) for o in rooms if len(o) >= 3]
+    room_tree = shapely.STRtree(taken)
+    seeds = shapely.STRtree([shapely.Point(c.x, c.y) for label, c in zip(labels, centres, strict=True) if label])
+    found: list[tuple[list[Point], bool]] = []
+    for hollow in faces.geoms:
+        shell = shapely.Polygon(hollow.exterior)
+        near = [taken[int(i)] for i in room_tree.query(shell, predicate="intersects")]
+        free = shell.difference(shapely.union_all(near)) if near else shell
+        parts = [part for part in getattr(free, "geoms", [free]) if isinstance(part, shapely.Polygon)]
+        if free.area <= 0.5 * shell.area or not parts:
+            continue
+        face = max(parts, key=lambda part: part.area)
+        labelled = bool(seeds.query(face, predicate="contains").size)
+        area_m2 = face.area / 1e6
+        if not labelled and area_m2 < _ENVELOPE_MIN_M2:
+            continue
+        hull = shapely.convex_hull(face)
+        wrapped = sum(hull.intersection(taken[int(i)]).area for i in room_tree.query(hull, predicate="intersects"))
+        if wrapped > _ENVELOPE_WRAP * face.area:
+            continue
+        near_walls = _near_walls(face, lines, line_tree)
+        if _walled_sides(face, near_walls) < _ENVELOPE_WALLED:
+            continue
+        outline = _outline_points(shapely.Polygon(face.exterior))
+        depth = _depth_mm(outline)
+        loggia = (
+            not labelled
+            and _RIM_M2[0] <= area_m2 <= _RIM_M2[1]
+            and depth <= _LOGGIA_DEPTH_MM
+            and face.area / depth <= max(2 * _LOGGIA_DEPTH_MM, 2 * face.exterior.difference(near_walls).length)
+        )
+        found.append((outline, loggia))
     return found
 
 
@@ -871,8 +959,10 @@ def build_rooms(
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
-    Tên: nhãn chữ trong phòng, không có thì lô gia rìa, suy từ đồ đạc (`_fixture_labels`), rồi lô gia mặt ngoài
-    (`_FACADE_MM`), hộp kỹ thuật (`_SHAFT_M2`); cuối cùng phòng khách cho không gian mở (`_open_space_labels`).
+    Thêm phòng mọc từ nhãn, ô của đường bao căn (`_envelope_outlines`: vòng hở ở mặt ngoài), lô gia rìa.
+    Tên: nhãn chữ trong phòng, không có thì lô gia rìa, suy từ đồ đạc (`_fixture_labels`), lô gia nông của đường bao,
+    lô gia mặt ngoài (`_FACADE_MM`), hộp kỹ thuật (`_SHAFT_M2`); cuối cùng phòng khách cho không gian mở
+    (`_open_space_labels`).
     Mảnh dưới `MIN_ROOM_AREA_M2` → `roomTooSmall`. Cạnh phòng khép bằng
     đoạn nối khe không có tường thật, nên luật FE `ROOM-NOT-CLOSED` vẫn gắn cờ nó — đúng, vì tường ở đó thật sự thiếu.
 
@@ -895,10 +985,14 @@ def build_rooms(
     lines = [*_room_lines(walls, bridges), *closers, *doors]
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
-    rims = _rim_outlines(lines, [*closed, *seeded])
+    bare = [*(_extend(wall, 0.0) for wall in walls), *lines[len(walls) :]]
+    envelope = _envelope_outlines(lines, bare, [*closed, *seeded], parsed, centres)
+    opened = [outline for outline, _ in envelope]
+    rims = _rim_outlines(lines, [*closed, *seeded, *opened])
     rim_keys = {tuple(outline) for outline in rims}
+    porch_keys = {tuple(outline) for outline, loggia in envelope if loggia}
     kept: list[tuple[list[Point], float]] = []
-    for outline in _split_by_labels([*closed, *seeded, *rims], walls, parsed, centres):
+    for outline in _split_by_labels([*closed, *seeded, *opened, *rims], walls, parsed, centres):
         area_m2 = float(polygon_area_m2(outline)) if len(outline) >= 3 else 0.0
         if len(outline) < 3 or area_m2 < MIN_ROOM_AREA_M2:
             dropped["roomTooSmall"] += 1
@@ -922,6 +1016,7 @@ def build_rooms(
     from_fixtures = _fixture_labels(found_in, areas, facades)
     loggia = RoomLabel("loggia", ROOM_USAGE_NAMES["loggia"])
     from_rim = [loggia if tuple(outline) in rim_keys else None for outline in outlines]
+    from_porch = [loggia if tuple(outline) in porch_keys else None for outline in outlines]
     labelled_level = any(from_text)
     read_level = labelled_level or any(from_fixtures)
     from_facade = [
@@ -943,8 +1038,10 @@ def build_rooms(
         shaft if area_m2 < _SHAFT_M2 and not door else None for area_m2, door in zip(areas, doored, strict=True)
     ]
     guesses = [
-        rim or fix or facade or box
-        for rim, fix, facade, box in zip(from_rim, from_fixtures, from_facade, from_shaft, strict=True)
+        rim or fix or porch or facade or box
+        for rim, fix, porch, facade, box in zip(
+            from_rim, from_fixtures, from_porch, from_facade, from_shaft, strict=True
+        )
     ]
     merged = _open_space_labels(
         [text or guess for text, guess in zip(from_text, guesses, strict=True)], outlines, areas, read_level=read_level
