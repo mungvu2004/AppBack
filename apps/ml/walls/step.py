@@ -40,8 +40,10 @@ from packages.vision.walls.vectorize import keep_longest, vectorize_with_stats
 
 __all__ = [
     "CLASSIC_CONFIDENCE_CAP",
+    "DRAWING_WALL_LENGTH_RATIO",
     "INK_REFINE_BRANCHES",
     "MIN_WALL_LENGTH_RATIO",
+    "SUSPECT_WALL_LENGTH_RATIO",
     "WallsStepOutput",
     "segment_page",
     "to_wall_px",
@@ -59,6 +61,20 @@ MIN_WALL_LENGTH_RATIO: Final = 1.0
 nhất 3.02; 11 ảnh không phải bản vẽ (biểu đồ cột/đường/tròn, bảng, văn bản, sơ đồ khối, ảnh
 chụp, ảnh chụp màn hình) cao nhất 0.23. Chỉ áp cho nhánh `onnx`: nhánh cổ điển cho ảnh chụp
 tới 27.07 nên không phân biệt được, nhánh giả chỉ phục vụ trang tổng hợp.
+
+Dưới số này mà vẫn ≥ `SUSPECT_WALL_LENGTH_RATIO` thì trang chỉ bị từ chối khi tường không gom thành một bản vẽ gọn
+(`DRAWING_WALL_LENGTH_RATIO`): căn nhỏ giữa trang trắng, tờ cả tầng nhiều căn nhỏ cũng tụt dưới 1.0 (BENCH3D-14).
+"""
+
+SUSPECT_WALL_LENGTH_RATIO: Final = 0.3
+"""Sàn tuyệt đối theo cạnh trang: ảnh không phải bản vẽ của bộ hiệu chỉnh cao nhất 0.23 — dưới sàn luôn từ chối."""
+
+DRAWING_WALL_LENGTH_RATIO: Final = 2.0
+"""Tổng tim tường theo cạnh dài hộp bao chính các tường, tối thiểu khi tỉ số theo trang rơi vào dải nghi ngờ.
+
+Bản vẽ khép phòng: một phòng vuông đã 4, mặt bằng CubiCasa ≥ 3.02 (hộp bao ≤ trang). Nét rời rải khắp ảnh (ảnh chụp,
+phối cảnh) có hộp bao gần bằng trang nên tỉ số này ≈ tỉ số theo trang < 1. Chưa hiệu chỉnh trên SegFormer thật: log
+`walls_not_a_floor_plan` ghi cả hai tỉ số để hiệu chỉnh lại.
 """
 
 type Used = Literal["onnx", "classic", "fake"]
@@ -153,7 +169,8 @@ def segment_page(
     Mặt nạ khác khổ ảnh là model sai hợp đồng, không phải trang xấu →
     `MODEL_FORMAT_UNSUPPORTED`. Có `vectors` (PDF vector) và trọng tài mặt nạ nhận đủ tường →
     tường từ nét PDF (`walls_from="vector"`), không thì vector hoá mặt nạ. Model đã huấn luyện thấy
-    tổng tường ngắn hơn `MIN_WALL_LENGTH_RATIO` lần cạnh dài trang → `NOT_A_FLOOR_PLAN`. Quá
+    tổng tường ngắn hơn `MIN_WALL_LENGTH_RATIO` lần cạnh dài trang mà không gom thành bản vẽ gọn (`_looks_like_plan`)
+    → `NOT_A_FLOOR_PLAN`. Quá
     `MAX_WALLS` đoạn thì giữ các đoạn dài nhất và đếm `cap`, vì `WallsResult` từ chối nhiều hơn thế.
     """
     started = time.monotonic()
@@ -170,7 +187,7 @@ def segment_page(
         walls, dropped_by = result.walls, result.dropped
     else:
         walls, dropped_by = from_pdf.walls, {}
-    if used == "onnx" and _total_length(walls) < MIN_WALL_LENGTH_RATIO * max(mask.shape):
+    if used == "onnx" and not _looks_like_plan(walls, mask.shape, run_id):
         raise PermanentError(NOT_A_FLOOR_PLAN)
     dropped = {**dropped_by, "cap": max(0, len(walls) - MAX_WALLS)}
     if dropped["cap"]:
@@ -197,6 +214,25 @@ def segment_page(
         },
     )
     return WallsStepOutput(artifacts=artifacts, used=used, dropped=dropped, walls_from=walls_from)
+
+
+def _looks_like_plan(walls: Sequence[WallSegment], shape: tuple[int, ...], run_id: str | None) -> bool:
+    """Tổng tim tường ≥ `MIN_WALL_LENGTH_RATIO` cạnh dài trang, hoặc ≥ `SUSPECT_WALL_LENGTH_RATIO` cạnh trang và
+    ≥ `DRAWING_WALL_LENGTH_RATIO` cạnh dài hộp bao các tường. Từ chối thì log hai tỉ số (hiệu chỉnh lại ngưỡng)."""
+    total = _total_length(walls)
+    page_ratio = total / max(shape[:2])
+    if page_ratio >= MIN_WALL_LENGTH_RATIO:
+        return True
+    ends = np.asarray([point for seg in walls for point in (seg.start, seg.end)], dtype=np.float64).reshape(-1, 2)
+    extent = float(np.ptp(ends, axis=0).max()) if len(ends) else 0.0
+    drawing_ratio = total / extent if extent > 0 else 0.0
+    if page_ratio >= SUSPECT_WALL_LENGTH_RATIO and drawing_ratio >= DRAWING_WALL_LENGTH_RATIO:
+        return True
+    _log.info(
+        "walls_not_a_floor_plan",
+        extra={"run_id": run_id, "page_ratio": round(page_ratio, 3), "drawing_ratio": round(drawing_ratio, 3)},
+    )
+    return False
 
 
 def _total_length(walls: Sequence[WallSegment]) -> float:

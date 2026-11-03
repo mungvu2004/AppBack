@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+import pytest
+
 from apps.worker.pipeline_quality.checks import geometry_checks
 from apps.worker.pipeline_quality.report import build_report
 from packages.domain.spatial.model import Opening, Point, Room, Segment, SpatialLayer, Wall
@@ -114,23 +116,80 @@ def test_two_far_rectangles__multiple_plans() -> None:
     assert _codes(_layer(walls, rooms, (_door(walls[0].id),))) == [("MULTIPLE_PLANS", True)]
 
 
+def _plans(layer: SpatialLayer, scale_basis: str | None = None) -> tuple[bool, dict[str, float]] | None:
+    """(critical, detail) của `MULTIPLE_PLANS`, vắng → `None`."""
+    found = [c for c in geometry_checks(layer, scale_basis=scale_basis) if c.code == "MULTIPLE_PLANS"]
+    return (found[0].critical, dict(found[0].detail)) if found else None
+
+
 def test_joined_units_spanning_whole_tower__multiple_plans() -> None:
-    """Các căn dính liền thành một cụm tường nhưng hộp bao dài 40 m: tờ cả tầng nhiều căn."""
+    """Các căn dính liền thành một cụm tường nhưng hộp bao dài 40 m: tờ cả tầng nhiều căn khi tỉ lệ tin được."""
     partitions = [((10000 * i, 0), (10000 * i, 8000)) for i in range(1, 4)]
     walls = _walls(*_box(0, 0, 40000, 8000), *partitions)
-    check = geometry_checks(_layer(walls))
-    assert [(c.code, dict(c.detail)) for c in check] == [("MULTIPLE_PLANS", {"plans": 1, "spanMm": 40000})]
+    assert _plans(_layer(walls), "chain") == (True, {"plans": 1, "spanMm": 40000})
+
+
+@pytest.mark.parametrize(
+    ("span", "basis", "expected"),
+    [
+        (40000, "chain", "block"),
+        (40000, "door", "warn"),  # 40·0,83 = 33,2 m: có thể là căn lớn ước cửa lệch → chỉ báo
+        (45000, "door", "block"),
+        (40000, "wallThickness", "warn"),
+        (40000, None, "warn"),
+        (62000, None, "block"),
+        (32000, "door", "warn"),  # 32·1,17 = 37,4 m
+        (29000, "door", "absent"),
+    ],
+)
+def test_span_rule_follows_the_scale_error_band(span: int, basis: str | None, expected: str) -> None:
+    """BENCH3D-14: span 35 m chặn khi `span·(1-e)` vẫn quá, chỉ báo khi `span·(1+e)` quá (e theo `scaleBasis`)."""
+    found = _plans(_layer(_walls(*_box(0, 0, span, 8000))), basis)
+    assert {None: "absent", True: "block", False: "warn"}[found and found[0]] == expected
+
+
+def test_small_house_on_a_wide_lot__not_multiple_plans() -> None:
+    """Nhà 10 x 15 m (12 phòng 2,5 x 5 m) trong tường rào lô 40 x 30 m: span tường / cạnh phòng 11,3 nhưng phòng chỉ
+    phủ 15 m (4,2 lần) → không phải tờ nhiều căn, tỉ lệ ước cửa chỉ cho báo, không chặn."""
+    rooms = tuple(
+        _room(i * 3 + j, 15000 + 2500 * i, 7500 + 5000 * j, 17500 + 2500 * i, 12500 + 5000 * j)
+        for i in range(4)
+        for j in range(3)
+    )
+    walls = _walls(*_box(0, 0, 40000, 30000), *_box(15000, 7500, 25000, 22500))
+    found = _plans(_layer(walls, rooms), "door")
+    assert found is not None
+    assert found[0] is False
+    assert (found[1]["wallSpanRatio"], found[1]["roomSpanRatio"]) == (11.3, 4.2)
+
+
+def test_six_joined_units_with_underestimated_scale__multiple_plans() -> None:
+    """Tờ 6 căn 10 x 10 m liền nhau, tỉ lệ ước bề dày tường thấp còn 0,4 lần: span 24 m dưới mọi ngưỡng mm, nhưng
+    span / cạnh phòng trung vị (2 m) = 12 ở cả tường lẫn phòng → chặn dù tỉ lệ sai (BENCH3D-14)."""
+    walls = _walls(
+        *_box(0, 0, 24000, 4000),
+        ((0, 2000), (24000, 2000)),
+        *[((2000 * i, 0), (2000 * i, 4000)) for i in range(1, 12)],
+    )
+    rooms = tuple(
+        _room(i * 2 + j, 2000 * i, 2000 * j, 2000 * i + 2000, 2000 * j + 2000) for i in range(12) for j in range(2)
+    )
+    assert _plans(_layer(walls, rooms), "wallThickness") == (
+        True,
+        {"plans": 1, "spanMm": 24000, "wallSpanRatio": 12.0, "roomSpanRatio": 12.0},
+    )
 
 
 def test_large_single_house__single_plan() -> None:
+    """Nhà 30 m, tỉ lệ từ chuỗi kích thước: không báo (tỉ lệ ước bề dày tường thì 30·1,42 > 35 → chỉ báo)."""
     walls = _walls(*_box(0, 0, 30000, 12000))
-    assert _codes(_layer(walls)) == []
+    assert _plans(_layer(walls), "chain") is None
 
 
 def test_small_far_cluster__single_plan() -> None:
     """Cụm xa nhưng ngắn (< 15 % tổng dài, kiểu logo góc trang) không tính là mặt bằng thứ hai."""
     walls = _walls(*_box(0, 0, 10000, 8000), *_box(30000, 0, 30800, 800))
-    assert _codes(_layer(walls)) == []
+    assert _plans(_layer(walls), "chain") is None
 
 
 def test_three_stub_walls__wall_fragments() -> None:
@@ -196,3 +255,19 @@ def test_build_report__critical_check_sets_has_critical_and_wire() -> None:
     assert b'"checks":[{"code":"ROOMS_WITHOUT_DOOR","critical":true,"detail":{"openings":0,"rooms":1}}]' in (
         report.to_json_bytes()
     )
+
+
+@pytest.mark.parametrize(
+    ("orientation", "expected"),
+    [
+        ({"vertical": 9, "horizontal": 1}, {"verticalLabels": 9, "horizontalLabels": 1, "share": 0.9}),
+        ({"vertical": 3, "horizontal": 2}, {"verticalLabels": 3, "horizontalLabels": 2, "share": 0.6}),
+        ({"vertical": 2, "horizontal": 0}, None),  # < 3 nhãn: không đủ bằng chứng
+        ({"vertical": 1, "horizontal": 7}, None),  # bản vẽ thường (cao nhất 12 % dọc)
+        ({}, None),
+    ],
+)
+def test_rotated_plan_is_reported_but_never_blocks(orientation: dict[str, int], expected: object) -> None:
+    """BENCH3D-14 `ROTATED_PLAN`: ≥ 3 nhãn và ≥ 60 % đọc dọc → chỉ báo (mô hình vẫn dựng đúng hình)."""
+    found = [c for c in geometry_checks(_layer(()), label_orientation=orientation) if c.code == "ROTATED_PLAN"]
+    assert [(c.critical, dict(c.detail)) for c in found] == ([] if expected is None else [(False, expected)])

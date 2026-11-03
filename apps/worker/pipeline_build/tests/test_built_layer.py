@@ -8,9 +8,10 @@ from typing import Any
 
 import pytest
 
-from apps.worker.pipeline_build.build import BuiltLayer
+from apps.worker.pipeline_build.build import BuiltLayer, label_orientation
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from packages.domain.spatial import Dimension, Point, Segment, SpatialLayer, Wall
+from packages.ml_contracts.artifacts import BoxPx, TextPx
 
 
 def _built() -> BuiltLayer:
@@ -116,3 +117,34 @@ def test_built_layer__scale_checks_round_trip_and_reject_unknown_shapes() -> Non
         payload["scaleChecks"] = bad
         with pytest.raises(ValueError, match="scaleChecks"):
             BuiltLayer.from_json(json.dumps(payload).encode())
+
+
+def test_built_layer__label_orientation_round_trips_and_rejects_unknown_shapes() -> None:
+    """BENCH3D-14: `labelOrientation` khứ hồi, vắng khi rỗng; khoá lạ hay không phải object → lỗi."""
+    built = dataclasses.replace(_built(), label_orientation={"vertical": 5, "horizontal": 1})
+    assert BuiltLayer.from_json(built.to_json()) == built
+    assert "labelOrientation" not in json.loads(_built().to_json())
+    for bad in [{"vertical": 1}, {"vertical": 1, "horizontal": 0, "diagonal": 2}, [1, 2]]:
+        payload = json.loads(built.to_json())
+        payload["labelOrientation"] = bad
+        with pytest.raises(ValueError, match="labelOrientation"):
+            BuiltLayer.from_json(json.dumps(payload).encode())
+
+
+def _label(text: str, width: float, height: float, span_px: float | None = None) -> TextPx:
+    return TextPx(text=text, box=BoxPx(x_min=0, y_min=0, x_max=width, y_max=height), confidence=0.9, span_px=span_px)
+
+
+def test_label_orientation_counts_room_labels_only() -> None:
+    """Nhãn ≥ 3 chữ cái theo hướng hộp; số kích thước (trên đường kích thước hay chỉ chữ số) và hộp gần vuông bỏ."""
+    texts = [
+        _label("PHONG NGU", 40, 200),
+        _label("BEP", 30, 90),
+        _label("WC", 20, 60),  # 2 chữ cái
+        _label("3600", 20, 120),  # chữ số
+        _label("KHACH", 30, 150, span_px=800.0),  # trên đường kích thước
+        _label("SANH", 160, 40),
+        _label("KHO", 50, 50),  # gần vuông
+    ]
+    assert label_orientation(texts) == {"vertical": 2, "horizontal": 1}
+    assert label_orientation([_label("3600", 20, 120)]) == {}
