@@ -107,6 +107,10 @@ _DOOR_WIDTH_MM: Final = 745.0
 """Cạnh dài trung vị của hộp YOLO cửa đi đơn (hộp hẹp hơn cánh thật ~850 mm), đo trên bench căn hộ (DOOR-SCALE)."""
 _DOOR_MIN_COUNT: Final = 3
 _DOUBLE_DOOR_RATIO: Final = 1.6
+_AXIS_AGREEMENT: Final = 0.15
+"""Cụm chuỗi chung hoà nhưng cụm chữ ngang và chữ dọc đều suy được, lệch <= 15 % → ảnh giãn không đều (scan/in
+lệch trục vài %, f-23 7 %, ch-13 13 %), lấy trung bình nhân hai trục; lệch hơn (1:100 vs 1:50 là 2 lần) → không đoán.
+Tỉ lệ cứu bằng luật này luôn ghi `scaleChecks.anisotropic` (cụm khác vẫn cạnh tranh) nên vẫn báo `scaleUnresolved`."""
 _ROOT_KEYS: Final = frozenset({"schemaVersion", "layer", "dimensions", "scaleMmPerPx", "scaleSource", "dropped"})
 _SUGGESTION_CONFIDENCE: Final = 0.5
 """Gợi ý mực dư chưa có điểm của mô hình: lấy đúng trần "kém tin" `LOW_CONFIDENCE_CAP` nên luật 2 không hạ nữa."""
@@ -296,8 +300,9 @@ def _resolved_scale(
     texts: Sequence[TextPx],
     fallback_mm_per_px: Decimal,
     dropped: Counter[str],
-) -> tuple[Decimal, ScaleBasis, tuple[ScaleSample, ...], tuple[str, ...]]:
-    """Bước 2: tỉ lệ dây `s`, gốc (`chain`/`paired`/`default`), mẫu và id mẫu bị loại; ngoài khoảng → `scaleOutOfRange`.
+) -> tuple[Decimal, ScaleBasis, tuple[ScaleSample, ...], tuple[str, ...], tuple[float, float] | None]:
+    """Bước 2: tỉ lệ dây `s`, gốc (`chain`/`paired`/`default`), mẫu, id mẫu bị loại và tỉ lệ hai trục `(x, y)` khi
+    tỉ lệ được cứu bằng hai trục (T3, `_AXIS_AGREEMENT`); ngoài khoảng → `scaleOutOfRange`.
 
     Mẫu chuỗi kích thước (`span_px` đo trên ảnh, cụm tỉ số đông nhất) quyết trước; không đủ
     thì mới tới mẫu ghép chữ-tường. Trả cả hai loại mẫu: bước 7 chỉ dựng `Dimension` từ mẫu
@@ -312,18 +317,26 @@ def _resolved_scale(
     if result.mm_per_px is None:
         result = infer_scale(paired)
     samples = (*paired, *chained)
+    axes: tuple[float, float] | None = None
+    if result.mm_per_px is None and not chained:
+        across, down = _axis_clusters(texts)
+        scales = axis_scales(across, down)
+        if scales is not None and max(scales) <= (1 + _AXIS_AGREEMENT) * min(scales):
+            # T3 (f-23): hai trục giãn khác nhau làm cụm chung hoà; `build_layer` ghi `scaleChecks.anisotropic`
+            result = replace(result, mm_per_px=math.sqrt(scales[0] * scales[1]), paired=False)
+            samples, axes = (*paired, *across, *down), scales
     if result.mm_per_px is not None:
         if classify_scale_range(result.mm_per_px) == "inRange":
             value = Decimal(repr(result.mm_per_px)).quantize(_QUANTUM)
             if value != 0:
-                return value, "paired" if result.paired else "chain", samples, result.rejected_ids
+                return value, "paired" if result.paired else "chain", samples, result.rejected_ids, axes
         else:
             dropped["scaleOutOfRange"] += 1
     _log.info(
         "pipeline_build_dropped",
         extra={"code": PipelineCode.SCALE_UNRESOLVED.value, "reason": result.reason},
     )
-    return fallback_mm_per_px, "default", samples, result.rejected_ids
+    return fallback_mm_per_px, "default", samples, result.rejected_ids, None
 
 
 def _note_scale(walls: Sequence[WallPx], texts: Sequence[TextPx], px_per_paper_mm: float | None) -> Decimal | None:
@@ -378,17 +391,25 @@ def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
     return tuple(samples)
 
 
+def _axis_clusters(texts: Sequence[TextPx]) -> tuple[tuple[ScaleSample, ...], tuple[ScaleSample, ...]]:
+    """Cụm đông nhất của mẫu chuỗi chữ ngang và của mẫu chuỗi chữ dọc (hộp cao > `_VERTICAL_TEXT_RATIO` lần rộng)."""
+    vertical = {
+        f"t{index}-chain"
+        for index, text in enumerate(texts)
+        if text.box.y_max - text.box.y_min > _VERTICAL_TEXT_RATIO * (text.box.x_max - text.box.x_min)
+    }
+    samples = _chain_samples(texts)
+    across = densest_cluster([sample for sample in samples if sample.id not in vertical])
+    down = densest_cluster([sample for sample in samples if sample.id in vertical])
+    return across, down
+
+
 def _anisotropy(texts: Sequence[TextPx], frame: Box | None) -> tuple[dict[str, float], bool]:
     """`{x, y}` khi tỉ lệ suy riêng từ chữ chuỗi ngang và dọc (cụm đông nhất mỗi trục) lệch > `_ANISOTROPY_LIMIT`,
     kèm `True` khi hộp chữ của cả hai cụm nằm trong `frame` (khung tường chính, px) nới `_FRAME_MARGIN`: chuỗi bao
     quanh một căn, dù chuỗi ngang chỉ ở một cạnh còn chuỗi dọc ở cạnh khác. Không có khung → `False`."""
     boxes = {f"t{index}-chain": text.box for index, text in enumerate(texts)}
-    vertical = {
-        key for key, box in boxes.items() if box.y_max - box.y_min > _VERTICAL_TEXT_RATIO * (box.x_max - box.x_min)
-    }
-    samples = _chain_samples(texts)
-    across = densest_cluster([sample for sample in samples if sample.id not in vertical])
-    down = densest_cluster([sample for sample in samples if sample.id in vertical])
+    across, down = _axis_clusters(texts)
     scales = axis_scales(across, down)
     if scales is None or max(scales) <= (1 + _ANISOTROPY_LIMIT) * min(scales):
         return {}, False
@@ -806,9 +827,11 @@ def build_layer(
     first_of = tuple(k for k, arc in enumerate(arc_of) if arc is None or k == 0 or arc_of[k - 1] != arc)
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
-    scale, basis, samples, rejected = _resolved_scale(whole, texts, fallback_mm_per_px, base)
+    scale, basis, samples, rejected, axes = _resolved_scale(whole, texts, fallback_mm_per_px, base)
     checks: dict[str, dict[str, float]] = {}
     anisotropic, same_plan = _anisotropy(texts, _plan_frame(whole, float(scale)))
+    if axes is not None and not anisotropic:  # T3: hai trục lệch <= 3 % vẫn là nghi vấn, không im lặng
+        anisotropic = {"x": round(axes[0], 6), "y": round(axes[1], 6)}
     if anisotropic:
         checks["anisotropic"] = anisotropic
         if basis == "chain" and same_plan:  # cụm đông nhất chỉ là một trục; trung bình nhân chia đều phần giãn
