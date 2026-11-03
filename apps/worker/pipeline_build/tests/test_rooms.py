@@ -1,12 +1,15 @@
 """Test `rooms.build_rooms`, `rooms.build_furniture` (B5-05 [6] bước 5, 6; [8] mục Phòng, Đồ)."""
 
+import itertools
 from collections import Counter
 from collections.abc import Callable
+from typing import Any
 
+import pytest
 import shapely
 
 from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
-from apps.worker.pipeline_build.geometry import Scaling
+from apps.worker.pipeline_build.geometry import RoomCloser, Scaling, WallSet, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.rooms import (
     _door_closers,
@@ -1008,6 +1011,45 @@ def test_envelope__living_over_40_m2_open_to_the_facade_is_kept(fake_clock: Fake
     assert 55 < rooms[0].area_m2 < 61
     named = _rooms_with(walls, (_text("PHONG KHACH", 5000, 3000),), fake_clock)
     assert [room.usage for room in named] == ["livingRoom"]
+
+
+def test_envelope__closed_room_inside_the_open_space_is_not_covered(fake_clock: FakeClock) -> None:
+    """Phòng kín 2 x 2 m giữa khách hở góc: ô đường bao có lỗ được chia thành mảnh không lỗ, không phủ lại phòng kín."""
+    box = [((4000, 2000), (6000, 2000)), ((6000, 2000), (6000, 4000)), ((6000, 4000), (4000, 4000))]
+    box.append(((4000, 4000), (4000, 2000)))
+    walls = [*_open_corner_living(fake_clock), *(_wall(fake_clock, start, end) for start, end in box)]
+    rooms = _rooms_with(walls, (), fake_clock)
+    polygons = [shapely.Polygon([(p.x, p.y) for p in room.outline]) for room in rooms]
+    assert [round(room.area_m2) for room in _holding(rooms, 5000, 3000)] == [4]
+    assert len(_holding(rooms, 2000, 3000)) == len(_holding(rooms, 8000, 1000)) == 1
+    assert all(a.intersection(b).area < 1e3 for i, a in enumerate(polygons) for b in polygons[i + 1 :])
+    assert 50 < sum(room.area_m2 for room in rooms) < 61
+
+
+def test_envelope__open_edges_go_to_close_envelope_gaps(fake_clock: FakeClock) -> None:
+    """`build_rooms` → `close_envelope_gaps` trên khách hở góc: biên hở của đường bao thành closer không nhãn từ đầu
+    tường, L4 dựng tường đặc nên vòng tường khép kín quanh phòng (không chỉ có phòng)."""
+    walls = _open_corner_living(fake_clock)
+    shared: dict[str, Any] = {"level_id": LEVEL_ID, "scaling": _IDENTITY, "clock": fake_clock}
+    closers: list[RoomCloser] = []
+    rooms = build_rooms(walls, (), (), dropped=Counter(), closers_out=closers, **shared)
+    assert closers
+    assert {closer.label for closer in closers} == {None}
+    tips = {p for wall in walls for p in (wall.centreline.start, wall.centreline.end)}
+    assert closers[0].start in tips
+    assert all(a.end == b.start for a, b in itertools.pairwise(closers))
+    wall_set = WallSet(walls=tuple(walls), openings=(), input_to_wall={}, bridges=())
+    result = close_envelope_gaps(wall_set, rooms, closers=closers, **shared)
+    assert len(result.walls) > len(walls)
+    centrelines = [
+        shapely.LineString([(w.centreline.start.x, w.centreline.start.y), (w.centreline.end.x, w.centreline.end.y)])
+        for w in result.walls
+    ]
+    faces = shapely.polygonize(list(getattr(shapely.unary_union(centrelines), "geoms", [])))
+    closed = [face for face in faces.geoms if face.contains(shapely.Point(5000, 3000))]
+    assert len(closed) == 1
+    # Vỏ khép theo đường bao: góc khuyết 2 x 2 m ở ngoài (10 x 6 m - 4 m²).
+    assert closed[0].area == pytest.approx(56e6)
 
 
 def test_envelope__open_court_wider_than_closing_stays_outside(fake_clock: FakeClock) -> None:
