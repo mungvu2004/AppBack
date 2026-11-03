@@ -1,5 +1,5 @@
-"""Luật hậu xử lý đầu ra AI: thiết bị áp tường (luật 1), cửa sổ chỉ trên tường ngoài (luật 2), tường mép ngoài
-là tường bao (luật 3), hướng đồ (luật 4, `orient.py`).
+"""Luật hậu xử lý đầu ra AI: thiết bị áp tường (luật 1), cửa sổ chỉ trên tường ngoài (luật 2, kèm cửa lùa ra lô
+gia), tường mép ngoài là tường bao (luật 3), hướng đồ (luật 4, `orient.py`).
 
 Gương `FIXTURE-OFF-WALL` và `WINDOW-ON-INNER-WALL` của FE (`fitout/index.ts`) để luật QC
 không bắn trên đầu ra AI. Chỉ đụng thực thể `source="ai"` và `reviewed=False` (K21);
@@ -15,9 +15,12 @@ from collections.abc import Iterator, Sequence
 from typing import Final
 
 from packages.domain.rules_ai.constants import (
+    EXTERIOR_PROBE_MM,
     FIXTURE_SNAP_REACH_MM,
     GRID_CELL_MM,
     LOW_CONFIDENCE_CAP,
+    SLIDING_DOOR_HEIGHT_MM,
+    SLIDING_DOOR_MIN_WIDTH_MM,
     WALL_HUGGING_KINDS,
     WALL_HUGGING_TOLERANCE_MM,
 )
@@ -164,14 +167,18 @@ class _RoomIndex:
             for key in cell_keys(bounds, GRID_CELL_MM):
                 self._cells.setdefault(key, []).append(position)
 
-    def contains(self, x: float, y: float) -> bool:
-        """Có phòng nào chứa điểm `(x, y)` không."""
+    def at(self, x: float, y: float) -> int | None:
+        """Vị trí (trong `rooms`) của phòng đầu tiên chứa điểm `(x, y)`; `None` khi điểm ngoài mọi phòng."""
         key = math.floor(x // GRID_CELL_MM), math.floor(y // GRID_CELL_MM)
         for position in self._cells.get(key, ()):
             outline, bounds = self._entries[position]
             if in_bounds(bounds, x, y) and outline_contains(outline, x, y):
-                return True
-        return False
+                return position
+        return None
+
+    def contains(self, x: float, y: float) -> bool:
+        """Có phòng nào chứa điểm `(x, y)` không."""
+        return self.at(x, y) is not None
 
 
 def _envelope(wall: Wall) -> Wall:
@@ -184,10 +191,56 @@ def _is_target(opening: Opening, host: Wall) -> bool:
     return opening.kind == "window" and _editable(opening) and host.kind != "envelope"
 
 
+def _rooms_beside(opening: Opening, host: Wall, rooms: _RoomIndex) -> tuple[int | None, int | None]:
+    """Phòng hai bên ô mở, dò tại tâm ô mở cách mặt tường `EXTERIOR_PROBE_MM` (cùng tầm với `wall_side_by`).
+
+    Dò ở tâm ô mở chứ không ở giữa tường: tường dài có thể chỉ kề lô gia một đoạn.
+    """
+    line = host.centreline
+    run_x, run_y = line.end.x - line.start.x, line.end.y - line.start.y
+    length = math.hypot(run_x, run_y)
+    along = (opening.offset_mm + opening.width_mm / 2) / length
+    reach = host.thickness_mm / 2 + EXTERIOR_PROBE_MM
+    mid_x, mid_y = line.start.x + run_x * along, line.start.y + run_y * along
+    shift_x, shift_y = -run_y / length * reach, run_x / length * reach
+    return rooms.at(mid_x + shift_x, mid_y + shift_y), rooms.at(mid_x - shift_x, mid_y - shift_y)
+
+
+def _entered_rooms(layer: SpatialLayer, walls: dict[str, Wall], rooms: _RoomIndex) -> set[int]:
+    """Phòng đã có cửa đi nối sang phòng khác (hai bên cửa đều là phòng), mọi nguồn, tính trên lớp vào."""
+    entered: set[int] = set()
+    for opening in layer.openings:
+        host = walls.get(opening.wall_id)
+        if opening.kind == "door" and host is not None and host.curve_offset_mm == 0:
+            sides = _rooms_beside(opening, host, rooms)
+            if None not in sides:
+                entered.update(side for side in sides if side is not None)
+    return entered
+
+
+def _sliding_door(
+    opening: Opening, host: Wall, rooms: _RoomIndex, usages: Sequence[str], entered: set[int]
+) -> Opening | None:
+    """Cửa sổ rộng giữa một phòng và lô gia chưa có lối vào → cửa đi lùa (BENCH3D-12); không khớp → `None`.
+
+    Bộ dò gán `window` cho vách kính lùa ra lô gia (nét đôi, không cung). Lô gia phải vào được từ trong nhà:
+    chưa có cửa đi nào nối nó với phòng khác thì ô kính rộng ≥ `SLIDING_DOOR_MIN_WIDTH_MM` là lối vào. Lô gia đã
+    có cửa đi thì ô kính là cửa sổ thật, giữ. Tường cong bỏ qua (`offsetMm` đo theo cung, không theo dây).
+    """
+    if opening.width_mm < SLIDING_DOOR_MIN_WIDTH_MM or host.curve_offset_mm != 0:
+        return None
+    sides = _rooms_beside(opening, host, rooms)
+    if None in sides or not any(side not in entered and usages[side] == "loggia" for side in sides if side is not None):
+        return None
+    update = {"kind": "door", "swing": "sliding", "height_mm": SLIDING_DOOR_HEIGHT_MM, "sill_height_mm": 0}
+    return _capped(opening.model_copy(update=update))
+
+
 def _fix_windows(layer: SpatialLayer) -> tuple[tuple[Wall, ...], tuple[Opening, ...]]:
     """Luật 2: cửa sổ AI chưa duyệt trên tường chưa phải `envelope`, quyết một lần cho mỗi tường chủ.
 
-    `exterior` mà tường chủ AI chưa duyệt → tường thành `envelope`. `interior`, hoặc
+    Trước hết cửa sổ rộng giữa một phòng và lô gia chưa có lối vào thành cửa đi lùa, hạ tin cậy (`_sliding_door`).
+    Còn lại: `exterior` mà tường chủ AI chưa duyệt → tường thành `envelope`. `interior`, hoặc
     tường chủ không được đổi → giữ cửa sổ, hạ tin cậy của nó; không xoá, không đổi thành
     cửa đi (việc của người duyệt). `unknown` (chưa có phòng) → giữ nguyên.
     """
@@ -195,6 +248,8 @@ def _fix_windows(layer: SpatialLayer) -> tuple[tuple[Wall, ...], tuple[Opening, 
     for wall in layer.walls:
         walls.setdefault(wall.id, wall)
     rooms = _RoomIndex(layer.rooms)
+    usages = [room.usage for room in layer.rooms]
+    entered = _entered_rooms(layer, walls, rooms)
     sides: dict[str, WallSide] = {}
     promoted: set[str] = set()
     openings: list[Opening] = []
@@ -202,6 +257,9 @@ def _fix_windows(layer: SpatialLayer) -> tuple[tuple[Wall, ...], tuple[Opening, 
         host = walls.get(opening.wall_id)
         if host is None or not _is_target(opening, host):
             openings.append(opening)
+            continue
+        if (door := _sliding_door(opening, host, rooms, usages, entered)) is not None:
+            openings.append(door)
             continue
         if host.id not in sides:
             sides[host.id] = wall_side_by(host, rooms.contains)
@@ -218,7 +276,8 @@ def apply_post_rules(layer: SpatialLayer) -> SpatialLayer:
     """Áp luật 1, luật 2 rồi luật 3 lên lớp vừa dựng từ pipeline; trả lớp mới, không sửa `layer`.
 
     Idempotent: `f(f(x)) == f(x)`, vì luật 1 đưa khe về ≤ 50 và hạ tin cậy bằng `min`,
-    luật 2 chỉ đổi tường thành `envelope` (bị bỏ qua từ lượt sau) hoặc hạ tin cậy bằng `min`.
+    luật 2 chỉ đổi tường thành `envelope` (bị bỏ qua từ lượt sau), hạ tin cậy bằng `min`, hoặc đổi cửa sổ thành
+    cửa đi (lượt sau không còn là cửa sổ; tập phòng có lối vào chỉ lớn thêm nên cửa sổ còn lại vẫn giữ).
     Luật 1 chỉ dời đồ và luật 2 không đổi hình học nên hai luật độc lập về chỉ mục. Luật 4 chỉ quay
     đồ còn 0° và luật 1 đo theo hộp thế giới, nên lượt hai không đổi gì.
     """

@@ -125,6 +125,31 @@ def test_build_walls__far_small_cluster_dropped_near_parts_kept(fake_clock: Fake
     assert set(result.input_to_wall) == set(range(6))
 
 
+@pytest.mark.parametrize(
+    ("piece", "kept"),
+    [
+        pytest.param(wall_px(700, 10000, 1100, 10000), False, id="extension-line-900mm"),  # ch-13: vạch gióng
+        pytest.param(wall_px(5000, 11500, 5300, 11500), False, id="beyond-1m-band"),
+        pytest.param(wall_px(12500, 6000, 12500, 6400), True, id="balcony-pier-500mm"),  # song song vỏ, sát căn
+        pytest.param(wall_px(5000, 5000, 5400, 5000), True, id="inside-main-box"),
+    ],
+)
+def test_build_walls__short_piece_near_main_box(piece: WallPx, kept: bool, fake_clock: FakeClock) -> None:
+    """Mẩu < 600 mm trong `FAR_CLUSTER_GAP_MM`: bỏ khi nằm trên đường gióng hay cách hộp căn > 1 m; trụ ban công
+    song song vỏ cách 500 mm và mẩu trong hộp căn được giữ."""
+    dropped: Counter[str] = Counter()
+    result = build_walls(
+        [*_room(2000, 2000, 12000, 10000), piece],
+        [],
+        level_id=new_spatial_id("level", fake_clock),
+        scaling=Scaling(1.0, 1.0),
+        clock=fake_clock,
+        dropped=dropped,
+    )
+    assert dropped["isolatedBlock"] == (0 if kept else 1)
+    assert (4 in result.input_to_wall) is kept
+
+
 def test_build_walls__far_large_cluster_kept(fake_clock: FakeClock) -> None:
     """Cụm xa nhưng không nhỏ (căn thứ hai cùng cỡ) không phải sơ đồ vị trí: giữ cả hai."""
     dropped: Counter[str] = Counter()

@@ -231,3 +231,98 @@ def test_close_envelope_gaps__no_guessed_door_into_loggia(usage: str, door: bool
     assert (gap.centreline.start, gap.centreline.end) == (Point(x=2000, y=0), Point(x=3600, y=0))
     assert [opening.swing for opening in result.openings] == (["sliding"] if door else [])
     assert bool(gap.opening_ids) is door
+
+
+@pytest.mark.parametrize(
+    ("host", "kind", "offset", "added"),
+    [
+        pytest.param(0, "window", 5200, 1, id="perpendicular-window-near-corner"),
+        pytest.param(1, "window", 0, 1, id="aligned-window-other-kind"),
+        pytest.param(1, "door", 0, 0, id="aligned-door-touching-gap"),
+    ],
+)
+def test_close_envelope_gaps__duplicate_needs_same_kind_on_aligned_wall(
+    host: int, kind: str, offset: int, added: int, fake_clock: FakeClock
+) -> None:
+    """Khe cửa đi 1000 ở tường phải (x = 7000, y 1000-2000): cửa sổ tâm (6500, 1000) trên tường trên vuông góc hay cửa
+    sổ cạnh khe không chặn cửa đi của hộp (Codex r3 #4); cửa đi cùng loại trên tường phải chạm khe → coi là trùng."""
+    walls = [
+        _wall(fake_clock, (1000, 1000), (7000, 1000)),
+        _wall(fake_clock, (7000, 2000), (7000, 5000)),
+        _wall(fake_clock, (7000, 5000), (1000, 5000)),
+        _wall(fake_clock, (1000, 5000), (1000, 1000)),
+    ]
+    placed = Opening(
+        id=new_spatial_id("opening", fake_clock),
+        wall_id=walls[host].id,
+        kind=kind,
+        offset_mm=offset,
+        width_mm=600 if kind == "window" else 900,
+        height_mm=1400 if kind == "window" else 2100,
+        sill_height_mm=900 if kind == "window" else 0,
+        swing="sliding" if kind == "window" else "left",
+        confidence=0.8,
+        source="ai",
+        reviewed=False,
+    )
+    door = det("door", 6950, 1000, 7050, 2000)
+    result, _, closers = _envelope(walls, fake_clock, detections=[door], openings=[placed])
+    assert "door" in [closer.label for closer in closers]
+    assert len(result.openings) == 1 + added
+    assert [opening.kind for opening in result.openings[1:]] == ["door"] * added
+
+
+def _window_on(wall: Wall, clock: FakeClock) -> Opening:
+    """Cửa sổ 1 m giữa tường qua khe 3c."""
+    return Opening(
+        id=new_spatial_id("opening", clock),
+        wall_id=wall.id,
+        kind="window",
+        offset_mm=300,
+        width_mm=1000,
+        height_mm=1400,
+        sill_height_mm=900,
+        swing="sliding",
+        confidence=0.8,
+        source="ai",
+        reviewed=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("bridged_end", "shoulders"),
+    [
+        pytest.param(6300, [(4000, 4700), (6300, 7000)], id="two-shoulders"),
+        pytest.param(6950, [(4000, 4700)], id="sliver-under-piece-min"),
+    ],
+)
+def test_close_envelope_gaps__closer_skips_part_under_bridged_wall(
+    bridged_end: int, shoulders: list[tuple[int, int]], fake_clock: FakeClock
+) -> None:
+    """Khe 3000 mặt ngoài, tường qua khe 3c mang cửa sổ phủ 4700→`bridged_end` (`build_rooms` không thấy nó nên đoạn
+    khép cả khe, nhãn hộp cửa sổ): chỉ dựng phần còn hở ≥ 100 mm, không chồng tường 3c, không thêm ô mở."""
+    walls = _room_box(fake_clock, 4000)
+    shared: dict[str, Any] = {"level_id": LEVEL_ID, "scaling": _MM, "clock": fake_clock}
+    rooms = build_rooms([*walls, _wall(fake_clock, (4000, 1000), (7000, 1000))], (), (), dropped=Counter(), **shared)
+    closers = [RoomCloser(Point(x=4000, y=1000), Point(x=7000, y=1000), "window")]
+    bridged = _wall(fake_clock, (4700, 1007), (bridged_end, 1007))
+    window = _window_on(bridged, fake_clock)
+    bridged = bridged.model_copy(update={"opening_ids": (window.id,)})
+    wall_set = WallSet(walls=(*walls, bridged), openings=(window,), input_to_wall={}, bridges=())
+    result = close_envelope_gaps(wall_set, rooms, closers=closers, **shared)
+    added = result.walls[5:]
+    assert [(wall.centreline.start.x, min(wall.centreline.end.x, 7000)) for wall in added] == shoulders
+    assert all(wall.opening_ids == () and wall.thickness_mm == 100 for wall in added)
+    assert result.openings == (window,)
+
+
+def test_close_envelope_gaps__closer_crossing_a_wall_still_skipped(fake_clock: FakeClock) -> None:
+    """Đoạn khép cắt ngang thân một tường (không song song) → bỏ cả đoạn như cũ, không chia vai."""
+    walls = _room_box(fake_clock, 4000)
+    shared: dict[str, Any] = {"level_id": LEVEL_ID, "scaling": _MM, "clock": fake_clock}
+    rooms = build_rooms([*walls, _wall(fake_clock, (4000, 1000), (7000, 1000))], (), (), dropped=Counter(), **shared)
+    closers = [RoomCloser(Point(x=4000, y=1000), Point(x=7000, y=1000))]
+    across = _wall(fake_clock, (5500, 500), (5500, 1500))
+    wall_set = WallSet(walls=(*walls, across), openings=(), input_to_wall={}, bridges=())
+    result = close_envelope_gaps(wall_set, rooms, closers=closers, **shared)
+    assert result.walls == (*walls, across)
