@@ -39,6 +39,7 @@ GEOMETRY_CHECK_ORDER: Final = (
     "ROOMS_WITHOUT_DOOR",
     "ROOM_USAGE_UNKNOWN",
     "ROTATED_PLAN",
+    "AREA_TEXT_MISMATCH",
 )
 """Thứ tự `readiness.checks` trên dây (BENCH3D-09); mã lạ đứng sau, giữ thứ tự của lượt."""
 

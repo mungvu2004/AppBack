@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from apps.worker.pipeline_build.build import BuiltLayer, label_orientation
+from apps.worker.pipeline_build.build import BuiltLayer, area_notes, label_orientation
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from packages.domain.spatial import Dimension, Point, Segment, SpatialLayer, Wall
 from packages.ml_contracts.artifacts import BoxPx, TextPx
@@ -148,3 +148,29 @@ def test_label_orientation_counts_room_labels_only() -> None:
     ]
     assert label_orientation(texts) == {"vertical": 2, "horizontal": 1}
     assert label_orientation([_label("3600", 20, 120)]) == {}
+
+
+def test_built_layer__area_notes_round_trip_and_reject_bad_values() -> None:
+    """BENCH3D-24: `areaNotes` khứ hồi, vắng khi rỗng; không phải danh sách số dương → lỗi."""
+    built = dataclasses.replace(_built(), area_notes=(59.0, 67.66))
+    assert BuiltLayer.from_json(built.to_json()).area_notes == (59.0, 67.66)
+    assert "areaNotes" not in json.loads(_built().to_json())
+    for bad in ({"a": 1}, ["59"], [0], [True]):
+        payload = json.loads(_built().to_json())
+        payload["areaNotes"] = bad
+        with pytest.raises(ValueError, match="areaNotes"):
+            BuiltLayer.from_json(json.dumps(payload).encode())
+
+
+def test_area_notes_reads_unit_areas_only() -> None:
+    """Số kèm m2/m²/㎡ (cả trên đường kích thước gán nhầm), ≥ 25 m², không lặp; số đo dài và diện tích phòng bỏ."""
+    texts = [
+        _label("46M2", 20, 60, span_px=229.5),
+        _label("DT: 67,66 m²", 20, 60),
+        _label("67.66m2", 20, 60),
+        _label("WC 3.2m2", 20, 60),
+        _label("3600", 20, 120),
+        _label("12345m2", 20, 60),
+    ]
+    assert area_notes(texts) == (46.0, 67.66)
+    assert area_notes([_label("3600", 20, 120)]) == ()

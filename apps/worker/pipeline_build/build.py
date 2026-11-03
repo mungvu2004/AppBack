@@ -139,7 +139,7 @@ ScaleBasis = Literal["chain", "paired", "note", "door", "wallThickness", "defaul
 ước từ bề dày tường, hay tỉ lệ dự án. Chỉ nằm trong `layer.json`; API chưa trả."""
 
 _SCALE_BASES: Final = frozenset(get_args(ScaleBasis))
-_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation"})
+_OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks", "labelOrientation", "areaNotes"})
 """Khoá gốc tuỳ chọn: `layer.json` dựng trước QT-SCALE không có `scaleBasis` vẫn đọc được."""
 
 ScaleChecks = Mapping[str, Mapping[str, float]]
@@ -170,6 +170,8 @@ class BuiltLayer:
     scale_checks: ScaleChecks = field(default_factory=dict)
     label_orientation: Mapping[str, int] = field(default_factory=dict)
     """BENCH3D-14: số nhãn chữ đọc dọc/ngang (`label_orientation`) cho kiểm `ROTATED_PLAN`; rỗng khi không nhãn nào."""
+    area_notes: tuple[float, ...] = ()
+    """BENCH3D-24: các số "N m²" (≥ `AREA_NOTE_MIN_M2`) OCR đọc trên bản vẽ (`area_notes`) cho `AREA_TEXT_MISMATCH`."""
 
     def to_json(self) -> bytes:
         """`layer.json` UTF-8 gọn, khoá theo thứ tự cố định; `scaleMmPerPx` là chuỗi Decimal."""
@@ -187,6 +189,8 @@ class BuiltLayer:
             payload["scaleChecks"] = {key: dict(value) for key, value in self.scale_checks.items()}
         if self.label_orientation:
             payload["labelOrientation"] = dict(self.label_orientation)
+        if self.area_notes:
+            payload["areaNotes"] = list(self.area_notes)
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     @classmethod
@@ -217,6 +221,11 @@ class BuiltLayer:
         orientation = payload.get("labelOrientation", {})
         if not isinstance(orientation, dict) or (orientation and set(orientation) != _ORIENTATION_KEYS):
             raise ValueError(f"layer.json labelOrientation lạ: {orientation!r}")
+        notes = payload.get("areaNotes", [])
+        if not isinstance(notes, list) or not all(
+            isinstance(x, int | float) and not isinstance(x, bool) and math.isfinite(x) and x > 0 for x in notes
+        ):
+            raise ValueError(f"layer.json areaNotes lạ: {notes!r}")
         return cls(
             layer=SpatialLayer.model_validate(payload["layer"]),
             dimensions=tuple(Dimension.model_validate(item) for item in payload["dimensions"]),
@@ -226,6 +235,7 @@ class BuiltLayer:
             scale_basis=basis,
             scale_checks={key: {k: float(v) for k, v in value.items()} for key, value in checks.items()},
             label_orientation={key: int(value) for key, value in orientation.items()},
+            area_notes=tuple(float(x) for x in notes),
         )
 
 
@@ -887,6 +897,7 @@ def build_layer(
         scale_basis=basis,
         scale_checks=checks,
         label_orientation=label_orientation(texts),
+        area_notes=area_notes(texts),
     )
 
 
@@ -910,3 +921,19 @@ def label_orientation(texts: Sequence[TextPx]) -> dict[str, int]:
         vertical += height >= _TEXT_ASPECT * width
         horizontal += width >= _TEXT_ASPECT * height
     return {"vertical": vertical, "horizontal": horizontal} if vertical + horizontal else {}
+
+
+AREA_NOTE_MIN_M2: Final = 25.0
+"""Số "N m²" nhỏ hơn là diện tích một phòng (phòng khách căn hộ hiếm quá 25 m²); từ đây trở lên có thể là cả căn."""
+_AREA_NOTE: Final = re.compile(r"(?<![\d.,])(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:m2|m²|㎡)", re.IGNORECASE)
+
+
+def area_notes(texts: Sequence[TextPx]) -> tuple[float, ...]:
+    """Các số diện tích "N m²" (N ≥ `AREA_NOTE_MIN_M2`) đọc được trên bản vẽ, tăng dần, không lặp; không có → `()`.
+
+    Bản vẽ căn hộ thường ghi diện tích căn (tim tường hay thông thủy); bước quality so với tổng diện tích phòng đã
+    dựng (BENCH3D-24 `AREA_TEXT_MISMATCH`). Đơn vị m² đủ phân biệt với số đo dài nên không lọc theo `span_px` (bước
+    ghép chuỗi kích thước có khi gán nhầm đường kích thước cho chữ diện tích).
+    """
+    values = {float(match.replace(",", ".")) for text in texts for match in _AREA_NOTE.findall(text.text)}
+    return tuple(sorted(value for value in values if value >= AREA_NOTE_MIN_M2))
