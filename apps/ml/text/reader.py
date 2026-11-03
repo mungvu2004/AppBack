@@ -15,6 +15,7 @@ Mọi lượt chạy đều CPU (`load_onnx` đã ép `CPUExecutionProvider`, b�
 """
 
 import math
+import re
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
@@ -41,6 +42,7 @@ __all__ = [
     "REC_MAX_WIDTH_PX",
     "TEXT_CONFIDENCE_MIN",
     "UPRIGHT_SURE_CONFIDENCE",
+    "UPSIDE_DOWN_SUSPECT",
     "RapidOcrReader",
     "ctc_decode",
     "rec_characters",
@@ -76,6 +78,14 @@ UPRIGHT_SURE_CONFIDENCE: Final = 0.9
 """Lượt không xoay tin cậy từ mức này thì bỏ lượt xoay 180° (PERF-03 P19: mỗi ô chữ từng
 chạy rec hai lần). Cao hơn hẳn `TEXT_CONFIDENCE_MIN` vì chữ ngược đọc thẳng vẫn có thể ra
 chuỗi tin cậy vừa (`8.00` → `00.8`); dưới ngưỡng thì vẫn đọc cả hai và lấy lượt tốt hơn."""
+
+UPSIDE_DOWN_SUSPECT: Final = re.compile(r"0[0-9]{2,}")
+"""Số nguyên ≥ 3 chữ số có số 0 đứng đầu: kích thước không bao giờ ghi thế, nhưng số tận cùng bằng 0 đọc ngược 180°
+ra đúng dạng này với tin cậy cao (`6000` dọc → `0009` 0.999, f-19) vì 0/1/6/8/9 lật vẫn là chữ số. Hai chữ số
+(`01`, `02`) bỏ ngoài: đó thường là số thứ tự căn/phòng/trục, đọc thẳng là đúng."""
+
+_PLAIN_NUMBER: Final = re.compile(r"[1-9][0-9]*")
+"""Lượt 180° chỉ thay lượt nghi ngược khi là số nguyên không số 0 đầu, **cùng số ký tự** (lật không đổi số chữ số)."""
 
 
 @lru_cache(maxsize=1)
@@ -336,13 +346,25 @@ class RapidOcrReader:
     def _best(self, crop: NDArray[np.uint8]) -> tuple[str, float]:
         """Đọc hướng 0°; dưới `UPRIGHT_SURE_CONFIDENCE` đọc thêm 180° và lấy lượt tin cậy hơn (hoà → 0°).
 
+        Lượt 0° ra `UPSIDE_DOWN_SUSPECT` thì luôn đọc thêm 180°, kể cả khi tin cậy ≥ ngưỡng, và nhận lượt 180° khi nó
+        đủ `TEXT_CONFIDENCE_MIN` và là `_PLAIN_NUMBER` cùng độ dài; còn lại vẫn theo tin cậy.
+
         Thay cho bộ phân loại góc của `RapidOCR()`: bộ ấy lật ngược chuỗi gần đối xứng và
         đo được 67/122 chữ kích thước đúng, tắt nó đo được 114/122 (NO-063).
         """
         upright = self._run(crop)
-        if upright[1] >= UPRIGHT_SURE_CONFIDENCE:
+        suspect = UPSIDE_DOWN_SUSPECT.fullmatch(upright[0].strip()) is not None
+        if upright[1] >= UPRIGHT_SURE_CONFIDENCE and not suspect:
             return upright
         flipped = self._run(np.asarray(cv2.rotate(crop, cv2.ROTATE_180), dtype=np.uint8))
+        turned = flipped[0].strip()
+        if (
+            suspect
+            and flipped[1] >= TEXT_CONFIDENCE_MIN
+            and _PLAIN_NUMBER.fullmatch(turned)
+            and len(turned) == len(upright[0].strip())
+        ):
+            return flipped
         return upright if upright[1] >= flipped[1] else flipped
 
     def read(self, image: RgbImage) -> tuple[TextPx, ...]:
