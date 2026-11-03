@@ -71,3 +71,53 @@ Thiết kế đúng chỗ và toán chính đúng: toạ độ ô mở của kh�
 1. Sửa finding #1: giảm chi phí `_corner_closers` (dùng lại cây, một truy vấn gom) và/hoặc `merge_wall_runs`, không nới trần; đẩy một lần, CI xanh 24/24 **gồm `perf` và `coverage`**, độ phủ gói chạm ≥ 90/90. Nếu chủ dự án chấp nhận perf là nhiễu runner thì phải là waiver ghi tên người duyệt trong `changes/BENCH3D-25.md`, kèm một lượt chạy lại `perf` xanh và `coverage` chạy.
 2. Finding #2: sửa ở `_screen` có test, hoặc ghi nợ chuyển tiếp vào `changes/BENCH3D-25.md`.
 3. #3-#7 (P3): ghi một dòng mỗi mục vào `changes/BENCH3D-25.md` hoặc đợt DEBT kế; không chặn merge.
+
+---
+
+# Lượt 2 — vòng sửa 142d8234..19e68ffa
+
+- Ngày: 2026-11-04 · Reviewer: phiên /merge-review (agent độc lập, lượt 2) · Commit đầu nhánh: 19e68ffa949a (trên phán quyết lượt 1 142d8234)
+- Cổng: Phạm vi kiểm: đích — vòng sửa chỉ chạm `apps/worker/pipeline_build/wall_runs.py`, test của nó và `changes/BENCH3D-25.md` (không DB, API, hợp đồng, phụ thuộc, cấu hình cổng). CI vẫn chạy đủ trên đầu nhánh: run 41693040360 (CI), 41693040362 (commits), 41693040356 (CodeQL) **đang chạy** lúc kết thúc review — `perf`, `coverage` chưa có kết quả, chỉ `changes` xanh. Reviewer không chờ, không chạy cổng/docker/bench tại chỗ; `verify --fast` exit 0 là lời tác giả, không tự kiểm.
+- Độ phủ: chưa có (job `coverage` của run 41693040360 chưa chạy).
+
+## Soát vòng sửa
+
+- `git diff 142d8234..19e68ffa`: 1 commit `fix(pipeline-build): batch wall-run pair filter, guard bent runs`, đúng mẫu, có `Prompt: BENCH3D-25`; 3 tệp, +72/−16. Không tệp cấm, không pragma/`noqa`/`type: ignore`/skip, không đổi ngưỡng.
+- **#1 (P1 perf) — `_groups`** (`wall_runs.py:76-116`): thay `dwithin` quanh đầu mút bằng truy vấn hộp bao cạnh `2·reach` rồi lọc numpy (khác tường, cùng `kind`, `|cross| ≤ sin 2°`) trước vòng Python. Hộp chứa đĩa bán kính `reach` nên tập ứng viên là **tập cha** của tập cũ; bộ lọc chỉ lặp lại đúng hai điều kiện đầu của `_joins`, và `_joins` vẫn soát lại từng cặp → kết quả nhóm như cũ. `parent` chỉ chứa tường đã thành cặp, duyệt `sorted(parent)` nên `members[0]` vẫn là chỉ số nhỏ nhất (tất định). Chia cho độ dài an toàn vì `_mergeable` đã loại tường dài 0. Tác giả đo `merge_wall_runs` 0,26 → 0,10 s CPU trên ca perf; reviewer không đo lại. Khoản tiết kiệm (~0,16 s) nhỏ hơn biên dao động giữa các run `main` cùng tốc độ runner (28,3-29,7 s, lượt 1), nên **chỉ CI `perf` xanh trên 19e68ffa mới đóng được #1**; `_corner_closers` giữ truy vấn từng cặp (ca perf không có góc hở) — chấp nhận được khi CI xanh.
+- **#3, #4 (P3) — `_merged`** (`wall_runs.py:130-166`): trả `None` (giữ nguyên các khúc) khi một đầu mút của nhóm cách tim khúc dài nhất > ½ bề dày lớn nhất của nhóm, hoặc ô mở đặt lại chồng nhau hay vượt chiều dài tường gộp. Soát cặp kề sau khi sắp theo `offset` là đủ (ô mở chồng ô không kề thì cũng chồng ô kề giữa chúng; ô vượt cuối mà không phải ô cuối thì đã chồng ô cuối). Hướng an toàn: từ chối cả nhóm, giữ hành vi trước nhánh. Test mới `test_bent_chain_and_clashing_openings_stay_apart` phủ cả hai nhánh `None` (chuỗi lệch 80 mm/khúc, khúc cuối 160 > 100; hai cửa cùng `[1000, 1900]`). Ô mở sát đầu tường có thể bị từ chối vì làm tròn ≤ 1 mm — chỉ làm mất một lần gộp, không sinh dữ liệu hỏng.
+- **Bench**: `cmp v2-bench.txt v3-bench.txt` giống hệt; `diffscore.py v2-F.txt v3-F.txt` không in ca nào đổi (cùng 42 dòng) → điểm không đổi so với lượt 1, khớp lời tác giả.
+- **Nợ chấp nhận** (`changes/BENCH3D-25.md:24-33`):
+  - #2 (P2): lý do đứng được — `merge.py` theo docstring "không sinh id mới" (K18), sửa đúng cần cắt tường AI quanh khúc giữ/bia mộ với id tất định, là prompt riêng; ảnh hưởng chỉ ở tầng dựng **trước** nhánh này có khúc đã duyệt/xoá, tầng dựng sau khớp nguyên khối. Đã ghi rõ hệ quả (tường chồng, khúc xoá hiện lại). Chấp nhận.
+  - #5, #6 (P3): đã ghi. Chấp nhận.
+  - #7 (P3, test perf chập chờn trên `main`) **chưa có dòng** trong `changes/BENCH3D-25.md` — xem finding R2-1.
+
+## Finding (lượt 2)
+| # | Mức | ID | Mô tả | Vị trí | Đề xuất |
+|---|---|---|---|---|---|
+| 1 (lượt 1) | P1 → **chờ CI** | PERF / R-33 | Mã đã giảm chi phí `_groups`; chưa có bằng chứng cổng: `perf` và `coverage` của run 41693040360 đang chạy. | `apps/worker/pipeline_build/wall_runs.py:76-116` | Đóng khi run 41693040360 (hoặc lượt chạy lại trên 19e68ffa) xanh 24/24 gồm `perf` và `coverage`, độ phủ gói `pipeline_build`/`pipeline_quality` và tổng ≥ 90/90. Không nới trần. |
+| R2-1 | P3 | OBS | Nợ #7 lượt 1 (test `build_layer` perf dao động 18,8-29,7 s trên `main`, dư ~1 s) không được ghi trong `changes/BENCH3D-25.md`. | `changes/BENCH3D-25.md:28-33` | Thêm một dòng nợ (đợt DEBT kế: đo `process_time` hoặc tối ưu `build_layer` để dư ≥ 20 %), gom vào lần đẩy sau nếu có. |
+
+#2 (P2) và #5, #6 (P3) chuyển thành nợ chấp nhận có lý do; #3, #4 đã sửa có test. Không P0.
+
+## Điểm (lượt 2)
+| Miền | Trọng số | Điểm | Tích |
+|---|---|---|---|
+| SEC | 25% | 5 | 1,25 |
+| CON | 15% | 4,5 | 0,675 |
+| LOG | 15% | 4 | 0,60 |
+| PERF | 10% | 3,5 | 0,35 |
+| RES | 10% | 5 | 0,50 |
+| DB/API | 10% | 4,5 | 0,45 |
+| TEST | 7% | 4,5 | 0,315 |
+| OBS/OPS | 5% | 4 | 0,20 |
+| MNT | 3% | 4,5 | 0,135 |
+Tổng: 4,48 / 5
+
+## PHÁN QUYẾT (lượt 2): REQUEST CHANGES — chỉ còn chờ bằng chứng cổng
+
+Về mã, vòng sửa đã xử lý đủ: bộ lọc theo lô giữ nguyên ngữ nghĩa nhóm, hai lá chắn mới đi theo hướng an toàn và có test, nợ P2/P3 có lý do đứng được, điểm bench không đổi. Không còn finding mã nào chặn merge (điểm 4,48 ≥ 4,0). Phán quyết chưa thành APPROVE chỉ vì CI trên 19e68ffa chưa xong lúc review: P1 (#1) là cổng, phải có mã thoát thật.
+
+Điều kiện để thành **APPROVE** (không cần review lại mã):
+1. Run CI trên 19e68ffa xanh 24/24, **gồm `perf` và `coverage`**, độ phủ gói chạm và tổng ≥ 90/90. Phiên gọi ghi run id + số độ phủ vào một dòng cuối file này.
+2. Nếu `perf` lại đỏ: không nới trần; tối ưu tiếp (`_corner_closers`: dùng lại cây `STRtree(centrelines)` và gom truy vấn `intersects`), rồi review lượt 3.
+3. R2-1 (P3): thêm dòng nợ perf vào `changes/BENCH3D-25.md` — không chặn merge.
