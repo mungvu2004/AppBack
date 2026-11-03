@@ -20,6 +20,7 @@ import shapely
 from shapely import STRtree
 
 from apps.worker.pipeline_build.arcs import explode_arcs, join_arcs
+from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
 from apps.worker.pipeline_build.geometry import Scaling, WallSet, build_walls, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
@@ -89,8 +90,13 @@ _ESTIMATE_AGREEMENT: Final = 0.10
 cửa lệch trung vị 8-10 %, bề dày tường tới 42 %) và ghi `scaleChecks.estimateSpread`."""
 
 _ANISOTROPY_LIMIT: Final = 0.03
-"""Tỉ lệ suy riêng từ chữ ngang và chữ dọc lệch > 3 % → ghi `scaleChecks.anisotropic` (ảnh giãn không đều, ch-13);
-tỉ lệ đã chọn giữ nguyên."""
+"""Tỉ lệ suy riêng từ chữ ngang và chữ dọc lệch > 3 % → ghi `scaleChecks.anisotropic`. Chỉ khi hai cụm trục cùng
+nằm sát khung tường chính (`_FRAME_MARGIN`; ảnh giãn không đều, ch-13) tỉ lệ chuỗi mới đổi thành trung bình nhân hai
+trục; cụm nằm ngoài khung là hình vẽ khác tỉ lệ (mặt bằng 1:100 + chi tiết 1:50) → giữ cụm đông nhất."""
+
+_FRAME_MARGIN: Final = 0.25
+"""Biên nới khung tường chính, theo cạnh dài của khung: chuỗi kích thước bao căn nằm ngoài vỏ tường 1-3 dòng
+(ch-13: chuỗi tổng 9060/7060 cách vỏ ~60 px trên khung 330 px); hình vẽ khác tỉ lệ đặt cạnh căn thì xa hơn."""
 
 _VERTICAL_TEXT_RATIO: Final = 1.3
 """Chữ dọc (đường kích thước đứng): hộp cao > 1,3 lần rộng, như `_VERTICAL_RATIO` của `chains.py`."""
@@ -117,6 +123,10 @@ _NOTE_WALL_MM: Final = (50.0, 500.0)
 
 Ngoài dải là ghi chú đọc hỏng (1:10 thay 1:100) hay PDF in co trang (fit to page): bỏ ghi chú."""
 
+_RASTER_NOTE_AGREEMENT: Final = 0.10
+"""PDF chỉ chứa ảnh (không nét vector): khổ trang do người xuất PDF đặt tuỳ ý, không phải khổ in `TL 1:N`. Ghi chú chỉ
+được nhận khi lệch ước cửa đi ≤ 10 % (ước cửa lệch trung vị 8-10 %); không có ước cửa hay lệch hơn → bỏ ghi chú."""
+
 _SCALE_SOURCES: Final = frozenset({"pipeline", "project_default"})
 """Hai giá trị `scaleSource` đã khai; B5-06b đọc `layer.json` qua `from_json` nên phải chặn ở đây."""
 
@@ -130,7 +140,9 @@ _OPTIONAL_KEYS: Final = frozenset({"scaleBasis", "scaleChecks"})
 
 ScaleChecks = Mapping[str, Mapping[str, float]]
 """Nghi vấn về tỉ lệ cho bước kiểm chất lượng (chưa lên API): `anisotropic` {x, y} mm/px của hai trục chữ,
-`estimateSpread` {door, wallThickness} mm/px của hai ước. Chỉ ghi khi có; tỉ lệ đã chọn không đổi."""
+`estimateSpread` {door, wallThickness} mm/px của hai ước. Chỉ ghi khi có; `anisotropic` đổi tỉ lệ chuỗi thành
+trung bình nhân hai trục khi hai cụm trục cùng sát khung tường chính (`_anisotropy`), `estimateSpread` không đổi
+tỉ lệ."""
 _SCALE_CHECK_KEYS: Final = {
     "anisotropic": frozenset({"x", "y"}),
     "estimateSpread": frozenset({"door", "wallThickness"}),
@@ -329,6 +341,23 @@ def _note_scale(walls: Sequence[WallPx], texts: Sequence[TextPx], px_per_paper_m
     return value if value != 0 else None
 
 
+def _trusted_note(
+    noted: Decimal | None, *, vector_page: bool, detections: Sequence[DetectionPx], walls: Sequence[WallPx]
+) -> Decimal | None:
+    """Ghi chú `TL 1:N` còn tin được: PDF vector giữ nguyên; PDF chỉ chứa ảnh cần ước cửa đi đồng thuận.
+
+    Khổ trang PDF ảnh nhúng là tuỳ ý (two-page-ch04: ảnh 150 dpi, ghi chú cho +16 %), nên `N / px_per_paper_mm`
+    chỉ đúng khi trang được xuất đúng khổ in; ước cửa (`_door_scale`) là phép thử độc lập duy nhất có sẵn.
+    """
+    if noted is None or vector_page:
+        return noted
+    door = _door_scale(detections, walls) if walls else None
+    if door is not None and abs(float(noted) / door - 1) <= _RASTER_NOTE_AGREEMENT:
+        return noted
+    _log.info("pipeline_build_scale_note_rejected", extra={"reason": "rasterPdf", "note": float(noted), "door": door})
+    return None
+
+
 def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
     """Một mẫu mỗi chữ có `span_px` và đọc ra độ dài mm, tỉ số trong dải 1-200 mm/px; id `t<i>-chain`."""
     samples = []
@@ -341,21 +370,45 @@ def _chain_samples(texts: Sequence[TextPx]) -> tuple[ScaleSample, ...]:
     return tuple(samples)
 
 
-def _anisotropy(texts: Sequence[TextPx]) -> dict[str, float]:
-    """`{x, y}` khi tỉ lệ suy riêng từ chữ chuỗi ngang và dọc (cụm đông nhất mỗi trục) lệch > `_ANISOTROPY_LIMIT`."""
+def _anisotropy(texts: Sequence[TextPx], frame: Box | None) -> tuple[dict[str, float], bool]:
+    """`{x, y}` khi tỉ lệ suy riêng từ chữ chuỗi ngang và dọc (cụm đông nhất mỗi trục) lệch > `_ANISOTROPY_LIMIT`,
+    kèm `True` khi hộp chữ của cả hai cụm nằm trong `frame` (khung tường chính, px) nới `_FRAME_MARGIN`: chuỗi bao
+    quanh một căn, dù chuỗi ngang chỉ ở một cạnh còn chuỗi dọc ở cạnh khác. Không có khung → `False`."""
+    boxes = {f"t{index}-chain": text.box for index, text in enumerate(texts)}
     vertical = {
-        f"t{index}-chain"
-        for index, text in enumerate(texts)
-        if text.box.y_max - text.box.y_min > _VERTICAL_TEXT_RATIO * (text.box.x_max - text.box.x_min)
+        key for key, box in boxes.items() if box.y_max - box.y_min > _VERTICAL_TEXT_RATIO * (box.x_max - box.x_min)
     }
     samples = _chain_samples(texts)
-    scales = axis_scales(
-        densest_cluster([sample for sample in samples if sample.id not in vertical]),
-        densest_cluster([sample for sample in samples if sample.id in vertical]),
-    )
+    across = densest_cluster([sample for sample in samples if sample.id not in vertical])
+    down = densest_cluster([sample for sample in samples if sample.id in vertical])
+    scales = axis_scales(across, down)
     if scales is None or max(scales) <= (1 + _ANISOTROPY_LIMIT) * min(scales):
-        return {}
-    return {"x": round(scales[0], 6), "y": round(scales[1], 6)}
+        return {}, False
+    anisotropic = {"x": round(scales[0], 6), "y": round(scales[1], 6)}
+    if frame is None:
+        return anisotropic, False
+    margin = _FRAME_MARGIN * max(frame[2] - frame[0], frame[3] - frame[1])
+    x0, y0, x1, y1 = frame[0] - margin, frame[1] - margin, frame[2] + margin, frame[3] + margin
+    inside = all(
+        x0 <= box.x_min and box.x_max <= x1 and y0 <= box.y_min and box.y_max <= y1
+        for box in (boxes[sample.id] for sample in (*across, *down))
+    )
+    return anisotropic, inside
+
+
+def _plan_frame(walls: Sequence[WallPx], mm_per_px: float) -> Box | None:
+    """Khung tường chính (px): vùng cụm tường dài nhất nới bằng các cụm sát nó (`grow_region`, như bước bỏ cụm xa
+    của `geometry`), tính trên mm theo tỉ lệ `mm_per_px` để ngưỡng nối tường mm đúng nghĩa. Không có tường → `None`."""
+    if not walls:
+        return None
+    ends = [[[w.start.x, w.start.y], [w.end.x, w.end.y]] for w in walls]
+    lines = np.asarray(shapely.linestrings(np.asarray(ends) * mm_per_px), dtype=object)
+    groups = wall_clusters(lines, [w.thickness_px * mm_per_px for w in walls])
+    boxes: list[Box] = [tuple(shapely.total_bounds(lines[group]).tolist()) for group in groups]
+    lengths = [float(shapely.length(lines[group]).sum()) for group in groups]
+    region, _ = grow_region(boxes, range(len(groups)), max(range(len(groups)), key=lengths.__getitem__))
+    x0, y0, x1, y1 = region
+    return (x0 / mm_per_px, y0 / mm_per_px, x1 / mm_per_px, y1 / mm_per_px)
 
 
 def _estimate(door: float | None, wall: float) -> tuple[float, ScaleBasis, dict[str, float]]:
@@ -711,6 +764,7 @@ def build_layer(
     clock: Clock,
     page: PageRaster | None = None,
     px_per_paper_mm: float | None = None,
+    vector_page: bool = True,
     furniture: bool = True,
 ) -> BuiltLayer:
     """Ba artifact ML (px) → lớp không gian (mm) theo B5-05 [6]; không sửa đối số, không I/O.
@@ -720,7 +774,9 @@ def build_layer(
     Dựng ở `s_dựng` rồi đổi về `s`; `RescaleError` → dựng lại thẳng ở `s`, không ném. `page` (trang + mặt nạ
     tường) bật nguồn gợi ý mực dư: hộp `other` với `suggested=True`, không bao giờ trùng hộp phát hiện.
     `px_per_paper_mm` (PDF) cho phép đọc ghi chú `TL 1:N` khi chuỗi kích thước không ra tỉ lệ (U01):
-    thắng tỉ lệ dự án và ước lượng từ bề dày tường. `furniture=False` (cài đặt dự án `detectFurniture` tắt):
+    thắng tỉ lệ dự án và ước lượng từ bề dày tường; `vector_page=False` (PDF chỉ chứa ảnh) thì ghi chú phải khớp ước
+    cửa đi (`_trusted_note`). Ảnh giãn không đều (`scaleChecks.anisotropic`, hai cụm trục sát khung tường chính) → tỉ lệ
+    chuỗi là trung bình nhân hai trục. `furniture=False` (cài đặt dự án `detectFurniture` tắt):
     không dựng đồ, không gợi ý mực dư; hộp phát hiện vẫn cho ô mở, tỉ lệ theo cửa và nhãn phòng.
     """
     if width_px < 1 or height_px < 1:
@@ -735,13 +791,17 @@ def build_layer(
     detections = _filtered_boxes(objects.detections, MAX_DETECTIONS, size, base, "detections")
     texts = _filtered_boxes(text.items, MAX_TEXTS, size, base, "texts")
     scale, basis, samples, rejected = _resolved_scale(whole, texts, fallback_mm_per_px, base)
+    checks: dict[str, dict[str, float]] = {}
+    anisotropic, same_plan = _anisotropy(texts, _plan_frame(whole, float(scale)))
+    if anisotropic:
+        checks["anisotropic"] = anisotropic
+        if basis == "chain" and same_plan:  # cụm đông nhất chỉ là một trục; trung bình nhân chia đều phần giãn
+            scale = Decimal(repr(math.sqrt(anisotropic["x"] * anisotropic["y"]))).quantize(_QUANTUM)
     noted = _note_scale(walls_px, texts, px_per_paper_mm) if basis == "default" else None
+    noted = _trusted_note(noted, vector_page=vector_page, detections=detections, walls=walls_px)
     if noted is not None:
         scale, basis = noted, "note"
     estimated = basis == "default" and fallback_mm_per_px == _UNSET_PROJECT_SCALE and bool(walls_px)
-    checks: dict[str, dict[str, float]] = {}
-    if anisotropic := _anisotropy(texts):
-        checks["anisotropic"] = anisotropic
     if estimated:  # U01: dự án chưa đặt tỉ lệ → tạm ước từ cửa đi và bề dày tường; không phải 1 mm/px
         guess, basis, spread = _estimate(_door_scale(detections, walls_px), _build_scale(walls_px, float(scale)))
         scale = Decimal(repr(guess)).quantize(_QUANTUM)
