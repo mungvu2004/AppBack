@@ -126,7 +126,7 @@ def _walk_objects(
     parent: Affine,
     depth: int,
     out: list[Row],
-    limit: int = _MAX_SEGMENTS,
+    limit: int,
 ) -> float:
     """Duyệt page object (đệ quy vào Form XObject), gom đoạn thẳng; trả tổng diện tích ảnh nhúng (point²).
 
@@ -184,7 +184,9 @@ def pdf_page_vectors(data: bytes, page_index: int) -> PdfPageVectors:
             _page_size_pt(pdf, page_index)  # `page_index` ngoài khoảng → VALIDATION
             with _open_page(pdf, page_index) as page:
                 display, width_pt, height_pt = _display_transform(page)
-                image_area = _walk_objects(page.raw, is_page=True, parent=display, depth=0, out=out)
+                image_area = _walk_objects(
+                    page.raw, is_page=True, parent=display, depth=0, out=out, limit=_MAX_SEGMENTS
+                )
                 textpage = page.get_textpage()
                 try:
                     text = str(textpage.get_text_range())
