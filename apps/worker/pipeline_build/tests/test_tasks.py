@@ -336,3 +336,13 @@ async def _read(storage: LocalDiskStorage, key: str) -> bytes | None:
     if await storage.stat(key) is None:
         return None
     return b"".join([chunk async for chunk in storage.open_read(key)])
+
+
+def test_vector_page_reads_preprocess_vectors(local_storage: LocalDiskStorage) -> None:
+    """Không `px_per_paper_mm` → `True` khỏi đọc kho; có thì `True` chỉ khi `preprocess/vectors.json` có mặt."""
+    paper = _payload(px_per_paper_mm=5.9)
+    assert asyncio.run(tasks._vector_page(local_storage, _payload()))
+    assert not asyncio.run(tasks._vector_page(local_storage, paper))
+    key = f"{paper.run_prefix}preprocess/vectors.json"
+    asyncio.run(local_storage.put(key, b"{}", content_type="application/json", max_bytes=3))
+    assert asyncio.run(tasks._vector_page(local_storage, paper))

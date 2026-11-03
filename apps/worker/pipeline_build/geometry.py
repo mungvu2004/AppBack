@@ -322,12 +322,23 @@ def _bbox(segs: Sequence[_Seg], group: Sequence[int]) -> Box:
     return (float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys)))
 
 
+_STRAY_CLUSTER_MM: Final = 600.0
+_STRAY_CLUSTER_SHARE: Final = 0.03
+"""Mẩu lạc: cụm tổng dài < min(600 mm, 3 % tổng tường) mà hộp lòi khỏi hộp cụm dài nhất quá bề dày lớn nhất.
+
+Mẩu vạch kích thước, la bàn cạnh căn (ch-13: 255 mm cách căn 880 mm, nới hộp bao thêm ~1 m) nằm trong
+`FAR_CLUSTER_GAP_MM` nên vùng chính nuốt nó. Bench r3: không tường nào trong khung căn đáp án bị bỏ ở ngưỡng này;
+1500 mm bỏ 20 tường thật ở tờ nhiều căn."""
+
+
 def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
-    """U57: bỏ cụm tường nhỏ nằm tách xa cụm chính (sơ đồ vị trí căn, logo ở góc brochure).
+    """U57: bỏ cụm tường nhỏ nằm tách xa cụm chính (sơ đồ vị trí căn, logo ở góc brochure) và mẩu lạc sát căn.
 
     Vùng chính = hộp cụm dài nhất, nới dần bằng mọi cụm có hộp cách vùng ≤ `FAR_CLUSTER_GAP_MM`
     (tường bị khe cửa cắt rời, ban công, cột sát căn). Cụm còn lại bị bỏ khi tổng dài <
     `FAR_CLUSTER_LENGTH_SHARE` tổng tường và hộp bao < `FAR_CLUSTER_AREA_SHARE` hộp vùng chính.
+    Cụm nào (kể cả trong vùng) ngắn hơn `_STRAY_CLUSTER_MM`/`_STRAY_CLUSTER_SHARE` mà lòi khỏi hộp cụm dài
+    nhất quá bề dày lớn nhất cũng bị bỏ: cụm thật ngoài hộp đó (ban công, căn kế) dài hơn nhiều.
     Đếm vào `isolatedBlock`.
     """
     if len(segs) < 2:
@@ -338,12 +349,18 @@ def _drop_far_clusters(segs: list[_Seg], dropped: Counter[str]) -> list[_Seg]:
     lengths = [sum(_length(segs[i]) for i in group) for group in groups]
     boxes = [_bbox(segs, group) for group in groups]
     total = sum(lengths)
-    region, far = grow_region(boxes, range(len(groups)), max(range(len(groups)), key=lengths.__getitem__))
+    main = max(range(len(groups)), key=lengths.__getitem__)
+    region, far = grow_region(boxes, range(len(groups)), main)
     region_area = max(box_area(region), 1.0)
+    reach = max(seg.thickness_mm for seg in segs)
+    x0, y0, x1, y1 = boxes[main][0] - reach, boxes[main][1] - reach, boxes[main][2] + reach, boxes[main][3] + reach
+    stray = min(_STRAY_CLUSTER_MM, _STRAY_CLUSTER_SHARE * total)
     drop: set[int] = set()
-    for index in far:
+    for index, (bx0, by0, bx1, by1) in enumerate(boxes):
         small = box_area(boxes[index]) < FAR_CLUSTER_AREA_SHARE * region_area
-        if small and lengths[index] < FAR_CLUSTER_LENGTH_SHARE * total:
+        far_small = index in far and small and lengths[index] < FAR_CLUSTER_LENGTH_SHARE * total
+        sticks_out = bx0 < x0 or by0 < y0 or bx1 > x1 or by1 > y1
+        if far_small or (lengths[index] < stray and sticks_out):
             drop.update(groups[index])
     if drop:
         dropped["isolatedBlock"] += len(drop)
