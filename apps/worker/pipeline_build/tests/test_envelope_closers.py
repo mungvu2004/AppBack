@@ -231,3 +231,42 @@ def test_close_envelope_gaps__no_guessed_door_into_loggia(usage: str, door: bool
     assert (gap.centreline.start, gap.centreline.end) == (Point(x=2000, y=0), Point(x=3600, y=0))
     assert [opening.swing for opening in result.openings] == (["sliding"] if door else [])
     assert bool(gap.opening_ids) is door
+
+
+@pytest.mark.parametrize(
+    ("host", "kind", "offset", "added"),
+    [
+        pytest.param(0, "window", 5200, 1, id="perpendicular-window-near-corner"),
+        pytest.param(1, "window", 0, 1, id="aligned-window-other-kind"),
+        pytest.param(1, "door", 0, 0, id="aligned-door-touching-gap"),
+    ],
+)
+def test_close_envelope_gaps__duplicate_needs_same_kind_on_aligned_wall(
+    host: int, kind: str, offset: int, added: int, fake_clock: FakeClock
+) -> None:
+    """Khe cửa đi 1000 ở tường phải (x = 7000, y 1000-2000): cửa sổ tâm (6500, 1000) trên tường trên vuông góc hay cửa
+    sổ cạnh khe không chặn cửa đi của hộp (Codex r3 #4); cửa đi cùng loại trên tường phải chạm khe → coi là trùng."""
+    walls = [
+        _wall(fake_clock, (1000, 1000), (7000, 1000)),
+        _wall(fake_clock, (7000, 2000), (7000, 5000)),
+        _wall(fake_clock, (7000, 5000), (1000, 5000)),
+        _wall(fake_clock, (1000, 5000), (1000, 1000)),
+    ]
+    placed = Opening(
+        id=new_spatial_id("opening", fake_clock),
+        wall_id=walls[host].id,
+        kind=kind,
+        offset_mm=offset,
+        width_mm=600 if kind == "window" else 900,
+        height_mm=1400 if kind == "window" else 2100,
+        sill_height_mm=900 if kind == "window" else 0,
+        swing="sliding" if kind == "window" else "left",
+        confidence=0.8,
+        source="ai",
+        reviewed=False,
+    )
+    door = det("door", 6950, 1000, 7050, 2000)
+    result, _, closers = _envelope(walls, fake_clock, detections=[door], openings=[placed])
+    assert "door" in [closer.label for closer in closers]
+    assert len(result.openings) == 1 + added
+    assert [opening.kind for opening in result.openings[1:]] == ["door"] * added

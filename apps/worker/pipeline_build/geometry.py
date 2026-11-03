@@ -105,7 +105,7 @@ _GLAZING_HIT: Final = 0.8
 _GLAZING_SOLID: Final = 0.6
 """Quá 60 % dải bề dày là mực liền: khối đặc (tường bộ dò bỏ sót, gạch chéo), không phải nét kính."""
 _OPENING_NEAR_MM: Final = 300
-"""Ô mở có tâm cách trung điểm khe ≤ nửa khe + ngần này: hộp sinh đoạn khép đã thành ô mở trên tường cạnh khe."""
+"""Ô mở cùng loại trên tường song song cách đường khe ≤ ngần này, khoảng chiếu giao khe: hộp đã thành ô mở."""
 _BOX_TARGETS: Final[Mapping[str, LabelTarget]] = MappingProxyType(
     {"door": LABEL_TARGETS["door"], "double_door": LABEL_TARGETS["double_door"], "window": LABEL_TARGETS["window"]}
 )
@@ -1322,19 +1322,29 @@ def _gap_wall(wall_id: str, ends: tuple[Point, Point], thickness: int, confidenc
     )
 
 
-def _opening_near(walls: Sequence[Wall], openings: Sequence[Opening], start: Point, end: Point) -> bool:
-    """Có ô mở mà tâm cách trung điểm khe ≤ nửa khe + `_OPENING_NEAR_MM`: hộp sinh đoạn khép đã gắn tường khác."""
+def _opening_near(walls: Sequence[Wall], openings: Sequence[Opening], gap: tuple[Point, Point], kind: str) -> bool:
+    """Hộp sinh đoạn khép `gap` đã thành ô mở `kind` trên tường cạnh khe: ô mở cùng loại, tường chủ song song và cách
+    đường khe ≤ `_OPENING_NEAR_MM`, khoảng chiếu lên khe giao (chạm) khe — cửa sổ trên tường vuông góc gần góc không
+    chặn cửa đi qua khe (Codex r3 #4)."""
     by_id = {wall.id: wall.centreline for wall in walls}
-    mid = ((start.x + end.x) / 2, (start.y + end.y) / 2)
-    reach = math.dist((start.x, start.y), (end.x, end.y)) / 2 + _OPENING_NEAR_MM
+    start, end = gap
+    span = math.dist((start.x, start.y), (end.x, end.y))
+    ux, uy = (end.x - start.x) / span, (end.y - start.y) / span
     for opening in openings:
         line = by_id.get(opening.wall_id)
-        if line is None:
+        if opening.kind != kind or line is None:
             continue
-        length = math.hypot(line.end.x - line.start.x, line.end.y - line.start.y)
-        t = (opening.offset_mm + opening.width_mm / 2) / max(1.0, length)
-        centre = (line.start.x + (line.end.x - line.start.x) * t, line.start.y + (line.end.y - line.start.y) * t)
-        if math.dist(centre, mid) <= reach:
+        dx, dy = line.end.x - line.start.x, line.end.y - line.start.y
+        length = math.hypot(dx, dy)
+        if length == 0 or abs(dx * uy - dy * ux) > length * _PARALLEL_SIN:
+            continue
+        ends = [
+            (line.start.x + dx * t - start.x, line.start.y + dy * t - start.y)
+            for t in (opening.offset_mm / length, (opening.offset_mm + opening.width_mm) / length)
+        ]
+        along = sorted(ex * ux + ey * uy for ex, ey in ends)
+        across = abs(ends[0][0] * uy - ends[0][1] * ux)
+        if across <= _OPENING_NEAR_MM and along[1] >= 0 and along[0] <= span:
             return True
     return False
 
@@ -1390,7 +1400,7 @@ def close_envelope_gaps(
         if span < _ENVELOPE_DOOR_MIN_MM and hosts:
             _extend_host(walls, openings, lines, hosts, (start, end))
             continue
-        if label in _BOX_TARGETS and _opening_near(walls, openings, start, end):
+        if (box := _BOX_TARGETS.get(label or "")) and _opening_near(walls, openings, (start, end), box.domain_kind):
             continue
         target, confidence = None, 0.0
         if span >= _ENVELOPE_DOOR_MIN_MM:
