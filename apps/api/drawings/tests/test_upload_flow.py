@@ -145,9 +145,11 @@ async def test_full_flow_pdf_without_page_index_skips_cover(
     db_session: AsyncSession,
     db_sessionmaker: async_sessionmaker[AsyncSession],
     sync_bus_reset: None,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """BENCH3D-07: client vắng `pageIndex`, trang 0 là bìa chữ → #5 ghi `page_auto`, #7 dựng trang bản vẽ (1)."""
     stage = await make_stage(db_session)
+    caplog.set_level(logging.INFO, logger="apps.api.drawings.complete")
 
     upload_id, response = await upload_through(
         api_client, stage, _cover_then_plan(), file_name="ho-so.pdf", mime_type="application/pdf"
@@ -156,6 +158,8 @@ async def test_full_flow_pdf_without_page_index_skips_cover(
     assert response.status_code == 200, response.text
     row = await _upload_row(db_sessionmaker, upload_id)
     assert (row.page_auto, row.page_index) == (True, 1)
+    picked = [record.__dict__ for record in caplog.records if record.msg == "upload_page_auto_picked"]
+    assert [(r["upload_id"], r["pages"], r["picked"]) for r in picked] == [(upload_id, 2, 1)]
 
 
 async def test_full_flow_pdf_without_page_index_but_crop_keeps_page_zero(

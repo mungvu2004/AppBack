@@ -197,9 +197,12 @@ def _check_pages(data: bytes, facts: UploadFacts) -> int:
     if not facts.auto_page or pages == 1:
         return facts.page_index
     try:
-        return pick_plan_page(data, pages)
+        picked = pick_plan_page(data, pages)
     except VisionError as exc:
         raise exc.to_app_error() from exc
+    if picked != facts.page_index:
+        _log.info("upload_page_auto_picked", extra={"upload_id": facts.id, "pages": pages, "picked": picked})
+    return picked
 
 
 def _page_count(data: bytes) -> int:

@@ -16,6 +16,7 @@ import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 kh�
 import pypdfium2.raw as pdfium_c  # type: ignore[import-untyped]  # ctypes sinh tự động, không stub
 from numpy.typing import NDArray
 
+from packages.vision.preprocess.geometry import cap_pixels
 from packages.vision.preprocess.pdf import (
     PDF_LOCK,
     POINTS_PER_INCH,
@@ -23,6 +24,7 @@ from packages.vision.preprocess.pdf import (
     _open_page,
     _page_size_pt,
     _render_page,
+    effective_dpi,
 )
 
 __all__ = ["PdfPageVectors", "pdf_page_vectors", "pick_plan_page"]
@@ -43,6 +45,8 @@ PLAN_MIN_IMAGE_RATIO: Final = 0.3
 """Ảnh nhúng phủ ≥ 30 % trang là bản quét/ảnh: chỉ khi đó mới dựng ảnh nhỏ để đếm mực."""
 PLAN_PICK_DPI: Final = 36.0
 """Ảnh nhỏ để đếm mực: A3 ra ~600 x 420 điểm ảnh, đủ thấy nét tường, rẻ."""
+PLAN_PICK_MAX_PIXELS: Final = 1_000_000
+"""Trần điểm ảnh của ảnh dò mực (U06): trang khổ lớn bị hạ DPI, không cấp phát bitmap khổng lồ. A3 ở 36 dpi ~0,25 MP."""
 PLAN_INK_MARGIN: Final = 0.08
 """Bỏ 8 % mỗi mép khi đếm mực: khung tên/khung giấy nằm ở mép, có cả trên trang bìa."""
 PLAN_INK_LEVEL: Final = 230
@@ -214,7 +218,9 @@ def _is_drawing(pdf: pdfium.PdfDocument, page_index: int) -> bool:
         return True
     if image_area < PLAN_MIN_IMAGE_RATIO * width_pt * height_pt:
         return False
-    gray = _render_page(pdf, page_index, PLAN_PICK_DPI / POINTS_PER_INCH).mean(axis=2)
+    scale = effective_dpi(width_pt, height_pt, PLAN_PICK_DPI, PLAN_PICK_MAX_PIXELS) / POINTS_PER_INCH
+    pixels, _sx, _sy = cap_pixels(_render_page(pdf, page_index, scale), PLAN_PICK_MAX_PIXELS)
+    gray = pixels.mean(axis=2, dtype=np.float32)
     dy, dx = (int(side * PLAN_INK_MARGIN) for side in gray.shape)
     core = gray[dy : gray.shape[0] - dy, dx : gray.shape[1] - dx]
     return float((core < PLAN_INK_LEVEL).mean()) >= PLAN_MIN_INK

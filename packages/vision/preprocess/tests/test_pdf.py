@@ -8,8 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pypdfium2 as pdfium  # type: ignore[import-untyped]  # pypdfium2 5.13 không có py.typed
 import pytest
+from numpy.typing import NDArray
 from PIL import Image
 
+from packages.vision.preprocess import pdf as pdf_module
 from packages.vision.preprocess import pdf_vector
 from packages.vision.preprocess.errors import VisionError
 from packages.vision.preprocess.pdf import (
@@ -297,3 +299,24 @@ def test_pick_plan_page_errors_like_pdf_page_vectors() -> None:
     with pytest.raises(VisionError) as excinfo:
         pick_plan_page(b"not a pdf at all", 2)
     assert str(excinfo.value) == "FILE_TYPE_MISMATCH"
+
+
+def test_pick_plan_page_huge_scanned_page_stays_under_pixel_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trang quét khổ 30 000 pt (bom PDF, U06): ảnh dò mực bị hạ DPI, không vượt `PLAN_PICK_MAX_PIXELS`."""
+    side = 30_000.0
+    shapes: list[tuple[int, ...]] = []
+    real = pdf_module._render_page
+
+    def spy(pdf: pdfium.PdfDocument, page_index: int, scale: float) -> NDArray[np.uint8]:
+        pixels = real(pdf, page_index, scale)
+        shapes.append(pixels.shape)
+        return pixels
+
+    monkeypatch.setattr(pdf_vector, "_render_page", spy)
+    huge = synthetic.make_pdf(1, size=(side, side), ops=synthetic.scan_ops((side, side)))
+    data = synthetic.join_pdfs(synthetic.make_pdf(1, ops=synthetic.BLANK_SCAN_OPS), huge)
+
+    assert pick_plan_page(data, 2) == 1
+    assert len(shapes) == 2
+    height, width, _ = shapes[1]
+    assert height * width <= pdf_vector.PLAN_PICK_MAX_PIXELS * 1.01
