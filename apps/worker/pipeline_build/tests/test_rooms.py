@@ -5,6 +5,7 @@ from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 import pytest
 import shapely
 
@@ -12,6 +13,7 @@ from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
 from apps.worker.pipeline_build.geometry import RoomCloser, Scaling, WallSet, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.rooms import (
+    _corner_pieces,
     _door_closers,
     _gap_closers,
     _open_space_labels,
@@ -67,12 +69,12 @@ def _grid_walls(clock: FakeClock, confidences: Callable[[int], float] | None = N
 
 
 def test_grid_gives_two_rooms_with_matching_area(fake_clock: FakeClock) -> None:
-    """Lưới 2 phòng → 2 phòng, `areaM2 == float(polygon_area_m2(outline))`, tên `phòng khác`/`phòng khác 2`."""
+    """Lưới 2 phòng → 2 phòng, `areaM2 == float(polygon_area_m2(outline))`, tên `phòng chưa rõ tên` (rồi ` 2`)."""
     walls = _grid_walls(fake_clock)
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert len(rooms) == 2
-    assert [r.name for r in rooms] == ["phòng khác", "phòng khác 2"]
+    assert [r.name for r in rooms] == ["phòng chưa rõ tên", "phòng chưa rõ tên 2"]
     for room in rooms:
         assert room.area_m2 == float(polygon_area_m2(room.outline))
 
@@ -117,6 +119,47 @@ def test_build_rooms__corner_gap_over_limit_gives_no_room(fake_clock: FakeClock)
     dropped: Counter[str] = Counter()
     rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=dropped)
     assert len(rooms) == 1
+
+
+def _open_l_corner(clock: FakeClock, short: float) -> list[Wall]:
+    """Góc L hở như bench-3d f-22: tường dưới lố qua góc (4000, 4000) 88 mm, tường phải 400 dừng cách góc `short` mm
+    tại chữ L với tường lô gia chạy sang phải (đầu tường phải không tự do)."""
+    return [
+        _wall(clock, (0, 0), (4000, 0)),
+        _wall(clock, (0, 0), (0, 4000)),
+        _wall(clock, (0, 4000), (4088, 4000)),
+        _wall(clock, (4000, 0), (4000, 4000 - short), thickness=400),
+        _wall(clock, (4000, 4000 - short), (6000, 4000 - short)),
+    ]
+
+
+def test_gap_closers__open_l_corner_extends_the_short_wall(fake_clock: FakeClock) -> None:
+    """f-22: hướng ra của đầu tự do (tường dưới) lệch > 60° nên luật khe thường bỏ; khép góc L kéo tường phải tới tim
+    tường dưới (lố 1 mm), phòng 16 m² có lại."""
+    walls = _open_l_corner(fake_clock, 441)
+    closers = [[tuple(round(v) for v in p) for p in line.coords] for line in _gap_closers(walls, ())]
+    assert closers == [[(4000, 3559), (4000, 4001)]]
+    rooms = build_rooms(walls, (), (), level_id=LEVEL_ID, scaling=_IDENTITY, clock=fake_clock, dropped=Counter())
+    assert [round(room.area_m2, 2) for room in rooms if room.area_m2 > 15] == [16.0]
+
+
+def test_gap_closers__l_corner_beyond_reach_stays_open(fake_clock: FakeClock) -> None:
+    """Tường phải hụt 900 mm (> 1,5 x 400, cỡ khe cửa đi sát góc) → không khép góc."""
+    assert _gap_closers(_open_l_corner(fake_clock, 900), ()) == []
+
+
+def test_corner_pieces__both_short_t_and_slanted(fake_clock: FakeClock) -> None:
+    """Hai tường cùng hụt giao điểm → hai đoạn tới đó; giao điểm giữa thân tường kia (chữ T), tường xiên → không."""
+    tip = np.array((4000.0, 3700.0))
+    upright = _wall(fake_clock, (4000, 0), (4000, 3700), thickness=200)
+    short = _corner_pieces(upright, _wall(fake_clock, (0, 4000), (3900, 4000), thickness=200), tip)
+    assert short is not None
+    assert [[tuple(round(v) for v in p) for p in line.coords] for line in short[1]] == [
+        [(4000, 3700), (4000, 4001)],
+        [(3900, 4000), (4001, 4000)],
+    ]
+    assert _corner_pieces(upright, _wall(fake_clock, (0, 4000), (8000, 4000)), tip) is None
+    assert _corner_pieces(upright, _wall(fake_clock, (0, 3000), (3900, 4000)), tip) is None
 
 
 def test_build_rooms__t_junction_gap_closes(fake_clock: FakeClock) -> None:
@@ -848,12 +891,12 @@ def test_build_rooms__fragment_closing_a_ring_is_kept(fake_clock: FakeClock) -> 
 
 
 def test_small_room_without_a_door_is_a_shaft(fake_clock: FakeClock) -> None:
-    """Ô 1 x 1,2 m không cửa giữa tường → `utility` "hộp kỹ thuật"; ô 1 x 2,2 m có hộp cửa đi → giữ "phòng khác"."""
+    """Ô 1 x 1,2 m không cửa giữa tường → `utility` "hộp kỹ thuật"; ô 1 x 2,2 m có hộp cửa → giữ "phòng chưa rõ tên"."""
     shaft = _rooms_of(_box_room(fake_clock, 1200), (), fake_clock)
     assert [(room.usage, room.name) for room in shaft] == [("utility", "hộp kỹ thuật")]
     door = (DetectionPx(label="door", box=_box(1000, 600, 1100, 1400), confidence=0.9),)
     closet = _rooms_of(_box_room(fake_clock, 2200), door, fake_clock)
-    assert [(room.usage, room.name) for room in closet] == [("other", "phòng khác")]
+    assert [(room.usage, room.name) for room in closet] == [("other", "phòng chưa rõ tên")]
 
 
 def _box_room(clock: FakeClock, depth: int) -> list[Wall]:
@@ -922,7 +965,10 @@ def test_wide_kitchen_or_hall_is_the_living_room_unless_the_level_has_one(fake_c
     """Tầng chưa có phòng khách: "bếp" 20 m² (dãy tủ bếp) và "sảnh" 20 m² → phòng khách; đã có thì giữ bếp."""
     run = (DetectionPx(label="kitchen_cabinet", box=_box(200, 200, 2600, 800), confidence=0.8),)
     rooms = _rooms_with_texts(_two_20_m2_rooms(fake_clock), (), run, fake_clock)
-    assert [(room.usage, room.name) for room in rooms] == [("livingRoom", "phòng khách"), ("other", "phòng khác")]
+    assert [(room.usage, room.name) for room in rooms] == [
+        ("livingRoom", "phòng khách"),
+        ("other", "phòng chưa rõ tên"),
+    ]
     hall = (_text("SANH", 7500, 2000),)
     lobby = _rooms_with_texts(_two_20_m2_rooms(fake_clock), hall, (), fake_clock)
     assert [room.usage for room in lobby] == ["other", "livingRoom"]
@@ -933,7 +979,7 @@ def test_wide_kitchen_or_hall_is_the_living_room_unless_the_level_has_one(fake_c
 
 def test_largest_unnamed_room_of_a_read_level_is_the_living_room(fake_clock: FakeClock) -> None:
     """Tầng có phòng ngủ (giường) mà không phòng khách: phòng không tên 20 m² → phòng khách; tầng chưa đọc được gì
-    thì giữ "phòng khác" (`test_bed_in_a_merged_region_over_25_m2_is_not_a_bedroom`)."""
+    thì giữ "phòng chưa rõ tên" (`test_bed_in_a_merged_region_over_25_m2_is_not_a_bedroom`)."""
     walls = _walls_of(
         fake_clock,
         [
@@ -1009,7 +1055,7 @@ def test_much_larger_inferred_bedroom__becomes_living_room_when_level_has_none(
 
 def test_level_named_only_by_geometry_gets_no_living_room_guess(fake_clock: FakeClock) -> None:
     """Không chữ, không đồ: hộp kỹ thuật 2 m² (chỉ suy từ hình học) không làm tầng "đã đọc được", phòng 20 m² vẫn
-    là "phòng khác"."""
+    là "phòng chưa rõ tên"."""
     walls = _walls_of(
         fake_clock,
         [
@@ -1022,7 +1068,7 @@ def test_level_named_only_by_geometry_gets_no_living_room_guess(fake_clock: Fake
         ],
     )
     rooms = _rooms_with_texts(walls, (), (), fake_clock)
-    assert [(room.usage, room.name) for room in rooms] == [("other", "phòng khác"), ("utility", "hộp kỹ thuật")]
+    assert [(room.usage, room.name) for room in rooms] == [("other", "phòng chưa rõ tên"), ("utility", "hộp kỹ thuật")]
 
 
 def _box_walls(clock: FakeClock, width: int, depth: int) -> list[Wall]:

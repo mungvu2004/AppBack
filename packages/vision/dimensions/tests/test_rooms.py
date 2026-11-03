@@ -19,7 +19,7 @@ FE_NAMES = {
     "stairwell": "buồng thang",
     "utility": "phòng kỹ thuật",
     "loggia": "lô gia",
-    "other": "phòng khác",
+    "other": "phòng chưa rõ tên",
 }
 # Dựng tay từ `roomNameKey` (roomLabelReviewGateway.ts:1007-1016): trim, thường, bỏ số cuối, NFD bỏ dấu, `đ` → `d`.
 FE_KEYS = {
@@ -32,6 +32,7 @@ FE_KEYS = {
     "phòng kỹ thuật": "phong ky thuat",
     "lô gia": "lo gia",
     "phòng khác": "phong khac",
+    "phòng chưa rõ tên": "phong chua ro ten",
 }
 
 
@@ -149,35 +150,37 @@ def test_every_dictionary_key_matches_its_usage() -> None:
 
 
 def test_name_rooms_example() -> None:
-    """`None` thành `phòng khác`, `phòng khác 2`…; tên trùng thêm số nhỏ nhất chưa dùng, giữ thứ tự."""
+    """`None` thành `phòng chưa rõ tên`, `phòng chưa rõ tên 2`…; tên trùng thêm số nhỏ nhất chưa dùng, giữ thứ tự."""
     bedroom = RoomLabel("bedroom", "phòng ngủ")
     assert name_rooms([bedroom, None, bedroom, None, None]) == (
         bedroom,
-        RoomLabel("other", "phòng khác"),
+        RoomLabel("other", "phòng chưa rõ tên"),
         RoomLabel("bedroom", "phòng ngủ 2"),
-        RoomLabel("other", "phòng khác 2"),
-        RoomLabel("other", "phòng khác 3"),
+        RoomLabel("other", "phòng chưa rõ tên 2"),
+        RoomLabel("other", "phòng chưa rõ tên 3"),
     )
 
 
 def test_generated_other_names_are_not_read_back_as_labels() -> None:
-    """Tên sinh `phòng khác 2` (gần "phong khach") không đọc lại thành nhãn phòng khách."""
+    """Tên sinh `phòng chưa rõ tên 2` (và tên cũ `phòng khác 2`, gần "phong khach") không đọc lại thành nhãn phòng."""
     assert match_room_label("phòng khác") is None
     assert match_room_label("phòng khác 2") is None
+    assert match_room_label("phòng chưa rõ tên") is None
+    assert match_room_label("phòng chưa rõ tên 2") is None
 
 
 def test_name_rooms_skips_used_numbers_and_handles_empty() -> None:
-    """Số ` n` bỏ qua tên đã có; rỗng → rỗng; nhãn đầu `None` → `phòng khác`."""
+    """Số ` n` bỏ qua tên đã có; rỗng → rỗng; nhãn đầu `None` → `phòng chưa rõ tên`."""
     one, two = RoomLabel("bedroom", "phòng ngủ 2"), RoomLabel("bedroom", "phòng ngủ")
     assert [label.name for label in name_rooms([two, one, two])] == ["phòng ngủ", "phòng ngủ 2", "phòng ngủ 3"]
     assert name_rooms([]) == ()
-    assert name_rooms([None]) == (RoomLabel("other", "phòng khác"),)
+    assert name_rooms([None]) == (RoomLabel("other", "phòng chưa rõ tên"),)
 
 
 def test_name_rooms_generated_name_can_collide_with_a_label() -> None:
-    """`phòng khác` sinh ra mà đã có nhãn cùng tên → vẫn không trùng."""
-    label = RoomLabel("other", "phòng khác")
-    assert [x.name for x in name_rooms([label, None])] == ["phòng khác", "phòng khác 2"]
+    """`phòng chưa rõ tên` sinh ra mà đã có nhãn cùng tên → vẫn không trùng."""
+    label = RoomLabel("other", "phòng chưa rõ tên")
+    assert [x.name for x in name_rooms([label, None])] == ["phòng chưa rõ tên", "phòng chưa rõ tên 2"]
 
 
 @pytest.mark.parametrize(

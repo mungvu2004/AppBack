@@ -27,6 +27,7 @@ from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster, residual_ink_boxes
 from apps.worker.pipeline_build.rooms import build_furniture, build_rooms
 from apps.worker.pipeline_build.swing import settle_reversed
+from apps.worker.pipeline_build.wall_runs import merge_wall_runs
 from packages.core.clock import Clock
 from packages.core.pipeline import PipelineCode
 from packages.domain.rules_ai import apply_post_rules
@@ -758,8 +759,10 @@ def _attempt(
     dimensions: tuple[Dimension, ...] = ()
     if context.source == "pipeline":
         dimensions = _build_dimensions(context, wall_set, scaling=scaling, clock=clock, dropped=dropped)
-    # `reversed` so với luật phía mở FE trên phòng sau luật hậu xử lý (QT-SWING, `swing.py`).
-    layer = settle_reversed(apply_post_rules(layer), wall_set.leaves)
+    # Khúc thẳng hàng chạm nhau cùng `kind` → một tường một bề dày (WALL-RUN), rồi `reversed` so với luật phía mở FE
+    # trên phòng sau luật hậu xử lý (QT-SWING, `swing.py`).
+    layer, dimensions = merge_wall_runs(apply_post_rules(layer), dimensions)
+    layer = settle_reversed(layer, wall_set.leaves)
     if has_critical(check_integrity(layer, level_id=context.level_id)):
         raise ValueError("lớp dựng ra có lỗi toàn vẹn critical")
     return layer, dimensions

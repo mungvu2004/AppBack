@@ -32,7 +32,7 @@ ROOM_USAGE_NAMES: Final[Mapping[RoomUsage, str]] = MappingProxyType(
         "stairwell": "buồng thang",
         "utility": "phòng kỹ thuật",
         "loggia": "lô gia",
-        "other": "phòng khác",
+        "other": "phòng chưa rõ tên",
     }
 )
 
@@ -90,8 +90,8 @@ _PREFIXES: Final = frozenset({"p", "ph", "phong"})
 _FUZZY_WORDS: Final = frozenset({"ngu", "bep", "khach", "master", "sanh"})
 """Chữ một từ được khớp gần đúng: ít gần chữ thường của bản vẽ. Khoá khác chỉ khớp nguyên: "tam" gần "tim"
 (tim tường), "thang" gần "thong" (thông thuỷ) và "tang" (tầng), "kho" gần "khu"."""
-_NOT_LABELS: Final = frozenset({"phong khac"})
-"""Tên do `name_rooms` sinh cho `other`, không phải nhãn (gần "phong khach" một ký tự)."""
+_NOT_LABELS: Final = frozenset({"phong khac", "phong chua ro ten"})
+"""Tên do `name_rooms` sinh cho `other` (nay và trước: "phòng khác" gần "phong khach" một ký tự), không phải nhãn."""
 _COMBINING_MARKS: Final = re.compile(f"[{chr(0x0300)}-{chr(0x036F)}]")  # U+0300-U+036F như FE (gateway.ts:995)
 _SEPARATORS: Final = re.compile(r"[._:/\-]")
 _SPACES: Final = re.compile(r"\s+")
@@ -222,8 +222,8 @@ def match_room_label(text: str) -> RoomLabel | None:
 def name_rooms(labels: Sequence[RoomLabel | None]) -> tuple[RoomLabel, ...]:
     """Đặt tên cho mọi phòng, giữ thứ tự; tên trùng thêm ` n` nhỏ nhất (từ 2) chưa dùng.
 
-    `None` → `other` tên `phòng khác` (rồi `phòng khác 2`…; bench-3d: "phòng 7" đọc như tên phòng thật). Tên
-    `phòng ngủ` hai lần → `phòng ngủ`, `phòng ngủ 2`.
+    `None` → `other` tên `phòng chưa rõ tên` (rồi `phòng chưa rõ tên 2`…; bench-3d: "phòng 7" đọc như tên phòng
+    thật). Tên `phòng ngủ` hai lần → `phòng ngủ`, `phòng ngủ 2`.
     """
     used: set[str] = set()
     named: list[RoomLabel] = []

@@ -179,6 +179,11 @@ _T_JUNCTION_COS = 0.1
 _CLOSER_TRIM_MM = 1.0
 """Cắt bớt mỗi đầu đoạn nối khe khi xét cắt tường: chạm đúng đầu mút (chân chữ T) không tính là cắt."""
 
+_CORNER_REACH_RATIO = 1.5
+"""Góc chữ L hở: đầu tự do và đầu tường vuông góc đều cách giao điểm hai đường tim ≤ ngần này lần bề dày lớn hơn của
+cặp (`_corner_closers`). bench-3d f-22: vách 400 dừng cách tim tường lô gia 441 mm, tường lô gia lố qua góc 88 mm —
+phòng khách 30 m² không khép; cửa đi hẹp nhất 600 mm ≥ 1,5 x 400 nên khe cửa sát góc không bị bịt."""
+
 
 def _extend(wall: Wall, amount: float) -> shapely.LineString:
     """Đường tim `wall` kéo dài `amount` mm về mỗi đầu, theo hướng tường (bước 5)."""
@@ -267,7 +272,83 @@ def _gap_closers(
     chosen = order[first]
     tails = foot[chosen] + unit[chosen] * _CLOSER_TRIM_MM
     closers: Geoms = np.asarray(shapely.linestrings(np.stack([head[chosen], tails], axis=1)), dtype=object)
-    return [shapely.LineString(line) for line in closers.tolist()]
+    found = [shapely.LineString(line) for line in closers.tolist()]
+    unclosed = np.setdiff1d(free, tip[chosen])
+    return found + _corner_closers(walls, tips[unclosed], owner[unclosed], obstacles, obstacle_tree)
+
+
+def _corner_closers(
+    walls: Sequence[Wall], tips: Geoms, owner: np.ndarray, obstacles: Geoms, obstacle_tree: shapely.STRtree
+) -> list[shapely.LineString]:
+    """Đoạn khép góc chữ L hở mà `_gap_closers` bỏ (hướng ra lệch > 60°, hay đầu kia không tự do).
+
+    Đầu tự do `T` của tường `A`, tường `B` vuông góc (`_T_JUNCTION_COS`), `X` = giao hai đường tim. Khép khi `T` và đầu
+    gần `X` của `B` đều cách `X` ≤ `_CORNER_REACH_RATIO` x bề dày lớn hơn và `X` không nằm giữa thân `B` (chữ T là việc
+    của `_gap_closers`): đoạn `T → X` nếu `A` hụt, đoạn đầu `B → X` nếu `B` hụt, mỗi đoạn lố 1 mm qua `X` cho
+    `unary_union` cắt nút. Bỏ cặp có đoạn cắt tim tường/`bridges` khác; mỗi đầu giữ cặp có tổng hụt nhỏ nhất.
+    """
+    if not len(tips):
+        return []
+    thick = max(wall.thickness_mm for wall in walls)
+    centrelines = obstacles[: len(walls)]
+    tip_idx, target = shapely.STRtree(centrelines).query(
+        tips, predicate="dwithin", distance=_CORNER_REACH_RATIO * thick
+    )
+    best: dict[int, tuple[float, list[shapely.LineString]]] = {}
+    for k, b in zip(tip_idx.tolist(), target.tolist(), strict=True):
+        a = int(owner[k])
+        if a == b:
+            continue
+        pieces = _corner_pieces(walls[a], walls[b], shapely.get_coordinates(tips[k])[0])
+        if pieces is None:
+            continue
+        miss, lines = pieces
+        trimmed = [shapely.LineString(_trimmed(line)) for line in lines]
+        hits = obstacle_tree.query(np.asarray(trimmed, dtype=object), predicate="intersects")[1]
+        if set(hits.tolist()) - {a, b} or (k in best and best[k][0] <= miss):
+            continue
+        best[k] = (miss, lines)
+    return [line for _, lines in best.values() for line in lines]
+
+
+def _trimmed(line: shapely.LineString) -> list[tuple[float, float]]:
+    """Hai đầu `line` co vào `_CLOSER_TRIM_MM` (chạm đúng đầu mút không tính là cắt)."""
+    (x0, y0), (x1, y1) = line.coords
+    length = math.hypot(x1 - x0, y1 - y0)
+    ux, uy = (x1 - x0) / length * _CLOSER_TRIM_MM, (y1 - y0) / length * _CLOSER_TRIM_MM
+    return [(x0 + ux, y0 + uy), (x1 - ux, y1 - uy)]
+
+
+def _corner_pieces(a: Wall, b: Wall, tip: np.ndarray) -> tuple[float, list[shapely.LineString]] | None:
+    """Đoạn khép góc L từ đầu tự do `tip` của `a` tới tường `b` (`_corner_closers`) kèm tổng hụt; `None` = không."""
+    a0 = np.array((a.centreline.start.x, a.centreline.start.y), dtype=float)
+    a1 = np.array((a.centreline.end.x, a.centreline.end.y), dtype=float)
+    b0 = np.array((b.centreline.start.x, b.centreline.start.y), dtype=float)
+    b1 = np.array((b.centreline.end.x, b.centreline.end.y), dtype=float)
+    outward = (a1 - a0) if np.allclose(tip, a1) else (a0 - a1)
+    outward /= np.hypot(*outward)
+    span_b = np.hypot(*(b1 - b0))
+    along_b = (b1 - b0) / span_b
+    if abs(float(outward @ along_b)) > _T_JUNCTION_COS:
+        return None
+    cross = outward[0] * along_b[1] - outward[1] * along_b[0]
+    rel = b0 - tip
+    shortfall = (rel[0] * along_b[1] - rel[1] * along_b[0]) / cross  # T → X dọc hướng ra của `a`
+    corner = tip + outward * shortfall
+    at = float((corner - b0) @ along_b)
+    reach = _CORNER_REACH_RATIO * max(a.thickness_mm, b.thickness_mm)
+    if ROOM_SNAP_MM < at < span_b - ROOM_SNAP_MM:
+        return None
+    head = b0 if at <= span_b / 2 else b1
+    overrun = float(np.hypot(*(corner - head)))
+    if abs(shortfall) > reach or overrun > reach:
+        return None
+    lines = []
+    for start, gap in ((tip, shortfall), (head, overrun)):
+        if gap > _CLOSER_TRIM_MM:
+            unit = (corner - start) / np.hypot(*(corner - start))
+            lines.append(shapely.LineString([start, corner + unit * _CLOSER_TRIM_MM]))
+    return (abs(shortfall) + overrun, lines) if lines else None
 
 
 def _outline_points(polygon: shapely.Polygon) -> list[Point]:
