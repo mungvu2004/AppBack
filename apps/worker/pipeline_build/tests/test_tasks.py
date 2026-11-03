@@ -274,6 +274,20 @@ def test_build_pipeline_layer_wraps_build_layer_value_error(
     assert asyncio.run(_read(context, layer_key(payload.run_prefix))) is None
 
 
+def test_build_pipeline_layer_rejects_perspective_view(
+    broker: SyncRedis, context: LocalDiskStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BENCH3D-19: lớp dựng ra phần lớn tường xiên (ảnh phối cảnh) → `failed` `NOT_A_FLOOR_PLAN`, không `layer.json`;
+    mặt bằng tổng hợp thường (các test J01…) vẫn qua `not_a_floor_plan`."""
+    monkeypatch.setattr(tasks, "not_a_floor_plan", lambda layer: 0.5)
+    payload = _payload()
+    _seed_inputs(context, payload)
+    _apply(payload)
+    (result,) = _results(broker, payload.run_id)
+    assert (result["status"], result["error_code"]) == ("failed", "NOT_A_FLOOR_PLAN")
+    assert asyncio.run(_read(context, layer_key(payload.run_prefix))) is None
+
+
 def test_reset_pipeline_build_settings_cache_forces_reread() -> None:
     """`reset_pipeline_build_settings_cache`: đọc lại `PipelineBuildSettings` ở lần gọi sau."""
     from apps.worker.pipeline_build.settings import get_pipeline_build_settings, reset_pipeline_build_settings_cache

@@ -11,6 +11,7 @@ from typing import Final
 
 import numpy as np
 import shapely
+from numpy.typing import NDArray
 from shapely import LineString, Point, Polygon, STRtree
 
 from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
@@ -54,6 +55,15 @@ lô rộng (tường rào dài, phòng chỉ phủ một góc)."""
 ROTATED_LABEL_SHARE: Final = 0.6
 ROTATED_MIN_LABELS: Final = 3
 """`ROTATED_PLAN` (chỉ báo): ≥ 3 nhãn chữ có hướng và ≥ 60 % đọc dọc. Bench-can-ho 14 bản vẽ thường: cao nhất 12 %."""
+
+AXIS_TOLERANCE_DEG: Final = 4.0
+_AXIS_BINS_PER_DEG: Final = 10
+_AXIS_BINS: Final = 90 * _AXIS_BINS_PER_DEG
+MIN_AXIS_SHARE: Final = 0.65
+"""BENCH3D-19: mặt bằng 2D vẽ tường theo trục vuông góc; ảnh phối cảnh 3D chiếu tường thành nhiều hướng xiên. Tổng dài
+tường nằm trong ±4° của 2 họ hướng vuông góc trội (mỗi họ = hướng θ và θ+90°) dưới 65 % → không phải mặt bằng. Hai họ
+để nhà có một cánh xiên vẫn qua. Đo trên lớp đã dựng (bench-3d tập F + r4b, `dieu-tra-f/to-ve.md` P2): 4 ảnh 3D
+0,45-0,60; mặt bằng thấp nhất 0,69 (tháp có cánh xiên + vườn cong), mọi ca A/B/C/D ≥ 0,97."""
 
 DOORLESS_USAGES_EXEMPT: Final = frozenset({"loggia", "corridor"})
 UNKNOWN_USAGE_SHARE: Final = 0.8
@@ -223,6 +233,48 @@ def _rotated_plan(label_orientation: Mapping[str, int]) -> GeometryCheck | None:
         return None
     detail = {"verticalLabels": vertical, "horizontalLabels": horizontal, "share": round(vertical / labels, 3)}
     return GeometryCheck("ROTATED_PLAN", False, detail)
+
+
+def axis_share(walls: Sequence[Wall]) -> float:
+    """Phần tổng dài tường phủ được bởi cặp họ hướng vuông góc tốt nhất (mỗi họ ±`AXIS_TOLERANCE_DEG` quanh θ và
+    θ+90°). Hướng gom vào ô 0,1° (mod 90°); xét mọi cặp tâm ô, phần hai cửa sổ chồng nhau chỉ tính một lần — không
+    lưới thô, không chọn tham lam. Không tường → 1 (không có gì để nghi)."""
+    ends = np.asarray(
+        [(w.centreline.start.x, w.centreline.start.y, w.centreline.end.x, w.centreline.end.y) for w in walls],
+        dtype=np.float64,
+    ).reshape(-1, 4)
+    dx, dy = ends[:, 2] - ends[:, 0], ends[:, 3] - ends[:, 1]
+    lengths = np.hypot(dx, dy)
+    total = float(lengths.sum())
+    if total <= 0:
+        return 1.0
+    bins = np.floor(np.degrees(np.arctan2(dy, dx)) % 90 * _AXIS_BINS_PER_DEG).astype(np.int64) % _AXIS_BINS
+    hist = np.bincount(bins, weights=lengths, minlength=_AXIS_BINS)
+    prefix = np.concatenate(([0.0], np.cumsum(np.concatenate((hist, hist)))))
+    half = round(AXIS_TOLERANCE_DEG * _AXIS_BINS_PER_DEG)
+    centres = np.arange(_AXIS_BINS)
+
+    def arc(first: NDArray[np.int64], count: int) -> NDArray[np.float64]:
+        """Tổng `hist` của `count` ô liền nhau (vòng) bắt đầu từ ô `first`."""
+        start = first % _AXIS_BINS
+        return prefix[start + count] - prefix[start]
+
+    cover = arc(centres - half, 2 * half + 1)
+    best = 0.0
+    for gap in range(_AXIS_BINS - 2 * half):  # cặp (i, i+gap); gap lớn hơn là cặp đối xứng đã xét
+        other = (centres + gap) % _AXIS_BINS
+        shared = arc(other - half, 2 * half + 1 - gap) if gap <= 2 * half else 0.0
+        best = max(best, float((cover + cover[other] - shared).max()))
+    return best / total
+
+
+def not_a_floor_plan(layer: SpatialLayer) -> float | None:
+    """Tỉ lệ `axis_share` khi lớp trông như ảnh phối cảnh (dưới `MIN_AXIS_SHARE`), không thì `None`.
+
+    Bước dựng gọi trước khi ghi `layer.json` và đánh hỏng lượt bằng `NOT_A_FLOOR_PLAN`: mô hình dựng từ ảnh 3D không
+    sửa được bằng tay nên không đưa vào tầng (kiểm ở bước quality thì lớp đã ghi đè tầng)."""
+    share = axis_share(layer.walls)
+    return share if share < MIN_AXIS_SHARE else None
 
 
 def geometry_checks(

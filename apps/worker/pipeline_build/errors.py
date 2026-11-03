@@ -13,3 +13,7 @@ PIPELINE_ARTIFACT_INVALID: Final = "PIPELINE_ARTIFACT_INVALID"
 
 PIPELINE_BUILD_INVALID: Final = "PIPELINE_BUILD_INVALID"
 """`build_layer` từ chối đầu vào (`ValueError`) hoặc lớp dựng ra có lỗi critical."""
+
+NOT_A_FLOOR_PLAN: Final = "NOT_A_FLOOR_PLAN"
+"""Cùng chuỗi với mã của bước tách tường (`apps/ml/runtime/error_codes.py`, FE đã có câu báo): lớp dựng ra có tường
+phần lớn xiên khỏi hai họ hướng vuông góc — ảnh phối cảnh 3D, không phải mặt bằng (BENCH3D-19)."""

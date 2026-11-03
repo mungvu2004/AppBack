@@ -14,12 +14,14 @@ from typing import Final
 from apps.worker.pipeline_build.artifacts import input_key, layer_key, walls_mask_key
 from apps.worker.pipeline_build.build import build_layer
 from apps.worker.pipeline_build.errors import (
+    NOT_A_FLOOR_PLAN,
     PIPELINE_ARTIFACT_INVALID,
     PIPELINE_ARTIFACT_MISSING,
     PIPELINE_BUILD_INVALID,
 )
 from apps.worker.pipeline_build.residual import PageRaster, decode_page_raster
 from apps.worker.pipeline_build.settings import get_pipeline_build_settings
+from apps.worker.pipeline_quality.checks import not_a_floor_plan
 from packages.core.clock import SystemClock
 from packages.messaging.celery_app import send_task
 from packages.messaging.payloads.pipeline import BuildStepPayload
@@ -136,7 +138,8 @@ async def _vector_page(storage: ObjectStorage, payload: BuildStepPayload) -> boo
 
 
 async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, key: str) -> None:
-    """Dựng `BuiltLayer` (bước C) rồi ghi `layer.json`; đầu vào xấu (`ValueError`) → `PIPELINE_BUILD_INVALID`."""
+    """Dựng `BuiltLayer` (bước C) rồi ghi `layer.json`; đầu vào xấu (`ValueError`) → `PIPELINE_BUILD_INVALID`, tường
+    phần lớn xiên (ảnh phối cảnh, `not_a_floor_plan`) → `NOT_A_FLOOR_PLAN`, cả hai không ghi gì."""
     max_bytes = get_pipeline_build_settings().PIPELINE_ARTIFACT_MAX_BYTES
     walls, objects, text = await _read_inputs(storage, payload, max_bytes)
     page = await _read_page(storage, payload, max_bytes)
@@ -159,6 +162,11 @@ async def _build_and_write(storage: ObjectStorage, payload: BuildStepPayload, ke
         )
     except ValueError as exc:
         raise PermanentError(PIPELINE_BUILD_INVALID) from exc
+    share = not_a_floor_plan(built.layer)
+    if share is not None:
+        # BENCH3D-19: ảnh phối cảnh → hỏng lượt trước khi ghi, tầng giữ lớp cũ; log tỉ lệ để hiệu chỉnh ngưỡng.
+        _log.info("pipeline_build_not_a_floor_plan", extra={"run_id": payload.run_id, "axis_share": round(share, 3)})
+        raise PermanentError(NOT_A_FLOOR_PLAN)
     await storage.put(key, built.to_json(), content_type="application/json", max_bytes=max_bytes)
     _log.info(
         "pipeline_build_dropped",
