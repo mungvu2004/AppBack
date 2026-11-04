@@ -170,10 +170,11 @@ def find_outside(layer: SpatialLayer) -> set[int]:
     corners += [(p.x, p.y) for room in layer.rooms for p in room.outline]
     if not corners or not layer.furniture:
         return set()
-    hull = shapely.MultiPoint(corners).convex_hull
-    centres = shapely.points([(item.centre.x, item.centre.y) for item in layer.furniture])
-    far = shapely.distance(hull, centres) > BUILDING_MARGIN_MM
-    return {index for index, item in enumerate(layer.furniture) if far[index] and _editable(item)}
+    # Dựng theo lô: `MultiPoint(list)` tạo từng điểm Python, tốn 1 s ở trần 20 000 tường (test_perf).
+    hull = shapely.convex_hull(shapely.multipoints(np.array(corners, dtype=np.float64)))
+    centres = shapely.points(np.array([(item.centre.x, item.centre.y) for item in layer.furniture], dtype=np.float64))
+    far = np.flatnonzero(np.asarray(shapely.distance(hull, centres), dtype=np.float64) > BUILDING_MARGIN_MM).tolist()
+    return {index for index in far if _editable(layer.furniture[index])}
 
 
 def dedupe_furniture(layer: SpatialLayer) -> SpatialLayer:
