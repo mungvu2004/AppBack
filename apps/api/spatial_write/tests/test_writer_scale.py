@@ -244,8 +244,8 @@ async def test_merge_writes_its_own_layer_without_rescaling(db_session: AsyncSes
     assert _wall_length(merge.base) == 12000
 
 
-async def test_merge_on_other_page_brings_base_to_new_scale(db_session: AsyncSession, fake_clock: FakeClock) -> None:
-    """Tỉ lệ của trang khác: hạng hiện tại tính là `none`, và cả nền (kể cả mục đã duyệt) về tỉ lệ mới (BENCH3D-27)."""
+async def test_merge_on_other_page_rescales_only_unreviewed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Trang khác: hạng hiện tại tính là `none`, mục chưa duyệt về tỉ lệ mới, mục đã duyệt giữ mm (BENCH3D-27)."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
     await _prepared(
@@ -277,7 +277,7 @@ async def test_merge_on_other_page_brings_base_to_new_scale(db_session: AsyncSes
         PAGE_2,
     )
     assert merge.target == Decimal("12")
-    assert [_wall_length(document.layer, index) for index in range(2)] == [1200, 1200]
+    assert [_wall_length(document.layer, index) for index in range(2)] == [1200, 1000]
 
 
 async def test_merge_on_other_page_keeps_base_for_project_default(
