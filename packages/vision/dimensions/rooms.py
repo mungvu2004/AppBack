@@ -226,12 +226,14 @@ def name_rooms(labels: Sequence[RoomLabel | None]) -> tuple[RoomLabel, ...]:
     thật). Tên `phòng ngủ` hai lần → `phòng ngủ`, `phòng ngủ 2`.
     """
     used: set[str] = set()
+    next_suffix: dict[str, int] = {}
     named: list[RoomLabel] = []
     for label in labels:
         label = label or RoomLabel("other", ROOM_USAGE_NAMES["other"])
-        name, suffix = label.name, 2
+        name, suffix = label.name, next_suffix.get(label.name, 2)
         while name in used:
             name, suffix = f"{label.name} {suffix}", suffix + 1
+        next_suffix[label.name] = suffix
         used.add(name)
         named.append(RoomLabel(label.usage, name))
     return tuple(named)
