@@ -1318,14 +1318,11 @@ def _inner_room(wall: Wall, rooms: Sequence[Room]) -> Room | None:
     return found[0] if wall_side_by(wall, contains) == "exterior" else None
 
 
-def _glazed(ends: tuple[Point, Point], thickness_mm: int, page: PageRaster | None, scaling: Scaling) -> bool:
-    """Khe có vách kính/khung cửa sổ vẽ nét mảnh: trong dải bề dày tường có ≥ 2 nét liền chạy dọc khe.
-
-    Mẫu từng hàng px song song khe (giữa 70 % khe, bỏ đầu tường) trên mực ngoài mặt nạ tường; hàng đạt `_GLAZING_HIT`
-    là nét. Dải mực liền quá `_GLAZING_SOLID` bề dày là khối đặc, không phải kính. Không có trang → `False`.
-    """
+def _ink_rows(ends: tuple[Point, Point], thickness_mm: int, page: PageRaster | None, scaling: Scaling) -> np.ndarray:
+    """Cờ từng hàng px song song khe trong dải bề dày: hàng là nét liền (`_GLAZING_HIT`, mẫu giữa 70 % khe, bỏ đầu
+    tường, trên mực ngoài mặt nạ tường). Không có trang khớp mặt nạ → mảng rỗng."""
     if page is None or page.gray.shape != page.walls.shape:
-        return False
+        return np.zeros(0, dtype=np.bool_)
     a = np.array((ends[0].x, ends[0].y), dtype=float) / scaling.build
     b = np.array((ends[1].x, ends[1].y), dtype=float) / scaling.build
     run = float(np.hypot(*(b - a)))
@@ -1341,6 +1338,26 @@ def _glazed(ends: tuple[Point, Point], thickness_mm: int, page: PageRaster | Non
             continue
         ink = (page.gray[rows, cols] < INK_GRAY) & ~page.walls[rows, cols]
         lined[row] = ink.mean() >= _GLAZING_HIT
+    return lined
+
+
+def ink_rail(ends: tuple[Point, Point], thickness_mm: int, page: PageRaster | None, scaling: Scaling) -> bool:
+    """Có ít nhất một nét liền chạy dọc khe trong dải bề dày, không phải khối đặc (`_GLAZING_SOLID`).
+
+    Lỏng hơn `_glazed`: ảnh độ phân giải thấp vẽ ray cửa lùa thành một vệt liền nhiều px (bench-3d f-22: 4 hàng).
+    """
+    lined = _ink_rows(ends, thickness_mm, page, scaling)
+    return bool(lined.any()) and float(lined.mean()) <= _GLAZING_SOLID
+
+
+def _glazed(ends: tuple[Point, Point], thickness_mm: int, page: PageRaster | None, scaling: Scaling) -> bool:
+    """Khe có vách kính/khung cửa sổ vẽ nét mảnh: trong dải bề dày tường có ≥ 2 nét liền chạy dọc khe (`_ink_rows`).
+
+    Dải mực liền quá `_GLAZING_SOLID` bề dày là khối đặc, không phải kính. Không có trang → `False`.
+    """
+    lined = _ink_rows(ends, thickness_mm, page, scaling)
+    if not lined.size:
+        return False
     strokes = int(lined[0]) + int(np.count_nonzero(lined[1:] & ~lined[:-1]))
     # ponytail: tường vẽ hai nét viền mà mặt nạ bỏ sót cũng ra 2 nét → cửa sổ; tách được nếu đo khoảng cách các nét.
     return strokes >= 2 and float(lined.mean()) <= _GLAZING_SOLID
