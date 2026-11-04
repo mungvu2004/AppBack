@@ -22,6 +22,7 @@ from shapely import STRtree
 from apps.worker.pipeline_build.arcs import explode_arcs, join_arcs
 from apps.worker.pipeline_build.clusters import Box, grow_region, wall_clusters
 from apps.worker.pipeline_build.constants import DROPPED_KEYS
+from apps.worker.pipeline_build.furniture_dedup import dedupe_furniture
 from apps.worker.pipeline_build.geometry import RoomCloser, Scaling, WallSet, build_walls, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
 from apps.worker.pipeline_build.residual import PageRaster, residual_ink_boxes
@@ -761,7 +762,7 @@ def _attempt(
         dimensions = _build_dimensions(context, wall_set, scaling=scaling, clock=clock, dropped=dropped)
     # Khúc thẳng hàng chạm nhau cùng `kind` → một tường một bề dày (WALL-RUN), rồi `reversed` so với luật phía mở FE
     # trên phòng sau luật hậu xử lý (QT-SWING, `swing.py`).
-    layer, dimensions = merge_wall_runs(apply_post_rules(layer), dimensions)
+    layer, dimensions = merge_wall_runs(dedupe_furniture(apply_post_rules(layer)), dimensions)
     layer = settle_reversed(layer, wall_set.leaves)
     if has_critical(check_integrity(layer, level_id=context.level_id)):
         raise ValueError("lớp dựng ra có lỗi toàn vẹn critical")
