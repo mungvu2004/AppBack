@@ -14,7 +14,7 @@ Module này là "hàm worker nhập" (BE-00 §7): không `fastapi`/`starlette`.
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.drawings.runs import lock_run
@@ -23,6 +23,7 @@ from packages.core.ids import new_id, new_ulid
 from packages.core.object_keys import upload_prefix_of
 from packages.db.models.drawings import DrawingRow, UploadRow
 from packages.db.models.floors import FloorRow
+from packages.db.models.spatial import FloorDocumentRow
 from packages.storage.keys import server_chosen_kind, upload_page_revision, upload_prefix
 from packages.storage.port import Disposition, ObjectStorage, SignRequest
 
@@ -117,6 +118,27 @@ async def _checked_upload(
     return file_name, updated_at, created_by
 
 
+async def _carry_scale_page(db: AsyncSession, existing: DrawingRow, *, upload_id: str, page_key: str) -> None:
+    """Lượt tải mới đúng là trang cũ → tỉ lệ của tầng theo sang khoá mới, kẻo bị coi là "của trang khác" (BENCH3D-27).
+
+    `page_key` đổi theo mỗi lượt tải, nên luật theo trang (`write_layer`, `effective_scale_source`) cần được báo khi
+    chỉ khoá đổi còn ảnh thì không. "Cùng trang" là cùng `content_sha256`, `page_index`, vùng cắt; kiểm khổ ảnh ở
+    `upsert_drawing` loại trang cũ đã nắn tay. Không đụng `revision`: lớp và tỉ lệ không đổi. Tỉ lệ gắn trang khác
+    (WHERE không khớp) thì không làm gì.
+    """
+    stmt = select(UploadRow.content_sha256, UploadRow.page_index, UploadRow.crop_corners).where(
+        UploadRow.id.in_((existing.upload_id, upload_id))
+    )
+    rows = [tuple(row) for row in (await db.execute(stmt)).all()]
+    if len(rows) != 2 or rows[0][0] is None or rows[0] != rows[1]:
+        return
+    await db.execute(
+        update(FloorDocumentRow)
+        .where(FloorDocumentRow.floor_pk == existing.floor_pk, FloorDocumentRow.scale_page_key == existing.page_key)
+        .values(scale_page_key=page_key)
+    )
+
+
 async def upsert_drawing(
     db: AsyncSession,
     *,
@@ -134,7 +156,8 @@ async def upsert_drawing(
     Trả `None` **không ghi gì** khi lượt chạy đã kết thúc, đã bị thay, hay thuộc lượt tải
     khác: kết quả muộn của một lượt cũ không được phép đè ảnh mới hơn (BE-00 §7).
     Cùng lượt tải → cập nhật tại chỗ, **giữ `id`** (QC đang mở màn không mất tham chiếu);
-    lượt tải khác → xoá dòng cũ rồi chèn `id` mới, vì ảnh là một bản vẽ khác hẳn.
+    lượt tải khác → xoá dòng cũ rồi chèn `id` mới, vì ảnh là một bản vẽ khác hẳn; cùng nội dung tệp và trang thì tỉ
+    lệ tầng theo sang khoá mới (`_carry_scale_page`).
     `px_per_paper_mm` luôn ghi đè (kể cả `None`): trang nắn lại thì tỉ số cũ không còn đúng (U01).
     """
     if width_px < 1 or height_px < 1:
@@ -154,6 +177,8 @@ async def upsert_drawing(
         await db.flush()
         return existing
     if existing is not None:
+        if (existing.width_px, existing.height_px) == (width_px, height_px):
+            await _carry_scale_page(db, existing, upload_id=upload_id, page_key=page_key)
         await db.delete(existing)
         await db.flush()
     row = DrawingRow(

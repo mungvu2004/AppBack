@@ -28,9 +28,9 @@ def make_merge(
     def merge(base: SpatialLayer, target: Decimal | None) -> MergeResult:
         """Trộn lớp AI vào `base`; `target` là tỉ lệ tầng giữ, `None` = tỉ lệ AI thắng.
 
-        `target is None` khi tầng chưa có tỉ lệ hạng cao hơn hoặc tỉ lệ cũ thuộc trang khác
-        (HOP-DONG-MOI §4): không `rescale` gì cả. Còn lại đưa lớp AI về đúng `target` trước
-        khi trộn, để mục người đã duyệt ở tỉ lệ đó không phải đổi (K21).
+        `target is None` khi lượt không mang tỉ lệ và tầng cũng chưa có: không `rescale` gì cả. Còn lại đưa lớp AI về
+        đúng `target` trước khi trộn, để mục người đã duyệt ở tỉ lệ đó không phải đổi (K21). Tỉ lệ cũ thuộc trang khác
+        thì `write_layer` đã quy `base` về `target` trước khi gọi (BENCH3D-27).
         """
         if target is None:
             return merge_pipeline_result(base, ai, removed)
