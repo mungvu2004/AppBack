@@ -1352,9 +1352,11 @@ def build_rooms(
         closers_out.extend(_room_closer(line, label) for line, label in labelled)
         closers_out.extend(_room_closer(line, None) for line in closers)
     lines = [*_room_lines(walls, bridges), *closers, *doors]
-    rails = _rail_closers(walls, _room_outlines(lines), detections, page, scaling)
-    lines.extend(rails)
     closed = _room_outlines(lines)
+    rails = _rail_closers(walls, closed, detections, page, scaling)
+    if rails:
+        lines.extend(rails)
+        closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
     tips = [(w.centreline.start.x, w.centreline.start.y, w.centreline.end.x, w.centreline.end.y) for w in walls]
     centrelines: Geoms = np.asarray(shapely.linestrings(np.array(tips, dtype=float).reshape(-1, 2, 2)), dtype=object)
