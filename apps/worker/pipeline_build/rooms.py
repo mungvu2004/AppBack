@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import shapely
+from shapely import affinity
 from shapely.errors import GEOSException
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import split
@@ -23,8 +24,9 @@ from apps.worker.pipeline_build.constants import (
     ROOM_GAP_EVIDENCE_MM,
     ROOM_SNAP_MM,
 )
-from apps.worker.pipeline_build.geometry import Geoms, RoomCloser, Scaling
+from apps.worker.pipeline_build.geometry import Geoms, RoomCloser, Scaling, ink_rail
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import INK_GRAY, PageRaster
 from packages.core.clock import Clock
 from packages.domain.rules_ai import LOW_CONFIDENCE_CAP
 from packages.domain.spatial import BoundingBox, Furniture, Point, Room, Wall, js_round, polygon_area_m2
@@ -537,6 +539,131 @@ def _room_outlines(lines: Sequence[shapely.LineString]) -> list[list[Point]]:
     segments = list(merged.geoms) if hasattr(merged, "geoms") else [merged]
     polygons = shapely.polygonize(segments)
     return [_outline_points(polygon) for polygon in polygons.geoms]
+
+
+_RAIL_SPAN_MM = (1500.0, 6000.0)
+_RAIL_MIN_DEPTH_MM = 600.0
+_RAIL_NOT_LOGGIA = frozenset({"bed", "sanitary_fixture", "shower", "kitchen_cabinet", "kitchen_run"})
+_RAIL_ROOM_M2 = 18.0
+_RAIL_STRIP_INK = 0.2
+"""Ray cửa lùa ra ban công (`_rail_closers`): vết cắt dài 1,5-6 m, dải ngoài sâu 0,6-2 m (hẹp hơn là gờ, dải vụn); chỉ
+xét phòng lớn còn ≥ `_OPEN_SPACE_M2` sau khi tách: phòng ngủ có tủ áo/cửa sổ dọc mặt ngoài cho nét liền giả (bench-3d:
+3/20 dải trúng khi không có ngưỡng này).
+
+Lòng ban công phải trống (`_RAIL_STRIP_INK`): bản vẽ phối màu có sàn tô màu là mực khắp nơi, dọc tủ, sofa nào cũng
+"có nét" (bench-3d: 5/9 dải sai trên brochure tô màu). Đánh đổi: ban công lát gạch vẽ kẻ ô thì vẫn gộp."""
+
+
+def _rail_closers(
+    walls: Sequence[Wall],
+    rooms: Sequence[Sequence[Point]],
+    detections: Sequence[DetectionPx],
+    page: PageRaster | None,
+    scaling: Scaling,
+) -> list[shapely.LineString]:
+    """Đoạn khép dọc ray cửa lùa/vách kính giữa phòng và ban công: model tường bỏ nét mảnh, hộp YOLO không có, khe dài
+    quá `ROOM_GAP_EVIDENCE_MM` nên phòng ôm luôn ban công (bench-3d f-22: khách 31,75 m² gồm ban công 3,03 m²).
+
+    Mỗi phòng có biên hở (`_exposed_lengths`): từ đầu tường trên biên phòng, cắt theo hướng ra của tường hay vuông góc
+    tường (`_rail_cut`); lấy dải nhỏ nhất đạt luật, không chứa đồ `_RAIL_NOT_LOGGIA`, có nét mực dọc vết cắt
+    (`ink_rail`), lòng trống (`_blank_inside`). Tên lô gia do luật mặt ngoài đặt như mọi phòng (`_FACADE_MM`), nên
+    phòng nhỏ ở mặt ngoài tách đúng cũng mang tên đó (bench-3d cn-16: phòng học). Đoạn không vào `closers_out`: không
+    thành tường. Không có trang → rỗng.
+    """
+    outlines = [outline for outline in rooms if len(outline) >= 3]
+    if page is None or not outlines or not walls:
+        return []
+    polygons = [shapely.Polygon([(p.x, p.y) for p in outline]) for outline in outlines]
+    wanted = [polygon.is_valid and polygon.area / 1e6 >= _RAIL_ROOM_M2 for polygon in polygons]
+    open_mm = _exposed_lengths(outlines, wanted)
+    ends = [(wall.centreline.start, wall.centreline.end) for wall in walls]
+    ends += [(wall.centreline.end, wall.centreline.start) for wall in walls]
+    tips = shapely.STRtree([shapely.Point(tip.x, tip.y) for tip, _ in ends])
+    room_tree = shapely.STRtree(polygons)
+    found: list[shapely.LineString] = []
+    for index, polygon in enumerate(polygons):
+        if open_mm[index] < _RAIL_SPAN_MM[0]:
+            continue
+        best: tuple[float, shapely.LineString] | None = None
+        for slot in tips.query(polygon.exterior, predicate="dwithin", distance=ROOM_SNAP_MM):
+            tip, base = ends[int(slot)]
+            run = math.hypot(tip.x - base.x, tip.y - base.y)
+            ux, uy = (tip.x - base.x) / run, (tip.y - base.y) / run
+            for way in ((ux, uy), (-uy, ux), (uy, -ux)):
+                cut = _rail_cut(polygon, tip, way, polygons, room_tree)
+                if cut is None or (best is not None and best[0] <= cut[0]):
+                    continue
+                if _fixtures_in([_outline_points(cut[2])], detections, scaling)[0] & _RAIL_NOT_LOGGIA:
+                    continue
+                (x0, y0), (x1, y1) = cut[1].coords
+                rail = (_rounded(x0, y0), _rounded(x1, y1))
+                if ink_rail(rail, 2 * ROOM_SNAP_MM, page, scaling) and _blank_inside(cut[2], page, scaling):
+                    best = (cut[0], cut[1])
+        if best is not None:
+            found.append(best[1])
+    return found
+
+
+def _blank_inside(strip: shapely.Polygon, page: PageRaster, scaling: Scaling) -> bool:
+    """Lòng `strip` (giữa 50 % hộp bao mỗi chiều, tránh tường, ray) gần trắng: mực ngoài mặt nạ ≤ `_RAIL_STRIP_INK`."""
+    if page.gray.shape != page.walls.shape:
+        return False
+    x0, y0, x1, y1 = (value / scaling.build for value in strip.bounds)
+    dx, dy = (x1 - x0) / 4, (y1 - y0) / 4
+    window = (max(0, round(y0 + dy)), round(y1 - dy)), (max(0, round(x0 + dx)), round(x1 - dx))
+    (top, bottom), (left, right) = window
+    ink = page.gray[top:bottom, left:right] < INK_GRAY
+    return bool(ink.size) and float((ink & ~page.walls[top:bottom, left:right]).mean()) <= _RAIL_STRIP_INK
+
+
+def _rounded(x: float, y: float) -> Point:
+    """Điểm mm `js_round`."""
+    return Point(x=js_round(x), y=js_round(y))
+
+
+def _rail_cut(
+    polygon: shapely.Polygon,
+    tip: Point,
+    way: tuple[float, float],
+    polygons: Sequence[shapely.Polygon],
+    room_tree: shapely.STRtree,
+) -> tuple[float, shapely.LineString, shapely.Polygon] | None:
+    """`(diện tích dải, vết cắt, dải)` của `polygon` theo tia từ `tip` hướng `way`, `None` nếu không đạt luật ban công.
+
+    Vết cắt dài `_RAIL_SPAN_MM`, lố `_CLOSER_TRIM_MM` hai đầu; dải là mảnh nhỏ, rộng `_RIM_M2`, sâu `_RAIL_MIN_DEPTH_MM`
+    tới `_LOGGIA_DEPTH_MM`, gần chữ nhật (`_RIM_FILL`); cạnh đối diện vết cắt ≥ nửa không giáp phòng khác.
+    """
+    dx, dy = way
+    ray = shapely.LineString([(tip.x, tip.y), (tip.x + dx * _RAIL_SPAN_MM[1], tip.y + dy * _RAIL_SPAN_MM[1])])
+    origin = shapely.Point(tip.x, tip.y)
+    crossing = ray.intersection(polygon)
+    parts = [g for g in getattr(crossing, "geoms", [crossing]) if isinstance(g, shapely.LineString) and not g.is_empty]
+    chord = next((g for g in parts if g.distance(origin) <= ROOM_SNAP_MM), None)
+    if chord is None or not _RAIL_SPAN_MM[0] <= chord.length < _RAIL_SPAN_MM[1]:
+        return None
+    (x0, y0), (x1, y1) = chord.coords[0], chord.coords[-1]
+    cut = shapely.LineString(
+        [
+            (x0 - dx * _CLOSER_TRIM_MM, y0 - dy * _CLOSER_TRIM_MM),
+            (x1 + dx * _CLOSER_TRIM_MM, y1 + dy * _CLOSER_TRIM_MM),
+        ]
+    )
+    pieces = [g for g in split(polygon, cut).geoms if isinstance(g, shapely.Polygon)]
+    if len(pieces) != 2:
+        return None
+    strip = min(pieces, key=lambda piece: piece.area)
+    if not _RIM_M2[0] <= strip.area / 1e6 <= _RIM_M2[1] or (polygon.area - strip.area) / 1e6 < _OPEN_SPACE_M2:
+        return None
+    depth = _depth_mm(_outline_points(strip))
+    if not _RAIL_MIN_DEPTH_MM <= depth <= _LOGGIA_DEPTH_MM or strip.area < _RIM_FILL * chord.length * depth:
+        return None
+    centre = strip.centroid
+    side = 1.0 if (centre.x - x0) * -dy + (centre.y - y0) * dx >= 0 else -1.0
+    far = affinity.translate(chord, -dy * side * depth, dx * side * depth)
+    near = [polygons[int(i)] for i in room_tree.query(far, predicate="dwithin", distance=2 * ROOM_SNAP_MM)]
+    near = [other for other in near if other is not polygon]
+    outside = far.difference(shapely.union_all(near).buffer(2 * ROOM_SNAP_MM)) if near else far
+    return (strip.area, cut, strip) if outside.length >= far.length / 2 else None
 
 
 def _seeded_outlines(
@@ -1196,6 +1323,7 @@ def build_rooms(
     dropped: Counter[str],
     scale_trusted: bool | None = None,
     closers_out: list[RoomCloser] | None = None,
+    page: PageRaster | None = None,
 ) -> tuple[Room, ...]:
     """Phòng từ khép kín của tường + `bridges` + đoạn nối khe `_gap_closers` (B5-05 [6] bước 5, lệch BUG-IT-008).
 
@@ -1213,6 +1341,7 @@ def build_rooms(
     `closers_out` (nếu có) nhận các đoạn khép không có tường cho `geometry.close_envelope_gaps` dựng tường vỏ (C5):
     `_door_closers` kèm nhãn hộp trước (khe có hộp mang ô mở, đoạn góc trùng khe sau đó bị bỏ vì chồng), rồi
     `_gap_closers`, cuối cùng biên hở của phòng đường bao (`_open_edge_closers`, không nhãn); phòng dựng ra không đổi.
+    `page` (nếu có) cho `_rail_closers` tách ban công khỏi phòng dọc ray cửa lùa; đoạn này không vào `closers_out`.
     """
     parsed = [match_room_label(text.text) for text in texts]
     centres = _text_centres(texts, scaling)
@@ -1223,6 +1352,8 @@ def build_rooms(
         closers_out.extend(_room_closer(line, label) for line, label in labelled)
         closers_out.extend(_room_closer(line, None) for line in closers)
     lines = [*_room_lines(walls, bridges), *closers, *doors]
+    rails = _rail_closers(walls, _room_outlines(lines), detections, page, scaling)
+    lines.extend(rails)
     closed = _room_outlines(lines)
     seeded = _seeded_outlines(lines, closed, parsed, centres)
     tips = [(w.centreline.start.x, w.centreline.start.y, w.centreline.end.x, w.centreline.end.y) for w in walls]
@@ -1246,7 +1377,7 @@ def build_rooms(
     kept = _merge_fragments(
         kept,
         bodies,
-        doors,
+        [*doors, *rails],
         [line for line in closers if line.length > ROOM_GAP_CLOSE_MM + 2 * _CLOSER_TRIM_MM],
         [centre for label, centre in zip(parsed, centres, strict=True) if label is not None],
     )

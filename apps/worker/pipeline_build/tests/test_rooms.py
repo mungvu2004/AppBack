@@ -12,6 +12,7 @@ import shapely
 from apps.worker.pipeline_build.constants import ROOM_GAP_CLOSE_MM
 from apps.worker.pipeline_build.geometry import RoomCloser, Scaling, WallSet, close_envelope_gaps
 from apps.worker.pipeline_build.ids import new_spatial_id
+from apps.worker.pipeline_build.residual import PageRaster
 from apps.worker.pipeline_build.rooms import (
     _corner_pieces,
     _door_closers,
@@ -1230,3 +1231,85 @@ def test_envelope__band_wrapping_the_flat_is_not_a_room(fake_clock: FakeClock) -
     ]
     rooms = _rooms_with([_wall(fake_clock, start, end) for start, end in segments], (), fake_clock)
     assert sorted(room.area_m2 for room in rooms) == [24.0, 24.0]
+
+
+def _balcony_room(clock: FakeClock) -> list[Wall]:
+    """Phòng 4 x 8 m, mẩu tường dày ở mét cuối bên trái: đầu tường (0, 7000) trên biên, ban công sâu 1 m."""
+    return [
+        _wall(clock, (0, 0), (4000, 0)),
+        _wall(clock, (4000, 0), (4000, 8000)),
+        _wall(clock, (4000, 8000), (0, 8000)),
+        _wall(clock, (0, 0), (0, 7000)),
+        _wall(clock, (0, 7000), (0, 8000), thickness=400),
+    ]
+
+
+def _rail_page(y_px: int | None = 700) -> PageRaster:
+    """Trang 10 mm/px; `y_px` = hàng có ray cửa lùa vẽ vệt 3 px suốt bề ngang phòng."""
+    gray = np.full((820, 420), 255, np.uint8)
+    if y_px is not None:
+        gray[y_px - 1 : y_px + 2, 0:400] = 0
+    return PageRaster(gray=gray, walls=np.zeros_like(gray, dtype=bool))
+
+
+def _balcony_rooms(
+    clock: FakeClock, page: PageRaster | None, walls: list[Wall] | None = None, detections: tuple[DetectionPx, ...] = ()
+) -> tuple[list[Room], list[RoomCloser]]:
+    """`build_rooms` ở 10 mm/px, kèm `closers_out`."""
+    closers: list[RoomCloser] = []
+    rooms = build_rooms(
+        walls or _balcony_room(clock),
+        (),
+        (),
+        detections=detections,
+        level_id=LEVEL_ID,
+        scaling=Scaling(10.0, 10.0),
+        clock=clock,
+        dropped=Counter(),
+        closers_out=closers,
+        page=page,
+    )
+    return list(rooms), closers
+
+
+def test_build_rooms__sliding_rail_splits_balcony_without_a_wall(fake_clock: FakeClock) -> None:
+    """Ray cửa lùa nét mảnh: phòng 28 m² + lô gia 4 m² (không gộp lại); đoạn khép không vào `closers_out`."""
+    counter = DetectionPx(label="kitchen_cabinet", box=BoxPx(x_min=50, y_min=50, x_max=300, y_max=110), confidence=0.9)
+    rooms, closers = _balcony_rooms(fake_clock, _rail_page(), detections=(counter,))
+    assert sorted(room.area_m2 for room in rooms) == [4.0, 28.0]
+    assert next(room for room in rooms if room.area_m2 == 4.0).usage == "loggia"
+    assert not [line for line in closers if line.start.y == 7000 and line.end.y == 7000]
+
+
+@pytest.mark.parametrize("page", [_rail_page(None), _rail_page(500), None])
+def test_build_rooms__no_rail_or_no_page_keeps_one_room(fake_clock: FakeClock, page: PageRaster | None) -> None:
+    """Không nét ray, ray xa đầu tường, hay không có trang: giữ nguyên một phòng."""
+    assert [room.area_m2 for room in _balcony_rooms(fake_clock, page)[0]] == [32.0]
+
+
+def test_build_rooms__rail_ignores_solid_band_and_bed_strip(fake_clock: FakeClock) -> None:
+    """Dải mực đặc không phải ray; dải chứa giường là phòng, không tách ban công."""
+    solid = _rail_page(None)
+    solid.gray[685:716, 0:400] = 0
+    assert [room.area_m2 for room in _balcony_rooms(fake_clock, solid)[0]] == [32.0]
+    bed = DetectionPx(label="bed", box=BoxPx(x_min=100, y_min=720, x_max=300, y_max=790), confidence=0.9)
+    assert [room.area_m2 for room in _balcony_rooms(fake_clock, _rail_page(), detections=(bed,))[0]] == [32.0]
+
+
+def test_build_rooms__rail_ignores_painted_floor(fake_clock: FakeClock) -> None:
+    """Sàn tô màu trong dải (brochure): ngoài ray còn mực khắp lòng dải thì không phải ban công trống."""
+    painted = _rail_page()
+    painted.gray[710:790, 0:400] = 200
+    assert [room.area_m2 for room in _balcony_rooms(fake_clock, painted)[0]] == [32.0]
+
+
+def test_build_rooms__rail_needs_outside_beyond_the_strip(fake_clock: FakeClock) -> None:
+    """Sau dải có phòng khác (giữa căn, không phải mặt ngoài): không tách."""
+    walls = [
+        *_balcony_room(fake_clock),
+        _wall(fake_clock, (0, 8000), (0, 12000)),
+        _wall(fake_clock, (0, 12000), (4000, 12000)),
+        _wall(fake_clock, (4000, 12000), (4000, 8000)),
+    ]
+    rooms, _ = _balcony_rooms(fake_clock, _rail_page(), walls=walls)
+    assert sorted(room.area_m2 for room in rooms) == [16.0, 32.0]

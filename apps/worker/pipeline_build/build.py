@@ -726,6 +726,7 @@ def _assembled(
         detections=context.detections,
         scale_trusted=trusted,
         closers_out=closers,
+        page=context.page,
         **shared,
     )
     joined, rooms = join_arcs(wall_set, rooms, context.arc_of)
