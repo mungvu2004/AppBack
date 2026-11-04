@@ -1363,7 +1363,8 @@ def build_furniture(
     Nhãn `chair`/`other` được sửa theo kích thước mm ở tỉ lệ `final` (`relabel_by_size`, U34) chỉ khi tỉ lệ đã tin
     (`scale_trusted`): tỉ lệ đoán sai thì cỡ sai, đổi loại theo cỡ thành đoán bừa (B10).
     Phòng của đồ: phòng giao hộp nhiều nhất (B8). Giao mọi phòng < `_OUTSIDE_SHARE` hộp và tâm ngoài hợp phòng nới
-    `_OUTSIDE_REACH_MM` → `suggested=True` (đồ ngoài căn: sơ đồ vị trí, ảnh minh hoạ), không xoá.
+    `_OUTSIDE_REACH_MM` → `suggested=True`, không xoá vì chưa chắc phòng đã đủ; đồ ngoài cả bao tường do
+    `furniture_dedup.find_outside` bỏ sau luật hậu xử lý.
     """
     polygons = [shapely.Polygon([(p.x, p.y) for p in room.outline]) for room in rooms]
     tree = shapely.STRtree(polygons)

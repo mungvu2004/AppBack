@@ -16,7 +16,9 @@ Riêng chậu trong dãy tủ ngoài phòng tắm không bỏ: đó là chậu b
 thành chậu mỏng (`variant="sink"`, `heightMm` 20, đúng dạng `SINK` của `sceneFurnish.ts`), `toPascal.sinkFolderOf` dựng
 tủ chứa nó thành mẫu có chậu. Chậu mỏng không còn là cặp trùng nên chạy lại không đổi gì.
 
-Đồ ngoài khối nhà không xử lý ở đây: `rooms.build_furniture` đã gắn `suggested` (không xoá vì chưa chắc phòng đã đủ).
+Đồ ngoài khối nhà (ảnh phối cảnh, sơ đồ mặt bằng tầng) bị bỏ trước khi xét trùng: AI chưa duyệt, tâm cách bao lồi của
+tường và phòng quá `BUILDING_MARGIN_MM`. Đo bằng bao tường chứ không bằng hợp phòng, vì phòng có thể thiếu: bàn ăn ở
+phòng khách hở tường không ra phòng nào (`rooms.build_furniture` chỉ gắn `suggested`) nhưng vẫn nằm trong bao, nên còn.
 """
 
 import logging
@@ -44,6 +46,8 @@ FIXED_NESTED_IOM: Final = 0.8
 """Khác loại, cả hai thuộc `_FLOOR_FIXED`, hộp nhỏ nằm ≥ ngần này trong hộp lớn: gối nhận thành bồn cầu trên giường."""
 THIN_SINK_MM: Final = 20
 """Bề dày chậu mỏng: `SINK` của `sceneFurnish.ts`; `isThinSink` nhận khi < 300 mm."""
+BUILDING_MARGIN_MM: Final = 1000
+"""Lề quanh bao lồi tường + phòng: đồ ở ban công chưa dò được lan can (ghế syn-can-ho-4pn cách bao 660 mm) vẫn còn."""
 
 _NESTABLE: Final = frozenset({"other", "chair"})
 """Cùng loại lồng nhau vẫn có thể là hai món: `other` hỗn tạp; ghế ăn thật trong hộp "ghế dài" bao cả hàng (ch-10)."""
@@ -160,8 +164,25 @@ def find_duplicates(items: Sequence[Furniture], usages: Sequence[str | None]) ->
     return _Plan(dropped, sinks)
 
 
+def find_outside(layer: SpatialLayer) -> set[int]:
+    """Chỉ số đồ AI chưa duyệt, tâm cách bao lồi (đầu mút tường, góc phòng) quá `BUILDING_MARGIN_MM`."""
+    corners = [(p.x, p.y) for wall in layer.walls for p in (wall.centreline.start, wall.centreline.end)]
+    corners += [(p.x, p.y) for room in layer.rooms for p in room.outline]
+    if not corners or not layer.furniture:
+        return set()
+    hull = shapely.MultiPoint(corners).convex_hull
+    centres = shapely.points([(item.centre.x, item.centre.y) for item in layer.furniture])
+    far = shapely.distance(hull, centres) > BUILDING_MARGIN_MM
+    return {index for index, item in enumerate(layer.furniture) if far[index] and _editable(item)}
+
+
 def dedupe_furniture(layer: SpatialLayer) -> SpatialLayer:
-    """Lớp sau khi bỏ đồ trùng và đổi chậu theo các luật ở đầu tệp; không có gì để đổi thì trả nguyên `layer`."""
+    """Lớp sau khi bỏ đồ ngoài nhà, đồ trùng, đổi chậu theo các luật ở đầu tệp; không đổi gì thì trả nguyên `layer`."""
+    outside = find_outside(layer)
+    if outside:
+        _log.info("pipeline_build_furniture_outside_dropped", extra={"dropped": len(outside)})
+        kept = tuple(item for index, item in enumerate(layer.furniture) if index not in outside)
+        layer = layer.model_copy(update={"furniture": kept})
     if len(layer.furniture) < 2:
         return layer
     usage_of = {room.id: room.usage for room in layer.rooms}
