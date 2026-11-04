@@ -58,13 +58,13 @@ def _room(wall_ids: tuple[str, ...]) -> Room:
 
 
 def test_five_pieces_of_one_edge_become_one_wall_with_one_thickness() -> None:
-    """f-22: mép trên 5 khúc đo 300/200/150/200/300 → một tường 0-12000, bề dày = trung vị theo độ dài (200)."""
+    """Mép trên 5 khúc đo 220/200/150/200/220 → một tường 0-12000, bề dày = trung vị theo độ dài (200)."""
     pieces = [
-        ((0, 0), (2000, 0), 300),
+        ((0, 0), (2000, 0), 220),
         ((2000, 0), (5000, 0), 200),
         ((5000, 0), (7000, 0), 150),
         ((7000, 0), (10000, 0), 200),
-        ((10000, 0), (12000, 0), 300),
+        ((10000, 0), (12000, 0), 220),
     ]
     door = _door(1, "W-WALL0000000002", 500)
     walls = tuple(_wall(i, a, b, t, opening_ids=(door.id,) if i == 2 else ()) for i, (a, b, t) in enumerate(pieces))
@@ -87,6 +87,39 @@ def test_five_pieces_of_one_edge_become_one_wall_with_one_thickness() -> None:
     assert merged.openings[0].offset_mm == 5500
     assert merged.rooms[0].wall_ids == (wall.id,)
     assert dims[0].reference_ids == (wall.id,)
+
+
+def test_f22_top_edge_keeps_thick_and_thin_parts_apart() -> None:
+    """f-22 mép trên, số đo thật: 400 | 220/150/220 | 400. Trung vị cả cạnh ra 400 phủ 3,9 m tường mỏng → phải tách."""
+    pieces = [
+        ((2027, 3971), (5852, 3971), 400),
+        ((5852, 3971), (6296, 3971), 213),
+        ((6296, 3971), (7917, 3971), 142),
+        ((7917, 3971), (9728, 3971), 213),
+        ((9728, 3971), (14157, 3971), 353),
+    ]
+    walls = tuple(_wall(i, a, b, t) for i, (a, b, t) in enumerate(pieces))
+    merged, _ = merge_wall_runs(SpatialLayer(walls=walls, openings=(), rooms=(), furniture=()))
+    assert [(w.centreline.start.x, w.centreline.end.x, w.detected_thickness_mm) for w in merged.walls] == [
+        (2027, 6296, 400),  # Vụn 444 mm theo dãy đang gộp.
+        (6296, 9728, 213),
+        (9728, 14157, 353),
+    ]
+    assert merged.walls[1].thickness_mm == 220
+
+
+def test_sliver_at_a_junction_follows_the_run_but_a_real_stub_stays() -> None:
+    """Vụn 418 mm đo 227 giữa hai khúc 400 (f-22) → một tường 400; đoạn cột 866 mm đo 356 sau vách 150 → vẫn tách."""
+    run = (
+        _wall(0, (0, 0), (0, 3676), 498),
+        _wall(1, (0, 3676), (0, 4094), 227),
+        _wall(2, (0, 4094), (0, 7312), 355),
+    )
+    merged, _ = merge_wall_runs(SpatialLayer(walls=run, openings=(), rooms=(), furniture=()))
+    assert [(w.centreline.end.y, w.thickness_mm) for w in merged.walls] == [(7312, 400)]
+    stub = (_wall(0, (0, 0), (6136, 0), 132), _wall(1, (6136, 0), (7002, 0), 356))
+    layer = SpatialLayer(walls=stub, openings=(), rooms=(), furniture=())
+    assert merge_wall_runs(layer) == (layer, ())
 
 
 def test_reversed_piece_moves_its_opening_and_flips_the_swing() -> None:
@@ -115,7 +148,7 @@ def test_pieces_that_must_stay_apart() -> None:
 
 def test_overlapping_and_thin_pieces_take_the_longer_line() -> None:
     """Khúc chồng một phần và lệch tim 40 mm (< ½ bề dày) → một tường trên tim khúc dài, độ tin nhỏ nhất."""
-    walls = (_wall(0, (0, 0), (5000, 0), 220), _wall(1, (4995, 40), (6000, 40), 110, confidence=0.5))
+    walls = (_wall(0, (0, 0), (5000, 0), 220), _wall(1, (4995, 40), (6000, 40), 150, confidence=0.5))
     merged, _ = merge_wall_runs(SpatialLayer(walls=walls, openings=(), rooms=(), furniture=()))
     wall = merged.walls[0]
     assert (wall.centreline.start, wall.centreline.end, wall.thickness_mm, wall.confidence) == (

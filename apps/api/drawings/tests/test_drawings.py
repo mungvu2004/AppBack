@@ -4,6 +4,8 @@ Mọi test chạy trong **một** giao dịch không commit: `upsert_drawing` kh
 ngoài nào, nên Redis và hàng đợi không phải vào cuộc.
 """
 
+from decimal import Decimal
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +17,10 @@ from apps.api.drawings.urls import signer, use_signer
 from packages.core.object_keys import project_prefix
 from packages.core.settings import reset_settings_cache
 from packages.db.models.drawings import DrawingRow, UploadRow
+from packages.db.models.spatial import FloorDocumentRow
 from packages.storage.local import LocalDiskStorage
 from packages.testing.factories.drawings import make_complete_upload, png_bytes
+from packages.testing.factories.spatial import make_floor_document
 from packages.testing.fixtures.clock import FakeClock
 
 PNG = png_bytes(800, 600)
@@ -416,3 +420,60 @@ async def test_drawing_url__page_is_signed_inline_png(
     grant = local_storage.verify_token((await drawing_url(local_storage, key)).rsplit("/", 1)[-1])
     assert grant.key == key
     assert grant.disposition == "inline"
+
+
+@pytest.mark.parametrize(
+    ("same_file", "width_px", "carried"),
+    [(True, 800, True), (False, 800, False), (True, 900, False)],
+    ids=["same_file", "other_file", "same_file_other_size"],
+)
+async def test_upsert_drawing_carries_scale_page_only_for_same_page(
+    db_session: AsyncSession,
+    local_storage: LocalDiskStorage,
+    fake_clock: FakeClock,
+    same_file: bool,
+    width_px: int,
+    carried: bool,
+) -> None:
+    """Tải lại đúng tệp, ra trang cùng khổ: tỉ lệ tầng theo sang khoá mới (BENCH3D-27); khác đi thì khoá giữ nguyên."""
+    scene = await make_scene(db_session)
+    old_upload, old_run = await _upload_with_run(db_session, local_storage, scene, fake_clock)
+    old_upload.content_sha256 = "a" * 64
+    old_key = _page_key(scene, old_upload, fake_clock)
+    await upsert_drawing(
+        db_session,
+        run_id=old_run,
+        floor_pk=scene.floor.pk,
+        upload_id=old_upload.id,
+        page_key=old_key,
+        width_px=800,
+        height_px=600,
+        clock=fake_clock,
+    )
+    await make_floor_document(
+        db_session,
+        floor_pk=scene.floor.pk,
+        scale=Decimal("10"),
+        scale_source="human",
+        scale_page_key=old_key,
+        clock=fake_clock,
+    )
+    new_upload, new_run = await _upload_with_run(db_session, local_storage, scene, fake_clock)
+    new_upload.content_sha256 = ("a" if same_file else "b") * 64
+    new_key = _page_key(scene, new_upload, fake_clock)
+
+    await upsert_drawing(
+        db_session,
+        run_id=new_run,
+        floor_pk=scene.floor.pk,
+        upload_id=new_upload.id,
+        page_key=new_key,
+        width_px=width_px,
+        height_px=600,
+        clock=fake_clock,
+    )
+
+    stored = await db_session.scalar(
+        select(FloorDocumentRow.scale_page_key).where(FloorDocumentRow.floor_pk == scene.floor.pk)
+    )
+    assert stored == (new_key if carried else old_key)

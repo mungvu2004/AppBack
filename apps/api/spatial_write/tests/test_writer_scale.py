@@ -244,13 +244,19 @@ async def test_merge_writes_its_own_layer_without_rescaling(db_session: AsyncSes
     assert _wall_length(merge.base) == 12000
 
 
-async def test_merge_on_other_page_replaces_scale_without_rescaling(
-    db_session: AsyncSession, fake_clock: FakeClock
-) -> None:
-    """Tỉ lệ của trang khác: hạng hiện tại tính là `none`, nhưng nền **không** bị quy đổi (#35)."""
+async def test_merge_on_other_page_rescales_only_unreviewed(db_session: AsyncSession, fake_clock: FakeClock) -> None:
+    """Trang khác: hạng hiện tại tính là `none`, mục chưa duyệt về tỉ lệ mới, mục đã duyệt giữ mm (BENCH3D-27)."""
     scene = await make_scene(db_session)
     floor = scene.floors[0]
-    await _prepared(db_session, floor, fake_clock, scale=Decimal("10"), scale_source="human", scale_page_key=PAGE_1)
+    await _prepared(
+        db_session,
+        floor,
+        fake_clock,
+        scale=Decimal("10"),
+        scale_source="human",
+        scale_page_key=PAGE_1,
+        reviewed_wall=True,
+    )
     merge = RecordingMerge(lambda base: base)
 
     await write(
@@ -270,6 +276,32 @@ async def test_merge_on_other_page_replaces_scale_without_rescaling(
         "pipeline",
         PAGE_2,
     )
+    assert merge.target == Decimal("12")
+    assert [_wall_length(document.layer, index) for index in range(2)] == [1200, 1000]
+
+
+async def test_merge_on_other_page_keeps_base_for_project_default(
+    db_session: AsyncSession, fake_clock: FakeClock
+) -> None:
+    """Tỉ lệ mới chỉ là mặc định dự án, không phải số đo: nền giữ mm, nguồn `project_default` để FE báo đỏ."""
+    scene = await make_scene(db_session)
+    floor = scene.floors[0]
+    await _prepared(db_session, floor, fake_clock, scale=Decimal("10"), scale_source="human", scale_page_key=PAGE_1)
+    merge = RecordingMerge(lambda base: base)
+
+    await write(
+        db_session,
+        floor=floor,
+        actor=scene.owner,
+        clock=fake_clock,
+        scale=Decimal("1"),
+        scale_source="project_default",
+        page_key=PAGE_2,
+        merge=merge,
+    )
+
+    document = await reread(db_session, floor.pk)
+    assert (document.scale_mm_per_px, document.scale_source) == (Decimal("1.000000"), "project_default")
     assert _wall_length(document.layer) == 1000
 
 

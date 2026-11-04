@@ -455,15 +455,18 @@ async def _settle_base(db: AsyncSession, request: _Request, current: FloorDocume
 async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocument) -> _Scale:
     """Bước 6: tỉ lệ, nguồn và trang sau lượt ghi; `factor` khác `None` thì lớp phải tính lại.
 
-    Luật theo trang: một lượt `merge` mang tỉ lệ của **trang khác** thì tỉ lệ đang có
-    không nói gì về trang ấy, nên hạng của nó tính là `none` và nền không bị `rescale`.
+    Luật theo trang: một lượt `merge` mang tỉ lệ của **trang khác** thì tỉ lệ đang có không nói gì về trang ấy, nên
+    hạng của nó tính là `none`. Mục giữ lại chưa duyệt phải cùng hệ với mục AI mới, không thì lớp trộn chồng lên nhau
+    (BENCH3D-27): chúng quy về tỉ lệ mới, còn mục đã duyệt giữ nguyên mm (K21, HOP-DONG-MOI §4). Tỉ lệ mới chỉ là
+    `project_default` thì không phải số đo: nền giữ nguyên, FE đã báo đỏ theo `scaleStatus`. Cùng tệp thì
+    `upsert_drawing` đã chuyển khoá nên không vào nhánh này.
     """
     other_page = (
         request.merge is not None and current.scale_page_key is not None and current.scale_page_key != request.page_key
     )
     rank = 0 if other_page else _RANK[current.scale_source]
     target = request.body.scale_mm_per_px
-    provisional = scale_status(current.scale_source) == "unresolved"
+    provisional = not other_page and scale_status(current.scale_source) == "unresolved"
     if target is None or _RANK[request.scale_source] < rank:
         return _Scale(
             current.scale_mm_per_px,
@@ -473,7 +476,10 @@ async def _target_scale(db: AsyncSession, request: _Request, current: FloorDocum
             include_reviewed=provisional,
         )
     previous = current.scale_mm_per_px
-    factor = None if other_page or previous is None or previous == target else (float(previous), float(target))
+    unmeasured = other_page and request.scale_source == "project_default"
+    # ponytail: giữ pixel, đúng khi hai tệp cùng độ phân giải. Tệp khác độ phân giải thì mm mục chưa duyệt lệch theo;
+    # hoàn tác bằng phiên bản "trước khi ghi kết quả AI". Thêm phép đặt khớp hai trang nếu người dùng hay gặp ca này.
+    factor = None if unmeasured or previous is None or previous == target else (float(previous), float(target))
     page_key = await _page_of(db, request, current)
     return _Scale(target, request.scale_source, page_key, factor=factor, include_reviewed=provisional)
 

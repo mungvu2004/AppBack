@@ -8,6 +8,9 @@ nhất, bề dày = trung vị (trọng số độ dài) của bề dày đo r�
 
 Cùng `kind` giữ tách tường bao 220 với vách 100 nối thẳng qua chữ T (C1 của vector hoá): một bên là `envelope`,
 một bên `partition`.
+
+Khúc thật sự khác bề dày không gộp (`_thickness_runs`): cạnh f-22 400/150/220/400 là bê tông hai đầu, tường mỏng giữa;
+trung vị của cả cạnh ra 400 và phủ gần 4 m tường 150-220. Gộp dọc đường đến khi bậc cao / bậc thấp vượt `_TIER_RATIO`.
 """
 
 import itertools
@@ -29,6 +32,10 @@ _ALIGN_SIN: Final = math.sin(math.radians(2.0))
 """Lệch hướng ≤ 2° là cùng hướng (như `geometry._aligned`)."""
 _SWAPPED: Final[Mapping[str, str]] = {"left": "right", "right": "left"}
 """Chiều mở tính theo hướng tim: khúc ngược hướng tường gộp thì cánh trái thành phải."""
+_TIER_RATIO: Final = 1.5
+"""Hai bậc chuẩn hơn nhau quá tỉ số này là hai đoạn tường khác nhau: 150-220, 200-300 gộp; 100-200, 220-400 không."""
+_SLIVER_MM: Final = 600
+"""Khúc không dài hơn khe cửa hẹp nhất là vụn đo ở chữ T: theo dãy đang gộp, không cắt dãy. Cột 800 mm vẫn tách."""
 
 
 def _mergeable(wall: Wall) -> bool:
@@ -73,8 +80,37 @@ def _joins(a: Wall, b: Wall) -> bool:
     return max(a_low, b_low) - min(a_high, b_high) <= _TOUCH_MM
 
 
+def _measured(wall: Wall) -> float:
+    """Bề dày đo (mm), chưa có thì lấy bề dày đang đặt."""
+    return float(wall.detected_thickness_mm or wall.thickness_mm)
+
+
+def _thickness_runs(members: Sequence[int], walls: Sequence[Wall]) -> list[list[int]]:
+    """Cắt một nhóm thẳng hàng thành các dãy liền nhau theo `_TIER_RATIO`; khúc ≤ `_SLIVER_MM` không tính vào bậc."""
+    first = walls[members[0]]
+    origin, unit = first.centreline.start, _unit(first)
+
+    def position(index: int) -> float:
+        """Đầu gần của khúc trên đường chung."""
+        line = walls[index].centreline
+        return min(_along(origin, unit, line.start), _along(origin, unit, line.end))
+
+    runs: list[list[int]] = []
+    tiers: list[int] = []
+    for index in sorted(members, key=position):
+        wall = walls[index]
+        spread = tiers + ([snap_thickness(_measured(wall))] if _length(wall) > _SLIVER_MM else [])
+        if runs and (not spread or max(spread) / min(spread) <= _TIER_RATIO):
+            runs[-1].append(index)
+            tiers = spread
+        else:
+            runs.append([index])
+            tiers = spread[-1:]
+    return runs
+
+
 def _groups(walls: Sequence[Wall]) -> list[list[int]]:
-    """Nhóm chỉ số tường gộp được (union-find trên cặp `_joins`, tra cặp qua `STRtree` đầu mút)."""
+    """Dãy chỉ số tường gộp được: union-find trên cặp `_joins` (tra cặp qua `STRtree` đầu mút), cắt theo bề dày."""
     candidates = [index for index, wall in enumerate(walls) if _mergeable(wall)]
     if len(candidates) < 2:
         return []
@@ -113,7 +149,7 @@ def _groups(walls: Sequence[Wall]) -> list[list[int]]:
     groups: dict[int, list[int]] = {}
     for index in sorted(parent):
         groups.setdefault(root(index), []).append(index)
-    return [members for members in groups.values() if len(members) > 1]
+    return [run for members in groups.values() for run in _thickness_runs(members, walls) if len(run) > 1]
 
 
 def _weighted_median(values: Sequence[float], weights: Sequence[float]) -> float:
@@ -143,9 +179,7 @@ def _merged(members: Sequence[Wall], openings: Mapping[str, Opening]) -> tuple[W
     low, high = min(ends), max(ends)
     start = Point(x=js_round(origin.x + unit[0] * low), y=js_round(origin.y + unit[1] * low))
     end = Point(x=js_round(origin.x + unit[0] * high), y=js_round(origin.y + unit[1] * high))
-    measured = _weighted_median(
-        [float(wall.detected_thickness_mm or wall.thickness_mm) for wall in members], [_length(w) for w in members]
-    )
+    measured = _weighted_median([_measured(wall) for wall in members], [_length(wall) for wall in members])
     placed: list[tuple[int, Opening]] = []
     for wall in members:
         own = _unit(wall)

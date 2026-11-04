@@ -8,7 +8,7 @@ import pytest
 
 from apps.worker.pipeline_build.furniture_dedup import dedupe_furniture
 from apps.worker.pipeline_build.tests.helpers import build_wrapped
-from packages.domain.spatial import BoundingBox, Furniture, Point, Room, SpatialLayer
+from packages.domain.spatial import BoundingBox, Furniture, Point, Room, Segment, SpatialLayer, Wall
 from packages.ml_contracts.labels import LABEL_TARGETS
 from packages.ml_contracts.synthetic import EVAL_SET_SEEDS, render_plan
 from packages.testing.fixtures.clock import FakeClock
@@ -264,3 +264,61 @@ def test_build_layer__one_object_detected_twice_is_one_item(fake_clock: FakeCloc
     once = build_wrapped(**shared, detections=plan.detections, clock=FakeClock(start=fake_clock.now()))
     doubled = build_wrapped(**shared, detections=(*plan.detections, twice), clock=FakeClock(start=fake_clock.now()))
     assert len(doubled.layer.furniture) == len(once.layer.furniture)
+
+
+def _building(*items: Furniture) -> list[int]:
+    """Số thứ tự món còn lại trong nhà chỉ có khung tường 0-10000 và một phòng góc 4000 x 4000."""
+    corners = ((0, 0), (10000, 0), (10000, 10000), (0, 10000))
+    walls = tuple(
+        Wall(
+            id=f"W-WALL{index:010d}",
+            level_id=_LEVEL,
+            centreline=Segment(start=Point(x=a[0], y=a[1]), end=Point(x=b[0], y=b[1])),
+            thickness_mm=200,
+            height_mm=3300,
+            kind="envelope",
+            opening_ids=(),
+            confidence=0.9,
+            source="ai",
+            reviewed=False,
+        )
+        for index, (a, b) in enumerate(itertools.pairwise((*corners, corners[0])))
+    )
+    room = Room(
+        id=_ROOMS["bedroom"],
+        level_id=_LEVEL,
+        name="phòng ngủ",
+        usage="bedroom",
+        outline=(Point(x=0, y=0), Point(x=4000, y=0), Point(x=4000, y=4000), Point(x=0, y=4000)),
+        area_m2=16.0,
+        wall_ids=(),
+        confidence=0.9,
+        source="ai",
+        reviewed=False,
+    )
+    layer = SpatialLayer(walls=walls, openings=(), rooms=(room,), furniture=items)
+    return [int(item.id[-10:]) for item in dedupe_furniture(layer).furniture]
+
+
+def test_item_outside_the_building_is_dropped_even_if_confident() -> None:
+    """f-22: bàn trong ảnh phối cảnh, ghế trong sơ đồ tầng, tâm xa khối nhà → bỏ, kể cả món không mang cờ gợi ý."""
+    far_right = _item(0, "other", (18000, 5000, 19000, 6000), 0.62, suggested=True)
+    far_below = _item(1, "chair", (5000, 16000, 7000, 18000), 0.27, suggested=True)
+    not_flagged = _item(2, "table", (18000, 8000, 19000, 9000), 0.9)
+    assert _building(far_right, far_below, not_flagged) == []
+
+
+def test_dining_table_in_a_room_missing_walls_stays() -> None:
+    """Bàn ăn không thuộc phòng nào (phòng khách hở tường) vẫn trong bao tường → còn; ghế ban công trong lề → còn."""
+    table = _item(0, "table", (6000, 6000, 8000, 7000), 0.8, suggested=True)
+    balcony = _item(1, "chair", (10300, 5000, 10800, 5500), 0.8, suggested=True)
+    assert _building(table, balcony) == [0, 1]
+
+
+def test_outside_item_placed_or_reviewed_by_a_person_stays() -> None:
+    """K21: đồ người đặt, đồ đã duyệt ngoài khối nhà không bị đụng; lớp chưa có tường, phòng thì không có bao để so."""
+    human = _item(0, "table", (18000, 5000, 19000, 6000), source="human")
+    reviewed = _item(1, "bed", (18000, 8000, 20000, 10000), reviewed=True)
+    assert _building(human, reviewed) == [0, 1]
+    lone = _item(2, "bed", (18000, 8000, 20000, 10000))
+    assert dedupe_furniture(SpatialLayer(walls=(), openings=(), rooms=(), furniture=(lone,))).furniture == (lone,)
