@@ -9,3 +9,4 @@
 - Giới hạn: cờ đặt tay, không dò worker sống; cờ bật mà worker `bake` chết thì lượt vẫn chờ tới `queued_max_age_s` rồi lịch quét chốt `failed`.
 - Không migration. Stack đang dùng nướng ánh sáng phải đặt `LIGHTING_BAKE_ENABLED=true`, nếu không nút bị ẩn.
 - Cổng: CI của PR (mục `contract`, `integration`, `coverage`).
+- Nợ để đợt sau (review vòng 1, P3): `HOP-DONG-MOI.md` và `BE-BIND.md` dòng 72, 128 chưa nêu N49, 503, 422 `password`; thiếu test `password: ""` và viewer đọc N49.
