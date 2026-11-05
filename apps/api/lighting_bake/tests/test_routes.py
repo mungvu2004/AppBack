@@ -4,6 +4,7 @@ Postgres, kho local và broker thật (K23). Case chung C04 C05 C12 C13 C25 ở 
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -34,6 +35,16 @@ from packages.testing.factories.auth import make_user
 from packages.testing.factories.lighting_bake import make_lighting_bake
 from packages.testing.factories.projects import make_project
 from packages.testing.fixtures.messaging import queued_payloads
+
+
+@pytest.fixture(autouse=True)
+def bake_enabled(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Mặc định bật `LIGHTING_BAKE_ENABLED`; test tắt đặt lại bằng `monkeypatch` riêng."""
+    monkeypatch.setenv("LIGHTING_BAKE_ENABLED", "true")
+    reset_lighting_bake_settings_cache()
+    yield
+    monkeypatch.undo()
+    reset_lighting_bake_settings_cache()
 
 
 async def _project(db: AsyncSession, *, viewer: bool = False) -> tuple[User, Project, list[User]]:
